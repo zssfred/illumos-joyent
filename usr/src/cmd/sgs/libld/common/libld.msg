@@ -823,6 +823,12 @@
 @ MSG_SYM_PREINITARRAY	"preinitarray"
 
 #
+# ARM section names
+#
+@ MSG_SCN_ARMEXTAB	".ARM.extab"
+
+
+#
 # GNU section names
 #
 @ MSG_SCN_CTORS		".ctors"
