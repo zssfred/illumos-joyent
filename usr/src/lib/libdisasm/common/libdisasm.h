@@ -53,9 +53,13 @@ typedef struct dis_handle dis_handle_t;
 #define	DIS_OCTAL		0x040
 #define	DIS_NOIMMSYM		0x080
 
+/* arm disassembler flags (with some breathing room) */
+#define	DIS_ARM			0x1000
+
 #define	DIS_ARCH_MASK		(DIS_SPARC_V8 | \
 		DIS_SPARC_V9 | DIS_SPARC_V9_SGI | DIS_SPARC_V9_OPL | \
-		DIS_X86_SIZE16 | DIS_X86_SIZE32 | DIS_X86_SIZE64)
+		DIS_X86_SIZE16 | DIS_X86_SIZE32 | DIS_X86_SIZE64 | \
+		DIS_ARM)
 
 typedef int (*dis_lookup_f)(void *, uint64_t, char *, size_t, uint64_t *,
     size_t *);

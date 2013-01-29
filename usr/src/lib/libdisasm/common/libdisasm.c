@@ -48,12 +48,19 @@ extern dis_arch_t dis_arch_i386;
 extern dis_arch_t dis_arch_sparc;
 #endif
 
+#if !defined(DIS_STANDALONE) || defined(__arm)
+extern dis_arch_t dis_arch_arm;
+#endif
+
 static dis_arch_t *dis_archs[] = {
 #if !defined(DIS_STANDALONE) || defined(__i386) || defined(__amd64)
 	&dis_arch_i386,
 #endif
 #if !defined(DIS_STANDALONE) || defined(__sparc)
 	&dis_arch_sparc,
+#endif
+#if !defined(DIS_STANDALONE) || defined(__arm)
+	&dis_arch_arm,
 #endif
 	NULL
 };

@@ -546,6 +546,10 @@ dis_file(const char *filename)
 			g_flags |= DIS_X86_SIZE64;
 			break;
 
+		case EM_ARM:
+			g_flags |= DIS_ARM;
+			break;
+
 		default:
 			die("%s: unsupported ELF machine 0x%x", filename,
 			    ehdr.e_machine);
