@@ -1348,10 +1348,14 @@ typedef struct fp_size_map {
 static const fp_size_map_t fp_encodings[] = {
 	{ { 4, 4 }, { CTF_FP_SINGLE, CTF_FP_CPLX, CTF_FP_IMAGRY } },
 	{ { 8, 8 }, { CTF_FP_DOUBLE, CTF_FP_DCPLX, CTF_FP_DIMAGRY } },
-#ifdef __sparc
+#if defined(CTF_TARGET_sparc)
 	{ { 16, 16 }, { CTF_FP_LDOUBLE, CTF_FP_LDCPLX, CTF_FP_LDIMAGRY } },
-#else
+#elif defined(CTF_TARGET_i386)
 	{ { 12, 16 }, { CTF_FP_LDOUBLE, CTF_FP_LDCPLX, CTF_FP_LDIMAGRY } },
+#elif defined(CTF_TARGET_arm)		/* XXXARM: 64bit placeholder.  Really 8?! */
+	{ { 8, 0 }, { CTF_FP_LDOUBLE, CTF_FP_LDCPLX, CTF_FP_LDIMAGRY } },
+#else
+#error "unknown CTF_TARGET"
 #endif
 	{ { 0, 0 } }
 };

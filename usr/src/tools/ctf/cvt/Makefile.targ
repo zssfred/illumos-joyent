@@ -25,11 +25,11 @@
 
 all: $(PROG)
 
-ctfconvert: $(CVTOBJS)
+ctfconvert.$(TARG_MACH): $(CVTOBJS)
 	$(LINK.c) -o $@ $(CVTOBJS) $(LDLIBS)
 	$(POST_PROCESS)
 
-ctfmerge: $(MRGOBJS)
+ctfmerge.$(TARG_MACH): $(MRGOBJS)
 	$(LINK.c) -o $@ $(MRGOBJS) $(LDLIBS)
 	$(POST_PROCESS)
 
@@ -64,7 +64,7 @@ selftest: ctf_o ctfconvert_merge ctfmerge_merge
 ctf_o:	$(OBJS:%.o=%_ctf)
 
 %_ctf:	%.o ctfconvert
-	LD_LIBRARY_PATH=$(DWARFSRCLIBDIR)/$(MACH) ./ctfconvert -l $@ $<
+	LD_LIBRARY_PATH=$(DWARFSRCLIBDIR)/$(NATIVE_MACH) ./ctfconvert -l $@ $<
 
 ctfconvert_merge: ctf_o ctfmerge
 	./ctfmerge -l $@ -o ctfconvert $(CVTOBJS)

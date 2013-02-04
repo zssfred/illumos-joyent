@@ -32,6 +32,7 @@ BOOT_SUBDIRS= \
 	cw
 
 COMMON_SUBDIRS= \
+	aw \
 	codereview \
 	codesign \
 	cscope-fast \
@@ -55,13 +56,13 @@ COMMON_SUBDIRS= \
 UNSHIPPED_SUBDIRS = \
 	elfsign
 
+# XXXARM: These should all become cross-capable.
 sparc_SUBDIRS= \
 	chk4ubin \
 	stabs \
 	tokenize
 
 i386_SUBDIRS=		\
-	aw		\
 	elfextract	\
 	mbh_patch
 
@@ -86,9 +87,9 @@ ROOTDIRS= \
 	$(ROOTOPT) \
 	$(ROOTONBLD) \
 	$(ROOTONBLD)/bin \
-	$(ROOTONBLD)/bin/$(MACH) \
+	$(ROOTONBLD)/bin/$(NATIVE_MACH) \
 	$(ROOTONBLD)/lib \
-	$(ROOTONBLD)/lib/$(MACH) \
+	$(ROOTONBLD)/lib/$(NATIVE_MACH) \
 	$(ROOTONBLD)/lib/perl \
 	$(ROOTONBLD)/lib/python2.6 \
 	$(ROOTONBLD)/lib/python2.6/onbld \

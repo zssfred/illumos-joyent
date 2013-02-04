@@ -55,16 +55,24 @@ dir path=opt/onbld/lib/python2.6/onbld/Scm
 dir path=opt/onbld/lib/python2.6/onbld/hgext
 dir path=opt/onbld/man
 dir path=opt/onbld/man/man1
-$(i386_ONLY)file path=opt/onbld/bin/$(ARCH)/aw mode=0555
+file path=opt/onbld/bin/$(ARCH)/aw.arm mode=0555
+file path=opt/onbld/bin/$(ARCH)/aw.i386 mode=0555
+file path=opt/onbld/bin/$(ARCH)/aw.sparc mode=0555
 $(sparc_ONLY)file path=opt/onbld/bin/$(ARCH)/chk4ubin mode=0555
 file path=opt/onbld/bin/$(ARCH)/codereview mode=0555
 file path=opt/onbld/bin/$(ARCH)/cscope-fast mode=0555
-file path=opt/onbld/bin/$(ARCH)/ctfconvert mode=0555
+file path=opt/onbld/bin/$(ARCH)/ctfconvert.arm mode=0555
+file path=opt/onbld/bin/$(ARCH)/ctfconvert.i386 mode=0555
+file path=opt/onbld/bin/$(ARCH)/ctfconvert.sparc mode=0555
 file path=opt/onbld/bin/$(ARCH)/ctfdump mode=0555
-file path=opt/onbld/bin/$(ARCH)/ctfmerge mode=0555
+file path=opt/onbld/bin/$(ARCH)/ctfmerge.arm mode=0555
+file path=opt/onbld/bin/$(ARCH)/ctfmerge.i386 mode=0555
+file path=opt/onbld/bin/$(ARCH)/ctfmerge.sparc mode=0555
 file path=opt/onbld/bin/$(ARCH)/ctfstabs mode=0555
 file path=opt/onbld/bin/$(ARCH)/ctfstrip mode=0555
-file path=opt/onbld/bin/$(ARCH)/cw mode=0555
+file path=opt/onbld/bin/$(ARCH)/cw.arm mode=0555
+file path=opt/onbld/bin/$(ARCH)/cw.i386 mode=0555
+file path=opt/onbld/bin/$(ARCH)/cw.sparc mode=0555
 $(i386_ONLY)file path=opt/onbld/bin/$(ARCH)/elfextract mode=0555
 file path=opt/onbld/bin/$(ARCH)/findunref mode=0555
 $(sparc_ONLY)file path=opt/onbld/bin/$(ARCH)/forth mode=0555
@@ -224,6 +232,10 @@ license usr/src/tools/ctf/dwarf/THIRDPARTYLICENSE \
     license=usr/src/tools/ctf/dwarf/THIRDPARTYLICENSE
 license usr/src/tools/onbld/THIRDPARTYLICENSE \
     license=usr/src/tools/onbld/THIRDPARTYLICENSE
+link path=opt/onbld/bin/$(ARCH)/aw target=aw.$(ARCH)
+link path=opt/onbld/bin/$(ARCH)/ctfconvert target=ctfconvert.$(ARCH)
+link path=opt/onbld/bin/$(ARCH)/ctfmerge target=ctfmerge.$(ARCH)
+link path=opt/onbld/bin/$(ARCH)/cw target=cw.$(ARCH)
 link path=opt/onbld/bin/git-nits target=git-pbchk
 link path=opt/onbld/lib/python target=python2.6
 link path=opt/onbld/man/man1/git-nits.1 target=git-pbchk.1

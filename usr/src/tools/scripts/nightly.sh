@@ -884,11 +884,10 @@ function use_tools {
 	TOOLSROOT=$1
 
 	#
-	# If we're not building ON workspace, then the TOOLSROOT
-	# settings here are clearly ignored by the workspace
-	# makefiles, prepending nonexistent directories to PATH is
-	# harmless, and we clearly do not wish to override
-	# ONBLD_TOOLS.
+	# If we're not building an ON workspace, then the TOOLSROOT settings
+	# here are clearly ignored by the workspace makefiles, prepending
+	# nonexistent directories to PATH is harmless, and we clearly do not
+	# wish to override ONBLD_TOOLS.
 	#
 	# If we're building an ON workspace, then the prepended PATH
 	# elements should supercede the preexisting ONBLD_TOOLS paths,
@@ -900,27 +899,8 @@ function use_tools {
 	# ${TOOLSROOT}/opt/onbld.
 	#
 
-	STABS=${TOOLSROOT}/opt/onbld/bin/${MACH}/stabs
-	export STABS
-	CTFSTABS=${TOOLSROOT}/opt/onbld/bin/${MACH}/ctfstabs
-	export CTFSTABS
-	GENOFFSETS=${TOOLSROOT}/opt/onbld/bin/genoffsets
-	export GENOFFSETS
-
-	CTFCONVERT=${TOOLSROOT}/opt/onbld/bin/${MACH}/ctfconvert
-	export CTFCONVERT
-	CTFMERGE=${TOOLSROOT}/opt/onbld/bin/${MACH}/ctfmerge
-	export CTFMERGE
-
-	CTFCVTPTBL=${TOOLSROOT}/opt/onbld/bin/ctfcvtptbl
-	export CTFCVTPTBL
-	CTFFINDMOD=${TOOLSROOT}/opt/onbld/bin/ctffindmod
-	export CTFFINDMOD
-
 	if [ "$VERIFY_ELFSIGN" = "y" ]; then
 		ELFSIGN=${TOOLSROOT}/opt/onbld/bin/elfsigncmp
-	else
-		ELFSIGN=${TOOLSROOT}/opt/onbld/bin/${MACH}/elfsign
 	fi
 	export ELFSIGN
 
@@ -934,13 +914,7 @@ function use_tools {
 	fi
 
 	echo "\n==== New environment settings. ====\n" >> $LOGFILE
-	echo "STABS=${STABS}" >> $LOGFILE
-	echo "CTFSTABS=${CTFSTABS}" >> $LOGFILE
-	echo "CTFCONVERT=${CTFCONVERT}" >> $LOGFILE
-	echo "CTFMERGE=${CTFMERGE}" >> $LOGFILE
-	echo "CTFCVTPTBL=${CTFCVTPTBL}" >> $LOGFILE
-	echo "CTFFINDMOD=${CTFFINDMOD}" >> $LOGFILE
-	echo "ELFSIGN=${ELFSIGN}" >> $LOGFILE
+        [ -n "$ELFSIGN" ] &&  echo "ELFSIGN=${ELFSIGN}" >> $LOGFILE
 	echo "PATH=${PATH}" >> $LOGFILE
 	echo "ONBLD_TOOLS=${ONBLD_TOOLS}" >> $LOGFILE
 }

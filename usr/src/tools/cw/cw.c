@@ -33,7 +33,7 @@
  */
 
 /* If you modify this file, you must increment CW_VERSION */
-#define	CW_VERSION	"1.29"
+#define	CW_VERSION	"1.30"
 
 /*
  * -#		Verbose mode
@@ -386,13 +386,13 @@ typedef struct xarch_table {
  * The translation table for the -xarch= flag used in the Studio compilers.
  */
 static const xarch_table_t xtbl[] = {
-#if defined(__x86)
+#if defined(CW_TARGET_i386)
 	{ "generic",	SS11 },
 	{ "generic64",	(SS11|M64), { "-m64", "-mtune=opteron" } },
 	{ "amd64",	(SS11|M64), { "-m64", "-mtune=opteron" } },
 	{ "386",	SS11,	{ "-march=i386" } },
 	{ "pentium_pro", SS11,	{ "-march=pentiumpro" } },
-#elif defined(__sparc)
+#elif defined(CW_TARGET_sparc)
 	{ "generic",	(SS11|M32), { "-m32", "-mcpu=v8" } },
 	{ "generic64",	(SS11|M64), { "-m64", "-mcpu=v9" } },
 	{ "v8",		(SS11|M32), { "-m32", "-mcpu=v8", "-mno-v8plus" } },
@@ -407,6 +407,10 @@ static const xarch_table_t xtbl[] = {
 	{ "sparc",	SS12, { "-mcpu=v9", "-mv8plus" } },
 	{ "sparcvis",	SS12, { "-mcpu=ultrasparc", "-mvis" } },
 	{ "sparcvis2",	SS12, { "-mcpu=ultrasparc3", "-mvis" } }
+#elif defined(CW_TARGET_arm)
+	{ "generic",	SS12, { "-march=armv6", "-mfpu=vfp", "-mhard-float" } }
+#else
+#error Unknown CW_TARGET
 #endif
 };
 
@@ -415,12 +419,12 @@ static int xtbl_size = sizeof (xtbl) / sizeof (xarch_table_t);
 static const char *progname;
 
 static const char *xchip_tbl[] = {
-#if defined(__x86)
+#if defined(CW_TARGET_i386)
 	"386",		"-mtune=i386", NULL,
 	"486",		"-mtune=i486", NULL,
 	"pentium",	"-mtune=pentium", NULL,
 	"pentium_pro",  "-mtune=pentiumpro", NULL,
-#elif defined(__sparc)
+#elif defined(CW_TARGET_sparc)
 	"super",	"-mtune=supersparc", NULL,
 	"ultra",	"-mtune=ultrasparc", NULL,
 	"ultra3",	"-mtune=ultrasparc3", NULL,
@@ -429,7 +433,7 @@ static const char *xchip_tbl[] = {
 };
 
 static const char *xcode_tbl[] = {
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 	"abs32",	"-fno-pic", "-mcmodel=medlow", NULL,
 	"abs44",	"-fno-pic", "-mcmodel=medmid", NULL,
 	"abs64",	"-fno-pic", "-mcmodel=medany", NULL,
@@ -440,19 +444,19 @@ static const char *xcode_tbl[] = {
 };
 
 static const char *xtarget_tbl[] = {
-#if defined(__x86)
+#if defined(CW_TARGET_i386)
 	"pentium_pro",	"-march=pentiumpro", NULL,
-#endif	/* __x86 */
+#endif	/* i386 */
 	NULL,		NULL
 };
 
 static const char *xregs_tbl[] = {
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 	"appl",		"-mapp-regs", NULL,
 	"no%appl",	"-mno-app-regs", NULL,
 	"float",	"-mfpu", NULL,
 	"no%float",	"-mno-fpu", NULL,
-#endif	/* __sparc */
+#endif	/* sparc */
 	NULL,		NULL
 };
 
@@ -653,7 +657,7 @@ do_gcc(cw_ictx_t *ctx)
 	newae(ctx->i_ae, "-fdiagnostics-show-option");
 	newae(ctx->i_ae, "-nodefaultlibs");
 
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 	/*
 	 * The SPARC ldd and std instructions require 8-byte alignment of
 	 * their address operand.  gcc correctly uses them only when the
@@ -756,13 +760,13 @@ do_gcc(cw_ictx_t *ctx)
 				nolibc = 1;
 				continue;
 			}
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 			if (strcmp(arg, "-cg92") == 0) {
 				mflag |= xlate_xtb(ctx->i_ae, "v8");
 				xlate(ctx->i_ae, "super", xchip_tbl);
 				continue;
 			}
-#endif	/* __sparc */
+#endif
 		}
 
 		switch ((c = arg[1])) {
@@ -943,7 +947,7 @@ do_gcc(cw_ictx_t *ctx)
 			}
 			if (strcmp(arg, "-m64") == 0) {
 				newae(ctx->i_ae, "-m64");
-#if defined(__x86)
+#if defined(CW_TARGET_i386)
 				newae(ctx->i_ae, "-mtune=opteron");
 #endif
 				mflag |= M64;
@@ -1135,7 +1139,7 @@ do_gcc(cw_ictx_t *ctx)
 				 */
 				break;
 			}
-#if defined(__x86)
+#if defined(CW_TARGET_i386)
 			if (strcmp(arg, "-Wu,-xmodel=kernel") == 0) {
 				newae(ctx->i_ae, "-ffreestanding");
 				newae(ctx->i_ae, "-mno-red-zone");
@@ -1147,7 +1151,7 @@ do_gcc(cw_ictx_t *ctx)
 				newae(ctx->i_ae, "-msave-args");
 				break;
 			}
-#endif	/* __x86 */
+#endif	/* i386 */
 			error(arg);
 			break;
 		case 'X':
@@ -1170,7 +1174,7 @@ do_gcc(cw_ictx_t *ctx)
 			if (arglen == 1)
 				error(arg);
 			switch (arg[2]) {
-#if defined(__x86)
+#if defined(CW_TARGET_i386)
 			case '3':
 				if (strcmp(arg, "-x386") == 0) {
 					newae(ctx->i_ae, "-march=i386");
@@ -1185,7 +1189,7 @@ do_gcc(cw_ictx_t *ctx)
 				}
 				error(arg);
 				break;
-#endif	/* __x86 */
+#endif	/* i386 */
 			case 'a':
 				if (strncmp(arg, "-xarch=", 7) == 0) {
 					mflag |= xlate_xtb(ctx->i_ae, arg + 7);
@@ -1259,7 +1263,7 @@ do_gcc(cw_ictx_t *ctx)
 					break;
 				error(arg);
 				break;
-#if defined(__x86)
+#if defined(CW_TARGET_i386)
 			case 'm':
 				if (strcmp(arg, "-xmodel=kernel") == 0) {
 					newae(ctx->i_ae, "-ffreestanding");
@@ -1270,7 +1274,7 @@ do_gcc(cw_ictx_t *ctx)
 				}
 				error(arg);
 				break;
-#endif	/* __x86 */
+#endif	/* i386 */
 			case 'M':
 				if (strcmp(arg, "-xM") == 0) {
 					newae(ctx->i_ae, "-M");
@@ -1440,7 +1444,7 @@ do_gcc(cw_ictx_t *ctx)
 	case 0:
 		/* FALLTHROUGH */
 	case M32:
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 		/*
 		 * Only -m32 is defined and so put in the missing xarch
 		 * translation.
@@ -1450,7 +1454,7 @@ do_gcc(cw_ictx_t *ctx)
 #endif
 		break;
 	case M64:
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 		/*
 		 * Only -m64 is defined and so put in the missing xarch
 		 * translation.
@@ -1459,7 +1463,7 @@ do_gcc(cw_ictx_t *ctx)
 #endif
 		break;
 	case SS12:
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 		/* no -m32/-m64 flag used - this is an error for sparc builds */
 		(void) fprintf(stderr, "No -m32/-m64 flag defined\n");
 		exit(2);
@@ -1471,7 +1475,7 @@ do_gcc(cw_ictx_t *ctx)
 	case (SS11|M64):
 		break;
 	case (SS12|M32):
-#if defined(__sparc)
+#if defined(CW_TARGET_sparc)
 		/*
 		 * Need to add in further 32 bit options because with SS12
 		 * the xarch=sparcvis option can be applied to 32 or 64
@@ -1590,20 +1594,32 @@ prepctx(cw_ictx_t *ctx)
 
 	switch (CIDX(CC(ctx), ctx->i_flags)) {
 		case CIDX(CW_C_CC, 0):
-			program = getenv("CW_CC");
-			dir = getenv("CW_CC_DIR");
+			if ((program = getenv("CW_" CW_TARGET "_CC")) == NULL)
+				program = getenv("CW_CC");
+			if ((dir = getenv("CW_" CW_TARGET "_CC_DIR")) == NULL)
+				dir = getenv("CW_CC_DIR");
 			break;
 		case CIDX(CW_C_CC, CW_F_CXX):
-			program = getenv("CW_CPLUSPLUS");
-			dir = getenv("CW_CPLUSPLUS_DIR");
+			if ((program = getenv("CW_" CW_TARGET "_CPLUSPLUS")) ==
+			    NULL)
+				program = getenv("CW_CPLUSPLUS");
+			if ((dir = getenv("CW_" CW_TARGET "_CPLUSPLUS_DIR")) ==
+			    NULL)
+				dir = getenv("CW_CPLUSPLUS_DIR");
 			break;
 		case CIDX(CW_C_GCC, 0):
-			program = getenv("CW_GCC");
-			dir = getenv("CW_GCC_DIR");
+			if ((program = getenv("CW_" CW_TARGET "_GCC")) == NULL)
+				program = getenv("CW_GCC");
+			if ((dir = getenv("CW_" CW_TARGET "_GCC_DIR")) == NULL)
+				dir = getenv("CW_GCC_DIR");
 			break;
 		case CIDX(CW_C_GCC, CW_F_CXX):
-			program = getenv("CW_GPLUSPLUS");
-			dir = getenv("CW_GPLUSPLUS_DIR");
+			if ((program = getenv("CW_" CW_TARGET "_GPLUSPLUS")) ==
+			    NULL)
+				program = getenv("CW_GPLUSPLUS");
+			if ((dir = getenv("CW_" CW_TARGET "_GPLUSPLUS_DIR")) ==
+			    NULL)
+				dir = getenv("CW_GPLUSPLUS_DIR");
 			break;
 	}
 

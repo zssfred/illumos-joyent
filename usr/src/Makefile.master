@@ -84,10 +84,22 @@ $(CLOSED_BUILD)EXPORT_RELEASE_BUILD=
 
 # SPARC_BLD is '#' for an Intel build.
 # INTEL_BLD is '#' for a Sparc build.
+SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
 SPARC_BLD=      $(SPARC_BLD_1:sparc=)
+INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 INTEL_BLD_1=    $(MACH:sparc=$(POUND_SIGN))
 INTEL_BLD=      $(INTEL_BLD_1:i386=)
+ARM_BLD_2=	$(MACH:i386=$(POUND_SIGN))
+ARM_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
+ARM_BLD=	$(ARM_BLD_1:arm=)
+
+# CROSS_BLD is "#" if NATIVE_MACH and MACH are the same, and the empty string
+# otherwise.  NATIVE_BLD is the opposite
+CROSS_BLD_1=	$(NATIVE_MACH:$(MACH)=$(POUND_SIGN))
+CROSS_BLD=	$(CROSS_BLD_1:$(NATIVE_MACH)=)
+NATIVE_BLD=
+$(CROSS_BLD)NATIVE_BLD=	$(POUND_SIGN)
 
 STRIP_COMMENTS=	$(INTERNAL_RELEASE_BUILD)
 
@@ -138,16 +150,22 @@ SFWINCDIR=	$(SFW_ROOT)/include
 SFWLIBDIR=	$(SFW_ROOT)/lib
 SFWLIBDIR64=	$(SFW_ROOT)/lib/$(MACH64)
 
-GCC_ROOT=	/opt/gcc/4.4.4
-GCCLIBDIR=	$(GCC_ROOT)/lib
-GCCLIBDIR64=	$(GCC_ROOT)/lib/$(MACH64)
+i386_GCC_ROOT=	/opt/gcc/4.4.4
+sparc_GCC_ROOT=	/opt/gcc/4.4.4
+arm_GCC_ROOT=	/opt/gcc/4.4.4
+
+NATIVE_GCC_ROOT=	$($(NATIVE_MACH)_GCC_ROOT)
+
+GCC_ROOT=		$($(MACH)_GCC_ROOT)
+GCCLIBDIR=		$(GCC_ROOT)/lib
+GCCLIBDIR64=		$(GCC_ROOT)/lib/$(MACH64)
 
 DOCBOOK_XSL_ROOT=	/usr/share/sgml/docbook/xsl-stylesheets
 
 RPCGEN=		/usr/bin/rpcgen
-STABS=		$(ONBLD_TOOLS)/bin/$(MACH)/stabs
-ELFEXTRACT=	$(ONBLD_TOOLS)/bin/$(MACH)/elfextract
-MBH_PATCH=	$(ONBLD_TOOLS)/bin/$(MACH)/mbh_patch
+STABS=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/stabs
+ELFEXTRACT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/elfextract
+MBH_PATCH=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/mbh_patch
 ECHO=		echo
 INS=		install
 TRUE=		true
@@ -180,11 +198,9 @@ JAVAH=		$(JAVA_ROOT)/bin/javah
 JAVADOC=	$(JAVA_ROOT)/bin/javadoc
 RMIC=		$(JAVA_ROOT)/bin/rmic
 JAR=		$(JAVA_ROOT)/bin/jar
-CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfconvert
-CTFMERGE=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfmerge
-CTFSTABS=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfstabs
-CTFSTRIP=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfstrip
-NDRGEN=		$(ONBLD_TOOLS)/bin/$(MACH)/ndrgen
+CTFSTABS=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfstabs
+CTFSTRIP=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfstrip
+NDRGEN=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ndrgen
 GENOFFSETS=	$(ONBLD_TOOLS)/bin/genoffsets
 CTFCVTPTBL=	$(ONBLD_TOOLS)/bin/ctfcvtptbl
 CTFFINDMOD=	$(ONBLD_TOOLS)/bin/ctffindmod
@@ -198,7 +214,7 @@ TOUCH=		/usr/bin/touch
 WC=		/usr/bin/wc
 XARGS=		/usr/bin/xargs
 ELFEDIT=	/usr/bin/elfedit
-ELFSIGN=	/usr/bin/elfsign
+ELFSIGN=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/elfsign
 DTRACE=		/usr/sbin/dtrace -xnolibs
 UNIQ=		/usr/bin/uniq
 TAR=		/usr/bin/tar
@@ -270,8 +286,9 @@ INS.symlink=	$(RM) $@; $(SYMLINK) $(INSLINKTARGET) $@
 #
 INS.pyfile=	$(INS.file); $(TOUCH) -r $< $@
 
-# MACH must be set in the shell environment per uname -p on the build host
-# More specific architecture variables should be set in lower makefiles.
+# MACH must be set in the shell environment to describe the target machine.
+# If $MACH does not match uname -p on the build host, NATIVE_MACH must be set
+# too.  More specific architecture variables should be set in lower makefiles.
 #
 # MACH64 is derived from MACH, and BUILD64 is set to `#' for
 # architectures on which we do not build 64-bit versions.
@@ -288,6 +305,7 @@ MACH32=		$(MACH32_1:i386=i86)
 
 sparc_BUILD64=
 i386_BUILD64=
+arm_BUILD64=	$(POUND_SIGN)
 BUILD64=	$($(MACH)_BUILD64)
 
 #
@@ -362,12 +380,14 @@ sparc_XARCH=	-m32
 sparcv9_XARCH=	-m64
 i386_XARCH=
 amd64_XARCH=	-m64 -Ui386 -U__i386
+arm_XARCH=
 
 # assembler '-xarch' flag.  Different from compiler '-xarch' flag.
 sparc_AS_XARCH=		-xarch=v8plus
 sparcv9_AS_XARCH=	-xarch=v9
 i386_AS_XARCH=
 amd64_AS_XARCH=		-xarch=amd64 -P -Ui386 -U__i386
+arm_AS_XARCH=
 
 #
 # These flags define what we need to be 'standalone' i.e. -not- part
@@ -383,6 +403,7 @@ sparcv9_STAND_FLAGS=	-_gcc=-ffreestanding
 NO_SIMD=		-_gcc=-mno-mmx -_gcc=-mno-sse
 i386_STAND_FLAGS=	-_gcc=-ffreestanding $(NO_SIMD)
 amd64_STAND_FLAGS=	-xmodel=kernel $(NO_SIMD)
+arm_STAND_FLAGS=	-_gcc=-ffreestanding
 
 SAVEARGS=		-Wu,-save_args
 amd64_STAND_FLAGS	+= $(SAVEARGS)
@@ -436,17 +457,20 @@ sparcv9_CFLAGS=	$(sparcv9_XARCH) -dalign $(CCVERBOSE) $(V9ABIWARN) $(CCREGSYM) \
 		$(CCSTATICSYM)
 i386_CFLAGS=	$(i386_XARCH)
 amd64_CFLAGS=	$(amd64_XARCH)
+arm_CFLAGS=	$(arm_XARCH)
 
 sparc_ASFLAGS=	$(sparc_AS_XARCH)
 sparcv9_ASFLAGS=$(sparcv9_AS_XARCH)
 i386_ASFLAGS=	$(i386_AS_XARCH)
 amd64_ASFLAGS=	$(amd64_AS_XARCH)
+arm_ASFLAGS=	$(arm_AS_XARCH)
 
 #
 sparc_COPTFLAG=		-xO3
 sparcv9_COPTFLAG=	-xO3
 i386_COPTFLAG=		-O
 amd64_COPTFLAG=		-xO3
+arm_COPTFLAG=		-xO3
 
 COPTFLAG= $($(MACH)_COPTFLAG)
 COPTFLAG64= $($(MACH64)_COPTFLAG)
@@ -479,6 +503,7 @@ DEBUGFORMAT=	-xdebugformat=stabs
 #
 CTF_FLAGS_sparc	= -g -Wc,-Qiselect-T1 $(C99MODE) $(CNOGLOBAL) $(CDWARFSTR)
 CTF_FLAGS_i386	= -g $(C99MODE) $(CNOGLOBAL) $(CDWARFSTR)
+CTF_FLAGS_arm	= -g $(C99MODE) $(CNOGLOBAL) $(CDWARFSTR)
 
 CTF_FLAGS_sparcv9	= $(CTF_FLAGS_sparc)
 CTF_FLAGS_amd64		= $(CTF_FLAGS_i386)
@@ -510,6 +535,7 @@ sparc_SPACEFLAG		= -xspace -W0,-Lt
 sparcv9_SPACEFLAG	= -xspace -W0,-Lt
 i386_SPACEFLAG		= -xspace
 amd64_SPACEFLAG		=
+arm_SPACFLAGE		=	#XXXARM: Really?
 
 SPACEFLAG		= $($(MACH)_SPACEFLAG)
 SPACEFLAG64		= $($(MACH64)_SPACEFLAG)
@@ -523,6 +549,7 @@ sparc_IROPTFLAG		= -W2,-xwrap_int
 sparcv9_IROPTFLAG	= -W2,-xwrap_int
 i386_IROPTFLAG		=
 amd64_IROPTFLAG		=
+arm_IROPTFLAG		=
 
 IROPTFLAG		= $($(MACH)_IROPTFLAG)
 IROPTFLAG64		= $($(MACH64)_IROPTFLAG)
@@ -531,6 +558,7 @@ sparc_XREGSFLAG		= -xregs=no%appl
 sparcv9_XREGSFLAG	= -xregs=no%appl
 i386_XREGSFLAG		=
 amd64_XREGSFLAG		=
+arm_XREGSFLAG		=
 
 XREGSFLAG		= $($(MACH)_XREGSFLAG)
 XREGSFLAG64		= $($(MACH64)_XREGSFLAG)
@@ -601,11 +629,13 @@ amd64_CCFLAGS=		$(amd64_XARCH) -compat=5 \
 			-Qoption ccfe -messages=no%anachronism \
 			-Qoption ccfe -features=no%conststrings \
 			$(CCERRWARN)
+arm_CCFLAGS=		$(CCERRWARN)
 
 sparc_CCOPTFLAG=	-O
 sparcv9_CCOPTFLAG=	-O
 i386_CCOPTFLAG=		-O
 amd64_CCOPTFLAG=	-O
+arm_CCOPTFLAG=		-O
 
 CCOPTFLAG=	$($(MACH)_CCOPTFLAG)
 CCOPTFLAG64=	$($(MACH64)_CCOPTFLAG)
@@ -646,6 +676,8 @@ $(__GNUC64)MAPFILE.NGB_i386= \
 MAPFILE.NGB_amd64=	$(SRC)/common/mapfiles/gen/amd64_cc_map.noexeglobs
 $(__GNUC64)MAPFILE.NGB_amd64= \
 			$(SRC)/common/mapfiles/gen/amd64_gcc_map.noexeglobs
+MAPFILE.NGB_arm= \
+			$(SRC)/common/mapfiles/gen/arm_gcc_map.noexeglobs
 MAPFILE.NGB =		$(MAPFILE.NGB_$(MACH))
 
 #
@@ -748,7 +780,13 @@ NATIVE_MACH=	$(MACH:amd64=i386)
 #
 SPRO_ROOT=		$(BUILD_TOOLS)/SUNWspro
 SPRO_VROOT=		$(SPRO_ROOT)/SS12
-GNU_ROOT=		$(SFW_ROOT)
+
+i386_GNU_ROOT=		$(SFW_ROOT)
+sparc_GNU_ROOT=		$(SFW_ROOT)
+arm_GNU_ROOT=		$(SFW_ROOT)
+
+GNU_ROOT=		$($(MACH)_GNU_ROOT)
+NATIVE_GNU_ROOT=	$($(NATIVE_MACH)_GNU_ROOT)
 
 # Till SS12u1 formally becomes the NV CBE, LINT is hard
 # coded to be picked up from the $SPRO_ROOT/sunstudio12.1/
@@ -760,42 +798,59 @@ GNU_ROOT=		$(SFW_ROOT)
 # Specify platform compiler versions for languages
 # that we use (currently only c and c++).
 #
-sparc_CC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_cc
-$(__GNUC)sparc_CC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_gcc
-sparc_CCC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_CC
-$(__GNUC)sparc_CCC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_g++
+sparc_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_cc
+$(__GNUC)sparc_CC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_gcc
+sparc_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_CC
+$(__GNUC)sparc_CCC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_g++
 sparc_CPP=		/usr/ccs/lib/cpp
 sparc_AS=		/usr/ccs/bin/as -xregsym=no
 sparc_LD=		/usr/ccs/bin/ld
 sparc_LINT=		$(SPRO_ROOT)/sunstudio12.1/bin/lint
+sparc_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.sparc
+sparc_CTFMERGE=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.sparc
 
-sparcv9_CC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_cc
-$(__GNUC64)sparcv9_CC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_gcc
-sparcv9_CCC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_CC
-$(__GNUC64)sparcv9_CCC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_g++
+sparcv9_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_cc
+$(__GNUC64)sparcv9_CC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_gcc
+sparcv9_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_CC
+$(__GNUC64)sparcv9_CCC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.sparc -_g++
 sparcv9_CPP=		/usr/ccs/lib/cpp
 sparcv9_AS=		/usr/ccs/bin/as -xregsym=no
 sparcv9_LD=		/usr/ccs/bin/ld
 sparcv9_LINT=		$(SPRO_ROOT)/sunstudio12.1/bin/lint
+sparcv9_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.sparc
+sparcv9_CTFMERGE=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.sparc
 
-i386_CC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_cc
-$(__GNUC)i386_CC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_gcc
-i386_CCC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_CC
-$(__GNUC)i386_CCC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_g++
+i386_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_cc
+$(__GNUC)i386_CC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_gcc
+i386_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_CC
+$(__GNUC)i386_CCC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_g++
 i386_CPP=		/usr/ccs/lib/cpp
 i386_AS=		/usr/ccs/bin/as
-$(__GNUC)i386_AS=	$(ONBLD_TOOLS)/bin/$(MACH)/aw
+$(__GNUC)i386_AS=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/aw.i386
 i386_LD=		/usr/ccs/bin/ld
 i386_LINT=		$(SPRO_ROOT)/sunstudio12.1/bin/lint
+i386_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.i386
+i386_CTFMERGE=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.i386
 
-amd64_CC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_cc
-$(__GNUC64)amd64_CC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_gcc
-amd64_CCC=		$(ONBLD_TOOLS)/bin/$(MACH)/cw -_CC
-$(__GNUC64)amd64_CCC=	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_g++
+amd64_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_cc
+$(__GNUC64)amd64_CC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_gcc
+amd64_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_CC
+$(__GNUC64)amd64_CCC=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.i386 -_g++
 amd64_CPP=		/usr/ccs/lib/cpp
-amd64_AS=		$(ONBLD_TOOLS)/bin/$(MACH)/aw
+amd64_AS=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/aw.i386
 amd64_LD=		/usr/ccs/bin/ld
 amd64_LINT=		$(SPRO_ROOT)/sunstudio12.1/bin/lint
+amd64_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.i386
+amd64_CTFMERGE=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.i386
+
+arm_CC=			$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_gcc
+arm_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_g++
+arm_CPP=		/usr/ccs/lib/cpp
+arm_AS=			$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/aw.arm
+arm_LD=			/usr/ccs/bin/ld
+arm_LINT=		/bin/false
+arm_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.arm
+arm_CTFMERGE=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.arm
 
 NATIVECC=		$($(NATIVE_MACH)_CC)
 NATIVECCC=		$($(NATIVE_MACH)_CCC)
@@ -803,16 +858,20 @@ NATIVECPP=		$($(NATIVE_MACH)_CPP)
 NATIVEAS=		$($(NATIVE_MACH)_AS)
 NATIVELD=		$($(NATIVE_MACH)_LD)
 NATIVELINT=		$($(NATIVE_MACH)_LINT)
+NATIVECTFCONVERT=	$($(NATIVE_MACH)_CTFCONVERT)
+NATIVECTFMERGE=		$($(NATIVE_MACH)_CTFMERGE)
 
 #
 # Makefile.master.64 overrides these settings
 #
-CC=			$(NATIVECC)
-CCC=			$(NATIVECCC)
-CPP=			$(NATIVECPP)
-AS=			$(NATIVEAS)
-LD=			$(NATIVELD)
-LINT=			$(NATIVELINT)
+CC=			$($(MACH)_CC)
+CCC=			$($(MACH)_CCC)
+CPP=			$($(MACH)_CPP)
+AS=			$($(MACH)_AS)
+LD=			$($(MACH)_LD)
+LINT=			$($(MACH)_LINT)
+CTFCONVERT=		$($(MACH)_CTFCONVERT)
+CTFMERGE=		$($(MACH)_CTFMERGE)
 
 # The real compilers used for this build
 CW_CC_CMD=		$(CC) -_compiler
@@ -862,6 +921,7 @@ sparc_C_PICFLAGS =	-K pic
 sparcv9_C_PICFLAGS =	-K pic
 i386_C_PICFLAGS =	-K pic
 amd64_C_PICFLAGS =	-K pic
+arm_C_PICFLAGS =	-K pic
 C_PICFLAGS =		$($(MACH)_C_PICFLAGS)
 C_PICFLAGS64 =		$($(MACH64)_C_PICFLAGS)
 
@@ -869,6 +929,7 @@ sparc_C_BIGPICFLAGS =	-K PIC
 sparcv9_C_BIGPICFLAGS =	-K PIC
 i386_C_BIGPICFLAGS =	-K PIC
 amd64_C_BIGPICFLAGS =	-K PIC
+arm_C_BIGPICFLAGS =	-K PIC
 C_BIGPICFLAGS =		$($(MACH)_C_BIGPICFLAGS)
 C_BIGPICFLAGS64 =	$($(MACH64)_C_BIGPICFLAGS)
 
@@ -877,6 +938,7 @@ sparc_CC_PICFLAGS =	-Kpic
 sparcv9_CC_PICFLAGS =	-KPIC
 i386_CC_PICFLAGS = 	-Kpic
 amd64_CC_PICFLAGS = 	-Kpic
+arm_CC_PICFLAGS =	-Kpic
 CC_PICFLAGS =		$($(MACH)_CC_PICFLAGS)
 CC_PICFLAGS64 =		$($(MACH64)_CC_PICFLAGS)
 
@@ -988,7 +1050,7 @@ POST_PROCESS=		$(PROCESS_COMMENT) $@ ; $(STRIP_STABS) ; \
 # ELF section size which can trigger an OBP bug on older platforms.
 # This problem affects only specific sun4u bootable modules.
 #
-CHK4UBIN=	$(ONBLD_TOOLS)/bin/$(MACH)/chk4ubin
+CHK4UBIN=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/chk4ubin
 CHK4UBINFLAGS=
 CHK4UBINARY=	$(CHK4UBIN) $(CHK4UBINFLAGS) $@
 

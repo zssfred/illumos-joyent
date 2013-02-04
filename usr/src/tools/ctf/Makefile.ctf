@@ -1,3 +1,4 @@
+
 #
 # CDDL HEADER START
 #
@@ -43,5 +44,6 @@ HDRDIRS= \
 	-I$(SRC)/uts/common
 
 CPPFLAGS += $(HDRDIRS)
+CPPFLAGS += -DCTF_TARGET_$(TARG_MACH)=1
 CFLAGS += $(CCVERBOSE)
 CERRWARN += -_gcc=-Wno-parentheses

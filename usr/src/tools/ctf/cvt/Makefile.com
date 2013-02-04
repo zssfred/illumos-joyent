@@ -28,7 +28,7 @@ include ../../Makefile.ctf
 .KEEP_STATE:
 .PARALLEL:
 
-PROG=ctfconvert ctfmerge
+PROG=ctfconvert.$(TARG_MACH) ctfmerge.$(TARG_MACH)
 
 GENSRCS= \
 	alist.c \
@@ -69,7 +69,7 @@ LINTFILES=$(SRCS:%.c=%.ln)
 
 DWARFLDFLAGS	= \
 	-L$(ROOTONBLDLIBMACH) \
-	'-R$$ORIGIN/../../lib/$(MACH)' \
+	'-R$$ORIGIN/../../lib/$(NATIVE_MACH)' \
 	-ldwarf
 DWARFCPPFLAGS	= -I../../dwarf/common
 
@@ -84,6 +84,6 @@ CERRWARN	+= -_gcc=-Wno-switch
 
 C99MODE		= $(C99_ENABLE)
 
-ctfconvert	:= LDFLAGS += $(DWARFLDFLAGS)
+ctfconvert.$(TARG_MACH)	:= LDFLAGS += $(DWARFLDFLAGS)
 
 dwarf.o dwarf.ln	:= CPPFLAGS += $(DWARFCPPFLAGS)

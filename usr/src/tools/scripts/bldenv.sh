@@ -359,16 +359,6 @@ TOOLS_PROTO="${TOOLS}/proto/root_${MACH}-nd" ; export TOOLS_PROTO
 if "${flags.t}" ; then
 	export ONBLD_TOOLS="${ONBLD_TOOLS:=${TOOLS_PROTO}/opt/onbld}"
 
-	export STABS="${TOOLS_PROTO}/opt/onbld/bin/${MACH}/stabs"
-	export CTFSTABS="${TOOLS_PROTO}/opt/onbld/bin/${MACH}/ctfstabs"
-	export GENOFFSETS="${TOOLS_PROTO}/opt/onbld/bin/genoffsets"
-
-	export CTFCONVERT="${TOOLS_PROTO}/opt/onbld/bin/${MACH}/ctfconvert"
-	export CTFMERGE="${TOOLS_PROTO}/opt/onbld/bin/${MACH}/ctfmerge"
-
-	export CTFCVTPTBL="${TOOLS_PROTO}/opt/onbld/bin/ctfcvtptbl"
-	export CTFFINDMOD="${TOOLS_PROTO}/opt/onbld/bin/ctffindmod"
-
 	PATH="${TOOLS_PROTO}/opt/onbld/bin/${MACH}:${PATH}"
 	PATH="${TOOLS_PROTO}/opt/onbld/bin:${PATH}"
 	export PATH

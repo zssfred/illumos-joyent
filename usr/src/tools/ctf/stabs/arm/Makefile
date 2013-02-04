@@ -20,33 +20,9 @@
 # CDDL HEADER END
 #
 #
-# Copyright (c) 2001 by Sun Microsystems, Inc.
-# All rights reserved.
+# Copyright 2002 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
 #
 
-include		../../Makefile.tools
+include ../Makefile.com
 
-SUBDIRS	= arm i386 sparc
-
-all	:= TARGET= all
-install	:= TARGET= install
-clean	:= TARGET= clean
-clobber	:= TARGET= clobber
-lint	:= TARGET= lint
-
-.KEEP_STATE:
-
-install all clean clobber lint: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) TARG_MACH=$@ $(TARGET)
-
-install: $(ROOTONBLDBINMACH)/ctfconvert $(ROOTONBLDBINMACH)/ctfmerge
-
-$(ROOTONBLDBINMACH)/ctfmerge: FRC
-	$(RM) $@; $(SYMLINK) ctfmerge.$(NATIVE_MACH) $@
-
-$(ROOTONBLDBINMACH)/ctfconvert: FRC
-	$(RM) $@; $(SYMLINK) ctfconvert.$(NATIVE_MACH) $@
-
-FRC:
