@@ -176,11 +176,9 @@ ROOTDIR=	$(ROOT)/usr/include/sys
 
 ROOTDKTPDIR=	$(ROOTDIR)/dktp
 
-sparc_ROOTDIRS=	$(ROOTDKTPDIR) $(ROOTDIR)/scsi/adapters \
-		$(ROOTDIR)/scsi/targets
+sparc_ROOTDIRS=	$(ROOTDKTPDIR)
 
-i386_ROOTDIRS=	$(ROOTDKTPDIR) $(ROOTDIR)/scsi/adapters $(ROOTDIR)/scsi/targets \
-		$(ROOTDIR)/agp $(ROOTDIR)/sata
+i386_ROOTDIRS=	$(ROOTDKTPDIR) $(ROOTDIR)/agp $(ROOTDIR)/sata
 
 ROOTDIRS=			\
 	$(ROOTDIR)		\
@@ -221,9 +219,11 @@ ROOTDIRS=			\
 	$(ROOTDIR)/lvm		\
 	$(ROOTDIR)/pcmcia	\
 	$(ROOTDIR)/scsi		\
+	$(ROOTDIR)/scsi/adapters\
 	$(ROOTDIR)/scsi/conf	\
 	$(ROOTDIR)/scsi/generic	\
 	$(ROOTDIR)/scsi/impl	\
+	$(ROOTDIR)/scsi/targets	\
 	$(ROOTDIR)/sdcard	\
 	$(ROOTDIR)/sysevent     \
 	$(ROOTDIR)/contract     \

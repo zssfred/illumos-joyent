@@ -18,50 +18,20 @@
 #
 # CDDL HEADER END
 #
-
 #
-# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
-# Use is subject to license terms.
+# Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
 #
 
-SHELL=/usr/bin/ksh93
+EFT_COMMON_FILES=		\
+	disk.eft		\
+	neptune_xaui.eft	\
+	neptune_xfp.eft 	\
+	pci.eft			\
+	pciex.eft		\
+	pciexrc.eft		\
+	sca500.eft		\
+	sca1000.eft 		\
+	sensor.eft		\
+	storage.eft
 
-include		../Makefile.lib
-
-SUBDIRS =	$(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
-
-all :=		TARGET= all
-clean :=	TARGET= clean
-clobber :=	TARGET= clobber
-install :=	TARGET= install
-lint :=		TARGET= lint
-_msg := 	TARGET= _msg
-
-.KEEP_STATE:
-
-all clean clobber install lint _msg: $(SUBDIRS)
-
-LIBRARY= 	libdll.a
-
-HDRS= \
-	dlldefs.h
-
-# XXXARM: ... pabst blue ribbon
-$(ARM_BLD)HDRS=
-
-HDRDIR32= $(MACH)/src/lib/libdll
-HDRDIR64= $(MACH64)/src/lib/libdll
-include ../Makefile.asthdr
-
-install_h: $(ROOTHDRS)
-
-# We don't check these header files because they're owned by AT&T/AST
-check:
-
-$(SUBDIRS):	FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
-
-include ../Makefile.targ
+include ../Makefile.com

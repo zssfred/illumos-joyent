@@ -18,50 +18,38 @@
 #
 # CDDL HEADER END
 #
-
 #
-# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
+#
+# Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
 
-SHELL=/usr/bin/ksh93
+LIBCBASE=	.
+LIBCDIR=	$(SRC)/lib/libc
+LIBRARY=	libc.a
+LIB_PIC=	libc_pic.a
+VERS=		.1
+CPP=		/usr/lib/cpp
+TARGET_ARCH=	arm
 
-include		../Makefile.lib
+# extra files for the clean target
+CLEANFILES=			\
+	assym.h			\
+	genassym
 
-SUBDIRS =	$(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
+CLOBBERFILES +=	$(LIB_PIC)
 
-all :=		TARGET= all
-clean :=	TARGET= clean
-clobber :=	TARGET= clobber
-install :=	TARGET= install
-lint :=		TARGET= lint
-_msg := 	TARGET= _msg
+include ../../Makefile.lib
 
 .KEEP_STATE:
 
-all clean clobber install lint _msg: $(SUBDIRS)
+# include common libc targets
+include ../Makefile.targ
 
-LIBRARY= 	libdll.a
+# assym.h build rules
 
-HDRS= \
-	dlldefs.h
-
-# XXXARM: ... pabst blue ribbon
-$(ARM_BLD)HDRS=
-
-HDRDIR32= $(MACH)/src/lib/libdll
-HDRDIR64= $(MACH64)/src/lib/libdll
-include ../Makefile.asthdr
-
-install_h: $(ROOTHDRS)
-
-# We don't check these header files because they're owned by AT&T/AST
-check:
-
-$(SUBDIRS):	FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
+assym.h: FRC
+	echo "#error If you need me, something is wrong" >> $@
 
 FRC:
-
-include ../Makefile.targ

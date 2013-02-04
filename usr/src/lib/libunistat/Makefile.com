@@ -160,7 +160,7 @@ spcs_etext.h: $(ERRGEN) $(MSGS)
 	$(CAT) $(MSGS) $(SRCDIR)/spcs_etext.stub >> $@
 	$(SED) "s/	\"/	gettext(\"/" < $@ |\
 		 sed "s/\",/\"),/" > temp 
-	xgettext -d unistat temp ; rm temp
+	$(XGETTEXT) -d unistat temp ; rm temp
 
 spcs_errors.h: $(ERRGEN) $(EDEFS)
 	@echo $(COMMENT) > $@
