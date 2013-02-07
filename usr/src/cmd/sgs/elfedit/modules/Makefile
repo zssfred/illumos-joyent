@@ -19,16 +19,14 @@
 # CDDL HEADER END
 #
 #
-# ident	"%Z%%M%	%I%	%E% SMI"
-#
 # Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
 
 include		$(SRC)/Makefile.master
 
-
-SUBDIRS=	$(MACH)
+SUBDIRS=		$(MACH)
+$(BUILD64)SUBDIRS +=	$(MACH64)
 
 all:=		TARGET=	all
 chkmsg:=	TARGET=	chkmsg
@@ -46,9 +44,5 @@ package all chkmsg catalog clean clobber lint install: \
 
 $(SUBDIRS):	FRC
 		@cd $@; pwd; $(MAKE) $(TARGET)
-		@if [ -d $(MACH64) ]; then                      \
-			cd $(MACH64); pwd; $(MAKE) $(TARGET);   \
-		else /bin/true; fi
-
 
 FRC:
