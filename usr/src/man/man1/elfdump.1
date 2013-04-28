@@ -11,13 +11,13 @@
 .\"  If applicable, add the following below this CDDL HEADER, with the fields
 .\" enclosed by brackets "[]" replaced with your own identifying information:
 .\" Portions Copyright [yyyy] [name of copyright owner]
-.TH ELFDUMP 1 "Apr 3, 2009"
+.TH ELFDUMP 1 "Jan 18, 2013"
 .SH NAME
 elfdump \- dumps selected parts of an object file
 .SH SYNOPSIS
 .LP
 .nf
-\fBelfdump\fR [\fB-cCdegGhHiklmnPrsSuvy\fR] [\fB-p | -w file\fR] [\fB-I\fR \fIindex-expr\fR]
+\fBelfdump\fR [\fB-acCdegGhHiklmnPrsSuvy\fR] [\fB-p | -w file\fR] [\fB-I\fR \fIindex-expr\fR]
      [\fB-N\fR \fIname\fR] [\fB-O\fR \fIosabi\fR] [\fB-T\fR \fItype\fR] \fIfilename\fR...
 .fi
 
@@ -96,6 +96,15 @@ and Libraries Guide\fR.
 .sp
 .LP
 The following options are supported:
+.sp
+.ne 2
+.na
+\fB-a\fR
+.ad
+.RS 18n
+Dumps the contents of ARM attributes sections
+.RE
+
 .sp
 .ne 2
 .na
