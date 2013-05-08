@@ -34,6 +34,8 @@
 #ifndef	_MACHDEP_H
 #define	_MACHDEP_H
 
+#pragma ident	"%Z%%M%	%I%	%E% SMI"
+
 #if defined(__sparc)
 
 #include <sparc/machdep_sparc.h>
@@ -41,10 +43,6 @@
 #elif defined(__i386) || defined(__amd64)
 
 #include <i386/machdep_x86.h>
-
-#elif defined(__arm)
-
-#include <arm/machdep_arm.h>
 
 #else
 

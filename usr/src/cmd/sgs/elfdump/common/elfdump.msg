@@ -35,7 +35,6 @@
 @ MSG_USAGE_BRIEF	"usage: %s [-cCdegGhHiklmnrSsuvy] [-I index] \
 			 [-N name] [-O osabi] [-T type] [-p | -w outfile] \
 			 file...\n"
-@ MSG_USAGE_DETAIL0	"\t[-a]\t\tdump the contents of ARM attributes sections\n"
 @ MSG_USAGE_DETAIL1	"\t[-c]\t\tdump section header information\n"
 @ MSG_USAGE_DETAIL2	"\t[-C]\t\tdemangle C++ symbol names\n"
 @ MSG_USAGE_DETAIL3	"\t[-d]\t\tdump the contents of the .dynamic section\n"
@@ -218,7 +217,6 @@
 @ MSG_ELF_SCN_MOVE	"Move Section:  %s"
 @ MSG_ELF_SCN_SYMSORT1	"Symbol Sort Section:  %s (%s)"
 @ MSG_ELF_SCN_SYMSORT2	"Symbol Sort Section:  %s (%s / %s)"
-@ MSG_ELF_SCN_ARMATTRS	"ARM Attributes: %s"
 
 @ MSG_OBJ_CAP_TITLE	" Object Capabilities:"
 @ MSG_SYM_CAP_TITLE	" Symbol Capabilities:"
@@ -306,19 +304,6 @@
 @ MSG_NOTE_BADCOREDATA	"%s: elfdump core file note data truncated or \
 			 otherwise malformed\n"
 
-#
-# SHT_ARM_ATTRIBUTES messages
-#
-@ MSG_ARM_ATTR_VALUE		"      %-35s\tvalue: %u"
-@ MSG_ARM_ATTR_STRVALUE		"      %-35s\tvalue: %s"
-@ MSG_ARM_ATTR_VENDOR		"    vendor: %s\t\tsize: %u"
-@ MSG_ARM_ATTR_INVAL_SEC	"    Invalid AEABI section"
-@ MSG_ARM_ATTR_TAG		"    %s\t\tsize: %u"
-@ MSG_ARM_ATTR_SYMBOL_SPEC	"    symbol specifier: %u"
-@ MSG_ARM_ATTR_SECT_SPEC	"    section specifier: %u"
-@ MSG_ARM_ATTR_VERSION		"  version: %c%s"
-@ MSG_ARM_ATTR_UNSUPPORTED	" [UNSUPPORTED]"
-
 @ _END_
 
 # The following strings represent reserved words, files, pathnames and symbols.
@@ -356,7 +341,7 @@
 @ MSG_SYM_FINI		"_fini"
 @ MSG_SYM_GOT		"_GLOBAL_OFFSET_TABLE_"
 
-@ MSG_STR_OPTIONS	"aCcdeGgHhiI:klmN:nO:PprSsT:uvw:y"
+@ MSG_STR_OPTIONS	"CcdeGgHhiI:klmN:nO:PprSsT:uvw:y"
 
 @ MSG_STR_8SP		"        "
 @ MSG_STR_EMPTY		""
@@ -667,5 +652,3 @@
 @ MSG_PHDRNAM_TLSSORT		".SUNW_tlssort(phdr)"
 @ MSG_PHDRNAM_UNWIND		".eh_frame_hdr(phdr)"
 @ MSG_PHDRNAM_VER		".SUNW_version(phdr)"
-
-@ MSG_ARM_ATTR_AEABI	"aeabi"

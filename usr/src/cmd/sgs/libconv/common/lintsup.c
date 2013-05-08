@@ -53,7 +53,6 @@
  */
 #define	LINTSUP_SUPPRESS_STRINGS
 #include "arch_msg.h"
-#include "armattrs_msg.h"
 #include "audit_msg.h"
 #include "c_literal_msg.h"
 #include "cap_msg.h"
@@ -74,7 +73,6 @@
 #include "map_msg.h"
 #include "phdr_msg.h"
 #include "relocate_amd64_msg.h"
-#include "relocate_arm_msg.h"
 #include "relocate_i386_msg.h"
 #include "relocate_sparc_msg.h"
 #include "sections_msg.h"
@@ -91,7 +89,6 @@ foo()
 #define	USE(name) (void) name((Msg)&_ ## name[0])
 
 	USE(_sgs_msg_libconv_arch);
-	USE(_sgs_msg_libconv_armattrs);
 	USE(_sgs_msg_libconv_audit);
 	USE(_sgs_msg_libconv_c_literal);
 	USE(_sgs_msg_libconv_cap);
@@ -112,7 +109,6 @@ foo()
 	USE(_sgs_msg_libconv_map);
 	USE(_sgs_msg_libconv_phdr);
 	USE(_sgs_msg_libconv_relocate_amd64);
-	USE(_sgs_msg_libconv_relocate_arm);
 	USE(_sgs_msg_libconv_relocate_i386);
 	USE(_sgs_msg_libconv_relocate_sparc);
 	USE(_sgs_msg_libconv_sections);

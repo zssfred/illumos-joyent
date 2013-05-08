@@ -202,7 +202,6 @@ CHKHDRS=			\
 	efi_partition.h		\
 	elf.h			\
 	elf_386.h		\
-	elf_ARM.h		\
 	elf_SPARC.h		\
 	elf_notes.h		\
 	elf_amd64.h		\
