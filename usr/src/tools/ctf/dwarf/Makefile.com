@@ -66,6 +66,7 @@ OBJECTS=dwarf_abbrev.o		\
 	pro_weaks.o
 
 include $(SRC)/lib/Makefile.lib
+include $(SRC)/tools/Makefile.tools
 
 SRCS=	$(PICS:%.o=../common/%.c)
 
@@ -100,4 +101,3 @@ $(DYNLIB) := CTFMERGE_POST= :
 CTFCONVERT_O= :
 
 include $(SRC)/lib/Makefile.targ
-
