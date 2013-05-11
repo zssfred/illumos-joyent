@@ -733,6 +733,7 @@
 @ MSG_STR_OSREL		"$OSREL"
 @ MSG_STR_UU_REAL_U	"__real_"
 @ MSG_STR_UU_WRAP_U	"__wrap_"
+@ MSG_STR_UARM		"_arm"
 @ MSG_STR_UELF32	"_ELF32"
 @ MSG_STR_UELF64	"_ELF64"
 @ MSG_STR_USPARC	"_sparc"
