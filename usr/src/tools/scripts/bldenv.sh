@@ -23,6 +23,7 @@
 #
 # Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+# Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 # Uses supplied "env" file, based on /opt/onbld/etc/env, to set shell variables
 # before spawning a shell for doing a release-style builds interactively
@@ -339,8 +340,13 @@ if "${flags.s.o}" ; then
 	SRC="${OPEN_SRCDIR}/usr/src"
 fi
 
-# 	Set PATH for a build
-PATH="/opt/onbld/bin:/opt/onbld/bin/${MACH}:/opt/SUNWspro/bin:/usr/ccs/bin:/usr/bin:/usr/sbin:/usr/ucb:/usr/etc:/usr/openwin/bin:/usr/sfw/bin:/opt/sfw/bin:."
+# 	Set PATH for a build, account for cross-build
+if [[ -n "$NATIVE_MACH" ]]; then
+	PATH="/opt/onbld/bin:/opt/onbld/bin/${NATIVE_MACH}"
+else
+	PATH="/opt/onbld/bin:/opt/onbld/bin/${MACH}"
+fi
+PATH="$PATH:/opt/SUNWspro/bin:/usr/ccs/bin:/usr/bin:/usr/sbin:/usr/ucb:/usr/etc:/usr/openwin/bin:/usr/sfw/bin:/opt/sfw/bin:."
 if [[ "${SUNWSPRO}" != "" ]]; then 
 	export PATH="${SUNWSPRO}/bin:$PATH" 
 fi 
@@ -359,7 +365,11 @@ TOOLS_PROTO="${TOOLS}/proto/root_${MACH}-nd" ; export TOOLS_PROTO
 if "${flags.t}" ; then
 	export ONBLD_TOOLS="${ONBLD_TOOLS:=${TOOLS_PROTO}/opt/onbld}"
 
-	PATH="${TOOLS_PROTO}/opt/onbld/bin/${MACH}:${PATH}"
+	if [[ -n "$NATIVE_MACH" ]]; then
+		PATH="${TOOLS_PROTO}/opt/onbld/bin/${NATIVE_MACH}:${PATH}"
+	else
+		PATH="${TOOLS_PROTO}/opt/onbld/bin/${MACH}:${PATH}"
+	fi
 	PATH="${TOOLS_PROTO}/opt/onbld/bin:${PATH}"
 	export PATH
 fi
