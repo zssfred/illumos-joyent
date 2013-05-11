@@ -562,29 +562,6 @@ main(int argc, char *argv[])
 	newae(as, "--traditional-format");
 
 	/*
-	 * This is a support hack to rewrite code for the compiler
-	 * which should probably cause an assembler programmer to recode
-	 * - so, generate a warning in this case.
-	 *
-	 * -K was dropped begining with version 2.18.
-	 */
-	{
-		struct aelist *as_ver = newael();
-		struct aelist *ggrep = newael();
-
-		newae(as_ver, as_pgm);
-		newae(as_ver, "--version");
-		newae(ggrep, "/usr/bin/ggrep");
-		newae(ggrep, "-q");
-		newae(ggrep, "-E");
-		newae(ggrep, "2.1[567]");
-		code = pipeline(aeltoargv(as_ver), aeltoargv(ggrep));
-		if (code == 0) {
-			newae(as, "-K");
-		}
-	}
-
-	/*
 	 * Walk the argument list, translating as we go ..
 	 */
 	while (--argc > 0) {
@@ -770,6 +747,20 @@ main(int argc, char *argv[])
 	else
 		newae(as, "--32");
 #endif
+
+
+	/*
+	 * gas for 32-bit arm defaults to a much older version of the arm
+	 * architecture than we can really support. Because of that, we instead
+	 * opt to make sure that we set the minimum architecture to armv6, the
+	 * minimum of what we actually support.
+	 */
+#if defined(AW_TARGET_arm)
+	if (as64)
+		return (error("no 64-bit aw target for arm"));
+	else
+		newae(as, "-march=armv6");
+#endif	
 
 	if (srcfile == NULL)
 		return (usage("no source file(s) specified"));
