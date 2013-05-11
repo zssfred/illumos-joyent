@@ -23,8 +23,6 @@
 # Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# ident	"%Z%%M%	%I%	%E% SMI"
-#
 
 include		$(SRC)/Makefile.master
 
@@ -75,9 +73,9 @@ clobber:	clean
 $(MACH)_cc_map.noexeglobs :=	LINK =	$(LINK.c)
 $(MACH64)_cc_map.noexeglobs :=	LINK =	$(LINK64.c)
 
-$(MACH)_gcc_map.noexeglobs :=	CC =	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_gcc
+$(MACH)_gcc_map.noexeglobs :=	CC = $(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.$(MACH) -_gcc
 $(MACH)_gcc_map.noexeglobs :=	LINK =	$(LINK.c)
-$(MACH64)_gcc_map.noexeglobs :=	CC =	$(ONBLD_TOOLS)/bin/$(MACH)/cw -_gcc
+$(MACH64)_gcc_map.noexeglobs :=	CC = $(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.$(MACH) -_gcc
 $(MACH64)_gcc_map.noexeglobs :=	LINK =	$(LINK64.c)
  
 # This generic target creates two dynamic executables from an empty "main"
@@ -110,3 +108,12 @@ $(MACH64)_gcc_map.noexeglobs :=	LINK =	$(LINK64.c)
 	$(GREP) MAP-TAIL $(TEMPLATE2) | \
 	    $(SED) -e "s/	*# MAP-TAIL//"		>> $@
 	$(RM) $(SYMS1) $(SYMS2) $(MAIN1) $(MAIN2)
+
+#
+# We do not have a crt.1 yet. As such we do not have a real mapfile that we can
+# build. However, this is a part of dmake setup but not used in uts. As such for
+# now we generate a simple file and watch as this fails marvelously.
+#
+arm_cc_map.noexeglobs arm_gcc_map.noexeglobs:
+	echo "This is not a valid mapfile. See common/mapfiles/gen/Makefile" > \
+	    $@
