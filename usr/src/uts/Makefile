@@ -169,6 +169,7 @@ DYNHDRDIRS = common/rpcsvc common/idmap common/sys
 
 sparc_HDRDIRS= sun/sys
 i386_HDRDIRS= i86pc/vm i86xpv/vm
+arm_HDRDIRS= arm/sys
 
 HDRDIRS= $(COMMON_HDRDIRS) $($(MACH)_HDRDIRS)
 install_h check: $(HDRDIRS) $($(MACH)_ARCHITECTURES)
