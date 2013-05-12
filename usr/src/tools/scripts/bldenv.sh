@@ -452,6 +452,10 @@ export \
 printf 'RELEASE      is %s\n'   "$RELEASE"
 printf 'VERSION      is %s\n'   "$VERSION"
 printf 'RELEASE_DATE is %s\n\n' "$RELEASE_DATE"
+if [[ -n "$NATIVE_MACH" && "$NATIVE_MACH" != "$MACH" ]]; then
+	printf 'Cross-building enabled\n'
+	printf 'Targeting %s on %s\n\n' "$MACH" "$NATIVE_MACH"
+fi
 
 if [[ -f "$SRC/Makefile" ]] && egrep -s '^setup:' "$SRC/Makefile" ; then
 	print "The top-level 'setup' target is available \c"
