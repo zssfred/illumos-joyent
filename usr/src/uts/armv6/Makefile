@@ -30,7 +30,7 @@ AS_CPPFLAGS = \
 
 OBJS = \
 	locore.o \
-	faketty.o
+	uart.o
 
 OBJCOPY=$(GNU_ROOT)/bin/gobjcopy
 

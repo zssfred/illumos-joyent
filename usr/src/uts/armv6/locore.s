@@ -68,5 +68,15 @@
  */
 	ENTRY(_start)
 	mov sp,#0x8000
-	bl __fakemain
+	bl uart_main
 	SET_SIZE(_start)
+
+	ENTRY(arm_reg_read)
+	ldr r0, [r0]
+	bx lr
+	SET_SIZE(arm_reg_read)
+
+	ENTRY(arm_reg_write)
+	str r1, [r0]
+	bx lr	
+	SET_SIZE(arm_reg_write)
