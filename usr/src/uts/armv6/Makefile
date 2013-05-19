@@ -26,11 +26,16 @@ include ../../Makefile.master
 
 AS_CPPFLAGS = \
 	-D_ASM \
+	-D_KERNEL \
 	-I$(ROOT)/usr/include
 
 OBJS = \
 	locore.o \
 	uart.o
+
+CPPFLAGS = \
+	-D_KERNEL \
+	-I$(ROOT)/usr/include
 
 OBJCOPY=$(GNU_ROOT)/bin/gobjcopy
 
