@@ -40,9 +40,9 @@
  * Though these should be some of the pieces that we do at some point.
  */
 #if 0
-#include <sys/stack.h>
 #include <sys/trap.h>
 #endif
+#include <sys/stack.h>
 
 #ifdef	__cplusplus
 extern "C" {

@@ -16,7 +16,8 @@
 include ../../../Makefile.master
 
 HDRS = \
-	asm_linkage.h
+	asm_linkage.h \
+	stack.h
 
 
 ROOTDIR=	$(ROOT)/usr/include/sys
