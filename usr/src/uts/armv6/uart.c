@@ -16,9 +16,7 @@
 /*
  * A simple uart driver for the RPi.
  */
-
-typedef unsigned int uint32_t;
-typedef unsigned char uint8_t;
+#include <sys/inttypes.h>
 
 extern uint32_t arm_reg_read(uint32_t);
 extern void arm_reg_write(uint32_t, uint32_t);
@@ -42,6 +40,7 @@ extern void arm_reg_write(uint32_t, uint32_t);
 #define	AUX_MU_CNTL_REG	0x60
 #define	AUX_MU_BAUD	0x68
 
+#define	AUX_MU_RX_READY	0x01
 #define	AUX_MU_TX_READY	0x20
 
 /*
@@ -54,11 +53,12 @@ extern void arm_reg_write(uint32_t, uint32_t);
 #define	GPIO_PUDCLK0	0x98
 
 #define	GPIO_SEL_ALT5	0x2
-#define	GPIO_UART_MASK	0xffff8fff
-#define	GPIO_UART_SHIFT	12
+#define	GPIO_UART_MASK	0xfffc0fff
+#define	GPIO_UART_TX_SHIFT	12
+#define	GPIO_UART_RX_SHIFT	15
 
 #define	GPIO_PUD_DISABLE	0x0
-#define	GPIO_PUDCLK_UART	0x00004000
+#define	GPIO_PUDCLK_UART	0x0000c000
 
 /*
 static uint32_t
@@ -123,7 +123,8 @@ uart_init(void)
 
 	v = arm_reg_read(GPIO_BASE + GPIO_FSEL1);
 	v &= GPIO_UART_MASK;
-	v |= GPIO_SEL_ALT5 << GPIO_UART_SHIFT;
+	v |= GPIO_SEL_ALT5 << GPIO_UART_RX_SHIFT;
+	v |= GPIO_SEL_ALT5 << GPIO_UART_TX_SHIFT;
 	arm_reg_write(GPIO_BASE + GPIO_FSEL1, v);
 
 	arm_reg_write(GPIO_BASE + GPIO_PUD, GPIO_PUD_DISABLE);
@@ -135,7 +136,7 @@ uart_init(void)
 	arm_reg_write(GPIO_BASE + GPIO_PUDCLK0, 0);
 
 	/* Finally, go back and enable RX and TX */
-	arm_reg_write(AUX_BASE + AUX_MU_CNTL_REG, 0x2);
+	arm_reg_write(AUX_BASE + AUX_MU_CNTL_REG, 0x3);
   
 }
 
@@ -150,10 +151,20 @@ uart_putc(uint8_t c)
 	arm_reg_write(AUX_BASE + AUX_MU_IO_REG, c & 0x7f);
 }
 
+static uint8_t
+uart_getc(void)
+{
+	for (;;) {
+		if (arm_reg_read(AUX_BASE + AUX_MU_LSR_REG) & AUX_MU_RX_READY)
+			break;
+	}
+	return (arm_reg_read(AUX_BASE + AUX_MU_IO_REG) & 0x7f);
+}
+
 void
 uart_main(void)
 {
-	char *hello = "Hello, World\r\n";
+	const char *hello = "Hello, World\r\n";
 	unsigned int i;
 	uart_init();
 	for (;;) {
@@ -172,5 +183,7 @@ uart_main(void)
 		uart_putc(hello[i++]);
 		uart_putc(hello[i++]);
 		uart_putc(hello[i++]);
+
+		uart_putc(uart_getc());
 	}
 }
