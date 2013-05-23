@@ -62,7 +62,6 @@ extern "C" {
 #else /* DEBUG */
 #define	ASSERT_STACK_ALIGNED()
 #endif /* DEBUG */
-#endif /* _KERNEL and !_ASM */
 
 /* XXX the below typedef can be removed once we include <sys/types.h> */
 typedef char *caddr_t;
@@ -70,6 +69,8 @@ struct regs;
 
 void traceregs(struct regs *);
 void traceback(caddr_t);
+
+#endif /* _KERNEL and !_ASM */
 
 #ifdef __cplusplus
 }
