@@ -246,6 +246,7 @@
  * Branch and Link pieces.
  */
 #define	ARM_BRANCH_LBIT_MASK	0x01000000
+#define	ARM_BRANCH_IMM_MASK	0x00ffffff
 #define	ARM_BRANCH_SIGN_MASK	0x00800000
 #define	ARM_BRANCH_POS_SIGN	0x00ffffff
 #define	ARM_BRANCH_NEG_SIGN	0xff000000
@@ -784,7 +785,7 @@ arm_dis_dpi(uint32_t in, arm_cond_code_t cond, char *buf, size_t buflen)
 		len = snprintf(buf, buflen, "%s%s %s",
 		    arm_dpi_opnames[dpi_inst.dpii_op],
 		    arm_cond_names[dpi_inst.dpii_cond],
-		    arm_reg_names[dpi_inst.dpii_rd]);
+		    arm_reg_names[dpi_inst.dpii_rn]);
 		break;
 	default:
 		len = snprintf(buf, buflen,
@@ -1909,7 +1910,7 @@ arm_dis_branch(uint32_t in, char *buf, size_t buflen)
 	arm_cond_code_t cc;
 
 	cc = (in & ARM_CC_MASK) >> ARM_CC_SHIFT;
-	addr = in & ARM_BRANCH_SIGN_MASK;
+	addr = in & ARM_BRANCH_IMM_MASK;
 	if (in & ARM_BRANCH_SIGN_MASK)
 		addr |= ARM_BRANCH_NEG_SIGN;
 	else
@@ -2351,7 +2352,7 @@ arm_dis(uint32_t in, char *buf, size_t buflen)
 		 * something of the form 0b10xx0.
 		 */
 		if ((in & ARM_L1_1_OPMASK) == ARM_L1_1_SPECOP &&
-		    (in & ARM_L1_1_SMASK)) {
+		    !(in & ARM_L1_1_SMASK)) {
 			if (in & ARM_L1_1_UNDEF_MASK) {
 				/* Undefined instructions */
 				return (-1);
