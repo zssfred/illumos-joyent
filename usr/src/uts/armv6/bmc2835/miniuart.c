@@ -44,8 +44,9 @@ extern void arm_reg_write(uint32_t, uint32_t);
 #define	AUX_MU_TX_READY	0x20
 
 /*
- * For the mini UART, all we care about are pins 14 and 15 for the UART. Specifically,
- * alt5 for GPIO14 is TXD1 and GPIO15 is RXD1. Those are controlled by FSEL1.
+ * For the mini UART, all we care about are pins 14 and 15 for the UART.
+ * Specifically, alt5 for GPIO14 is TXD1 and GPIO15 is RXD1. Those are
+ * controlled by FSEL1.
  */
 #define	GPIO_BASE	0x20200000
 #define	GPIO_FSEL1	0x4
@@ -61,37 +62,17 @@ extern void arm_reg_write(uint32_t, uint32_t);
 #define	GPIO_PUDCLK_UART	0x0000c000
 
 /*
-static uint32_t
-arm_reg_read(uint32_t reg)
-{
-	uint32_t *val;
-
-	val = (uint32_t *)reg;
-	return (*val);
-}
-
-static void
-arm_reg_write(uint32_t reg, uint32_t val)
-{
-	uint32_t *vptr = (uint32_t *)reg;
-	*vptr = val;
-	__asm__ volatile ("" : : : "memory");
-}
-*/
-
-/*
  * A simple nop
  */
 static void
-arm_nop(void)
+bmc2835_miniuart_nop(void)
 {
-	__asm__ volatile ("mov r0, r0\n" : : :);
+	__asm__ volatile("mov r0, r0\n" : : :);
 }
 
-static void
-uart_init(void)
+void
+bmc2835_miniuart_init(void)
 {
-    unsigned int ra;
 	uint32_t v;
 	int i;
 
@@ -105,7 +86,7 @@ uart_init(void)
 	arm_reg_write(AUX_BASE + AUX_MU_CNTL_REG, 0x0);
 
 	/*
-	 * Enable 8-bit word lenght. External sources tell us the PRM is buggy
+	 * Enable 8-bit word length. External sources tell us the PRM is buggy
 	 * here and that even though bit 1 is reserved, we need to actually set
 	 * it to get 8-bit words.
 	 */
@@ -121,6 +102,7 @@ uart_init(void)
 	arm_reg_write(AUX_BASE + AUX_MU_IIR_REG, 0xc6);
 	arm_reg_write(AUX_BASE + AUX_MU_BAUD, 0x10e);
 
+	/* TODO: Factor out the gpio bits */
 	v = arm_reg_read(GPIO_BASE + GPIO_FSEL1);
 	v &= GPIO_UART_MASK;
 	v |= GPIO_SEL_ALT5 << GPIO_UART_RX_SHIFT;
@@ -129,19 +111,18 @@ uart_init(void)
 
 	arm_reg_write(GPIO_BASE + GPIO_PUD, GPIO_PUD_DISABLE);
 	for (i = 0; i < 150; i++)
-		arm_nop();
+		bmc2835_miniuart_nop();
 	arm_reg_write(GPIO_BASE + GPIO_PUDCLK0, GPIO_PUDCLK_UART);
 	for (i = 0; i < 150; i++)
-		arm_nop();
+		bmc2835_miniuart_nop();
 	arm_reg_write(GPIO_BASE + GPIO_PUDCLK0, 0);
 
 	/* Finally, go back and enable RX and TX */
 	arm_reg_write(AUX_BASE + AUX_MU_CNTL_REG, 0x3);
-  
 }
 
-static void
-uart_putc(uint8_t c)
+void
+bmc2835_miniuart_putc(uint8_t c)
 {
 	uint32_t v;
 	for (;;) {
@@ -151,26 +132,12 @@ uart_putc(uint8_t c)
 	arm_reg_write(AUX_BASE + AUX_MU_IO_REG, c & 0x7f);
 }
 
-static uint8_t
-uart_getc(void)
+uint8_t
+bmc2835_miniuart_getc(void)
 {
 	for (;;) {
 		if (arm_reg_read(AUX_BASE + AUX_MU_LSR_REG) & AUX_MU_RX_READY)
 			break;
 	}
 	return (arm_reg_read(AUX_BASE + AUX_MU_IO_REG) & 0x7f);
-}
-
-void
-uart_main(void)
-{
-	const char *hello = "Hello, World\r\n";
-	unsigned int i;
-	uart_init();
-	for (;;) {
-		uart_putc(uart_getc());
-		for (i = 0; i < 14; i++) {
-			uart_putc(hello[i]);
-		}
-	}
 }

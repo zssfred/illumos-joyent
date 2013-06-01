@@ -20,6 +20,7 @@
 #
 #
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2013, Joyent, Inc.  All rigts reserved.
 #
 # include global definitions
 include ../Makefile.master
@@ -169,7 +170,10 @@ DYNHDRDIRS = common/rpcsvc common/idmap common/sys
 
 sparc_HDRDIRS= sun/sys
 i386_HDRDIRS= i86pc/vm i86xpv/vm
-arm_HDRDIRS= arm/sys
+
+# XXX-ARM This isn't the right place, but we're using this for both until we have a
+# bit more of a hooked in build.
+arm_HDRDIRS= arm/sys armv6/sys
 
 HDRDIRS= $(COMMON_HDRDIRS) $($(MACH)_HDRDIRS)
 install_h check: $(HDRDIRS) $($(MACH)_ARCHITECTURES)

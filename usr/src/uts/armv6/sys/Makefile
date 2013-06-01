@@ -16,10 +16,7 @@
 include ../../../Makefile.master
 
 HDRS = \
-	asm_linkage.h \
-	bootconf.h \
-	machtypes.h \
-	stack.h
+	boot_console.h
 
 
 ROOTDIR=	$(ROOT)/usr/include/sys
