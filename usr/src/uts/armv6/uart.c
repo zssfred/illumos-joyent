@@ -16,7 +16,7 @@
 /*
  * A simple uart driver for the RPi.
  */
-#include <sys/inttypes.h>
+#include <sys/types.h>
 
 extern uint32_t arm_reg_read(uint32_t);
 extern void arm_reg_write(uint32_t, uint32_t);

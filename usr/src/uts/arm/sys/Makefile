@@ -17,6 +17,7 @@ include ../../../Makefile.master
 
 HDRS = \
 	asm_linkage.h \
+	machtypes.h \
 	stack.h
 
 

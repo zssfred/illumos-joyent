@@ -16,15 +16,8 @@
 #ifndef _SYS_STACK_H
 #define	_SYS_STACK_H
 
-/*
- * XXX It is required for sys/stack.h to require sys/types.h. However, at this
- * time we have not quite implemented all of the necessary mach related headers
- * for this. As such we comment this out for such a time.
- */
-#if 0
 #if !defined(_ASM)
 #include <sys/types.h>
-#endif
 #endif
 
 #ifdef __cplusplus
@@ -63,8 +56,6 @@ extern "C" {
 #define	ASSERT_STACK_ALIGNED()
 #endif /* DEBUG */
 
-/* XXX the below typedef can be removed once we include <sys/types.h> */
-typedef char *caddr_t;
 struct regs;
 
 void traceregs(struct regs *);
