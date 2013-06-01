@@ -168,22 +168,9 @@ uart_main(void)
 	unsigned int i;
 	uart_init();
 	for (;;) {
-		i = 0;
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-		uart_putc(hello[i++]);
-
 		uart_putc(uart_getc());
+		for (i = 0; i < 14; i++) {
+			uart_putc(hello[i]);
+		}
 	}
 }

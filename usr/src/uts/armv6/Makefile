@@ -39,7 +39,7 @@ CPPFLAGS = \
 
 OBJCOPY=$(GNU_ROOT)/bin/gobjcopy
 
-all: unix.bin
+all: unix
 
 %.o: %.s
 	$(AS) -P $(AS_CPPFLAGS) -o $@ $<
@@ -50,15 +50,8 @@ all: unix.bin
 unix: $(OBJS)
 	$(LD) -dn -e _start -o $@ $(OBJS)
 
-#
-# XXX This should probably be done via elfextract. But for now we're using what
-# we know, eg. OBJCOPY, even if it is kind of not what we want.
-#
-%.bin: %
-	$(OBJCOPY) $< -O binary $@
-
 clean:
 	rm -f $(OBJS)
 
 clobber: clean
-	rm -f unix unix.bin
+	rm -f unix
