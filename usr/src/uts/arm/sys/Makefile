@@ -18,6 +18,8 @@ include ../../../Makefile.master
 HDRS = \
 	asm_linkage.h \
 	bootconf.h \
+	machlock.h \
+	machsig.h \
 	machtypes.h \
 	stack.h
 
