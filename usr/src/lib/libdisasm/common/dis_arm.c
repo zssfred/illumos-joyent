@@ -24,6 +24,8 @@
 
 #include "libdisasm_impl.h"
 
+extern size_t strlcat(char *, const char *, size_t);
+
 /*
  * Condition code mask and shift, aka bits 28-31.
  */
@@ -1904,10 +1906,11 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
  * that the instruction has instead.
  */
 static int
-arm_dis_branch(uint32_t in, char *buf, size_t buflen)
+arm_dis_branch(dis_handle_t *dhp, uint32_t in, char *buf, size_t buflen)
 {
 	uint32_t addr;
 	arm_cond_code_t cc;
+	size_t len;
 
 	cc = (in & ARM_CC_MASK) >> ARM_CC_SHIFT;
 	addr = in & ARM_BRANCH_IMM_MASK;
@@ -1916,10 +1919,22 @@ arm_dis_branch(uint32_t in, char *buf, size_t buflen)
 	else
 		addr &= ARM_BRANCH_POS_SIGN;
 	addr <<= 2;
-	if (snprintf(buf, buflen, "B%s%s %d",
+	if ((len = snprintf(buf, buflen, "B%s%s %d",
 	    (in & ARM_BRANCH_LBIT_MASK) != 0 ? "L" : "",
-	    arm_cond_names[cc], (int)addr) >= buflen)
+	    arm_cond_names[cc], (int)addr)) >= buflen)
 		return (-1);
+
+	/* Per the ARM manuals, we have to account for the extra 8 bytes here */
+	if (dhp->dh_lookup(dhp->dh_data, dhp->dh_addr + (int)addr + 8, NULL, 0,
+	    NULL, NULL) == 0) {
+		len += snprintf(buf + len, buflen - len, "\t<");
+		if (len >= buflen)
+			return (-1);
+		dhp->dh_lookup(dhp->dh_data, dhp->dh_addr + (int)addr + 8,
+		    buf + len, buflen - len, NULL, NULL);
+		strlcat(buf, ">", buflen);
+	}
+
 	return (0);
 }
 
@@ -2272,7 +2287,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
  * instruction groupings that we care about.
  */
 static int
-arm_dis(uint32_t in, char *buf, size_t buflen)
+arm_dis(dis_handle_t *dhp, uint32_t in, char *buf, size_t buflen)
 {
 	uint8_t l1;
 	arm_cond_code_t cc;
@@ -2401,7 +2416,7 @@ arm_dis(uint32_t in, char *buf, size_t buflen)
 		break;
 	case 0x5:
 		/* Branch and Branch with link */
-		return (arm_dis_branch(in, buf, buflen));
+		return (arm_dis_branch(dhp, in, buf, buflen));
 		break;
 	case 0x6:
 		/* coprocessor load/store && double register transfers */
@@ -2469,6 +2484,7 @@ dis_arm_disassemble(dis_handle_t *dhp, uint64_t addr, char *buf, size_t buflen)
 	uint32_t in;
 
 	buf[0] = '\0';
+	dhp->dh_addr = addr;
 	if (dhp->dh_read(dhp->dh_data, addr, &in, sizeof (in)) !=
 	    sizeof (in))
 		return (-1);
@@ -2476,7 +2492,7 @@ dis_arm_disassemble(dis_handle_t *dhp, uint64_t addr, char *buf, size_t buflen)
 	/* Translate in case we're on sparc? */
 	in = LE_32(in);
 
-	return (arm_dis(in, buf, buflen));
+	return (arm_dis(dhp, in, buf, buflen));
 }
 
 /*
