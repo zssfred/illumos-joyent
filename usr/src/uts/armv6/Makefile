@@ -35,10 +35,16 @@ GEN_OBJS = \
 	misc/copy.o \
 	misc/string.o \
 	os/fakebop.o \
-	boot/atag.o
+	boot/atag.o \
+	math/divsi3.o \
+	math/ldivmod.o \
+	math/ldivmod_helper.o \
+	math/divdi3.o \
+	math/qdivrem.o
 
-#COM_OBJS = \
-#	kobj.o
+COM_OBJS = \
+	string.o
+#	krtld.o
 
 BCM2835_OBJS = \
 	bcm2835/locore.o \
@@ -47,8 +53,8 @@ BCM2835_OBJS = \
 
 OBJS = \
 	$(BCM2835_OBJS) \
-	$(GEN_OBJS) #\
-#	$(COM_OBJS)
+	$(GEN_OBJS) \
+	$(COM_OBJS)
 
 CERRWARN += -_gcc=-Wno-parentheses
 CERRWARN += -_gcc=-Wno-uninitialized
@@ -64,6 +70,9 @@ all: unix
 	$(AS) -P $(AS_CPPFLAGS) -o $@ $<
 
 %.o: %.c
+	$(COMPILE.c) -o $@ -c $<
+
+%.o: ../../common/util/%.c
 	$(COMPILE.c) -o $@ -c $<
 
 %.o: ../common/krtld/%.c

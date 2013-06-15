@@ -22,6 +22,8 @@
 #include <sys/bootconf.h>
 #include <sys/boot_console.h>
 #include <sys/atag.h>
+#include <sys/varargs.h>
+#include <sys/cmn_err.h>
 
 static bootops_t bootop;
 static uint_t kbm_debug = 1;
@@ -249,7 +251,12 @@ fakebop_getprop(struct bootops *bops, const char *prop, void *value)
 static void
 fakebop_printf(bootops_t *bop, const char *fmt, ...)
 {
-	bop_panic("Called into fakebop_printf");
+	va_list ap;
+
+	va_start(ap, fmt);
+	(void) vsnprintf(buffer, BUFFERSIZE, fmt, ap);
+	va_end(ap);
+	bcons_puts(buffer);
 }
 
 void
@@ -303,6 +310,8 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	bops->bsys_getproplen = fakebop_getproplen;
 	bops->bsys_getprop = fakebop_getprop;
 	bops->bsys_printf = fakebop_printf;
+
+	fakebop_printf(bops, "%s 0x%x\n\r", "Hello printf!", 0x42);
 
 	bop_panic("This is as far as we go...");
 }
