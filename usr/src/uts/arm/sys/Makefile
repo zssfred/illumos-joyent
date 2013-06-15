@@ -24,7 +24,8 @@ HDRS = \
 	pcb.h \
 	regset.h \
 	stack.h \
-	ucontext.h
+	ucontext.h \
+	utrap.h
 
 
 ROOTDIR=	$(ROOT)/usr/include/sys
