@@ -30,6 +30,20 @@ static uint_t kbm_debug = 1;
 static char buffer[BUFFERSIZE];
 
 /*
+ * TODO Generalize this
+ * This is the set of information tha we want to gather from the various atag
+ * headers. This is simple and naive and will need to evolve as we have
+ * additional boards beyond just the RPi.
+ */
+typedef struct bootinfo {
+	uint32_t	bi_memsize;
+	uint32_t	bi_memstart;
+	char 		*bi_cmdline;
+} bootinfo_t;
+
+static bootinfo_t bootinfo;	/* Simple set of boot information */
+
+/*
  * XXX This is just a hack to let us see a bit more about what's going on.
  * Normally we'd use vsnprintf, but that includes sys/systm.h which requires
  * almost every header platform header in the world. Also, we're using hex,
@@ -170,6 +184,31 @@ fakebop_dump_tags(void *tagstart)
 	}
 }
 
+static void
+fakebop_getatags(void *tagstart)
+{
+	atag_mem_t *amp;
+	atag_cmdline_t *alp;
+	atag_header_t *ahp = tagstart;
+	bootinfo_t *bp = &bootinfo;
+
+	while (ahp != NULL) {
+		switch (ahp->ah_tag) {
+		case ATAG_MEM:
+			amp = (atag_mem_t *)ahp;
+			bp->bi_memsize = amp->am_size;
+			bp->bi_memstart = amp->am_start;
+			break;
+		case ATAG_CMDLINE:
+			alp = (atag_cmdline_t *)ahp;
+			bp->bi_cmdline = alp->al_cmdline;
+		default:
+			break;
+		}
+		ahp = atag_next(ahp);
+	}
+}
+
 /*
  * Welcome to the kernel. We need to make a fake version of the boot_ops and the
  * boot_syscalls and then jump our way to _kobj_boot(). Here, we're borrowing
@@ -180,13 +219,14 @@ fakebop_dump_tags(void *tagstart)
 void
 _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 {
+	bootinfo_t *bip = &bootinfo;
 	bootops_t *bops = &bootop;
 	atag_header_t *h = tagstart;
 	const char *tname;
 	uintptr_t val;
 
-	/* XXX We should find the actual command line */
-	bcons_init(NULL);
+	fakebop_getatags(tagstart);
+	bcons_init(bip->bi_cmdline);
 
 	DBG_MSG("Welcome to fakebop -- ARM edition");
 	/*
@@ -204,6 +244,7 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	    &buffer[BUFFERSIZE-1]));
 	(void) bcons_getchar();
 	fakebop_dump_tags(tagstart);
+	fakebop_dump_bootinfo(bip);
 	DBG_MSG("\n\rThis is as far as we go...\n\rSpinning forever...");
 	for (;;)
 		;
