@@ -21,6 +21,7 @@ HDRS = \
 	machlock.h \
 	machsig.h \
 	machtypes.h \
+	pcb.h \
 	stack.h
 
 
