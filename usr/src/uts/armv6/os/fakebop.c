@@ -25,10 +25,7 @@
 
 static bootops_t bootop;
 static uint_t kbm_debug = 1;
-#if 0
 #define	DBG_MSG(x)	{ if (kbm_debug) bcons_puts(x); bcons_puts("\n\r"); }
-#endif
-#define	DBG_MSG(x)	{ bcons_puts(x); bcons_puts("\n\r"); }
 #define	BUFFERSIZE	256
 static char buffer[BUFFERSIZE];
 
