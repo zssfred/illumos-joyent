@@ -29,17 +29,18 @@ AS_CPPFLAGS = \
 	-D_KERNEL \
 	-I$(ROOT)/usr/include
 
-COM_OBJS = \
-	os/fakebop.o
+GEN_OBJS = \
+	os/fakebop.o \
+	boot/atag.o
 
-BMC2835_OBJS = \
+BCM2835_OBJS = \
 	bcm2835/locore.o \
 	bcm2835/miniuart.o \
 	bcm2835/boot_console.o
 
 OBJS = \
-	$(COM_OBJS) \
-	$(BMC2835_OBJS)
+	$(BCM2835_OBJS) \
+	$(GEN_OBJS)
 
 CPPFLAGS = \
 	-D_KERNEL \

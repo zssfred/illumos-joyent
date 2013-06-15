@@ -16,6 +16,7 @@
 include ../../../Makefile.master
 
 HDRS = \
+	atag.h \
 	boot_console.h
 
 
