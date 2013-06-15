@@ -48,6 +48,11 @@ extern void bcons_puts(const char *);
  */
 extern int bcons_getchar(void);
 
+/*
+ * Is there a character ready to read from the console.
+ */
+extern int bcons_ischar(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -65,13 +65,13 @@ extern void arm_reg_write(uint32_t, uint32_t);
  * A simple nop
  */
 static void
-bmc2835_miniuart_nop(void)
+bcm2835_miniuart_nop(void)
 {
 	__asm__ volatile("mov r0, r0\n" : : :);
 }
 
 void
-bmc2835_miniuart_init(void)
+bcm2835_miniuart_init(void)
 {
 	uint32_t v;
 	int i;
@@ -111,10 +111,10 @@ bmc2835_miniuart_init(void)
 
 	arm_reg_write(GPIO_BASE + GPIO_PUD, GPIO_PUD_DISABLE);
 	for (i = 0; i < 150; i++)
-		bmc2835_miniuart_nop();
+		bcm2835_miniuart_nop();
 	arm_reg_write(GPIO_BASE + GPIO_PUDCLK0, GPIO_PUDCLK_UART);
 	for (i = 0; i < 150; i++)
-		bmc2835_miniuart_nop();
+		bcm2835_miniuart_nop();
 	arm_reg_write(GPIO_BASE + GPIO_PUDCLK0, 0);
 
 	/* Finally, go back and enable RX and TX */
@@ -122,7 +122,7 @@ bmc2835_miniuart_init(void)
 }
 
 void
-bmc2835_miniuart_putc(uint8_t c)
+bcm2835_miniuart_putc(uint8_t c)
 {
 	uint32_t v;
 	for (;;) {
@@ -133,11 +133,17 @@ bmc2835_miniuart_putc(uint8_t c)
 }
 
 uint8_t
-bmc2835_miniuart_getc(void)
+bcm2835_miniuart_getc(void)
 {
 	for (;;) {
 		if (arm_reg_read(AUX_BASE + AUX_MU_LSR_REG) & AUX_MU_RX_READY)
 			break;
 	}
 	return (arm_reg_read(AUX_BASE + AUX_MU_IO_REG) & 0x7f);
+}
+
+int
+bcm2835_miniuart_isc(void)
+{
+	return (arm_reg_read(AUX_BASE + AUX_MU_LSR_REG) & AUX_MU_RX_READY);
 }
