@@ -22,7 +22,9 @@ HDRS = \
 	machsig.h \
 	machtypes.h \
 	pcb.h \
-	stack.h
+	regset.h \
+	stack.h \
+	ucontext.h
 
 
 ROOTDIR=	$(ROOT)/usr/include/sys
