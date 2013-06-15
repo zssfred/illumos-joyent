@@ -252,6 +252,12 @@ fakebop_printf(bootops_t *bop, const char *fmt, ...)
 	bop_panic("Called into fakebop_printf");
 }
 
+void
+boot_prop_finish(void)
+{
+	bop_panic("Called into boot_prop_finish");
+}
+
 /*
  * Welcome to the kernel. We need to make a fake version of the boot_ops and the
  * boot_syscalls and then jump our way to _kobj_boot(). Here, we're borrowing

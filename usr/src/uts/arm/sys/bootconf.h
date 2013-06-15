@@ -54,7 +54,10 @@ typedef struct bootops {
 #define	BOP_GETPROP(bop, name, buf)	((bop)->bsys_getprop)(bop, name, buf)
 #define	BOP_PUTSARG(bop, msg, arg)	((bop)->bsys_printf)(bop, msg, arg)
 
+extern char *default_path;
+
 extern void bop_panic(const char *);
+extern void boot_prop_finish(void);
 
 #ifdef __cplusplus
 }

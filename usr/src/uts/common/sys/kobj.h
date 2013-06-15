@@ -26,8 +26,6 @@
 #ifndef _SYS_KOBJ_H
 #define	_SYS_KOBJ_H
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <sys/modctl.h>
 #include <sys/elf.h>
 #include <sys/machelf.h>
@@ -190,7 +188,7 @@ extern void kobj_set_ctf(struct module *, caddr_t data, size_t size);
 
 extern int kobj_filbuf(struct _buf *);
 extern void kobj_sync(void);
-#if defined(__i386) || defined(__sparc) || defined(__amd64)
+#if defined(__i386) || defined(__sparc) || defined(__amd64) || defined(__arm__)
 extern void kobj_vmem_init(vmem_t **, vmem_t **);
 #else
 #error "ISA not supported"

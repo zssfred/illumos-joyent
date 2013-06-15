@@ -237,6 +237,11 @@ extern const char	*conv_reloc_386_type(Word);
 extern const char	*conv_reloc_SPARC_type(Word);
 #define	CONV_RELOC_TYPE	conv_reloc_SPARC_type
 
+#elif defined(__arm__)
+
+extern const char	*conv_reloc_ARM_type(Word);
+#define	CONV_RELOC_TYPE	conv_reloc_ARM_type
+
 #else
 #error platform not defined!
 #endif

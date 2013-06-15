@@ -22,7 +22,9 @@
 # start with. Yay, team.
 #
 
-include ../../Makefile.master
+include $(SRC)/Makefile.master
+
+UTSBASE = ..
 
 AS_CPPFLAGS = \
 	-D_ASM \
@@ -30,21 +32,31 @@ AS_CPPFLAGS = \
 	-I$(ROOT)/usr/include
 
 GEN_OBJS = \
+	misc/copy.o \
+	misc/string.o \
 	os/fakebop.o \
 	boot/atag.o
+
+#COM_OBJS = \
+#	kobj.o
 
 BCM2835_OBJS = \
 	bcm2835/locore.o \
 	bcm2835/miniuart.o \
-	bcm2835/boot_console.o
+	bcm2835/boot_console.o \
 
 OBJS = \
 	$(BCM2835_OBJS) \
-	$(GEN_OBJS)
+	$(GEN_OBJS) #\
+#	$(COM_OBJS)
+
+CERRWARN += -_gcc=-Wno-parentheses
+CERRWARN += -_gcc=-Wno-uninitialized
 
 CPPFLAGS = \
 	-D_KERNEL \
-	-I$(ROOT)/usr/include
+	-I$(ROOT)/usr/include \
+	-I$(UTSBASE)/common
 
 all: unix
 
@@ -52,6 +64,9 @@ all: unix
 	$(AS) -P $(AS_CPPFLAGS) -o $@ $<
 
 %.o: %.c
+	$(COMPILE.c) -o $@ -c $<
+
+%.o: ../common/krtld/%.c
 	$(COMPILE.c) -o $@ -c $<
 
 unix: $(OBJS)
