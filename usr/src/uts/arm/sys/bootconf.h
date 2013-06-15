@@ -21,19 +21,40 @@
  * Boot time configuration information objects
  */
 
+#include <sys/types.h>
+#include <sys/memlist.h>
+#include <sys/ccompile.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/*
+ * Masks for bsys_alloc memory allocator. These overlap with the ones for intel
+ * and sun because they're used by the common kernel.
+ */
+#define	BO_NO_ALIGN	0x00001000
+
 #define	BO_VERSION	1	/* bootops interface revision */
 
 typedef struct bootops {
-	/*
-	 * the ubiquitous version number
-	 */
 	uint_t	bsys_version;
-
+	caddr_t	(*bsys_alloc)(struct bootops *, caddr_t, size_t, int);
+	void	(*bsys_free)(struct bootops *, caddr_t, size_t);
+	int	(*bsys_getproplen)(struct bootops *, const char *);
+	int	(*bsys_getprop)(struct bootops *, const char *, void *);
+	void	(*bsys_printf)(struct bootops *, const char *, ...);
 } bootops_t;
+
+#define	BOP_GETVERSION(bop)		((bop)->bsys_version)
+#define	BOP_ALLOC(bop, virthint, size, align)	\
+		((bop)->bsys_alloc)(bop, virthint, size, align)
+#define	BOP_FREE(bop, virt, size)	((bop)->bsys_free)(bop, virt, size)
+#define	BOP_GETPROPLEN(bop, name)	((bop)->bsys_getproplen)(bop, name)
+#define	BOP_GETPROP(bop, name, buf)	((bop)->bsys_getprop)(bop, name, buf)
+#define	BOP_PUTSARG(bop, msg, arg)	((bop)->bsys_printf)(bop, msg, arg)
+
+extern void bop_panic(const char *);
 
 #ifdef __cplusplus
 }

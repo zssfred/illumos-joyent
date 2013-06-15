@@ -209,6 +209,49 @@ fakebop_getatags(void *tagstart)
 	}
 }
 
+void
+bop_panic(const char *msg)
+{
+	bcons_puts("ARM bop_panic: ");
+	DBG_MSG(msg);
+	DBG_MSG("Spinning forever...");
+	for (;;)
+		;
+}
+
+static caddr_t
+fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
+{
+	bop_panic("Called into fakebop_alloc");
+	return (NULL);
+}
+
+static void
+fakebop_free(struct bootops *bops, caddr_t virt, size_t size)
+{
+	bop_panic("Called into fakebop_free");
+}
+
+static int
+fakebop_getproplen(struct bootops *bops, const char *prop)
+{
+	bop_panic("Called into fakebop_getproplen");
+	return (-1);
+}
+
+static int
+fakebop_getprop(struct bootops *bops, const char *prop, void *value)
+{
+	bop_panic("Called into fakebop_getprop");
+	return (-1);
+}
+
+static void
+fakebop_printf(bootops_t *bop, const char *fmt, ...)
+{
+	bop_panic("Called into fakebop_printf");
+}
+
 /*
  * Welcome to the kernel. We need to make a fake version of the boot_ops and the
  * boot_syscalls and then jump our way to _kobj_boot(). Here, we're borrowing
@@ -244,8 +287,16 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	    &buffer[BUFFERSIZE-1]));
 	(void) bcons_getchar();
 	fakebop_dump_tags(tagstart);
-	fakebop_dump_bootinfo(bip);
-	DBG_MSG("\n\rThis is as far as we go...\n\rSpinning forever...");
-	for (;;)
-		;
+
+	/*
+	 * Fill in the bootops vector
+	 */
+	bops->bsys_version = BO_VERSION;
+	bops->bsys_alloc = fakebop_alloc;
+	bops->bsys_free = fakebop_free;
+	bops->bsys_getproplen = fakebop_getproplen;
+	bops->bsys_getprop = fakebop_getprop;
+	bops->bsys_printf = fakebop_printf;
+
+	bop_panic("This is as far as we go...");
 }
