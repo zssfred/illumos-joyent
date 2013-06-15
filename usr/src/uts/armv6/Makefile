@@ -46,8 +46,6 @@ CPPFLAGS = \
 	-D_KERNEL \
 	-I$(ROOT)/usr/include
 
-OBJCOPY=$(GNU_ROOT)/bin/gobjcopy
-
 all: unix
 
 %.o: %.s
