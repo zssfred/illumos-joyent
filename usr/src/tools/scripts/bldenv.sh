@@ -195,6 +195,13 @@ while getopts -a "${progname}" "${USAGE}" OPT ; do
 done
 shift $((OPTIND-1))
 
+#
+# For now bldenv only supports debug builds.
+#
+flags.d=true
+SUFFIX=""
+
+
 # test that the path to the environment-setting file was given
 if (( $# < 1 )) ; then
 	usage
