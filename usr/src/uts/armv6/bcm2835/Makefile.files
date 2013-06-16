@@ -13,23 +13,7 @@
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
-UTSBASE = ..
-
-include Makefile.armv6
-
-all		:=	TARGET= all
-def		:=	TARGET= def
-check		:=	TARGET= check
-clean		:=	TARGET= clean
-clobber		:=	TARGET= clobber
-install_h	:=	TARGET= install_h
-
-all def clean clobber: $(IMPLEMENTATIONS)
-
-$(IMPLEMENTATIONS):	FRC
-	@cd $@; pwd; THISIMPL=$@ $(MAKE) $(NO_STATE) $(TARGET)
-
-install_h check: $(IMPLEMENTATIONS) FRC
-	@cd sys; pwd; $(MAKE) $(TARGET)
-
-FRC:
+BCM2835_OBJS = \
+	locore.o \
+	miniuart.o \
+	boot_console.o

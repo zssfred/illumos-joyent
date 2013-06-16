@@ -79,7 +79,6 @@ fakebop_dump_tags(void *tagstart)
 	atag_core_t *acp;
 	atag_mem_t *amp;
 	atag_cmdline_t *alp;
-	uintptr_t val;
 	const char *tname;
 	int i;
 	char *c;
@@ -277,9 +276,6 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 {
 	bootinfo_t *bip = &bootinfo;
 	bootops_t *bops = &bootop;
-	atag_header_t *h = tagstart;
-	const char *tname;
-	uintptr_t val;
 
 	fakebop_getatags(tagstart);
 	bcons_init(bip->bi_cmdline);

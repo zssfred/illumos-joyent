@@ -34,7 +34,6 @@ bcopy(const void *s, void *d, size_t n)
 {
 	const char *src = s;
 	char *dest = d;
-	int i;
 
 	if (n == 0 || s == d)
 		return;

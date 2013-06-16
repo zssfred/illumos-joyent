@@ -13,23 +13,9 @@
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
-UTSBASE = ..
+UTSTREE=$(UTSBASE)
 
-include Makefile.armv6
+include $(UTSBASE)/Makefile.targ
 
-all		:=	TARGET= all
-def		:=	TARGET= def
-check		:=	TARGET= check
-clean		:=	TARGET= clean
-clobber		:=	TARGET= clobber
-install_h	:=	TARGET= install_h
-
-all def clean clobber: $(IMPLEMENTATIONS)
-
-$(IMPLEMENTATIONS):	FRC
-	@cd $@; pwd; THISIMPL=$@ $(MAKE) $(NO_STATE) $(TARGET)
-
-install_h check: $(IMPLEMENTATIONS) FRC
-	@cd sys; pwd; $(MAKE) $(TARGET)
-
-FRC:
+include $(UTSTREE)/armv6/Makefile.rules
+include $(UTSTREE)/common/Makefile.rules

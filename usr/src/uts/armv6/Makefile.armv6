@@ -1,0 +1,51 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+#
+
+#
+# armv6 common Makefile
+#
+
+UTSTREE=$(UTSBASE)
+
+#
+#	Machine type (implementation architecture):
+#
+PLATFORM	 = armv6
+
+#
+#	uname -m value
+#
+UNAME_M		= $(PLATFORM)
+
+#
+# Definitions for the platform-specific /platform directories.
+#
+#	We have on IMPLEMENTATION per board that we support. Currently we only
+#	support one board, so the requirements that are here will most likely
+#	change over time.
+#
+IMPLEMENTATIONS = bcm2835
+
+include $(UTSTREE)/common/Makefile.files
+include $(UTSTREE)/arm/Makefile.files
+include $(UTSTREE)/armv6/Makefile.files
+include $(UTSBASE)/Makefile.uts
+
+#
+# Builds we can actually do.
+#
+
+DEF_BUILDS	= $(DEF_BUILDS32)
+ALL_BUILDS	= $(ALL_BUILDS32)

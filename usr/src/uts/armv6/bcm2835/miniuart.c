@@ -124,7 +124,6 @@ bcm2835_miniuart_init(void)
 void
 bcm2835_miniuart_putc(uint8_t c)
 {
-	uint32_t v;
 	for (;;) {
 		if (arm_reg_read(AUX_BASE + AUX_MU_LSR_REG) & AUX_MU_TX_READY)
 			break;

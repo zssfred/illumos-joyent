@@ -58,7 +58,6 @@
 
 #include <sys/isa_defs.h>
 #include <sys/types.h>
-#include <limits.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,6 +73,12 @@ extern "C" {
 #define	_QUAD_HIGHWORD 0
 #define	_QUAD_LOWWORD 1
 #endif
+
+/*
+ * CHAR_BIT normally comes from limits.h for the libc version of this. However
+ * we're the kernel, we can't use limits.h.
+ */
+#define	CHAR_BIT	8
 
 /*
  * Depending on the desired operation, we view a `long long' in
