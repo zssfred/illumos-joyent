@@ -18,4 +18,5 @@ UTSTREE=$(UTSBASE)
 include $(UTSBASE)/Makefile.targ
 
 include $(UTSTREE)/armv6/Makefile.rules
+include $(UTSTREE)/arm/Makefile.rules
 include $(UTSTREE)/common/Makefile.rules

@@ -40,9 +40,9 @@ CERRWARN	+= -_gcc=-Wno-uninitialized
 #
 CTFCONVERT_O = /bin/true
 
-def: $(DEF_DEPS)
-
 all: def $(UNIX) 
+
+def: $(DEF_DEPS)
 
 clean: $(CLEAN_DEPS)
 

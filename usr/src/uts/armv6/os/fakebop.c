@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/bootconf.h>
+#include <sys/bootsvcs.h>
 #include <sys/boot_console.h>
 #include <sys/atag.h>
 #include <sys/varargs.h>
@@ -310,4 +311,10 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	fakebop_printf(bops, "%s 0x%x\n\r", "Hello printf!", 0x42);
 
 	bop_panic("This is as far as we go...");
+}
+
+void
+_fakebop_locore_start(struct boot_syscalls *sysp, struct bootops *bops)
+{
+	bop_panic("Somehow made it back to fakebop_locore_start...");
 }

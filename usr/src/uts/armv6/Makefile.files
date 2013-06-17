@@ -27,6 +27,7 @@ MISC_OBJS +=			\
 	arm_subr.o
 
 OS_OBJS +=			\
+	flush.o			\
 	fakebop.o
 
 CORE_OBJS =			\

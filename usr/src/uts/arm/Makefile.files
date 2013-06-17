@@ -13,5 +13,18 @@
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
+#
+# Kernel Linker
+#	
+KRTLD_OBJS +=		\
+	bootrd.o	\
+	ufsops.o	\
+	hsfs.o		\
+	doreloc.o	\
+	kobj_boot.o	\
+	kobj_convrelstr.o \
+	kobj_crt.o	\
+	kobj_isa.o	\
+	kobj_reloc.o
 
 INC_PATH	+= -I$(UTSBASE)/arm
