@@ -24,7 +24,9 @@ HDRS = \
 	machlock.h \
 	machsig.h \
 	machtypes.h \
+	obpdefs.h \
 	pcb.h \
+	promif.h \
 	regset.h \
 	stack.h \
 	ucontext.h \
