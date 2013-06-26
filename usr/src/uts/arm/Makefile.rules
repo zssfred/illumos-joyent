@@ -35,6 +35,10 @@ $(OBJS_DIR)/%.o:	$(UTSBASE)/arm/krtld/%.s
 	$(COMPILE.s) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
 	$(CTFCONVERT_O)
 
+$(OBJS_DIR)/%.o:		$(SRC)/common/fs/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
+
 # XXX Do we keep this CPPFLAG?
 $(OBJS_DIR)/kobj.o		:= CPPFLAGS += -D_DBOOT
 
