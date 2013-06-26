@@ -106,14 +106,10 @@ extern volatile int hres_lock;
  * Note that LOCK_LEVEL and CLOCK_LEVEL have historically always been equal;
  * changing this relationship is probably possible but not advised.
  *
+ * While the definition of the Generic Interrupt Controller (GIC) on ARM allows
+ * for more than 16 levels of interrupt priority, we know that we always have at
+ * least 16 and thus we do not go longer than that.
  */
-/*
- * XXX It's not clear how many levels of interrupts we actually get on arm. It
- * seems that it's implementation defined and maybe we're actually just stuck at
- * getting three bits. For now, we'd like to progress so we'll leave this bit
- * commented out for now.
- */
-#if 0
 #define	PIL_MAX		15
 
 #define	CLOCK_LEVEL	10
@@ -121,7 +117,6 @@ extern volatile int hres_lock;
 #define	DISP_LEVEL	(LOCK_LEVEL + 1)
 
 #define	HIGH_LEVELS	(PIL_MAX - LOCK_LEVEL)
-#endif
 
 /*
  * The semaphore code depends on being able to represent a lock plus
