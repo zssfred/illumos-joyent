@@ -17,6 +17,8 @@
  * ARM relocation code
  */
 
+#include "reloc.h"
+
 /*
  * TODO We've stubbed out the sdt resolve functions. No reason to even think
  * about those now. It's here so we remember it. The TNF one on the other hand
@@ -33,13 +35,13 @@ int
 do_relocate(struct module *mp, char *reltbl, Word relshtype, int nreloc,
     int relocsize, Addr baseaddr)
 {
-	_kobj_printf("Implement me\n");
+	_kobj_printf(ops, "Implement me\n");
 	return (-1);
 }
 
 int
 do_relocations(struct module *mp)
 {
-	_kobj_printf("Implement me\n");
+	_kobj_printf(ops, "Implement me\n");
 	return (-1);
 }
