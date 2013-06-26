@@ -908,6 +908,33 @@ typedef struct ddi_dma_impl {
 	ndi_err_t	dmai_error;
 } ddi_dma_impl_t;
 
+#elif defined(__arm__)
+
+/*
+ * XXXARM: This is a stuf for future use based on x86
+ */
+typedef struct ddi_dma_impl {
+	ddi_dma_cookie_t *dmai_cookie; /* array of DMA cookies */
+	void		*dmai_private;
+
+	/*
+	 * Information gathered from the original dma mapping
+	 * request and saved for the lifetime of the mapping.
+	 */
+	uint_t		dmai_minxfer;
+	uint_t		dmai_burstsizes;
+	uint_t		dmai_rflags;	/* requester's flags + ours */
+	int		dmai_nwin;
+	dev_info_t	*dmai_rdip;	/* original requester's dev_info_t */
+
+	ddi_dma_attr_t	dmai_attr;	/* DMA attributes */
+
+	int		(*dmai_fault_check)(struct ddi_dma_impl *handle);
+	void		(*dmai_fault_notify)(struct ddi_dma_impl *handle);
+	int		dmai_fault;
+	ndi_err_t	dmai_error;
+} ddi_dma_impl_t;
+
 #else
 #error "struct ddi_dma_impl not defined for this architecture"
 #endif  /* defined(__sparc) */

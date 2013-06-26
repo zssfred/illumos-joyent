@@ -384,6 +384,159 @@ typedef struct ddi_dma_lim {
 
 } ddi_dma_lim_t;
 
+#elif defined(__arm__)
+/*
+ * XXXARM: We're starting with the intel version here. This may or may not be
+ * sufficient and we'll need to change this. Don't be afraid.
+ */
+typedef struct ddi_dma_lim {
+
+	/*
+	 * Low range of 32 bit addressing capability.
+	 */
+	uint_t	dlim_addr_lo;
+
+	/*
+	 * Upper Inclusive bound of 32 bit addressing capability.
+	 *
+	 * The ISA nexus restricts this to 0x00ffffff, since this bus has
+	 * only 24 address lines.  This enforces the 16 Mb address limitation.
+	 * The EISA nexus restricts this to 0xffffffff.
+	 */
+	uint_t	dlim_addr_hi;
+
+	/*
+	 * DMA engine counter not used; set to 0
+	 */
+	uint_t	dlim_cntr_max;
+
+	/*
+	 *  DMA burst sizes not used; set to 1
+	 */
+	uint_t	dlim_burstsizes;
+
+	/*
+	 * Minimum effective DMA transfer size.
+	 *
+	 * This value specifies the minimum effective granularity of the
+	 * DMA engine. It is distinct from dlim_burstsizes in that it
+	 * describes the minimum amount of access a DMA transfer will
+	 * effect. dlim_burstsizes describes in what electrical fashion
+	 * the DMA engine might perform its accesses, while dlim_minxfer
+	 * describes the minimum amount of memory that can be touched by
+	 * the DMA transfer.
+	 *
+	 * This value also implies the required address alignment.
+	 * The number of bytes transferred is assumed to be
+	 * 	dlim_minxfer * (DMA engine count)
+	 *
+	 * It should be set to DMA_UNIT_8, DMA_UNIT_16, or DMA_UNIT_32.
+	 */
+	uint_t	dlim_minxfer;
+
+	/*
+	 * Expected average data rate for this DMA engine
+	 * while transferring data.
+	 *
+	 * This is used as a hint for a number of operations that might
+	 * want to know the possible optimal latency requirements of this
+	 * device. A value of zero will be interpreted as a 'do not care'.
+	 */
+	uint_t	dlim_dmaspeed;
+
+
+	/*
+	 * Version number of this structure
+	 */
+	uint_t	dlim_version;	/* = 0x86 << 24 + 0 */
+
+	/*
+	 * Inclusive upper bound with which the DMA engine's Address acts as
+	 * a register.
+	 * This handles the case where an upper portion of a DMA address
+	 * register is a latch instead of being a full 32 bit register
+	 * (e.g., the upper 16 bits remain constant while the lower 16 bits
+	 * are incremented for each DMA transfer).
+	 *
+	 * The ISA nexus restricts only 3rd-party DMA requests to 0x0000ffff,
+	 * since the ISA DMA engine has a 16-bit register for low address and
+	 * an 8-bit latch for high address.  This enforces the first 64 Kb
+	 * limitation (address boundary).
+	 * The EISA nexus restricts only 3rd-party DMA requests to 0xffffffff.
+	 */
+	uint_t	dlim_adreg_max;
+
+	/*
+	 * Maximum transfer count that the DMA engine can handle.
+	 *
+	 * The ISA nexus restricts only 3rd-party DMA requests to 0x0000ffff,
+	 * since the ISA DMA engine has a 16-bit register for counting.
+	 * This enforces the other 64 Kb limitation (count size).
+	 * The EISA nexus restricts only 3rd-party DMA requests to 0x00ffffff,
+	 * since the EISA DMA engine has a 24-bit register for counting.
+	 *
+	 * This transfer count limitation is a per segment limitation.
+	 * It can also be used to restrict the size of segments.
+	 *
+	 * This is used as a bit mask, so it must be a power of 2, minus 1.
+	 */
+	uint_t	dlim_ctreg_max;
+
+	/*
+	 * Granularity of DMA transfer, in units of bytes.
+	 *
+	 * Breakup sizes must be multiples of this value.
+	 * If no scatter/gather capabilty is specified, then the size of
+	 * each DMA transfer must be a multiple of this value.
+	 *
+	 * If there is scatter/gather capability, then a single cookie cannot
+	 * be smaller in size than the minimum xfer value, and may be less
+	 * than the granularity value.  The total transfer length of the
+	 * scatter/gather list should be a multiple of the granularity value;
+	 * use dlim_sgllen to specify the length of the scatter/gather list.
+	 *
+	 * This value should be equal to the sector size of the device.
+	 */
+	uint_t	dlim_granular;
+
+	/*
+	 * Length of scatter/gather list
+	 *
+	 * This value specifies the number of segments or cookies that a DMA
+	 * engine can consume in one i/o request to the device.  For 3rd-party
+	 * DMA that uses the bus nexus this should be set to 1.  Devices with
+	 * 1st-party DMA capability should specify the number of entries in
+	 * its scatter/gather list.  The breakup routine will ensure that each
+	 * group of dlim_sgllen cookies (within a DMA window) will have a
+	 * total transfer length that is a multiple of dlim_granular.
+	 *
+	 *	< 0  :  tbd
+	 *	= 0  :  breakup is for PIO.
+	 *	= 1  :  breakup is for DMA engine with no scatter/gather
+	 *		capability.
+	 *	>= 2 :  breakup is for DMA engine with scatter/gather
+	 *		capability; value is max number of entries in list.
+	 *
+	 * Note that this list length is not dependent on the DMA window
+	 * size.  The size of the DMA window is based on resources consumed,
+	 * such as intermediate buffers.  Several s/g lists may exist within
+	 * a window.  But the end of a window does imply the end of the s/g
+	 * list.
+	 */
+	short	dlim_sgllen;
+
+	/*
+	 * Size of device i/o request
+	 *
+	 * This value indicates the maximum number of bytes the device
+	 * can transmit/receive for one i/o command.  This limitation is
+	 * significant ony if it is less than (dlim_ctreg_max * dlim_sgllen).
+	 */
+	uint_t	dlim_reqsize;
+
+
+} ddi_dma_lim_t;
+
 #else
 #error "struct ddi_dma_lim not defined for this architecture"
 #endif	/* defined(__sparc) */
