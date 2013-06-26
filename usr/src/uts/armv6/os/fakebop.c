@@ -248,8 +248,8 @@ fakebop_getprop(struct bootops *bops, const char *prop, void *value)
 	return (-1);
 }
 
-static void
-fakebop_printf(bootops_t *bop, const char *fmt, ...)
+void
+bop_printf(bootops_t *bop, const char *fmt, ...)
 {
 	va_list ap;
 
@@ -306,9 +306,9 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	bops->bsys_free = fakebop_free;
 	bops->bsys_getproplen = fakebop_getproplen;
 	bops->bsys_getprop = fakebop_getprop;
-	bops->bsys_printf = fakebop_printf;
+	bops->bsys_printf = bop_printf;
 
-	fakebop_printf(bops, "%s 0x%x\n\r", "Hello printf!", 0x42);
+	bop_printf(bops, "%s 0x%x\n\r", "Hello printf!", 0x42);
 
 	bop_panic("This is as far as we go...");
 }

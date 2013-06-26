@@ -55,9 +55,12 @@ typedef struct bootops {
 #define	BOP_PUTSARG(bop, msg, arg)	((bop)->bsys_printf)(bop, msg, arg)
 
 extern char *default_path;
+extern char kern_bootargs[];
+extern char kern_bootfile[];
 
 extern void bop_panic(const char *);
 extern void boot_prop_finish(void);
+extern void bop_printf(struct bootops *, const char *, ...);
 
 #ifdef __cplusplus
 }
