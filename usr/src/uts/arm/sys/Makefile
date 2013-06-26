@@ -20,11 +20,14 @@ HDRS = \
 	bootconf.h \
 	bootsvcs.h \
 	bootvfs.h \
+	ddi_isa.h \
 	flush.h \
+	kdi_machimpl.h \
 	machlock.h \
 	machsig.h \
 	machtypes.h \
 	obpdefs.h \
+	privregs.h \
 	pcb.h \
 	promif.h \
 	regset.h \
