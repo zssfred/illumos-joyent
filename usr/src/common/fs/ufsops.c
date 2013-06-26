@@ -488,7 +488,7 @@ getblock_noopt(fileid_t *filep)
 static ssize_t
 bufs_read(int fd, caddr_t buf, size_t count)
 {
-	size_t i, j;
+	ssize_t i, j;
 	caddr_t	n;
 	int rcount;
 	fileid_t *filep;
