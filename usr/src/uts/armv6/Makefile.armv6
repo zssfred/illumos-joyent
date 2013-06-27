@@ -43,9 +43,20 @@ include $(UTSTREE)/arm/Makefile.files
 include $(UTSTREE)/armv6/Makefile.files
 include $(UTSBASE)/Makefile.uts
 
+
+#
+# Define the actual specific platforms
+#
+MACHINE_DEFS	 = -D$(PLATFORM) -D_MACHDEP
+
 #
 # Builds we can actually do.
 #
 
 DEF_BUILDS	= $(DEF_BUILDS32)
 ALL_BUILDS	= $(ALL_BUILDS32)
+
+#
+# Preprocessor defs
+#
+ALL_DEFS	 = $(MACHINE_DEFS)
