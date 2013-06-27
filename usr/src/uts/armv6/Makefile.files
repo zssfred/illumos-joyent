@@ -36,3 +36,8 @@ CORE_OBJS =			\
 	$(MISC_OBJS)		\
 	$(OS_OBJS)		\
 	string.o
+
+#
+# Definitions and Include Paths
+#
+INC_PATH	+= -I$(UTSBASE)/armv6 -I$(SRC)/common
