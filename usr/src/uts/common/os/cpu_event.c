@@ -22,6 +22,9 @@
  * Copyright (c) 2009-2010, Intel Corporation.
  * All rights reserved.
  */
+/*
+ * Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+ */
 
 /*
  * Introduction
@@ -59,8 +62,10 @@
 #include <sys/sunddi.h>
 #if defined(__sparc)
 #include <sys/machsystm.h>
-#elif defined(__x86)
+#elif defined(__x86) || defined(__arm__)
 #include <sys/archsystm.h>
+#else
+#error "port me"
 #endif
 #include <sys/cpu_event.h>
 
@@ -78,6 +83,11 @@
 #define	IDLE_STATE_NORMAL	0
 #endif
 #define	CPU_IDLE_STATE_NORMAL	IDLE_STATE_NORMAL
+#elif defined(__arm__)
+/* XXXARM Uh, really? */
+#define	CPU_IDLE_STATE_NORMAL	0
+#else
+#error "port me"
 #endif
 
 /*
