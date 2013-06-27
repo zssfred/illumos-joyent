@@ -43,10 +43,16 @@ static void brand_plat_interposition_disable(void);
 struct brand_mach_ops native_mach_ops  = {
 		NULL, NULL
 };
-#else /* !__sparcv9 */
+#elif defined(__i386) || defined(__amd64)
 struct brand_mach_ops native_mach_ops  = {
 		NULL, NULL, NULL, NULL
 };
+#elif defined(__arm__)
+struct brand_mach_ops native_mach_ops  = {
+		NULL
+};
+#else
+#error "port me"
 #endif /* !__sparcv9 */
 
 brand_t native_brand = {
