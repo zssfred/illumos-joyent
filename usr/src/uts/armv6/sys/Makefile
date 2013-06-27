@@ -17,7 +17,8 @@ include ../../../Makefile.master
 
 HDRS = \
 	atag.h \
-	boot_console.h
+	boot_console.h \
+	machparam.h
 
 
 ROOTDIR=	$(ROOT)/usr/include/sys
