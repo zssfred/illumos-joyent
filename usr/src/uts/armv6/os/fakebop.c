@@ -46,6 +46,12 @@ typedef struct bootinfo {
 
 static bootinfo_t bootinfo;	/* Simple set of boot information */
 
+static struct boot_syscalls bop_sysp = {
+	bcons_getchar,
+	bcons_putchar,
+	bcons_ischar,
+};
+
 /*
  * XXX This is just a hack to let us see a bit more about what's going on.
  * Normally we'd use vsnprintf, but that includes sys/systm.h which requires
@@ -277,6 +283,7 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 {
 	bootinfo_t *bip = &bootinfo;
 	bootops_t *bops = &bootop;
+	extern void _kobj_boot();
 
 	fakebop_getatags(tagstart);
 	bcons_init(bip->bi_cmdline);
@@ -310,7 +317,9 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 
 	bop_printf(bops, "%s 0x%x\n\r", "Hello printf!", 0x42);
 
-	bop_panic("This is as far as we go...");
+	_kobj_boot(&bop_sysp, NULL, bops);
+
+	bop_panic("Returned from kobj_init\n");
 }
 
 void

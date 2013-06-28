@@ -26,7 +26,9 @@ include $(UTSBASE)/armv6/Makefile.armv6
 
 OBJECTS	= \
 	$(BCM2835_OBJS:%=$(OBJS_DIR)/%) \
-	$(CORE_OBJS:%=$(OBJS_DIR)/%)
+	$(CORE_OBJS:%=$(OBJS_DIR)/%) \
+	$(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
+	$(OBJS_DIR)/zlib_obj.o
 
 CLEANFILES += \
 	$(OBJECTS) \
@@ -34,11 +36,16 @@ CLEANFILES += \
 
 CERRWARN	+= -_gcc=-Wno-parentheses
 CERRWARN	+= -_gcc=-Wno-uninitialized
+CERRWARN	+= -_gcc=-Wno-unused-label
+CERRWARN	+= -_gcc=-Wno-unused-function
+CERRWARN	+= -_gcc=-Wno-unused-variable
+CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 
 #
 # XXX We have no CTF support, so override CTFCONVERT_O for now.
 #
 CTFCONVERT_O = /bin/true
+CTFMERGE = /bin/true
 
 all: def $(UNIX) 
 
