@@ -42,6 +42,8 @@ typedef struct bootinfo {
 	uint32_t	bi_memsize;
 	uint32_t	bi_memstart;
 	char 		*bi_cmdline;
+	uint32_t	bi_ramdisk;
+	uint32_t	bi_ramsize;
 } bootinfo_t;
 
 static bootinfo_t bootinfo;	/* Simple set of boot information */
@@ -86,6 +88,7 @@ fakebop_dump_tags(void *tagstart)
 	atag_core_t *acp;
 	atag_mem_t *amp;
 	atag_cmdline_t *alp;
+	atag_initrd_t *aip;
 	const char *tname;
 	int i;
 	char *c;
@@ -167,6 +170,17 @@ fakebop_dump_tags(void *tagstart)
 			DBG_MSG(fakebop_hack_ultostr(amp->am_start,
 			    &buffer[BUFFERSIZE-1]));
 			break;
+		case ATAG_INITRD2:
+			aip = (atag_initrd_t *)h;
+			DBG_MSG("\tsize:");
+			bcons_puts("\t");
+			DBG_MSG(fakebop_hack_ultostr(aip->ai_size,
+			    &buffer[BUFFERSIZE-1]));
+			DBG_MSG("\tstart:");
+			bcons_puts("\t");
+			DBG_MSG(fakebop_hack_ultostr(aip->ai_start,
+			    &buffer[BUFFERSIZE-1]));
+			break;
 		case ATAG_CMDLINE:
 			alp = (atag_cmdline_t *)h;
 			DBG_MSG("\tcmdline:");
@@ -198,6 +212,7 @@ fakebop_getatags(void *tagstart)
 	atag_mem_t *amp;
 	atag_cmdline_t *alp;
 	atag_header_t *ahp = tagstart;
+	atag_initrd_t *aip;
 	bootinfo_t *bp = &bootinfo;
 
 	while (ahp != NULL) {
@@ -210,6 +225,10 @@ fakebop_getatags(void *tagstart)
 		case ATAG_CMDLINE:
 			alp = (atag_cmdline_t *)ahp;
 			bp->bi_cmdline = alp->al_cmdline;
+		case ATAG_INITRD2:
+			aip = (atag_initrd_t *)ahp;
+			bp->bi_ramdisk = aip->ai_start;
+			bp->bi_ramsize = aip->ai_size;
 		default:
 			break;
 		}
