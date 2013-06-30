@@ -34,6 +34,7 @@ extern "C" {
  * and sun because they're used by the common kernel.
  */
 #define	BO_NO_ALIGN	0x00001000
+#define	BO_ALIGN_DONTCARE	-1
 
 #define	BO_VERSION	1	/* bootops interface revision */
 

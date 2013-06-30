@@ -25,6 +25,9 @@
 #include <sys/atag.h>
 #include <sys/varargs.h>
 #include <sys/cmn_err.h>
+#include <sys/sysmacros.h>
+#include <sys/systm.h>
+#include <sys/ctype.h>
 
 static bootops_t bootop;
 static uint_t kbm_debug = 1;
@@ -33,12 +36,38 @@ static uint_t kbm_debug = 1;
 static char buffer[BUFFERSIZE];
 
 /*
+ * Fakebop Memory allocation Scheme
+ *
+ * Early on during boot we need to be able to allocate memory before we get the
+ * normal kernel memory allocator up and running. Currently this memory is never
+ * freed by the system, or so it appears. As such we take a much simpler
+ * approach to the memory allocation. Mostly, we care off a region of memory
+ * from the top of our physical range equal to bop_alloc_nfree which is
+ * currently 16 MB. From there, allocations are given a 4-byte aligned chunks of
+ * memory from bop_alloc_start until we run out of memory. Because of the lack
+ * of any callers of the memory free routing in the system, we do not bother
+ * with anything like a free list or even size and next pointers. This does make
+ * the debugging a bit harder, but hopefully our use of this will be minimal
+ * overall.
+ *
+ * TODO On other platforms this often includes using virtual memory instead of
+ * physical memory. While it would be great to do that on ARM, let's start with
+ * this strawman approach and later revamp it. The goal here is that it's meant
+ * to be very simple... albeit this will probably be too simple in time to come.
+ */
+static uintptr_t bop_alloc_start = 0;
+static uintptr_t bop_alloc_nfree = 16 * 1024 * 1024;
+
+#define	BI_HAS_RAMDISK	0x1
+
+/*
  * TODO Generalize this
  * This is the set of information tha we want to gather from the various atag
  * headers. This is simple and naive and will need to evolve as we have
  * additional boards beyond just the RPi.
  */
 typedef struct bootinfo {
+	uint_t		bi_flags;
 	uint32_t	bi_memsize;
 	uint32_t	bi_memstart;
 	char 		*bi_cmdline;
@@ -53,6 +82,28 @@ static struct boot_syscalls bop_sysp = {
 	bcons_putchar,
 	bcons_ischar,
 };
+
+/*
+ * stuff to store/report/manipulate boot property settings.
+ */
+typedef struct bootprop {
+	struct bootprop *bp_next;
+	char *bp_name;
+	uint_t bp_vlen;
+	char *bp_value;
+} bootprop_t;
+
+static bootprop_t *bprops = NULL;
+
+void
+bop_panic(const char *msg)
+{
+	bcons_puts("ARM bop_panic: ");
+	DBG_MSG(msg);
+	DBG_MSG("Spinning forever...");
+	for (;;)
+		;
+}
 
 /*
  * XXX This is just a hack to let us see a bit more about what's going on.
@@ -79,6 +130,26 @@ fakebop_hack_ultostr(unsigned long value, char *ptr)
 	*--ptr = '0';
 
 	return (ptr);
+}
+
+/*
+ * We need to reserve bop_alloc_nfree bytes from the top of our memory range. We
+ * also need to make sure that nothing else is using that region of memory, eg.
+ * the initial ram disk or the kernel.
+ */
+static void
+fakebop_alloc_init(void)
+{
+	uintptr_t top;
+
+	top = bootinfo.bi_memstart + bootinfo.bi_memsize;
+	top -= bop_alloc_nfree;
+
+	if (top > bootinfo.bi_ramdisk &&
+	    top < bootinfo.bi_ramdisk + bootinfo.bi_ramsize)
+		bop_panic("fakebop_alloc_init memory range has overlaps");
+	bop_alloc_start = top;
+	bop_printf(NULL, "starting with memory at 0x%x and have %d bytes\n", bop_alloc_start, bop_alloc_nfree);
 }
 
 static void
@@ -215,6 +286,7 @@ fakebop_getatags(void *tagstart)
 	atag_initrd_t *aip;
 	bootinfo_t *bp = &bootinfo;
 
+	bp->bi_flags = 0;
 	while (ahp != NULL) {
 		switch (ahp->ah_tag) {
 		case ATAG_MEM:
@@ -229,6 +301,7 @@ fakebop_getatags(void *tagstart)
 			aip = (atag_initrd_t *)ahp;
 			bp->bi_ramdisk = aip->ai_start;
 			bp->bi_ramsize = aip->ai_size;
+			bp->bi_flags |= BI_HAS_RAMDISK;
 		default:
 			break;
 		}
@@ -236,21 +309,27 @@ fakebop_getatags(void *tagstart)
 	}
 }
 
-void
-bop_panic(const char *msg)
-{
-	bcons_puts("ARM bop_panic: ");
-	DBG_MSG(msg);
-	DBG_MSG("Spinning forever...");
-	for (;;)
-		;
-}
-
 static caddr_t
 fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 {
-	bop_panic("Called into fakebop_alloc");
-	return (NULL);
+	caddr_t start;
+
+	bop_printf(bops, "Asked to allocated %d bytes\n\r", size);
+	if (bop_alloc_start == 0)
+		bop_panic("fakebop_alloc_init not called");
+
+	if (align == BO_ALIGN_DONTCARE)
+		align = 4;
+
+	size = P2ROUNDUP(size, align);
+	bop_printf(bops, "Asked to allocated %d bytes %d free\n\r", size, bop_alloc_nfree);
+	if (size > bop_alloc_nfree)
+		bop_panic("fakebop_alloc ran out of memory\n");
+
+	start = (caddr_t)bop_alloc_start;
+	bop_alloc_start += size;
+	bop_alloc_nfree -= size;
+	return (start);
 }
 
 static void
@@ -288,6 +367,79 @@ void
 boot_prop_finish(void)
 {
 	bop_panic("Called into boot_prop_finish");
+}
+
+static void
+fakebop_setprop(char *name, int nlen, void *value, int vlen)
+{
+	size_t size;
+	bootprop_t *bp;
+	caddr_t cur;
+
+	size = sizeof (bootprop_t) + nlen + 1 + vlen;
+	cur = fakebop_alloc(NULL, NULL, size, BO_ALIGN_DONTCARE);
+	bp = (bootprop_t *)cur;
+	if (bprops == NULL) {
+		bprops = bp;
+	} else {
+		bp->bp_next = bprops;
+		bprops = bp;
+	}
+	cur += sizeof (bootprop_t);
+	bp->bp_name = cur;
+	bcopy(name, cur, nlen);
+	cur += nlen;
+	*cur = '\0';
+	cur++;
+	bp->bp_value = cur;
+	if (vlen > 0)
+		bcopy(value, cur, vlen);
+}
+
+static void
+fakebop_setprop_string(char *name, char *value)
+{
+	fakebop_setprop(name, strlen(name), value, strlen(value) + 1);
+}
+
+static void
+fakebop_setprop_64(char *name, uint64_t value)
+{
+	fakebop_setprop(name, strlen(name), (void *)&value, sizeof (value));
+}
+
+/*
+ * Here we create a bunch of the initial boot properties. This includes what
+ * we've been passed in via the command line. It also includes a few values that
+ * we compute ourselves.
+ */
+static void
+fakebop_bootprops_init(void)
+{
+	char *c, *kernel;
+	bootinfo_t *bp = &bootinfo;
+
+	/*
+	 * Set the ramdisk properties for kobj_boot_mountroot() can succeed.
+	 */
+	if ((bp->bi_flags & BI_HAS_RAMDISK) != 0) {
+		fakebop_setprop_64("ramdisk_start",
+		    (uint64_t)(uintptr_t)bp->bi_ramdisk);
+		fakebop_setprop_64("ramdisk_end",
+		    (uint64_t)(uintptr_t)bp->bi_ramdisk + bp->bi_ramsize);
+	}
+
+	/*
+	 * Our boot parameters always wil start with kernel /platform/..., but
+	 * the bootloader may in fact stick other properties in front of us. To
+	 * deal with that we go ahead and we include them. We'll find the kernel
+	 * and our properties set via -B when we finally find something without
+	 * an equals sign, mainly kernel.
+	 */
+	c = bp->bi_cmdline;
+	kernel = strstr(c, "kernel");
+	if (kernel == NULL)
+		bop_panic("failed to find kernel string in boot params!");
 }
 
 /*
@@ -334,6 +486,8 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	bops->bsys_getprop = fakebop_getprop;
 	bops->bsys_printf = bop_printf;
 
+	fakebop_alloc_init();
+	fakebop_bootprops_init();
 	bop_printf(bops, "%s 0x%x\n\r", "Hello printf!", 0x42);
 
 	_kobj_boot(&bop_sysp, NULL, bops);
