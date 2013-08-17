@@ -418,6 +418,7 @@ fakebop_setprop_64(char *name, uint64_t value)
 static void
 fakebop_bootprops_init(void)
 {
+	int i = 0;
 	char *c, *kernel;
 	bootinfo_t *bp = &bootinfo;
 
@@ -458,18 +459,14 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	bootops_t *bops = &bootop;
 	extern void _kobj_boot();
 
+	/*
+	 * TODO Turn on caches and unaligned access!
+	 */
+
 	fakebop_getatags(tagstart);
 	bcons_init(bip->bi_cmdline);
 
 	bop_printf(NULL, "\n\rWelcome to fakebop -- ARM edition\n\r");
-	/*
-	 * XXX Currently we're using u-boot to allow us to make forward progress
-	 * while the .data section is a bit tumultuous. It loads that, but we
-	 * can say for certain that it does not correctly pass in the machid and
-	 * tagstart. Therefore since convention has the tagstart at 0x100, we
-	 * just manually set it there for us for now.
-	 */
-	tagstart = (void *)(uintptr_t)0x100;
 	fakebop_dump_tags(tagstart);
 
 	/*
@@ -484,8 +481,6 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 
 	fakebop_alloc_init();
 	fakebop_bootprops_init();
-	bop_printf(bops, "%s 0x%x\n\r", "Hello printf!", 0x42);
-
 	_kobj_boot(&bop_sysp, NULL, bops);
 
 	bop_panic("Returned from kobj_init\n");
