@@ -55,8 +55,9 @@ static char buffer[BUFFERSIZE];
  * this strawman approach and later revamp it. The goal here is that it's meant
  * to be very simple... albeit this will probably be too simple in time to come.
  */
+#define	FAKEBOP_ALLOC_SIZE	(16 * 1024 * 1024)
 static uintptr_t bop_alloc_start = 0;
-static uintptr_t bop_alloc_nfree = 16 * 1024 * 1024;
+static uintptr_t bop_alloc_nfree = FAKEBOP_ALLOC_SIZE;
 
 #define	BI_HAS_RAMDISK	0x1
 
@@ -98,9 +99,7 @@ static bootprop_t *bprops = NULL;
 void
 bop_panic(const char *msg)
 {
-	bcons_puts("ARM bop_panic: ");
-	DBG_MSG(msg);
-	DBG_MSG("Spinning forever...");
+	bop_printf(NULL, "ARM bop_panic:\n\r%s\n\rSpinning Forever...", msg);
 	for (;;)
 		;
 }
@@ -145,11 +144,13 @@ fakebop_alloc_init(void)
 	top = bootinfo.bi_memstart + bootinfo.bi_memsize;
 	top -= bop_alloc_nfree;
 
+	bop_printf(NULL, "bot_alloc_nfree: %d\n\r", bop_alloc_nfree);
 	if (top > bootinfo.bi_ramdisk &&
 	    top < bootinfo.bi_ramdisk + bootinfo.bi_ramsize)
 		bop_panic("fakebop_alloc_init memory range has overlaps");
 	bop_alloc_start = top;
-	bop_printf(NULL, "starting with memory at 0x%x and have %d bytes\n", bop_alloc_start, bop_alloc_nfree);
+	bop_printf(NULL, "starting with memory at 0x%x and have %d bytes\n\r",
+	    top, bop_alloc_nfree);
 }
 
 static void
@@ -322,9 +323,10 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 		align = 4;
 
 	size = P2ROUNDUP(size, align);
-	bop_printf(bops, "Asked to allocated %d bytes %d free\n\r", size, bop_alloc_nfree);
+	bop_printf(bops, "Asked to allocated %d bytes %d free\n\r", size,
+	    bop_alloc_nfree);
 	if (size > bop_alloc_nfree)
-		bop_panic("fakebop_alloc ran out of memory\n");
+		bop_panic("fakebop_alloc ran out of memory");
 
 	start = (caddr_t)bop_alloc_start;
 	bop_alloc_start += size;
@@ -459,21 +461,15 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	fakebop_getatags(tagstart);
 	bcons_init(bip->bi_cmdline);
 
-	DBG_MSG("Welcome to fakebop -- ARM edition");
+	bop_printf(NULL, "\n\rWelcome to fakebop -- ARM edition\n\r");
 	/*
-	 * XXX For now, we explicitly put a gating getc into place. This gives
-	 * us enough time to ensure that anyone who is using the serial console
-	 * is in a place where they can see output.
+	 * XXX Currently we're using u-boot to allow us to make forward progress
+	 * while the .data section is a bit tumultuous. It loads that, but we
+	 * can say for certain that it does not correctly pass in the machid and
+	 * tagstart. Therefore since convention has the tagstart at 0x100, we
+	 * just manually set it there for us for now.
 	 */
-	(void) bcons_getchar();
-	DBG_MSG("Welcome to fakebop -- ARM edition");
-	buffer[BUFFERSIZE-1] = '\0';
-	DBG_MSG("boot machid:");
-	DBG_MSG(fakebop_hack_ultostr((uintptr_t)machid, &buffer[BUFFERSIZE-1]));
-	DBG_MSG("boot atag location:");
-	DBG_MSG(fakebop_hack_ultostr((uintptr_t)tagstart,
-	    &buffer[BUFFERSIZE-1]));
-	(void) bcons_getchar();
+	tagstart = (void *)(uintptr_t)0x100;
 	fakebop_dump_tags(tagstart);
 
 	/*

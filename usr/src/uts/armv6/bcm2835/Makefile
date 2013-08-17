@@ -58,7 +58,7 @@ clobber: $(CLOBBER_DEPS)
 install_h:
 
 $(UNIX): $(OBJECTS)
-	$(LD) -dn -e _start -o $@ $(OBJECTS)
+	$(LD) -dn -e _start -o $@ $(OBJECTS) -M Mapfile
 
 #
 # Include common targets
