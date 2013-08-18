@@ -34,7 +34,7 @@ static bootops_t bootop;
 /*
  * Debugging help
  */
-static int fakebop_prop_debug = 0;
+static int fakebop_prop_debug = 1;
 static int fakebop_alloc_debug = 0;
 static int fakebop_atag_debug = 0;
 
@@ -358,10 +358,14 @@ fakebop_getproplen(struct bootops *bops, const char *pname)
 {
 	bootprop_t *p;
 
+	if (fakebop_prop_debug)
+		bop_printf(NULL, "fakebop_getproplen: asked for %s\n\r", pname);
 	for (p = bprops; p != NULL; p = p->bp_next) {
 		if (strcmp(pname, p->bp_name) == 0)
 			return (p->bp_vlen);
 	}
+	if (fakebop_prop_debug != 0)
+		bop_printf(NULL, "prop %s not found\n", pname);
 	return (-1);
 }
 
@@ -370,9 +374,11 @@ fakebop_getprop(struct bootops *bops, const char *pname, void *value)
 {
 	bootprop_t *p;
 
+	if (fakebop_prop_debug)
+		bop_printf(NULL, "fakebop_getprop: asked for %s\n\r", pname);
 	for (p = bprops; p != NULL; p = p->bp_next) {
 		if (strcmp(pname, p->bp_name) == 0)
-			return (p->bp_vlen);
+			break;
 	}
 	if (p == NULL)
 		return (-1);
@@ -389,12 +395,6 @@ bop_printf(bootops_t *bop, const char *fmt, ...)
 	(void) vsnprintf(buffer, BUFFERSIZE, fmt, ap);
 	va_end(ap);
 	bcons_puts(buffer);
-}
-
-void
-boot_prop_finish(void)
-{
-	bop_panic("Called into boot_prop_finish");
 }
 
 static void
@@ -422,6 +422,10 @@ fakebop_setprop(char *name, int nlen, void *value, int vlen)
 	bp->bp_value = cur;
 	if (vlen > 0)
 		bcopy(value, cur, vlen);
+
+	if (fakebop_prop_debug)
+		bop_printf(NULL, "setprop - name: %s, nlen: %d, vlen: %d\n\r",
+		    name, nlen, vlen);
 }
 
 static void
@@ -626,6 +630,23 @@ fakebop_bootprops_init(void)
 }
 
 /*
+ * Nominally this should try and look for bootenv.rc, but seriously, let's not.
+ * Instead for now all we're going to to do is look and make sure that console
+ * is set. We *should* do something with it, but we're not.
+ */
+void
+boot_prop_finish(void)
+{
+	int ret;
+
+	ret = fakebop_getproplen(NULL, "console");
+	bop_printf(NULL, "console len: %d\n", ret);
+		bop_panic("console not set");
+}
+
+
+
+/*
  * Welcome to the kernel. We need to make a fake version of the boot_ops and the
  * boot_syscalls and then jump our way to _kobj_boot(). Here, we're borrowing
  * the Linux bootloader expectations, mostly because a lot of bootloaders and
@@ -663,9 +684,10 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 
 	fakebop_alloc_init();
 	fakebop_bootprops_init();
+	bop_printf(NULL, "booting into _kobj\n\r");
 	_kobj_boot(&bop_sysp, NULL, bops);
 
-	bop_panic("Returned from kobj_init\n");
+	bop_panic("Returned from kobj_init\n\r");
 }
 
 void
