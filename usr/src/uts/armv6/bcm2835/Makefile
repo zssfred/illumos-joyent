@@ -59,6 +59,7 @@ install_h:
 
 $(UNIX): $(OBJECTS)
 	$(LD) -dn -e _start -o $@ $(OBJECTS) -M Mapfile
+	pfexec ./tools/mkplatform.sh $(UNIX)
 
 #
 # Include common targets
