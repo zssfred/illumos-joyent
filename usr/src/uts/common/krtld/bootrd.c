@@ -92,7 +92,7 @@ kobj_boot_mountroot()
 		    "failed to get ramdisk from boot\n");
 		return (-1);
 	}
-#ifdef KOBJ_DEBUG
+#ifdef DEBUG
 	_kobj_printf(ops,
 	    "ramdisk range: 0x%llx-%llx\n", rd_start, rd_end);
 #endif
