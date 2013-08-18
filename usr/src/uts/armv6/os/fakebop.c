@@ -35,7 +35,7 @@ static bootops_t bootop;
  * Debugging help
  */
 static int fakebop_prop_debug = 0;
-static int fakebop_alloc_debug = 0;
+static int fakebop_alloc_debug = 1;
 static int fakebop_atag_debug = 0;
 
 static uint_t kbm_debug = 1;
@@ -333,7 +333,7 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 	if (bop_alloc_start == 0)
 		bop_panic("fakebop_alloc_init not called");
 
-	if (align == BO_ALIGN_DONTCARE)
+	if (align == BO_ALIGN_DONTCARE || align == 0)
 		align = 4;
 
 	size = P2ROUNDUP(size, align);
