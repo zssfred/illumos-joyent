@@ -47,7 +47,11 @@ extern void cf_close(fileid_t *);
 extern void cf_seek(fileid_t *, off_t, int);
 extern int cf_read(fileid_t *, caddr_t, size_t);
 
+#ifdef __arm__
+int bootrd_debug = 1;
+#else
 int bootrd_debug;
+#endif
 #ifdef _BOOT
 #define	dprintf	if (bootrd_debug) printf
 #else
