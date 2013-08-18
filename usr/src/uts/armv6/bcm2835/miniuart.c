@@ -129,6 +129,8 @@ bcm2835_miniuart_putc(uint8_t c)
 			break;
 	}
 	arm_reg_write(AUX_BASE + AUX_MU_IO_REG, c & 0x7f);
+	if (c == '\n')
+		bcm2835_miniuart_putc('\r');
 }
 
 uint8_t

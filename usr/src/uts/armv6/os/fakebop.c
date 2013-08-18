@@ -39,7 +39,7 @@ static int fakebop_alloc_debug = 0;
 static int fakebop_atag_debug = 0;
 
 static uint_t kbm_debug = 1;
-#define	DBG_MSG(x)	{ if (kbm_debug) bcons_puts(x); bcons_puts("\n\r"); }
+#define	DBG_MSG(x)	{ if (kbm_debug) bcons_puts(x); bcons_puts("\n"); }
 #define	BUFFERSIZE	256
 static char buffer[BUFFERSIZE];
 
@@ -107,7 +107,7 @@ static bootprop_t *bprops = NULL;
 void
 bop_panic(const char *msg)
 {
-	bop_printf(NULL, "ARM bop_panic:\n\r%s\n\rSpinning Forever...", msg);
+	bop_printf(NULL, "ARM bop_panic:\n%s\nSpinning Forever...", msg);
 	for (;;)
 		;
 }
@@ -154,14 +154,14 @@ fakebop_alloc_init(void)
 
 
 	if (fakebop_alloc_debug != 0)
-		bop_printf(NULL, "bot_alloc_nfree: %d\n\r", bop_alloc_nfree);
+		bop_printf(NULL, "bot_alloc_nfree: %d\n", bop_alloc_nfree);
 	if (top > bootinfo.bi_ramdisk &&
 	    top < bootinfo.bi_ramdisk + bootinfo.bi_ramsize)
 		bop_panic("fakebop_alloc_init memory range has overlaps");
 	bop_alloc_start = top;
 	if (fakebop_alloc_debug != 0)
 		bop_printf(NULL, "malloc arena starts at 0x%x "
-		    "with %d bytes\n\r", top, bop_alloc_nfree);
+		    "with %d bytes\n", top, bop_alloc_nfree);
 }
 
 static void
@@ -276,11 +276,11 @@ fakebop_dump_tags(void *tagstart)
 			while (*c != '\0') {
 				bcons_putchar(*c++);
 				if (++i == 72) {
-					bcons_puts("\n\r");
+					bcons_puts("\n");
 					i = 0;
 				}
 			}
-			bcons_puts("\n\r");
+			bcons_puts("\n");
 			break;
 		default:
 			break;
@@ -329,7 +329,7 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 	caddr_t start;
 
 	if (fakebop_alloc_debug != 0)
-		bop_printf(bops, "Asked to allocated %d bytes\n\r", size);
+		bop_printf(bops, "Asked to allocated %d bytes\n", size);
 	if (bop_alloc_start == 0)
 		bop_panic("fakebop_alloc_init not called");
 
@@ -338,7 +338,7 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 
 	size = P2ROUNDUP(size, align);
 	if (fakebop_alloc_debug != 0)
-		bop_printf(bops, "Allocating (aligned) %d bytes %d free\n\r",
+		bop_printf(bops, "Allocating (aligned) %d bytes %d free\n",
 		    size, bop_alloc_nfree);
 	if (size > bop_alloc_nfree)
 		bop_panic("fakebop_alloc ran out of memory");
@@ -361,7 +361,7 @@ fakebop_getproplen(struct bootops *bops, const char *pname)
 	bootprop_t *p;
 
 	if (fakebop_prop_debug)
-		bop_printf(NULL, "fakebop_getproplen: asked for %s\n\r", pname);
+		bop_printf(NULL, "fakebop_getproplen: asked for %s\n", pname);
 	for (p = bprops; p != NULL; p = p->bp_next) {
 		if (strcmp(pname, p->bp_name) == 0)
 			return (p->bp_vlen);
@@ -377,19 +377,19 @@ fakebop_getprop(struct bootops *bops, const char *pname, void *value)
 	bootprop_t *p;
 
 	if (fakebop_prop_debug)
-		bop_printf(NULL, "fakebop_getprop: asked for %s\n\r", pname);
+		bop_printf(NULL, "fakebop_getprop: asked for %s\n", pname);
 	for (p = bprops; p != NULL; p = p->bp_next) {
 		if (strcmp(pname, p->bp_name) == 0)
 			break;
 	}
 	if (p == NULL) {
 		if (fakebop_prop_debug)
-			bop_printf(NULL, "fakebop_getprop: ENOPROP %s\n\r",
+			bop_printf(NULL, "fakebop_getprop: ENOPROP %s\n",
 			    pname);
 		return (-1);
 	}
 	if (fakebop_prop_debug)
-		bop_printf(NULL, "fakebop_getprop: copying %d bytes to 0x%x\n\r",
+		bop_printf(NULL, "fakebop_getprop: copying %d bytes to 0x%x\n",
 		    p->bp_vlen, value);
 	bcopy(p->bp_value, value, p->bp_vlen);
 	return (0);
@@ -435,7 +435,7 @@ fakebop_setprop(char *name, int nlen, void *value, int vlen)
 		bcopy(value, cur, vlen);
 
 	if (fakebop_prop_debug)
-		bop_printf(NULL, "setprop - name: %s, nlen: %d, vlen: %d\n\r",
+		bop_printf(NULL, "setprop - name: %s, nlen: %d, vlen: %d\n",
 		    bp->bp_name, nlen, bp->bp_vlen);
 }
 
@@ -443,7 +443,7 @@ static void
 fakebop_setprop_string(char *name, char *value)
 {
 	if (fakebop_prop_debug)
-		bop_printf(NULL, "setprop_string: %s->[%s]\n\r", name, value);
+		bop_printf(NULL, "setprop_string: %s->[%s]\n", name, value);
 	fakebop_setprop(name, strlen(name), value, strlen(value) + 1);
 }
 
@@ -451,7 +451,7 @@ static void
 fakebop_setprop_32(char *name, uint32_t value)
 {
 	if (fakebop_prop_debug)
-		bop_printf(NULL, "setprop_32: %s->[%d]\n\r", name, value);
+		bop_printf(NULL, "setprop_32: %s->[%d]\n", name, value);
 	fakebop_setprop(name, strlen(name), (void *)&value, sizeof (value));
 }
 
@@ -459,7 +459,7 @@ static void
 fakebop_setprop_64(char *name, uint64_t value)
 {
 	if (fakebop_prop_debug)
-		bop_printf(NULL, "setprop_64: %s->[%lld]\n\r", name, value);
+		bop_printf(NULL, "setprop_64: %s->[%lld]\n", name, value);
 	fakebop_setprop(name, strlen(name), (void *)&value, sizeof (value));
 }
 
@@ -615,7 +615,7 @@ fakebop_bootprops_init(void)
 				    (prop[0] == '\'' || prop[0] == '"')) {
 					prop++;
 					proplen -= 2;
-				    }
+				}
 				prop[proplen] = '\0';
 				fakebop_setprop_string(pname, prop);
 			}
@@ -624,7 +624,7 @@ fakebop_bootprops_init(void)
 				break;
 		}
 	}
-	
+
 	/*
 	 * Yes, we actually set both names here. The latter is set because of
 	 * 1275.
@@ -678,7 +678,7 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	bcons_init(bip->bi_cmdline);
 
 	/* Clear some lines from the bootloader */
-	bop_printf(NULL, "\n\rWelcome to fakebop -- ARM edition\n\r");
+	bop_printf(NULL, "\nWelcome to fakebop -- ARM edition\n");
 	if (fakebop_atag_debug != 0)
 		fakebop_dump_tags(tagstart);
 
@@ -694,10 +694,10 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 
 	fakebop_alloc_init();
 	fakebop_bootprops_init();
-	bop_printf(NULL, "booting into _kobj\n\r");
+	bop_printf(NULL, "booting into _kobj\n");
 	_kobj_boot(&bop_sysp, NULL, bops);
 
-	bop_panic("Returned from kobj_init\n\r");
+	bop_panic("Returned from kobj_init\n");
 }
 
 void
