@@ -34,7 +34,7 @@ static bootops_t bootop;
 /*
  * Debugging help
  */
-static int fakebop_prop_debug = 1;
+static int fakebop_prop_debug = 0;
 static int fakebop_alloc_debug = 0;
 static int fakebop_atag_debug = 0;
 
@@ -380,8 +380,15 @@ fakebop_getprop(struct bootops *bops, const char *pname, void *value)
 		if (strcmp(pname, p->bp_name) == 0)
 			break;
 	}
-	if (p == NULL)
+	if (p == NULL) {
+		if (fakebop_prop_debug)
+			bop_printf(NULL, "fakebop_getprop: ENOPROP %s\n\r",
+			    pname);
 		return (-1);
+	}
+	if (fakebop_prop_debug)
+		bop_printf(NULL, "fakebop_getprop: copying %d bytes to 0x%x\n\r",
+		    p->bp_vlen, value);
 	bcopy(p->bp_value, value, p->bp_vlen);
 	return (0);
 }
@@ -419,13 +426,14 @@ fakebop_setprop(char *name, int nlen, void *value, int vlen)
 	cur += nlen;
 	*cur = '\0';
 	cur++;
+	bp->bp_vlen = vlen;
 	bp->bp_value = cur;
 	if (vlen > 0)
 		bcopy(value, cur, vlen);
 
 	if (fakebop_prop_debug)
 		bop_printf(NULL, "setprop - name: %s, nlen: %d, vlen: %d\n\r",
-		    name, nlen, vlen);
+		    bp->bp_name, nlen, bp->bp_vlen);
 }
 
 static void

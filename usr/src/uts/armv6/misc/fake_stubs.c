@@ -593,3 +593,15 @@ kobj_vmem_init(void)
 {
 	bop_panic("kobj_vmem_init");
 }
+
+void
+assfail(void)
+{
+	bop_panic("assfail");
+}
+
+void
+mutex_owned(void)
+{
+	bop_panic("mutex_owned");
+}

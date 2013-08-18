@@ -57,6 +57,17 @@ DEF_BUILDS	= $(DEF_BUILDS32)
 ALL_BUILDS	= $(ALL_BUILDS32)
 
 #
-# Preprocessor defs
+# Debugging
 #
-ALL_DEFS	 = $(MACHINE_DEFS)
+DEBUG_DEFS_OBJ32	= -DDEBUG
+DEBUG_DEFS_DBG32	= -DDEBUG
+DEBUG_DEFS_OBJ64	= -DDEBUG
+DEBUG_DEFS_DBG64	= -DDEBUG
+DEBUG_DEFS		= $(DEBUG_DEFS_$(BUILD_TYPE))
+
+#
+# Preprocessor defs
+# XXX Hack in debug for right now. BUILD_TYPE isn't getting propagated correctly
+# for some reason in bcm2835/.
+#
+ALL_DEFS	 = $(MACHINE_DEFS) $(DEBUG_DEFS) -DDEBUG
