@@ -61,12 +61,6 @@ cons_polledio(void)
 }
 
 void
-bzero(void)
-{
-	bop_panic("bzero");
-}
-
-void
 kcred(void)
 {
 	bop_panic("kcred");

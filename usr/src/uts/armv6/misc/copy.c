@@ -50,3 +50,14 @@ bcopy(const void *s, void *d, size_t n)
 			*dest = *src;
 	}
 }
+
+void
+bzero(void *s, size_t n)
+{
+	char *c = s;
+	while (n > 0) {
+		*c = 0;
+		c++;
+		n--;
+	}
+}
