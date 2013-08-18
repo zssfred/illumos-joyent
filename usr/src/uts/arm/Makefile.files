@@ -27,4 +27,7 @@ KRTLD_OBJS +=		\
 	kobj_isa.o	\
 	kobj_reloc.o
 
+CORE_OBJS += \
+	decompress.o
+
 INC_PATH	+= -I$(UTSBASE)/arm

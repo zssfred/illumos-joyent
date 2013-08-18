@@ -247,12 +247,6 @@ fop_close(void)
 }
 
 void
-cf_check_compressed(void)
-{
-	bop_panic("cf_check_compressed");
-}
-
-void
 heap_arena(void)
 {
 	bop_panic("heap_arena");
@@ -373,18 +367,6 @@ stubs_base(void)
 }
 
 void
-cf_read(void)
-{
-	bop_panic("cf_read");
-}
-
-void
-cf_seek(void)
-{
-	bop_panic("cf_seek");
-}
-
-void
 rw_exit(void)
 {
 	bop_panic("rw_exit");
@@ -448,12 +430,6 @@ void
 SHA1Init(void)
 {
 	bop_panic("SHA1Init");
-}
-
-void
-cf_close(void)
-{
-	bop_panic("cf_close");
 }
 
 void
@@ -592,4 +568,15 @@ void
 mutex_owned(void)
 {
 	bop_panic("mutex_owned");
+}
+
+/*
+ * prom_printf and co. are supposed to come from genunix. Further rather than
+ * reinvent the wheel here, we should move uts/intel/promif to psm/non1275/ and
+ * make a common set of code here rather than just reinvent everything.
+ */
+void
+prom_printf(void)
+{
+	bop_panic("prom_prinf");
 }

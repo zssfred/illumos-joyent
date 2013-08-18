@@ -39,6 +39,14 @@ CORE_OBJS =			\
 	string.o
 
 #
+# XXX this is also specified in uts/arm/Makefile.files, but note the = sign for
+# CORE_OBJS above. Right now we're not quite ready to build everything from
+# uts/common yet, so we instead clobber it with our stuff.
+#
+CORE_OBJS += \
+	decompress.o
+
+#
 # Definitions and Include Paths
 #
 INC_PATH	+= -I$(UTSBASE)/armv6 -I$(SRC)/common
