@@ -34,7 +34,7 @@ static bootops_t bootop;
 /*
  * Debugging help
  */
-static int fakebop_setprop_debug = 0;
+static int fakebop_prop_debug = 0;
 static int fakebop_alloc_debug = 0;
 static int fakebop_atag_debug = 0;
 
@@ -354,19 +354,30 @@ fakebop_free(struct bootops *bops, caddr_t virt, size_t size)
 }
 
 static int
-fakebop_getproplen(struct bootops *bops, const char *prop)
+fakebop_getproplen(struct bootops *bops, const char *pname)
 {
-	bop_printf(NULL, "fakebop_getproplen: %s\n", prop);
-	bop_panic("Called into fakebop_getproplen");
+	bootprop_t *p;
+
+	for (p = bprops; p != NULL; p = p->bp_next) {
+		if (strcmp(pname, p->bp_name) == 0)
+			return (p->bp_vlen);
+	}
 	return (-1);
 }
 
 static int
-fakebop_getprop(struct bootops *bops, const char *prop, void *value)
+fakebop_getprop(struct bootops *bops, const char *pname, void *value)
 {
-	bop_printf(NULL, "fakebop_getproplen: %s\n", prop);
-	bop_panic("Called into fakebop_getprop");
-	return (-1);
+	bootprop_t *p;
+
+	for (p = bprops; p != NULL; p = p->bp_next) {
+		if (strcmp(pname, p->bp_name) == 0)
+			return (p->bp_vlen);
+	}
+	if (p == NULL)
+		return (-1);
+	bcopy(p->bp_value, value, p->bp_vlen);
+	return (0);
 }
 
 void
@@ -416,7 +427,7 @@ fakebop_setprop(char *name, int nlen, void *value, int vlen)
 static void
 fakebop_setprop_string(char *name, char *value)
 {
-	if (fakebop_setprop_debug)
+	if (fakebop_prop_debug)
 		bop_printf(NULL, "setprop_string: %s->[%s]\n\r", name, value);
 	fakebop_setprop(name, strlen(name), value, strlen(value) + 1);
 }
@@ -424,7 +435,7 @@ fakebop_setprop_string(char *name, char *value)
 static void
 fakebop_setprop_32(char *name, uint32_t value)
 {
-	if (fakebop_setprop_debug)
+	if (fakebop_prop_debug)
 		bop_printf(NULL, "setprop_32: %s->[%d]\n\r", name, value);
 	fakebop_setprop(name, strlen(name), (void *)&value, sizeof (value));
 }
@@ -432,7 +443,7 @@ fakebop_setprop_32(char *name, uint32_t value)
 static void
 fakebop_setprop_64(char *name, uint64_t value)
 {
-	if (fakebop_setprop_debug)
+	if (fakebop_prop_debug)
 		bop_printf(NULL, "setprop_64: %s->[%lld]\n\r", name, value);
 	fakebop_setprop(name, strlen(name), (void *)&value, sizeof (value));
 }
