@@ -419,7 +419,10 @@ kobj_init(
 #else
 	{
 		/* on x86, we always boot with a ramdisk */
-		(void) kobj_boot_mountroot();
+		if (kobj_boot_mountroot() != 0) {
+			_kobj_printf(ops, "can't mount boot fs\n");
+			goto fail;
+		}
 
 		/*
 		 * Now that the ramdisk is mounted, finish boot property
@@ -565,7 +568,7 @@ fail:
 	_kobj_printf(ops, "in the boot archive. Please verify that this"
 	    " file\n");
 	_kobj_printf(ops, "matches what is found in the boot archive.\n");
-	_kobj_printf(ops, "You may need to boot using the Solaris failsafe to"
+	_kobj_printf(ops, "You may need to boot using the illumos failsafe to"
 	    " fix this.\n");
 	bop_panic("Unable to boot");
 #endif
