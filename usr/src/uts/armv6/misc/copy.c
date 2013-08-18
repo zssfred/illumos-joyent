@@ -52,6 +52,12 @@ bcopy(const void *s, void *d, size_t n)
 }
 
 void
+memcpy(void *restrict s1, const void *restrict s2, size_t n)
+{
+	bcopy(s2, s1, n);
+}
+
+void
 bzero(void *s, size_t n)
 {
 	char *c = s;

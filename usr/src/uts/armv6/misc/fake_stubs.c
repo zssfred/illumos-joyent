@@ -313,12 +313,6 @@ hat_unload(void)
 }
 
 void
-memcpy(void)
-{
-	bop_panic("memcpy");
-}
-
-void
 kmem_zalloc(void)
 {
 	bop_panic("kmem_zalloc");
