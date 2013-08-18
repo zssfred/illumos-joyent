@@ -30,6 +30,14 @@
 #include <sys/ctype.h>
 
 static bootops_t bootop;
+
+/*
+ * Debugging help
+ */
+static int fakebop_setprop_debug = 0;
+static int fakebop_alloc_debug = 0;
+static int fakebop_atag_debug = 0;
+
 static uint_t kbm_debug = 1;
 #define	DBG_MSG(x)	{ if (kbm_debug) bcons_puts(x); bcons_puts("\n\r"); }
 #define	BUFFERSIZE	256
@@ -144,13 +152,16 @@ fakebop_alloc_init(void)
 	top = bootinfo.bi_memstart + bootinfo.bi_memsize;
 	top -= bop_alloc_nfree;
 
-	bop_printf(NULL, "bot_alloc_nfree: %d\n\r", bop_alloc_nfree);
+
+	if (fakebop_alloc_debug != 0)
+		bop_printf(NULL, "bot_alloc_nfree: %d\n\r", bop_alloc_nfree);
 	if (top > bootinfo.bi_ramdisk &&
 	    top < bootinfo.bi_ramdisk + bootinfo.bi_ramsize)
 		bop_panic("fakebop_alloc_init memory range has overlaps");
 	bop_alloc_start = top;
-	bop_printf(NULL, "starting with memory at 0x%x and have %d bytes\n\r",
-	    top, bop_alloc_nfree);
+	if (fakebop_alloc_debug != 0)
+		bop_printf(NULL, "malloc arena starts at 0x%x "
+		    "with %d bytes\n\r", top, bop_alloc_nfree);
 }
 
 static void
@@ -315,7 +326,8 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 {
 	caddr_t start;
 
-	bop_printf(bops, "Asked to allocated %d bytes\n\r", size);
+	if (fakebop_alloc_debug != 0)
+		bop_printf(bops, "Asked to allocated %d bytes\n\r", size);
 	if (bop_alloc_start == 0)
 		bop_panic("fakebop_alloc_init not called");
 
@@ -323,8 +335,9 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 		align = 4;
 
 	size = P2ROUNDUP(size, align);
-	bop_printf(bops, "Asked to allocated %d bytes %d free\n\r", size,
-	    bop_alloc_nfree);
+	if (fakebop_alloc_debug != 0)
+		bop_printf(bops, "Allocating (aligned) %d bytes %d free\n\r",
+		    size, bop_alloc_nfree);
 	if (size > bop_alloc_nfree)
 		bop_panic("fakebop_alloc ran out of memory");
 
@@ -343,6 +356,7 @@ fakebop_free(struct bootops *bops, caddr_t virt, size_t size)
 static int
 fakebop_getproplen(struct bootops *bops, const char *prop)
 {
+	bop_printf(NULL, "fakebop_getproplen: %s\n", prop);
 	bop_panic("Called into fakebop_getproplen");
 	return (-1);
 }
@@ -350,6 +364,7 @@ fakebop_getproplen(struct bootops *bops, const char *prop)
 static int
 fakebop_getprop(struct bootops *bops, const char *prop, void *value)
 {
+	bop_printf(NULL, "fakebop_getproplen: %s\n", prop);
 	bop_panic("Called into fakebop_getprop");
 	return (-1);
 }
@@ -401,12 +416,24 @@ fakebop_setprop(char *name, int nlen, void *value, int vlen)
 static void
 fakebop_setprop_string(char *name, char *value)
 {
+	if (fakebop_setprop_debug)
+		bop_printf(NULL, "setprop_string: %s->[%s]\n\r", name, value);
 	fakebop_setprop(name, strlen(name), value, strlen(value) + 1);
+}
+
+static void
+fakebop_setprop_32(char *name, uint32_t value)
+{
+	if (fakebop_setprop_debug)
+		bop_printf(NULL, "setprop_32: %s->[%d]\n\r", name, value);
+	fakebop_setprop(name, strlen(name), (void *)&value, sizeof (value));
 }
 
 static void
 fakebop_setprop_64(char *name, uint64_t value)
 {
+	if (fakebop_setprop_debug)
+		bop_printf(NULL, "setprop_64: %s->[%lld]\n\r", name, value);
 	fakebop_setprop(name, strlen(name), (void *)&value, sizeof (value));
 }
 
@@ -418,8 +445,9 @@ fakebop_setprop_64(char *name, uint64_t value)
 static void
 fakebop_bootprops_init(void)
 {
-	int i = 0;
-	char *c, *kernel;
+	int i = 0, proplen = 0, cmdline_len = 0, quote, cont;
+	static int stdout_val = 0;
+	char *c, *prop, *cmdline, *pname;
 	bootinfo_t *bp = &bootinfo;
 
 	/*
@@ -433,6 +461,11 @@ fakebop_bootprops_init(void)
 	}
 
 	/*
+	 * TODO Various arm devices may spit properties at the front just like
+	 * i86xpv. We should do something about them at some point.
+	 */
+
+	/*
 	 * Our boot parameters always wil start with kernel /platform/..., but
 	 * the bootloader may in fact stick other properties in front of us. To
 	 * deal with that we go ahead and we include them. We'll find the kernel
@@ -440,9 +473,145 @@ fakebop_bootprops_init(void)
 	 * an equals sign, mainly kernel.
 	 */
 	c = bp->bi_cmdline;
-	kernel = strstr(c, "kernel");
-	if (kernel == NULL)
+	prop = strstr(c, "kernel");
+	if (prop == NULL)
 		bop_panic("failed to find kernel string in boot params!");
+	/* Get us past the first kernel string */
+	prop += 6;
+	while (ISSPACE(prop[0]))
+		prop++;
+	proplen = 0;
+	while (prop[proplen] != '\0' && !ISSPACE(prop[proplen]))
+		proplen++;
+	c = prop + proplen + 1;
+	if (proplen > 0) {
+		prop[proplen] = '\0';
+		fakebop_setprop_string("boot-file", prop);
+		/*
+		 * We strip the leading path from whoami so no matter what
+		 * environment we enter into here from it is consistent and
+		 * makes some amount of sense.
+		 */
+		if (strstr(prop, "/platform") != NULL)
+			prop = strstr(prop, "/platform");
+		fakebop_setprop_string("whoami", prop);
+	} else {
+		bop_panic("no kernel string in boot params!");
+	}
+
+	/*
+	 * At this point we have two different sets of properties. Anything that
+	 * involves -B is a boot property, otherwise it becomes part of the
+	 * kernel command line and must be saved in its own property.
+	 */
+	cmdline = fakebop_alloc(NULL, NULL, strlen(c), BO_ALIGN_DONTCARE);
+	cmdline[0] = '\0';
+	while (*c != '\0') {
+
+		/*
+		 * Just blindly copy it to the commadline if we don't find it.
+		 */
+		if (c[0] != '-' || c[1] != 'B') {
+			cmdline[cmdline_len++] = *c;
+			cmdline[cmdline_len] = '\0';
+			c++;
+			continue;
+		}
+
+		/* Get past "-B" */
+		c += 2;
+		while (ISSPACE(*c))
+			c++;
+
+		/*
+		 * We have a series of comma separated key-value pairs to sift
+		 * through here. The key and value are separated by an equals
+		 * sign. The value may quoted with either a ' or ". Note, white
+		 * space will also end the value (as it indicates that we have
+		 * moved on from the -B argument.
+		 */
+		for (;;) {
+			if (*c == '\0' || ISSPACE(*c))
+				break;
+			prop = strchr(c, '=');
+			if (prop == NULL)
+				break;
+			pname = c;
+			*prop = '\0';
+			prop++;
+			proplen = 0;
+			quote = '\0';
+			for (;;) {
+				if (prop[proplen] == '\0')
+					break;
+
+				if (proplen == 0 && (prop[0] == '\'' ||
+				    prop[0] == '"')) {
+					quote = prop[0];
+					proplen++;
+					continue;
+				}
+
+				if (quote != '\0') {
+					if (prop[proplen] == quote)
+						quote = '\0';
+					proplen++;
+					continue;
+				}
+
+				if (prop[proplen] == ',' ||
+				    ISSPACE(prop[proplen]))
+					break;
+
+				/* We just have a normal character */
+				proplen++;
+			}
+
+			/*
+			 * Save whether we should continue or not and update 'c'
+			 * now as we will most likely clobber the string when we
+			 * are done.
+			 */
+			cont = (prop[proplen] == ',');
+			if (prop[proplen] != '\0')
+				c = prop + proplen + 1;
+			else
+				c = prop + proplen;
+
+			if (proplen == 0) {
+				fakebop_setprop_string(pname, "true");
+			} else {
+				/*
+				 * When we copy the prop, do not include the
+				 * quote.
+				 */
+				if (prop[0] == prop[proplen - 1] &&
+				    (prop[0] == '\'' || prop[0] == '"')) {
+					prop++;
+					proplen -= 2;
+				    }
+				prop[proplen] = '\0';
+				fakebop_setprop_string(pname, prop);
+			}
+
+			if (cont == 0)
+				break;
+		}
+	}
+	
+	/*
+	 * Yes, we actually set both names here. The latter is set because of
+	 * 1275.
+	 */
+	fakebop_setprop_string("boot-args", cmdline);
+	fakebop_setprop_string("bootargs", cmdline);
+
+	/*
+	 * Here are some things that we make up, just like our i86pc brethren.
+	 */
+	fakebop_setprop_32("stdout", 0);
+	fakebop_setprop_string("mfg-name", "ARMv6");
+	fakebop_setprop_string("impl-arch-name", "ARMv6");
 }
 
 /*
@@ -466,8 +635,10 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	fakebop_getatags(tagstart);
 	bcons_init(bip->bi_cmdline);
 
+	/* Clear some lines from the bootloader */
 	bop_printf(NULL, "\n\rWelcome to fakebop -- ARM edition\n\r");
-	fakebop_dump_tags(tagstart);
+	if (fakebop_atag_debug != 0)
+		fakebop_dump_tags(tagstart);
 
 	/*
 	 * Fill in the bootops vector
