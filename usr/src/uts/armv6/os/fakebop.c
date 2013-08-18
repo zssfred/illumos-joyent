@@ -309,11 +309,13 @@ fakebop_getatags(void *tagstart)
 		case ATAG_CMDLINE:
 			alp = (atag_cmdline_t *)ahp;
 			bp->bi_cmdline = alp->al_cmdline;
+			break;
 		case ATAG_INITRD2:
 			aip = (atag_initrd_t *)ahp;
 			bp->bi_ramdisk = aip->ai_start;
 			bp->bi_ramsize = aip->ai_size;
 			bp->bi_flags |= BI_HAS_RAMDISK;
+			break;
 		default:
 			break;
 		}
@@ -416,6 +418,7 @@ fakebop_setprop(char *name, int nlen, void *value, int vlen)
 	bp = (bootprop_t *)cur;
 	if (bprops == NULL) {
 		bprops = bp;
+		bp->bp_next = NULL;
 	} else {
 		bp->bp_next = bprops;
 		bprops = bp;
@@ -647,8 +650,7 @@ boot_prop_finish(void)
 {
 	int ret;
 
-	ret = fakebop_getproplen(NULL, "console");
-	bop_printf(NULL, "console len: %d\n", ret);
+	if (fakebop_getproplen(NULL, "console") <= 0)
 		bop_panic("console not set");
 }
 
