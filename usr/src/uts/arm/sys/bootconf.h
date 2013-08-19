@@ -63,6 +63,7 @@ extern void bop_panic(const char *);
 extern void boot_prop_finish(void);
 extern void bop_printf(struct bootops *, const char *, ...);
 
+extern struct bootops *bootops;
 #ifdef __cplusplus
 }
 #endif

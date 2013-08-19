@@ -1,0 +1,46 @@
+
+
+UTSTREE=$(UTSBASE)
+PLATFORM	= armv6
+
+
+UNIX_DIR	= $(UTSBASE)/armv6/bcm2836/unix
+GENLIB_DIR	= $(UTSBASE)/intel/genunix
+
+
+include $(UTSTREE)/arm/Makefile.files
+include $(UTSTREE)/common/Makefile.files
+
+include $(UTSBASE)/Makefile.uts
+
+#
+#	Define the base directory for installation.
+#
+BASE_INS_DIR	= $(ROOT)
+
+#
+#	Define supported builds
+#
+DEF_BUILDS		= $(DEF_BUILDS32)
+ALL_BUILDS		= $(ALL_BUILDS32)
+
+#
+#	Debugging level
+#
+#	Special knowledge of which special debugging options affect which
+#	file is used to optimize the build if these flags are changed.
+#
+DEBUG_DEFS_OBJ32	=
+DEBUG_DEFS_DBG32	= -DDEBUG
+DEBUG_DEFS_OBJ64	=
+DEBUG_DEFS_DBG64	= -DDEBUG
+DEBUG_DEFS		= $(DEBUG_DEFS_$(BUILD_TYPE))
+
+DEBUG_COND_OBJ32	:sh = echo \\043
+DEBUG_COND_DBG32	=
+DEBUG_COND_OBJ64	:sh = echo \\043
+DEBUG_COND_DBG64	=
+
+ALL_DEFS	 = $(DEBUG_DEFS) $(OPTION_DEFS)
+
+LINTFLAGS	+= -D_MACHDEP -I$(UTSBASE)/armv6
