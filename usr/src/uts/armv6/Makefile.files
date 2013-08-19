@@ -24,7 +24,6 @@ MATH_OBJS += 			\
 
 MISC_OBJS +=			\
 	copy.o			\
-	fake_stubs.o		\
 	arm_subr.o
 
 OS_OBJS +=			\

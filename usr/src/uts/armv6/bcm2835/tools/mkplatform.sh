@@ -38,7 +38,9 @@ mkp_rdmnt="$mkp_tmpdir/rd.mnt.32"
 mkp_size=4096	# 4 MB in KB
 mkp_lofi=
 mkp_unix=
+mkp_genunix=
 mkp_upath="/platform/armv6/kernel/"
+mkp_genpath="/kernel"
 
 
 function fatal
@@ -80,6 +82,9 @@ function copyfiles
 {
 	mkdir -p "$mkp_rdmnt/$mkp_upath" || fatal "failed to create $mkp_upath"
 	cp $mkp_unix "$mkp_rdmnt/$mkp_upath/" || fatal "failed to copy unix"
+	mkdir -p "$mkp_rdmnt/$mkp_genpath" || fatal \
+	    "failed to create $mkp_genpath"
+	cp $mkp_genunix "$mkp_rdmnt/$mkp_genpath/" || fatal "failed to copy unix"
 }
 
 function teardown
@@ -94,6 +99,8 @@ function teardown
 
 [[ -n "$1" ]] || fatal "missing name of unix"
 mkp_unix="$1"
+[[ -n "$2" ]] || fatal "missing name of genunix"
+mkp_genunix="$2"
 setup
 setupufs
 copyfiles

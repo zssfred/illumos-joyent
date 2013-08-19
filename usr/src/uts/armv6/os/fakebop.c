@@ -36,7 +36,7 @@ static bootops_t bootop;
  * Debugging help
  */
 static int fakebop_prop_debug = 0;
-static int fakebop_alloc_debug = 1;
+static int fakebop_alloc_debug = 0;
 static int fakebop_atag_debug = 0;
 
 static uint_t kbm_debug = 1;

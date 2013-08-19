@@ -30,6 +30,11 @@ OBJECTS	= \
 	$(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
 	$(OBJS_DIR)/zlib_obj.o
 
+GENUNIX		= genunix
+GENUNIX_DIR	= ../../arm/$(GENUNIX)
+#LIBOPTS		= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
+LIBOPTS		= -L . -l $(GENUNIX)
+
 CLEANFILES += \
 	$(OBJECTS) \
 	$(UNIX)
@@ -57,9 +62,15 @@ clobber: $(CLOBBER_DEPS)
 
 install_h:
 
-$(UNIX): $(OBJECTS)
-	$(LD) -dn -e _start -o $@ $(OBJECTS) -M Mapfile
-	pfexec ./tools/mkplatform.sh $(UNIX)
+libgenunix.so: ../misc/fake_stubs.c
+	mkdir -p debug32
+	$(COMPILE.c) -o debug32/fake_stubs.o ../misc/fake_stubs.c
+	$(LD) -r $(LDFLAGS) -o debug32/genunix debug32/fake_stubs.o
+	$(BUILD.SO) genunix debug32/genunix
+
+$(UNIX): $(OBJECTS) libgenunix.so
+	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -MMapfile
+	pfexec ./tools/mkplatform.sh $(UNIX) debug32/genunix
 
 #
 # Include common targets
