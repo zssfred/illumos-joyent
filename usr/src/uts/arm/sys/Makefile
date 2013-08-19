@@ -27,10 +27,12 @@ HDRS = \
 	machsig.h \
 	machtypes.h \
 	obpdefs.h \
-	privregs.h \
 	pcb.h \
+	privregs.h \
+	procfs_isa.h \
 	promif.h \
 	regset.h \
+	spl.h \
 	stack.h \
 	ucontext.h \
 	utrap.h

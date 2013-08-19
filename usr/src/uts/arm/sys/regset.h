@@ -88,6 +88,15 @@ extern "C" {
 typedef long	greg_t;
 typedef greg_t	gregset_t[_NGREG];
 
+/*
+ * Floating point definitions
+ * XXX Fix these later
+ */
+typedef struct fpu {
+	/* 32 64-bit register for VFP3 / NEON */
+	uint64_t f_fpregs[32];
+} fpregset_t;
+
 #if !defined(_XPG4_2) || defined(__EXTENSIONS__)
 
 typedef struct {
