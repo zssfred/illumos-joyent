@@ -29,7 +29,8 @@ MISC_OBJS +=			\
 
 OS_OBJS +=			\
 	flush.o			\
-	fakebop.o
+	fakebop.o		\
+	mlsetup.o
 
 CORE_OBJS =			\
 	$(BOOT_OBJS)		\

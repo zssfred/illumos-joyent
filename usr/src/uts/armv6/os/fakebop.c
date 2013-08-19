@@ -28,6 +28,7 @@
 #include <sys/sysmacros.h>
 #include <sys/systm.h>
 #include <sys/ctype.h>
+#include <sys/bootstat.h>
 
 static bootops_t bootop;
 
@@ -654,7 +655,14 @@ boot_prop_finish(void)
 		bop_panic("console not set");
 }
 
-
+/*ARGSUSED*/
+int
+boot_compinfo(int fd, struct compinfo *cbp)
+{
+	cbp->iscmp = 0;
+	cbp->blksize = MAXBSIZE;
+	return (0);
+}
 
 /*
  * Welcome to the kernel. We need to make a fake version of the boot_ops and the

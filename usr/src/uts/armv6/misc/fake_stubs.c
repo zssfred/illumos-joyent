@@ -205,12 +205,6 @@ default_path(void)
 }
 
 void
-mach_modpath(void)
-{
-	bop_panic("mach_modpath");
-}
-
-void
 kern_bootfile(void)
 {
 	bop_panic("kern_bootfile");
@@ -454,12 +448,6 @@ void
 segkmem_alloc(void)
 {
 	bop_panic("segkmem_alloc");
-}
-
-void
-boot_compinfo(void)
-{
-	bop_panic("boot_compinfo");
 }
 
 void
