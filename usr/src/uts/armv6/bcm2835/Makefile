@@ -16,13 +16,12 @@
 UTSBASE = ../..
 
 UNIX		= unix
-
-#
-# Include common rules
-#
-include $(SRC)/Makefile.master
-include $(UTSBASE)/armv6/bcm2835/Makefile.files
-include $(UTSBASE)/armv6/Makefile.armv6
+UNIX_BIN	= $(OBJS_DIR)/$(UNIX)
+GENUNIX		= genunix
+GENUNIX_DIR	= ../../arm/$(GENUNIX)
+#LIBOPTS		= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
+LIBOPTS		= -L $(OBJS_DIR) -l $(GENUNIX)
+LIBGENUNIX	= $(OBJS_DIR)/libgenunix.so
 
 OBJECTS	= \
 	$(BCM2835_OBJS:%=$(OBJS_DIR)/%) \
@@ -30,15 +29,18 @@ OBJECTS	= \
 	$(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
 	$(OBJS_DIR)/zlib_obj.o
 
-GENUNIX		= genunix
-GENUNIX_DIR	= ../../arm/$(GENUNIX)
-#LIBOPTS		= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
-LIBOPTS		= -L . -l $(GENUNIX)
+#
+# Include common rules
+#
+include $(UTSBASE)/armv6/bcm2835/Makefile.bcm2835
+
+ALL_TARGET 	= $(UNIX_BIN)
+INSTALL_TARGET 	= $(UNIX_BIN)
 
 CLEANFILES += \
 	$(OBJECTS) \
 	$(UNIX) \
-	libenunix.so
+	$(LIBGENUNIX)
 
 CERRWARN	+= -_gcc=-Wno-parentheses
 CERRWARN	+= -_gcc=-Wno-uninitialized
@@ -48,14 +50,13 @@ CERRWARN	+= -_gcc=-Wno-unused-variable
 CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 
 #
-# XXX We have no CTF support, so override CTFCONVERT_O for now.
+# XXX For some reason CTF_FLAGS aren't getting set for us.
 #
-CTFCONVERT_O = /bin/true
-CTFMERGE = /bin/true
-
-all: def $(UNIX) 
+CFLAGS += $(CTF_FLAGS)
 
 def: $(DEF_DEPS)
+
+all: $(ALL_DEPS)
 
 clean: $(CLEAN_DEPS)
 
@@ -63,15 +64,20 @@ clobber: $(CLOBBER_DEPS)
 
 install_h:
 
-libgenunix.so: ../misc/fake_stubs.c
-	mkdir -p debug32
-	$(COMPILE.c) -o debug32/fake_stubs.o ../misc/fake_stubs.c
-	$(LD) -r $(LDFLAGS) -o debug32/genunix debug32/fake_stubs.o
-	$(BUILD.SO) genunix debug32/genunix
+$(LIBGENUNIX): ../misc/fake_stubs.c
+	$(COMPILE.c) -o $(OBJS_DIR)/fake_stubs.o ../misc/fake_stubs.c
+	$(LD) -r $(LDFLAGS) -o $(OBJS_DIR)/genunix $(OBJS_DIR)/fake_stubs.o
+	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
 
-$(UNIX): $(OBJECTS) libgenunix.so
+#
+# XXX When we have a real genunix we should uniquify against it...
+#
+$(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
 	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -MMapfile
-	pfexec ./tools/mkplatform.sh $(UNIX) debug32/genunix
+	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
+	$(POST_PROCESS)
+	pfexec ./tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
+	mv boot_archive $(OBJS_DIR)/
 
 #
 # Include common targets

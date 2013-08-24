@@ -25,12 +25,6 @@ p0(void)
 }
 
 void
-t0(void)
-{
-	bop_panic("t0");
-}
-
-void
 kas(void)
 {
 	bop_panic("kas");

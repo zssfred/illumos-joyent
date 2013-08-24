@@ -26,6 +26,9 @@ MISC_OBJS +=			\
 	copy.o			\
 	arm_subr.o
 
+ML_OBJS +=			\
+	glocore.o
+
 OS_OBJS +=			\
 	flush.o			\
 	fakebop.o		\
@@ -35,6 +38,7 @@ CORE_OBJS =			\
 	$(BOOT_OBJS)		\
 	$(MATH_OBJS)		\
 	$(MISC_OBJS)		\
+	$(ML_OBJS)		\
 	$(OS_OBJS)		\
 	string.o
 

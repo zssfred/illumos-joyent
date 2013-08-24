@@ -19,15 +19,24 @@
 #
 $(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/boot/%.c
 	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/math/%.c
 	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/math/%.s
 	$(COMPILE.s) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/misc/%.c
 	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
+
+$(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/ml/%.s
+	$(COMPILE.s) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/os/%.c
 	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)

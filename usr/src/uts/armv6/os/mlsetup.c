@@ -18,6 +18,7 @@
 #include <sys/machsystm.h>
 #include <sys/sunddi.h>
 #include <sys/promif.h>
+#include <sys/privregs.h>
 
 /*
  * We've been given the name of the kernel. From this we should construct the
@@ -48,4 +49,11 @@ mach_modpath(char *path, const char *filename)
 	 * remove its suffix from the file name if it is there.
 	 */
 	(void) strncpy(path, filename, p - filename);
+}
+
+extern int bop_panic(const char *str);
+void
+mlsetup(struct regs *rp)
+{
+	bop_panic("mlsetup!");
 }
