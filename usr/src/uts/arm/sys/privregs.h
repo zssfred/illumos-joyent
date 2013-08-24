@@ -32,6 +32,34 @@ extern "C" {
  * need.
  */
 
+#if !defined(__arm__)
+#error	"non-ARM code depends on ARM privilieged header!"
+#endif
+
+#ifndef _ASM
+
+struct regs {
+	greg_t	r_r0;
+	greg_t	r_r1;
+	greg_t	r_r2;
+	greg_t	r_r3;
+	greg_t	r_r4;
+	greg_t	r_r5;
+	greg_t	r_r6;
+	greg_t	r_r7;
+	greg_t	r_r8;
+	greg_t	r_fp;
+	greg_t	r_r10;
+	greg_t	r_r11;
+	greg_t	r_ip;
+	greg_t	r_sp;
+	greg_t	r_lr;
+	greg_t	r_pc;
+	greg_t	r_cpsr;
+};
+
+#endif /* _ASM */
+
 #ifdef __cplusplus
 }
 #endif
