@@ -122,12 +122,6 @@ CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 LINTFLAGS	+= -D_MACHDEP -I../../armv6
 
 #
-# XXX We have no ctf support so override that.
-#
-CTFCONVERT_O = /bin/true
-CTFMERGE = /bin/true
-
-#
 #	Default build targets.
 #
 .KEEP_STATE:
