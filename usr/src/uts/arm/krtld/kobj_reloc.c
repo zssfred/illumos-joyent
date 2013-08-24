@@ -72,7 +72,7 @@ do_relocate(struct module *mp, char *reltbl, Word relshtype, int nreloc,
 		off = ((Rel *)reladdr)->r_offset;
 		stndx = ELF32_R_SYM(((Rel *)reladdr)->r_info);
 		if (stndx >= mp->nsyms) {
-			_kobj_printf(ops, "do_relocate: bad strndx %d\n",
+			_kobj_printf(ops, "do_relocate: bad stndx %d\n",
 			    symnum);
 			return (-1);
 		}
@@ -90,16 +90,15 @@ do_relocate(struct module *mp, char *reltbl, Word relshtype, int nreloc,
 		if (rtype == R_ARM_NONE)
 			continue;
 
+		symref = (Sym *)(mp->symtbl+(stndx * mp->symhdr->sh_entsize));
+
 #ifdef	KOBJ_DEBUG
 		if (kobj_debug & D_RELOCATIONS) {
-			Sym *	symp;
-			symp = (Sym *)
-			    (mp->symtbl+(stndx * mp->symhdr->sh_entsize));
 			_kobj_printf(ops, "krtld:\t%s",
 			    conv_reloc_ARM_type(rtype));
 			_kobj_printf(ops, "\t0x%8x", off);
 			_kobj_printf(ops, "  %s\n",
-			    (const char *)mp->strings + symp->st_name);
+			    (const char *)mp->strings + symref->st_name);
 		}
 #endif
 
@@ -115,26 +114,21 @@ do_relocate(struct module *mp, char *reltbl, Word relshtype, int nreloc,
 		 * get symbol table entry - if symbol is local
 		 * value is base address of this object
 		 */
-		symref = (Sym *)(mp->symtbl+(stndx * mp->symhdr->sh_entsize));
 
 		if (ELF32_ST_BIND(symref->st_info) == STB_LOCAL) {
 			/* *** this is different for .o and .so */
 			value = symref->st_value;
 		} else {
+
 			/*
-			 * It's global. Allow weak references.  If
-			 * the symbol is undefined, give TNF (the
-			 * kernel probes facility) a chance to see
-			 * if it's a probe site, and fix it up if so.
+			 * It's global. Allow weak references.  If the symbol is
+			 * undefined, give SDT a chance to claim it.
 			 */
 			if (symref->st_shndx == SHN_UNDEF &&
 			    sdt_reloc_resolve(mp, mp->strings + symref->st_name,
 			    (uint8_t *)off) == 0)
 				continue;
 
-			/*
-			 * Traditionally you would also check for tnf here.
-			 */
 			if (symref->st_shndx == SHN_UNDEF) {
 				if (ELF32_ST_BIND(symref->st_info) !=
 				    STB_WEAK) {
@@ -178,8 +172,6 @@ do_relocate(struct module *mp, char *reltbl, Word relshtype, int nreloc,
 	if (err)
 		return (-1);
 
-	/* TODO Traditional TNF splice probes */
-
 	return (0);
 }
 
@@ -188,7 +180,7 @@ do_relocations(struct module *mp)
 {
 	int scn, nreloc;
 	Shdr *s, *shp;
-	_kobj_printf(ops, "Implement me\n");
+
 	for (scn = 1; scn < mp->hdr.e_shnum; scn++) {
 		s = (Shdr *)(mp->shdrs + scn * mp->hdr.e_shentsize);
 		/* We don't support RELA on ARM */
