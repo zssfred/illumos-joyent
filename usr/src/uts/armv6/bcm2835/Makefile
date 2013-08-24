@@ -37,7 +37,8 @@ LIBOPTS		= -L . -l $(GENUNIX)
 
 CLEANFILES += \
 	$(OBJECTS) \
-	$(UNIX)
+	$(UNIX) \
+	libenunix.so
 
 CERRWARN	+= -_gcc=-Wno-parentheses
 CERRWARN	+= -_gcc=-Wno-uninitialized
