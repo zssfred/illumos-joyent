@@ -68,6 +68,8 @@ extern "C" {
 
 #define	REG_PC	REG_ARM_R15
 #define	REG_SP	REG_ARM_R13
+#define	REG_FP	REG_ARM_R9
+#define	REG_PS	REG_ARM_CPSR
 #define	REG_R0	REG_ARM_R0
 #define	REG_R1	REG_ARM_R1
 

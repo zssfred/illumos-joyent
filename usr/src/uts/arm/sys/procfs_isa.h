@@ -85,10 +85,10 @@ typedef	uint32_t	instr32_t;
 /*
  * The following defines are for portability (see <sys/regset.h>).
  */
-#define	R_PC	REG_ARM_15
+#define	R_PC	REG_ARM_R15
 #define	R_PS	REG_ARM_CPSR
-#define	R_SP	REG_ARM_13
-#define	R_FP	XXX_RM_NO_FP
+#define	R_SP	REG_ARM_R13
+#define	R_FP	REG_ARM_R9
 #define	R_R0	REG_ARM_R0
 #define	R_R1	REG_ARM_R1
 
