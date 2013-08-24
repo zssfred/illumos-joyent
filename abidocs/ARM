@@ -1,0 +1,101 @@
+# ARM illumos Application Binary Interface Supplement#
+######################################################
+
+ARM has a generic Application Binary Interface (ABI) which describes aspects
+about how procedure calls, ELF relocations, and several other aspects work. The
+ABI provided by ARM purposefully has some missing holes due to its generic
+nature. The illumos ABI is similar to the GNU/Linux ABI[0] and this document is
+inspired and based on it as well.
+
+## Change history ##
+
++---------+-------------+------------------+
+| Version | Date        | Change           |
++---------+-------------+------------------+
++---------+-------------+------------------+
+| 0.0.1   | 24 Aug 2013 | First Pass       |
++---------+-------------+------------------+
+
+## Comments ##
+
+If you find that there is something missing, incorrect, or you feel an
+overwhelming to punch the person to blame for this in the face, contact Robert
+Mustacchi <rm@fingolfin.org>.
+
+## Scope and Architecture Support ##
+
+This document applies to all 32-bit (AARCH32) compatible ARM environments. While
+not a specific requirement for this document, illumos requires that a system
+provides at least a VFP v2 co-processor. The minimum ARM architecture supported
+is ARMv6 and more specifically support for unaligned memory access.
+
+This document does not apply to AARCH64 compatible ARM environments; however,
+AARCH32 modes on those processors are subject to this.
+
+This document does not apply to THUMB environments. illumos does not currently
+support THUMB modes on the processors. This document will be updated for THUMB
+support when we support it.
+
+# Procedure Call Standard for the ARM Architecture #
+####################################################
+
+## Base Standard ##
+
+The illumos ABI is based off of the document published by ARM: Procedure Call
+Standard for the ARM architecture[1] (AAPCS). The ARM document number is ARM IHI
+0042E, presently the release from the 30 Nov. 2012. Specifically see Section 5
+for the Procedure Call Standard.
+
+illumos follows this ABI with the following exceptions:
+
+### Use of Register r9 (AAPCS 5.1) ###
+
+The AAPCS leaves r9 as a platform register. Because the AAPCS no longer
+designates a frame pointer, illumos designates r9 as the frame pointer. We
+belive that having a frame pointer is essential to debugging. It allows tooling
+like DTrace, mdb, pstack, etc., to provie better runtime debugging. To try and
+follow the rest of the ABI, we do not want to use r11 which was previously
+considered the frame pointer. Similarly, iOS[2], based on the AAPCS, uses r7. It
+may prove that violating the AAPCS and marking r7 as the frame pointer and
+returning r9 to v6 will be the more practical option.
+
+### wchar_t type ###
+
+The wchar_t maintains the same type it has historically on illumos. It is a long
+in 32-bit environments.
+
+### Enumerations ###
+
+Enumerations are always either an int or unsigned int.
+
+# Elf for the ARM Architecture #
+################################
+
+illumos follows the ARM document 'ELF for the ARM Architecture'[3]. Document
+number: ARM IHI 0044E pulished on 30 Nov. 2013.
+
+The reolocations R_ARM_TARGET1 and R_ARM_TARGET2 are not currently supported.
+
+# C Library API for the ARM Architecture #
+##########################################
+
+ARM defines what a C89 run-time library for C progarms might look like in the
+document: C Library ABI for the ARM Architecture[4]. Document number ARM IHI
+0039C.  Publish on 30 Nov. 2012.
+
+illumos does not support the AEABI portable environment as described in that
+document. illumos will never defined the preprocessor symbol _AEABI_PORTABLE.
+
+# C++ and DWARF #
+#################
+
+At this time, C++ and DWARF for illumos on ARM are not defined.
+
+# References #
+##############
+[0] CodeSourcery ARM GNU/Linux Application Binary Interface Supplement (2005)
+{http://www.boost.org/doc/libs/1_51_0_beta1/libs/context/doc/pdf/arm-linux-aapcs.pdf}
+[1] http://infocenter.arm.com/help/topic/com.arm.doc.ihi0042e/IHI0042E_aapcs.pdf
+[2] https://developer.apple.com/library/ios/documentation/Xcode/Conceptual/iPhoneOSABIReference/Introduction/Introduction.html
+[3] http://infocenter.arm.com/help/topic/com.arm.doc.ihi0044e/IHI0044E_aaelf.pdf
+[4] http://infocenter.arm.com/help/topic/com.arm.doc.ihi0039c/IHI0039C_clibabi.pdf
