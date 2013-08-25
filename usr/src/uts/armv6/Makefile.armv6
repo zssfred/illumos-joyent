@@ -33,10 +33,13 @@ UNAME_M		= $(PLATFORM)
 # Definitions for the platform-specific /platform directories.
 #
 #	We have on IMPLEMENTATION per board that we support. Currently we only
-#	support one board, so the requirements that are here will most likely
+#	support one real board and the qemu virtualized version of another
+#	board. The requirements for IMPLEMENTATOINS will most likely
 #	change over time.
 #
-IMPLEMENTATIONS = bcm2835
+IMPLEMENTATIONS = \
+	bcm2835 \
+	qvpb
 
 include $(UTSTREE)/common/Makefile.files
 include $(UTSTREE)/arm/Makefile.files
