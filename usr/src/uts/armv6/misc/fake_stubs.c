@@ -67,7 +67,7 @@ kvseg(void)
 }
 
 void
-panic(void)
+panic(char *panicstr)
 {
 	bop_panic("panic");
 }
@@ -561,4 +561,10 @@ void
 prom_printf(void)
 {
 	bop_panic("prom_prinf");
+}
+
+void
+main(void)
+{
+	bop_panic("main!");
 }

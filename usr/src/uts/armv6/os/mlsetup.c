@@ -20,6 +20,8 @@
 #include <sys/promif.h>
 #include <sys/privregs.h>
 
+#include <sys/bootconf.h>
+
 /*
  * We've been given the name of the kernel. From this we should construct the
  * module path.
@@ -51,7 +53,11 @@ mach_modpath(char *path, const char *filename)
 	(void) strncpy(path, filename, p - filename);
 }
 
-extern int bop_panic(const char *str);
+extern void *romp;
+extern struct bootops *ops;
+extern struct bootops *bootops;
+extern struct boot_syscalls *sysp;
+
 void
 mlsetup(struct regs *rp)
 {

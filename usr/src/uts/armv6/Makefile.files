@@ -32,7 +32,8 @@ ML_OBJS +=			\
 OS_OBJS +=			\
 	flush.o			\
 	fakebop.o		\
-	mlsetup.o
+	mlsetup.o		\
+	startup.o
 
 CORE_OBJS =			\
 	$(BOOT_OBJS)		\
