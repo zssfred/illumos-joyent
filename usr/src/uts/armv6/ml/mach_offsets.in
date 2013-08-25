@@ -23,20 +23,20 @@
 #include <sys/privregs.h>
 
 regs	REGSIZE
-	r_r0	REGOFF_R0;
-	r_r1	REGOFF_R1;
-	r_r2	REGOFF_R2;
-	r_r3	REGOFF_R3;
-	r_r4	REGOFF_R4;
-	r_r5	REGOFF_R5;
-	r_r6	REGOFF_R6;
-	r_r7	REGOFF_R7;
-	r_r8	REGOFF_R8;
-	r_fp	REGOFF_FP;
-	r_r10	REGOFF_R10;
-	r_r11	REGOFF_R11;
-	r_ip	REGOFF_IP;
-	r_sp	REGOFF_SP;
-	r_lr	REGOFF_LR;
-	r_pc	REGOFF_PC;
-	r_cpsr	REGOFF_CPSR;
+	r_r0	REGOFF_R0
+	r_r1	REGOFF_R1
+	r_r2	REGOFF_R2
+	r_r3	REGOFF_R3
+	r_r4	REGOFF_R4
+	r_r5	REGOFF_R5
+	r_r6	REGOFF_R6
+	r_r7	REGOFF_R7
+	r_r8	REGOFF_R8
+	r_fp	REGOFF_FP
+	r_r10	REGOFF_R10
+	r_r11	REGOFF_R11
+	r_ip	REGOFF_IP
+	r_sp	REGOFF_SP
+	r_lr	REGOFF_LR
+	r_pc	REGOFF_PC
+	r_cpsr	REGOFF_CPSR
