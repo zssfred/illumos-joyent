@@ -1,0 +1,52 @@
+\
+\ This file and its contents are supplied under the terms of the
+\ Common Development and Distribution License ("CDDL"), version 1.0.
+\ You may only use this file in accordance with the terms of version
+\ 1.0 of the CDDL.
+\
+\ A full copy of the text of the CDDL should have accompanied this
+\ source.  A copy of the CDDL is also available via the Internet at
+\ http://www.illumos.org/license/CDDL.
+\
+
+\
+\ Copyright (c) 2013  Joyent, Inc.  All rights reserved.
+\
+
+\
+\ offsets.in: input file to produce assym.h using the ctfstabs program
+\
+
+#ifndef	_GENASSYM
+#define	_GENASSYM
+#endif
+
+#define	SIZES	1
+
+
+#include <sys/types.h>
+#include <sys/proc.h>
+
+\
+\ XXX Token entry to allow us to make forward progress (we'll need it later to
+\ be sure)
+\
+
+proc		PROCSIZE
+	p_link
+	p_next
+	p_child
+	p_sibling
+	p_sig
+	p_flag
+	p_tlist
+	p_as
+	p_lockp
+	p_user
+	p_model
+	p_pctx
+	p_agenttp
+	p_zone
+	p_brand
+	p_brand_data
+

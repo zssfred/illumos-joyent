@@ -43,6 +43,9 @@ include $(UTSTREE)/arm/Makefile.files
 include $(UTSTREE)/armv6/Makefile.files
 include $(UTSBASE)/Makefile.uts
 
+OFFSETS_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
+PLATFORM_OFFSETS_32	= $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
+PLATFORM_OFFSETS_SRC	= $(PLATFORM_OFFSETS_$(CLASS))
 
 #
 # Define the actual specific platforms

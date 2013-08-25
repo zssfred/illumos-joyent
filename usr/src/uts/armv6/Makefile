@@ -24,7 +24,10 @@ clean		:=	TARGET= clean
 clobber		:=	TARGET= clobber
 install_h	:=	TARGET= install_h
 
-all def clean clobber: $(IMPLEMENTATIONS)
+all def clean clobber: genassym $(IMPLEMENTATIONS)
+
+genassym: FRC
+	@cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET)
 
 $(IMPLEMENTATIONS):	FRC
 	@cd $@; pwd; THISIMPL=$@ $(MAKE) $(NO_STATE) $(TARGET)
