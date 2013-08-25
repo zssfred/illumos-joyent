@@ -43,14 +43,16 @@ include $(UTSTREE)/arm/Makefile.files
 include $(UTSTREE)/armv6/Makefile.files
 include $(UTSBASE)/Makefile.uts
 
-OFFSETS_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
+OFFSETS_SRC	= $(UTSBASE)/$(PLATFORM)/ml/offsets.in
 PLATFORM_OFFSETS_32	= $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
 PLATFORM_OFFSETS_SRC	= $(PLATFORM_OFFSETS_$(CLASS))
+DSF_DIR		= $(UTSBASE)/$(PLATFORM)/genassym
 
 #
 # Define the actual specific platforms
 #
 MACHINE_DEFS	 = -D$(PLATFORM) -D_MACHDEP
+AS_INC_PATH		+= -I$(DSF_DIR)/$(OBJS_DIR)
 
 #
 # Builds we can actually do.
