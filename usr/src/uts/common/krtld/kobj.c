@@ -161,11 +161,7 @@ extern char stubs_end[];
  *	D_LOADING	- display information about each module as it
  *			  is loaded.
  */
-#ifdef __arm__
-int kobj_debug = D_DEBUG | D_LOADING;
-#else
 int kobj_debug = 0;
-#endif
 
 #define	KOBJ_MARK(s)	if (kobj_debug & D_DEBUG)	\
 	(_kobj_printf(ops, "%d", __LINE__), _kobj_printf(ops, ": %s\n", s))
