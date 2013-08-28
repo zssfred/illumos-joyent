@@ -27,8 +27,6 @@
 #	This makefile drives the production of assym.h through
 #	compile time intialized data.
 #
-#	i86pc implementation architecture dependent
-#
 
 #
 #	Path to the base of the uts directory tree (usually /usr/src/uts).
@@ -62,11 +60,6 @@ CLEANFILES	= $(GENASSYM) Nothing_to_remove
 CLOBBERFILES	= $(ASSYM_H) $(KDI_ASSYM.H) $(CLEANFILES) Nothing_to_remove
 
 #
-# XXX We should have CTF_FLAGS passed in but we don't for some reason
-#
-CFLAGS += $(CTF_FLAGS)
-
-#
 #	Default build targets.
 #
 .KEEP_STATE:
@@ -98,4 +91,4 @@ $(KDI_ASSYM_H):
 #
 #	Include common targets.
 #
-include $(UTSBASE)/i86pc/Makefile.targ
+include $(UTSBASE)/armv6/Makefile.targ

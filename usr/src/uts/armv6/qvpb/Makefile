@@ -49,11 +49,6 @@ CERRWARN	+= -_gcc=-Wno-unused-function
 CERRWARN	+= -_gcc=-Wno-unused-variable
 CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 
-#
-# XXX For some reason CTF_FLAGS aren't getting set for us.
-#
-CFLAGS += $(CTF_FLAGS)
-
 def: $(DEF_DEPS)
 
 all: $(ALL_DEPS)
