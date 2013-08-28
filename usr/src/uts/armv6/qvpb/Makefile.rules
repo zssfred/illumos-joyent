@@ -13,10 +13,10 @@
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
-$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/qvpb/%.c
+$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/qvpb/os/%.c
 	$(COMPILE.c) -o $@ $<
 
-$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/qvpb/%.s
+$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/qvpb/ml/%.s
 	$(COMPILE.s) -o $@ $<
 
 INC_PATH += -I$(UTSBASE)/$(PLATFORM)
