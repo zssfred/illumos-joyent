@@ -115,10 +115,13 @@ Once you have that you can get going. Start off with a resounding:
 
 dmake setup
 
-That should even go and install all the primoridal uts headers that we have for
-ARM!
+Following this, you can build the kernel as far as we have it for ARM
 
-There is a sample how to build 'unix' in uts/armv6. As that is currently the
-next step, cd uts/armv6 && dmake You now have a lovely unix.bin. Note that
-should not actually produce any meaningful output on the Raspberry Pi as of
-today.
+cd uts; dmake install
+
+You now have a lovely unix and boot_archive pair in bcm2835/unix (raspberry
+pi) and qvpb/unix (qemu versatilepb).  These should be booted with a kernel
+command line mimicing that of the boot_archive (regardless of the path of the
+unix you actually provide).  For example: kernel /platform/bcm2835/kernel/unix
+-Bconsole=text
+
