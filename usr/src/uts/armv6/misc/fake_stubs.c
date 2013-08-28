@@ -199,18 +199,6 @@ default_path(void)
 }
 
 void
-kern_bootfile(void)
-{
-	bop_panic("kern_bootfile");
-}
-
-void
-kern_bootargs(void)
-{
-	bop_panic("kern_bootargs");
-}
-
-void
 mod_lock(void)
 {
 	bop_panic("mod_lock");
@@ -258,11 +246,7 @@ cv_signal(void)
 	bop_panic("cv_signal");
 }
 
-void
-boothowto(void)
-{
-	bop_panic("boothowto");
-}
+int boothowto;
 
 void
 kdi_dvec_mod_unloading(void)

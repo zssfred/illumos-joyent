@@ -15,7 +15,11 @@
 
 #include <sys/types.h>
 #include <sys/bootconf.h>
+#include <sys/obpdefs.h>
 
 struct bootops		*bootops = 0;	/* passed in from boot */
 struct bootops		**bootopsp;
 struct boot_syscalls	*sysp;		/* passed in from boot */
+
+char kern_bootargs[OBP_MAXPATHLEN];
+char kern_bootfile[OBP_MAXPATHLEN];
