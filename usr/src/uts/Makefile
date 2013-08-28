@@ -28,15 +28,17 @@ include ../Makefile.master
 #
 # List of architectures to build as part of the standard build.
 #
-# Some of these architectures are built in parallel (see i386_PARALLEL and
-# sparc_PARALLEL). This requires building some parts first before parallel build
-# can start. Platform make files know what should be built as a prerequisite for
-# the parallel build to work. The i386_PREREQ and sparc_PREREQ variables tell
-# which platform directory to enter to start making prerequisite dependencies.
+# Some of these architectures are built in parallel (see *_PARALLEL). This
+# requires building some parts first before parallel build can start. Platform
+# make files know what should be built as a prerequisite for the parallel
+# build to work. The *_PREREQ variables tell which platform directory to enter
+# to start making prerequisite dependencies.
 #
 sparc_ARCHITECTURES = sun4v sun4u sparc
 
 i386_ARCHITECTURES = i86pc i86xpv intel
+
+arm_ARCHITECTURES = armv6 arm
 
 #
 # For i386 all architectures can be compiled in parallel.
@@ -54,6 +56,12 @@ i386_PARALLEL = $(i386_ARCHITECTURES)
 #
 sparc_PREREQ = sun4
 sparc_PARALLEL = $(sparc_ARCHITECTURES)
+
+#
+# For ARM all architectures can be compiled in parallel.
+#
+arm_PREREQ = arm
+arm_PARALLEL = $(arm_ARCHITECTURES)
 
 #
 # Platforms defined in $(MACH)_PARALLEL are built in parallel. DUMMY is placed
@@ -170,10 +178,7 @@ DYNHDRDIRS = common/rpcsvc common/idmap common/sys
 
 sparc_HDRDIRS= sun/sys
 i386_HDRDIRS= i86pc/vm i86xpv/vm
-
-# XXX-ARM This isn't the right place, but we're using this for both until we have a
-# bit more of a hooked in build.
-arm_HDRDIRS= arm/sys armv6/sys
+arm_HDRDIRS= armv6/sys
 
 HDRDIRS= $(COMMON_HDRDIRS) $($(MACH)_HDRDIRS)
 install_h check: $(HDRDIRS) $($(MACH)_ARCHITECTURES)
@@ -223,8 +228,8 @@ ONC_PLUS:	$(ONC_FILES:%=%_onc_plus)
 # We need to manually prune usr/closed/uts/{i86xpv|sfmmu|i86pc} since
 # none of them exist.
 #
-SHARED_XRDIRS = $(sparc_ARCHITECTURES) $(i386_ARCHITECTURES) sun4 sfmmu	\
-	sun common
+SHARED_XRDIRS = $(sparc_ARCHITECTURES) $(i386_ARCHITECTURES) \
+	$(arm_ARCHITECTURES) sun4 sfmmu sun common
 CLOSED_XRDIRS = $(SHARED_XRDIRS:%=% ../../closed/uts/%)
 XRDIRS = $(SHARED_XRDIRS)
 CLOSED_XRDIRS_XEN = $(CLOSED_XRDIRS:../../closed/uts/i86xpv=)
