@@ -105,8 +105,11 @@ clean:		$(CLEAN_DEPS)
 
 clobber:	$(CLOBBER_DEPS)
 
+MKPLATFORM	= $(UTSBASE)/$(PLATFORM)/tools/mkplatform.sh
+
 install:  	$(INSTALL_DEPS)
-	pfexec $(UTSBASE)/$(PLATFORM)/tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
+	pfexec $(MKPLATFORM) -u $(ROOT_BCM2835_MOD_DIR:$(ROOT)/%=/%) $(UNIX_BIN) \
+	    $(OBJS_DIR)/genunix
 	mv boot_archive $(OBJS_DIR)/
 
 symcheck:       $(SYM_DEPS)

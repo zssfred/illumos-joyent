@@ -29,7 +29,6 @@ static volatile unsigned int *bcons_uart0addr = (void *)0x101f1000;
 void
 bcons_init(char *bstr)
 {
-	return;
 }
 
 void

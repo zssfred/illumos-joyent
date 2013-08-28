@@ -39,9 +39,8 @@ mkp_size=4096	# 4 MB in KB
 mkp_lofi=
 mkp_unix=
 mkp_genunix=
-mkp_upath="/platform/armv6/kernel/"
+mkp_upath=""
 mkp_genpath="/kernel"
-
 
 function fatal
 {
@@ -96,6 +95,16 @@ function teardown
 	cp $mkp_rdfile boot_archive
 	chown $USER boot_archive
 }
+
+while getopts u: name; do
+    case $name in
+        u) mkp_upath="$OPTARG";;
+        ?) printf "Usage: %s -u <unix path>\n" $0
+           exit 2;;
+    esac
+done
+
+shift $(($OPTIND - 1))
 
 [[ -n "$1" ]] || fatal "missing name of unix"
 mkp_unix="$1"
