@@ -22,7 +22,7 @@
 # Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-# ident	"%Z%%M%	%I%	%E% SMI"
+
 #
 #	This makefile drives the production of all implementation architecture
 #	dependent modules for the i86xpv architecture.
@@ -164,7 +164,7 @@ XRDIRS		= $(SHARED_XRDIRS)
 CLOSED_XRDIRS1	= $(SHARED_XRDIRS:../%=../% ../../../closed/uts/%)
 CLOSED_XRDIRS2	= $(CLOSED_XRDIRS1:../../../closed/uts/i86pc=)
 $(CLOSED_BUILD)XRDIRS	= $(CLOSED_XRDIRS2:../../../closed/uts/i86xpv=)
-XRPRUNE	= sun4v sun4u sun4 sfmmu sparc
+XRPRUNE	= sun4v sun4u sun4 sfmmu sparc armv6 arm
 
 cscope.out tags: FRC
 	$(XREF) -x $@

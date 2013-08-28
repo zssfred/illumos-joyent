@@ -166,7 +166,7 @@ include ../Makefile.targ
 XRDIRS		= ../i86pc ../intel ../common
 $(CLOSED_BUILD)XRDIRS	+= ../../../closed/uts/intel ../../../closed/uts/common
 
-XRPRUNE	= sun4u sun4
+XRPRUNE	= sun4u sun4v sun4 sparc armv6 arm
 
 cscope.out tags: FRC
 	$(XREF) -x $@
