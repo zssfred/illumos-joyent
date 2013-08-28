@@ -121,9 +121,9 @@ AS_INC_PATH		+= -I$(DSF_DIR)/$(OBJS_DIR)
 #	GENASSYM_SRC:	genassym.c
 #
 
-# XXX: Actually, this is the same on both platforms right now, but I picked
-# this one because there seemed to be no choice except choosing.
-MAPFILE		 = $(UTSBASE)/$(PLATFORM)/bcm2835/Mapfile
+# XXX: A bunch of this is probably only reasonable because we expect to build
+# a 'unix' here.
+MAPFILE		 = $(UTSBASE)/$(PLATFORM)/bcm2835/conf/Mapfile
 MODSTUBS	 = $(UTSBASE)/arm/ml/modstubs.s
 GENASSYM_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/genassym.c
 OFFSETS_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/offsets.in

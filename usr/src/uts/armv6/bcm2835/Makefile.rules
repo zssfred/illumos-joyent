@@ -13,10 +13,10 @@
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
-$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/bcm2835/%.c
+$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/bcm2835/os/%.c
 	$(COMPILE.c) -o $@ $<
 
-$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/bcm2835/%.s
+$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/bcm2835/ml/%.s
 	$(COMPILE.s) -o $@ $<
 
 INC_PATH += -I$(UTSBASE)/$(PLATFORM) -I$(UTSBASE)/$(PLATFORM)/bcm2835/

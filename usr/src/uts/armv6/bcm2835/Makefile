@@ -15,66 +15,51 @@
 
 UTSBASE = ../..
 
-UNIX		= unix
-UNIX_BIN	= $(OBJS_DIR)/$(UNIX)
-GENUNIX		= genunix
-GENUNIX_DIR	= ../../arm/$(GENUNIX)
-#LIBOPTS		= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
-LIBOPTS		= -L $(OBJS_DIR) -l $(GENUNIX)
-LIBGENUNIX	= $(OBJS_DIR)/libgenunix.so
-
-OBJECTS	= \
-	$(BCM2835_OBJS:%=$(OBJS_DIR)/%) \
-	$(CORE_OBJS:%=$(OBJS_DIR)/%) \
-	$(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
-	$(OBJS_DIR)/zlib_obj.o
-
-#
-# Include common rules
-#
 include $(UTSBASE)/armv6/bcm2835/Makefile.bcm2835
 
-ALL_TARGET 	= $(UNIX_BIN)
-INSTALL_TARGET 	= $(UNIX_BIN)
+def		:=	TARGET= def
+all		:=	TARGET= all
+install		:=	TARGET= install
+install_h	:=	TARGET= install_h
+clean		:=	TARGET= clean
+clobber		:=	TARGET= clobber
+lint		:=	TARGET= lint
+lintlib		:=	TARGET= lintlib
+modlintlib	:=	TARGET= modlintlib
+modlist		:=	TARGET= modlist
+modlist		:=	NO_STATE= -K $$MODSTATE$$$$
+clean.lint	:=	TARGET= clean.lint
+check		:=	TARGET= check
 
-CLEANFILES += \
-	$(OBJECTS) \
-	$(UNIX) \
-	$(LIBGENUNIX)
-
-CERRWARN	+= -_gcc=-Wno-parentheses
-CERRWARN	+= -_gcc=-Wno-uninitialized
-CERRWARN	+= -_gcc=-Wno-unused-label
-CERRWARN	+= -_gcc=-Wno-unused-function
-CERRWARN	+= -_gcc=-Wno-unused-variable
-CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
-
-def: $(DEF_DEPS)
-
-all: $(ALL_DEPS)
-
-clean: $(CLEAN_DEPS)
-
-clobber: $(CLOBBER_DEPS)
-
-install_h:
-
-$(LIBGENUNIX): ../misc/fake_stubs.c
-	$(COMPILE.c) -o $(OBJS_DIR)/fake_stubs.o ../misc/fake_stubs.c
-	$(LD) -r $(LDFLAGS) -o $(OBJS_DIR)/genunix $(OBJS_DIR)/fake_stubs.o
-	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
 
 #
-# XXX When we have a real genunix we should uniquify against it...
+#	Default build targets.
 #
-$(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
-	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -MMapfile
-	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
-	$(POST_PROCESS)
-	pfexec ./tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
-	mv boot_archive $(OBJS_DIR)/
+.KEEP_STATE:
+
+def all clean clobber clean.lint: unix .WAIT \
+		$(BCM2835_CPU_KMODS) $(BCM2835_KMODS)
+
+modlist:	unix \
+		$(BCM2835_CPU_KMODS) $(BCM2835_KMODS)
+
+IMPLEMENTED_PLATFORM = Raspberry,Pi
+
+install: $(ROOT_BCM2835_DIR) $(USR_BCM2835_DIR) \
+	$(USR_BCM2835_INC_DIR) \
+	$(USR_BCM2835_SBIN_DIR) \
+	$(USR_BCM2835_LIB_DIR) \
+	$(BCM2835_CRYPTO_LINKS) \
+	unix .WAIT $(BCM2835_CPU_KMODS) \
+	$(BCM2835_KMODS)
+
+unix $(BCM2835_KMODS) $(BCM2835_CPU_KMODS): FRC
+	@cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET)
+
+install_h check:	FRC
 
 #
-# Include common targets
+#	Include common targets.
 #
 include $(UTSBASE)/armv6/bcm2835/Makefile.targ
+
