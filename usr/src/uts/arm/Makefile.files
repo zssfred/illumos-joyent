@@ -15,7 +15,7 @@
 
 #
 # Kernel Linker
-#	
+#
 KRTLD_OBJS +=		\
 	bootrd.o	\
 	ufsops.o	\
@@ -29,5 +29,14 @@ KRTLD_OBJS +=		\
 
 CORE_OBJS += \
 	decompress.o
+
+# XXX: At present, maybe 80% of genunix builds, but that 80% depends on the
+# other 20% heavily.  As such, we have a fake stub to tide things over for the
+# early stages of boot.
+#
+# We can build an ever increasing amount of genunix by adding individual files
+# here (note the '=', not '+ ='), but we'll have to add or stub everything
+# they need too.
+GENUNIX_OBJS=		fake_stubs.o
 
 INC_PATH	+= -I$(UTSBASE)/arm

@@ -50,8 +50,12 @@ MODSTUBS_O	 = $(MODSTUBS_DIR)/$(OBJS_DIR)/modstubs.o
 #	(Such as a machine specific optimization, which preserves the
 #	interfaces.)
 #
-include $(UTSTREE)/arm/Makefile.files
+#include $(UTSTREE)/arm/Makefile.files
 include $(UTSTREE)/common/Makefile.files
+#XXX: Because we override certain things, this has to come incorrectly second.
+#Once genunix builds, this include should be removed and the one above
+#uncommented.
+include $(UTSTREE)/arm/Makefile.files
 
 #
 # ----- TRANSITIONAL SECTION --------------------------------------------------
@@ -64,7 +68,8 @@ include $(UTSTREE)/common/Makefile.files
 #	defined before we include Makefile.uts, or else genunix's build
 #	won't be as parallel as we might like.
 #
-NOT_YET_KMODS	 = $(OLDPTY_OBJS) $(PTY_OBJS) $(VCONS_CONF_OBJS) $(MOD_OBJS)
+#NOT_YET_KMODS	 = $(OLDPTY_OBJS) $(PTY_OBJS) $(VCONS_CONF_OBJS) $(MOD_OBJS)
+NOT_YET_KMODS	=
 
 #
 # ----- END OF TRANSITIONAL SECTION -------------------------------------------
@@ -201,7 +206,7 @@ IPP_KMODS	+=
 #
 #	generic-unix module (/kernel/genunix):
 #
-#GENUNIX_KMODS	+= genunix
+GENUNIX_KMODS	+= genunix
 
 #
 #	'Dacf' Modules (/kernel/dacf):

@@ -44,21 +44,18 @@ UNIX_BIN	= $(OBJS_DIR)/$(UNIX)
 LIBS		= $(GENLIB)
 
 GENUNIX		= genunix
-GENUNIX_DIR	= ../../$(GENUNIX)
+GENUNIX_DIR	= ../../../arm/$(GENUNIX)
+GENOPTS		= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
+
+LIBOPTS		= $(GENOPTS)
 
 CTFEXTRAOBJS	= $(OBJS_DIR)/vers.o
 
-# GENOPTS	= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
-GENOPTS		= -L $(OBJS_DIR) -l $(GENUNIX)
 
 #
 #	Include common rules.
 #
 include $(UTSBASE)/armv6/bcm2835/Makefile.bcm2835
-
-
-LIBOPTS		= $(GENOPTS)
-LIBGENUNIX	= $(OBJS_DIR)/libgenunix.so
 
 #
 #	Define targets
@@ -75,8 +72,7 @@ UNIX_DIR	= .
 #	Overrides
 #
 CLEANFILES	+= $(OBJECTS) \
-		   $(UNIX) \
-		   $(LIBGENUNIX)
+		   $(UNIX_O)
 
 CLOBBERFILES	= $(CLEANFILES) $(UNIX_BIN)
 
@@ -109,21 +105,14 @@ MKPLATFORM	= $(UTSBASE)/$(PLATFORM)/tools/mkplatform.sh
 
 install:  	$(INSTALL_DEPS)
 	pfexec $(MKPLATFORM) -u $(ROOT_BCM2835_MOD_DIR:$(ROOT)/%=/%) $(UNIX_BIN) \
-	    $(OBJS_DIR)/genunix
-	mv boot_archive $(OBJS_DIR)/
+	    $(GENUNIX_DIR)/$(OBJS_DIR)/genunix
+	$(MV) boot_archive $(OBJS_DIR)/
 
 symcheck:       $(SYM_DEPS)
 
-#XXX: This is our temporary hack genunix
-$(LIBGENUNIX): $(UTSBASE)/armv6/misc/fake_stubs.c
-	$(COMPILE.c) -o $(OBJS_DIR)/fake_stubs.o $(UTSBASE)/armv6/misc/fake_stubs.c
-	$(LD) -r $(LDFLAGS) -o $(OBJS_DIR)/genunix $(OBJS_DIR)/fake_stubs.o
-	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
-
-# XXX: LIBOPTS being here is part of the genunix hack
-$(UNIX_BIN): $(UNIX_O) $(LIBGENUNIX) $(MAPFILE)
+$(UNIX_BIN): $(UNIX_O) $(MAPFILE) $(LIBS) $(DTRACESTUBS)
 	$(LD) -dy -b -znointerp -o $@ -e _start -M $(MAPFILE) \
-	    $(UNIX_O) $(LIBOPTS)
+	    $(UNIX_O) $(LIBOPTS) $(DTRACESTUBS)
 	$(CTFMERGE_UNIQUIFY_AGAINST_GENUNIX)
 	$(POST_PROCESS)
 

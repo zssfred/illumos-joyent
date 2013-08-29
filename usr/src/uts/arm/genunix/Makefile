@@ -46,16 +46,13 @@ GENUNIX		= $(OBJS_DIR)/$(MODULE)
 OBJECTS		= $(GENUNIX_OBJS:%=$(OBJS_DIR)/%) \
 		  $(NOT_YET_KMODS:%=$(OBJS_DIR)/%)
 
-LINTS		= $(GENUNIX_OBJS:%.o=$(LINTS_DIR)/%.ln) \
-		  $(NOT_YET_KMODS:%.o=$(LINTS_DIR)/%.ln)
-
 ROOTMODULE	= $(ROOT_KERN_DIR)/$(MODULE)
 
 LIBGEN		= $(OBJS_DIR)/libgenunix.so
 LIBSTUBS	= $(GENSTUBS_OBJS:%=$(OBJS_DIR)/%)
 
 #
-#	Include common rules.
+#      Include common rules.
 #
 include $(UTSBASE)/arm/Makefile.arm
 
@@ -63,7 +60,6 @@ include $(UTSBASE)/arm/Makefile.arm
 #	Define targets
 #
 ALL_TARGET	= $(LIBGEN)
-LINT_TARGET	= $(MODULE).lint
 INSTALL_TARGET	= $(GENUNIX) $(ROOTMODULE)
 
 #
@@ -79,25 +75,15 @@ BINARY		=
 # patch builds, since we can't guarantee that ip and genunix will be in the same
 # patch.
 #
-IPCTF_TARGET	= $(IPCTF)
+#IPCTF_TARGET	= $(IPCTF)
+IPCTF_TARGET=	#XXX: We don't have ip yet
 $(PATCH_BUILD)IPCTF_TARGET =
 
 CPPFLAGS	+= -I$(SRC)/common
 CPPFLAGS	+= -I$(SRC)/uts/common/fs/zfs
 
+#XXX: If this is necessary, something is wrong surely?
 CPPFLAGS	+= -I$(UTSBASE)/armv6
-
-#
-# For now, disable these lint checks; maintainers should endeavor
-# to investigate and remove these for maximum lint coverage.
-# Please do not carry these forward to new Makefiles.
-#
-LINTTAGS	+= -erroff=E_SUSPICIOUS_COMPARISON
-LINTTAGS	+= -erroff=E_BAD_PTR_CAST_ALIGN
-LINTTAGS	+= -erroff=E_SUPPRESSION_DIRECTIVE_UNUSED
-LINTTAGS	+= -erroff=E_STATIC_UNUSED
-LINTTAGS	+= -erroff=E_PTRDIFF_OVERFLOW
-LINTTAGS	+= -erroff=E_ASSIGN_NARROW_CONV
 
 CERRWARN	+= -_gcc=-Wno-unused-label
 CERRWARN	+= -_gcc=-Wno-unused-variable
@@ -150,9 +136,8 @@ $(LIBGEN):	$(GENUNIX) $(LIBSTUBS)
 	$(BUILD.SO) $(GENUNIX) $(LIBSTUBS)
 
 $(IPCTF_TARGET) ipctf_target: FRC
-	/bin/true
-#	@cd $(IPDRV_DIR); pwd; $(MAKE) ipctf.$(OBJS_DIR)
-#	@pwd
+	@cd $(IPDRV_DIR); pwd; $(MAKE) ipctf.$(OBJS_DIR)
+	@pwd
 
 $(GENUNIX): $(IPCTF_TARGET) $(OBJECTS)
 	$(LD) -r $(LDFLAGS) -o $@ $(OBJECTS)
