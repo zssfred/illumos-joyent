@@ -33,6 +33,7 @@ OS_OBJS +=			\
 	flush.o			\
 	fakebop.o		\
 	mlsetup.o		\
+	mp_startup.o		\
 	startup.o
 
 CORE_OBJS =			\

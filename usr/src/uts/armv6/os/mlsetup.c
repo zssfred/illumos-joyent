@@ -19,6 +19,9 @@
 #include <sys/sunddi.h>
 #include <sys/promif.h>
 #include <sys/privregs.h>
+#include <sys/cpuvar.h>
+#include <sys/stack.h>
+#include <sys/vmparam.h>
 
 #include <sys/bootconf.h>
 
@@ -61,5 +64,11 @@ extern struct boot_syscalls *sysp;
 void
 mlsetup(struct regs *rp)
 {
+
+	/*
+	 * Initialize cpu_self
+	 */
+	cpu[0]->cpu_self = cpu[0];
+
 	bop_panic("mlsetup!");
 }

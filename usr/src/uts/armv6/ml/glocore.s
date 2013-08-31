@@ -36,6 +36,7 @@
 	.globl	sysp
 	.globl	bootops
 	.globl	bootopsp
+	.globl	t0
 	
 	.data
 	.comm	t0stack, DEFAULTSTKSZ, 32
