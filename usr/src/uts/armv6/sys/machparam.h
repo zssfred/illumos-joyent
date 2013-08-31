@@ -59,6 +59,9 @@ extern "C" {
 #define	NCPU		2
 #define	NCPU_LOG2	1
 
+/* NCPU_P2 is NCPU rounded to a power of 2 */
+#define	NCPU_P2	(1 << NCPU_LOG2)
+
 /*
  * Define the FPU symbol if we could run on a machine with an external
  * FPU (i.e. not integrated with the normal machine state like the vax).
