@@ -37,16 +37,18 @@
 #endif
 
 /*
- * Machine dependent paramenters and limits
+ * Machine dependent paramenters and limits, ARM edition
  */
 
-/*
- * XXXARM This is a stub and will need to evolve as we get further along. For
- * now this just has a few things that we know to be the case.
- */
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#ifndef _ASM
+#define	ADDRESS_C(c)    c ## ul
+#else   /* _ASM */
+#define	ADDRESS_C(c)    (c)
+#endif  /* _ASM */
 
 /*
  * XXX Okay, let's be honest. We haven't even tested more than one CPU at all
@@ -75,9 +77,24 @@ extern "C" {
 
 #define	MMU_PAGESIZE	0x1000		/* 4096 bytes */
 #define	MMU_PAGESHIFT	12		/* log2(MMU_PAGESIZE) */
-
 #define	MMU_PAGEOFFSET	(MMU_PAGESIZE-1) /* Mask of address bits in page */
 #define	MMU_PAGEMASK	(~MMU_PAGEOFFSET)
+
+#define	MMU_PAGESHIFT64K	16
+#define	MMU_PAGESIZE64K		(1 << MMU_PAGESHIFT64K)
+#define	MMU_PAGEOFFSET64K	(MMU_PAGESIZE64K - 1)
+#define	MMU_PAGEMASK64K		(~MMU_PAGEOFFSET64K)
+
+#define	MMU_PAGESHIFT1M		20
+#define	MMU_PAGESIZE1M		(1 << MMU_PAGESHIFT1M)
+#define	MMU_PAGEOFFSET1M	(MMU_PAGESIZE1M - 1)
+#define	MMU_PAGEMASK1M		(~MMU_PAGEOFFSET1M)
+
+#define	MMU_PAGESHIFT16M	24
+#define	MMU_PAGESIZE16M		(1 << MMU_PAGESHIFT16M)
+#define	MMU_PAGEOFFSET16M	(MMU_PAGESIZE16M - 1)
+#define	MMU_PAGEMASK16M		(~MMU_PAGEOFFSET16M)
+
 
 #define	PAGESIZE	0x1000		/* All of the above, for logical */
 #define	PAGESHIFT	12
@@ -99,8 +116,55 @@ extern "C" {
  * KERNELBASE is the virtual address at which the kernel segments start in
  * all contexts.
  *
- * TODO Fill in more about base addresses in VM as we need them.
+ * common/conf/param.c requires a compile time defined value for KERNELBASE.
+ * This value is save in the variable _kernelbase.  _kernelbase may then be
+ * modified with to a different value in i86pc/os/startup.c.
+ *
+ * Most code should be using kernelbase, which resolves to a reference to
+ * _kernelbase.
  */
+#ifdef DEBUG
+#define	KERNELBASE	ADDRESS_C(0xc8000000)
+#else
+#define	KERNELBASE	ADDRESS_C(0xd4000000)
+#endif
+
+#define	KERNEL_TEXT	ADDRESS_C(0xfe800000)
+
+/*
+ * Size of the unmapped "red zone" at the very bottom of the kernel's address
+ * space.  Since segmap starts immediately above the red zone, this needs to be
+ * MAXBSIZE aligned.
+ */
+#define	KERNEL_REDZONE_SIZE   MAXBSIZE
+
+/*
+ * The heap has a region allocated from it of HEAPTEXT_SIZE bytes specifically
+ * for module text.
+ */
+#define	HEAPTEXT_SIZE		(64 * 1024 * 1024)	/* bytes */
+
+/*
+ * ARGSBASE is the base virtual address of the range which the kernel uses to
+ * map the arguments for exec. We set this to a value at the high end of the
+ * kernel address space in a similar fashion to x86.
+ */
+#define	ARGSBASE	ADDRESS_C(0xffc00000)
+
+/*
+ * Virtual address range available to the debugger
+ * We place it just above the kernel text (4M) and kernel data (4M).
+ */
+#define	SEGDEBUGBASE	(KERNEL_TEXT + ADDRESS_C(0x800000))
+#define	SEGDEBUGSIZE	ADDRESS_C(0x400000)
+
+/*
+ * Define upper limit on user address space. We give ourselves a slight red
+ * zone of one page inbetween KERNELBASE and USERLIMIT to help us detect
+ * address-space overruns.
+ */
+#define	USERLIMIT	KERNELBASE - ADDRESS_C(0x4000)
+#define	USERLIMIT32	USERLIMIT
 
 #ifdef __cplusplus
 }

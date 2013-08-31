@@ -34,6 +34,7 @@ HDRS = \
 	regset.h \
 	spl.h \
 	stack.h \
+	vmparam.h \
 	ucontext.h \
 	utrap.h
 
