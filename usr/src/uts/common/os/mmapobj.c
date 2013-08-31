@@ -198,13 +198,13 @@ struct mobj_stats {
 #endif
 
 /*
- * Check if addr is at or above the address space reserved for the stack.
- * The stack is at the top of the address space for all sparc processes
- * and 64 bit x86 processes.  For 32 bit x86, the stack is not at the top
- * of the address space and thus this check wil always return false for
- * 32 bit x86 processes.
+ * Check if addr is at or above the address space reserved for the stack.  The
+ * stack is at the top of the address space for all sparc processes, arm
+ * processes, and 64 bit x86 processes.  For 32 bit x86, the stack is not at the
+ * top of the address space and thus this check wil always return false for 32
+ * bit x86 processes.
  */
-#if defined(__sparc)
+#if defined(__sparc) || defined(__arm__)
 #define	OVERLAPS_STACK(addr, p)						\
 	(addr >= (p->p_usrstack - ((p->p_stk_ctl + PAGEOFFSET) & PAGEMASK)))
 #elif defined(__amd64)

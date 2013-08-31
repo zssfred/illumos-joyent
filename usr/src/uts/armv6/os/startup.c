@@ -23,3 +23,8 @@ struct boot_syscalls	*sysp;		/* passed in from boot */
 
 char kern_bootargs[OBP_MAXPATHLEN];
 char kern_bootfile[OBP_MAXPATHLEN];
+
+/*
+ * Some CPUs have holes in the middle of the 64-bit virtual address range.
+ */
+uintptr_t hole_start, hole_end;

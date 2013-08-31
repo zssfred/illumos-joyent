@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-/* Put your definitions in here */
+extern uintptr_t hole_start, hole_end;
 
 #ifdef __cplusplus
 }
