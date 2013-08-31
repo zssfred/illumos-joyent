@@ -1,3 +1,19 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+#
+
+######################################################
 # ARM illumos Application Binary Interface Supplement#
 ######################################################
 
@@ -24,10 +40,13 @@ Mustacchi <rm@fingolfin.org>.
 
 ## Scope and Architecture Support ##
 
-This document applies to all 32-bit (AARCH32) compatible ARM environments. While
-not a specific requirement for this document, illumos requires that a system
-provides at least a VFP v2 co-processor. The minimum ARM architecture supported
-is ARMv6 and more specifically support for unaligned memory access.
+This document applies to all 32-bit (AARCH32) compatible ARM environments.
+Compatible ARM chips will have the following features at a minimum:
+
+  o ARMv6 architecture support
+  o VFP v2 co-processor
+  o Support for unaligned memory access
+  o Support for Thread and Context ID registers in CP15
 
 This document does not apply to AARCH64 compatible ARM environments; however,
 AARCH32 modes on those processors are subject to this.
@@ -52,7 +71,7 @@ illumos follows this ABI with the following exceptions:
 
 The AAPCS leaves r9 as a platform register. Because the AAPCS no longer
 designates a frame pointer, illumos designates r9 as the frame pointer. We
-belive that having a frame pointer is essential to debugging. It allows tooling
+believe that having a frame pointer is essential to debugging. It allows tooling
 like DTrace, mdb, pstack, etc., to provie better runtime debugging. To try and
 follow the rest of the ABI, we do not want to use r11 which was previously
 considered the frame pointer. Similarly, iOS[2], based on the AAPCS, uses r7. It
