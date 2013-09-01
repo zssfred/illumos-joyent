@@ -64,11 +64,5 @@ extern struct boot_syscalls *sysp;
 void
 mlsetup(struct regs *rp)
 {
-
-	/*
-	 * Initialize cpu_self
-	 */
-	cpu[0]->cpu_self = cpu[0];
-
 	bop_panic("mlsetup!");
 }

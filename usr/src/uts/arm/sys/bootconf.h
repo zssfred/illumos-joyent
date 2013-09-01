@@ -56,6 +56,7 @@ typedef struct bootops {
 #define	BOP_PUTSARG(bop, msg, arg)	((bop)->bsys_printf)(bop, msg, arg)
 
 extern char *default_path;
+extern int modrootloaded;
 extern char kern_bootargs[];
 extern char kern_bootfile[];
 
