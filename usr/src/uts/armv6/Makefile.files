@@ -50,7 +50,8 @@ CORE_OBJS =			\
 # uts/common yet, so we instead clobber it with our stuff.
 #
 CORE_OBJS += \
-	decompress.o
+	decompress.o \
+	param.o
 
 #
 # Definitions and Include Paths

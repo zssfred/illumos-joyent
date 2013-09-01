@@ -552,6 +552,17 @@ char architecture[] = "amd64";
 char architecture_32[] = "i386";
 char hw_provider[SYS_NMLN] = "";
 
+
+#elif defined(__arm__)
+
+/*
+ * On x86 machines, read hw_serial, hw_provider and srpc_domain from
+ * /etc/bootrc at boot time.
+ */
+char architecture[] = "arm";
+char architecture_32[] = "arm";
+char hw_provider[SYS_NMLN] = "";
+
 #else
 #error "unknown processor architecture"
 #endif

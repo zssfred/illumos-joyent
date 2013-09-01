@@ -552,3 +552,195 @@ main(void)
 {
 	bop_panic("main!");
 }
+
+void
+binit(void)
+{
+        bop_panic("binit");
+}
+
+void
+finit(void)
+{
+        bop_panic("finit");
+}
+
+void
+sys_init(void)
+{
+        bop_panic("sys_init");
+}
+
+void
+clock_realtime_init(void)
+{
+        bop_panic("clock_realtime_init");
+}
+
+void
+dnlc_init(void)
+{
+        bop_panic("dnlc_init");
+}
+
+void
+deadman_init(void)
+{
+        bop_panic("deadman_init");
+}
+
+void
+flk_init(void)
+{
+        bop_panic("flk_init");
+}
+
+void
+clock_tick_mp_init(void)
+{
+        bop_panic("clock_tick_mp_init");
+}
+
+void
+schedctl_init(void)
+{
+        bop_panic("schedctl_init");
+}
+
+void
+serializer_init(void)
+{
+        bop_panic("serializer_init");
+}
+
+void
+anon_init(void)
+{
+        bop_panic("anon_init");
+}
+
+void
+clock_timer_init(void)
+{
+        bop_panic("clock_timer_init");
+}
+
+void
+physmem(void)
+{
+        bop_panic("physmem");
+}
+
+void
+callout_mp_init(void)
+{
+        bop_panic("callout_mp_init");
+}
+
+void
+as_init(void)
+{
+        bop_panic("as_init");
+}
+
+void
+softcall_init(void)
+{
+        bop_panic("softcall_init");
+}
+
+void
+space_init(void)
+{
+        bop_panic("space_init");
+}
+
+void
+ftrace_init(void)
+{
+        bop_panic("ftrace_init");
+}
+
+void
+sys_classfuncs(void)
+{
+        bop_panic("sys_classfuncs");
+}
+
+void
+cmn_err(void)
+{
+        bop_panic("cmn_err");
+}
+
+void
+fdb_init(void)
+{
+        bop_panic("fdb_init");
+}
+
+void
+cu_init(void)
+{
+        bop_panic("cu_init");
+}
+
+void
+strinit(void)
+{
+        bop_panic("strinit");
+}
+
+void
+ttyinit(void)
+{
+        bop_panic("ttyinit");
+}
+
+void
+cyclic_mp_init(void)
+{
+        bop_panic("cyclic_mp_init");
+}
+
+void
+vmem_size(void)
+{
+        bop_panic("vmem_size");
+}
+
+void
+vfsinit(void)
+{
+        bop_panic("vfsinit");
+}
+
+void
+segvn_init(void)
+{
+        bop_panic("segvn_init");
+}
+
+void
+pvn_init(void)
+{
+        bop_panic("pvn_init");
+}
+
+void
+system_taskq_init(void)
+{
+        bop_panic("system_taskq_init");
+}
+
+void
+cpu_seq_tbl_init(void)
+{
+        bop_panic("cpu_seq_tbl_init");
+}
+
+void
+clock_highres_init(void)
+{
+        bop_panic("clock_highres_init");
+}

@@ -17,6 +17,7 @@ include ../../../Makefile.master
 
 HDRS = \
 	atag.h \
+	clock.h \
 	boot_console.h \
 	machparam.h \
 	vm_machparam.h
