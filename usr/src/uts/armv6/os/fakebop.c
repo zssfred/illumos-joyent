@@ -347,6 +347,8 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 	start = (caddr_t)bop_alloc_start;
 	bop_alloc_start += size;
 	bop_alloc_nfree -= size;
+	if (fakebop_alloc_debug != 0)
+		bop_printf(bops, "returning address: %p\n", start);
 	return (start);
 }
 

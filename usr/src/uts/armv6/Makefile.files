@@ -41,17 +41,66 @@ CORE_OBJS =			\
 	$(MATH_OBJS)		\
 	$(MISC_OBJS)		\
 	$(ML_OBJS)		\
-	$(OS_OBJS)		\
-	string.o
+	$(OS_OBJS)
+
+#
+# XXX Because of ordering we also need to make sure we manually include
+# uts/arm/Makefile.files CORE_OBJS here.
+#
+CORE_OBJS += \
+	decompress.o
 
 #
 # XXX this is also specified in uts/arm/Makefile.files, but note the = sign for
 # CORE_OBJS above. Right now we're not quite ready to build everything from
 # uts/common yet, so we instead clobber it with our stuff.
 #
-CORE_OBJS += \
-	decompress.o \
-	param.o
+CORE_NOTYET_OBJS = \
+		mutex.o		\
+		page_retire.o	\
+		page_lock.o	\
+		seg_kmem.o	\
+		vm_page.o	\
+		lgrp.o		\
+		cap_util.o	\
+		vm_pagelist.o
+
+CORE_OBJS +=	\
+		beep.o		\
+		bitset.o	\
+		bp_map.o	\
+		brand.o		\
+		cpucaps.o	\
+		cmt.o		\
+		cmt_policy.o	\
+		cpu.o		\
+		cpu_event.o	\
+		cpu_intr.o	\
+		cpu_pm.o	\
+		cpupart.o	\
+		disp.o		\
+		group.o		\
+		kstat_fr.o	\
+		iscsiboot_prop.o	\
+		lgrp_topo.o	\
+		mmapobj.o	\
+		panic.o		\
+		param.o		\
+		pg.o		\
+		pghw.o		\
+		putnext.o	\
+		rctl_proc.o	\
+		rwlock.o	\
+		softint.o	\
+		string.o	\
+		strtol.o	\
+		strtoul.o	\
+		strtoll.o	\
+		strtoull.o	\
+		thread_intr.o	\
+		zlib_obj.o	\
+		clock_tick.o
+
 
 #
 # Definitions and Include Paths

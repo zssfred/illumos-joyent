@@ -43,12 +43,6 @@ kvseg(void)
 }
 
 void
-panic(char *panicstr)
-{
-	bop_panic("panic");
-}
-
-void
 kobj_text_alloc(void)
 {
 	bop_panic("kobj_text_alloc");
@@ -314,12 +308,6 @@ main(void)
 }
 
 void
-clock_tick_mp_init(void)
-{
-	bop_panic("clock_tick_mp_init");
-}
-
-void
 anon_init(void)
 {
 	bop_panic("anon_init");
@@ -329,12 +317,6 @@ void
 physmem(void)
 {
 	bop_panic("physmem");
-}
-
-void
-softcall_init(void)
-{
-	bop_panic("softcall_init");
 }
 
 void
@@ -350,21 +332,9 @@ vfsinit(void)
 }
 
 void
-cpu_seq_tbl_init(void)
-{
-	bop_panic("cpu_seq_tbl_init");
-}
-
-void
 cpr(void)
 {
 	bop_panic("cpr");
-}
-
-void
-put(void)
-{
-	bop_panic("put");
 }
 
 void
@@ -425,12 +395,6 @@ void
 atomic_inc_ulong_nv(void)
 {
 	bop_panic("atomic_inc_ulong_nv");
-}
-
-void
-rw_read_held(void)
-{
-	bop_panic("rw_read_held");
 }
 
 void
@@ -500,12 +464,6 @@ lwpchan_delete_mapping(void)
 }
 
 void
-bitset_is_null(void)
-{
-	bop_panic("bitset_is_null");
-}
-
-void
 lwp_mutex_register(void)
 {
 	bop_panic("lwp_mutex_register");
@@ -515,12 +473,6 @@ void
 hat_page_clrattr(void)
 {
 	bop_panic("hat_page_clrattr");
-}
-
-void
-pg_cpupart_in(void)
-{
-	bop_panic("pg_cpupart_in");
 }
 
 void
@@ -668,12 +620,6 @@ lwp_mutex_wakeup(void)
 }
 
 void
-kstat_create_zone(void)
-{
-	bop_panic("kstat_create_zone");
-}
-
-void
 i_ddi_acc_clr_fault(void)
 {
 	bop_panic("i_ddi_acc_clr_fault");
@@ -782,12 +728,6 @@ group_page_unlock(void)
 }
 
 void
-kstat_zone_add(void)
-{
-	bop_panic("kstat_zone_add");
-}
-
-void
 boot_virt_alloc(void)
 {
 	bop_panic("boot_virt_alloc");
@@ -875,12 +815,6 @@ void
 segkmem_alloc_lp(void)
 {
 	bop_panic("segkmem_alloc_lp");
-}
-
-void
-cpucaps_init(void)
-{
-	bop_panic("cpucaps_init");
 }
 
 void
@@ -1064,12 +998,6 @@ lgrp_optimizations(void)
 }
 
 void
-register_cpu_setup_func(void)
-{
-	bop_panic("register_cpu_setup_func");
-}
-
-void
 mod_hash_create_ptrhash(void)
 {
 	bop_panic("mod_hash_create_ptrhash");
@@ -1097,12 +1025,6 @@ void
 fsop_mountroot(void)
 {
 	bop_panic("fsop_mountroot");
-}
-
-void
-cpu_visibility_configure(void)
-{
-	bop_panic("cpu_visibility_configure");
 }
 
 void
@@ -1169,18 +1091,6 @@ void
 thread_transition(void)
 {
 	bop_panic("thread_transition");
-}
-
-void
-kstat_create(void)
-{
-	bop_panic("kstat_create");
-}
-
-void
-kstat_delete(void)
-{
-	bop_panic("kstat_delete");
 }
 
 void
@@ -1334,12 +1244,6 @@ audit_finish(void)
 }
 
 void
-kstat_named_init(void)
-{
-	bop_panic("kstat_named_init");
-}
-
-void
 lgrp_madv_to_policy(void)
 {
 	bop_panic("lgrp_madv_to_policy");
@@ -1394,12 +1298,6 @@ audit_savepath(void)
 }
 
 void
-rw_write_held(void)
-{
-	bop_panic("rw_write_held");
-}
-
-void
 hat_get_mapped_size(void)
 {
 	bop_panic("hat_get_mapped_size");
@@ -1421,12 +1319,6 @@ void
 lock_hw_class_list(void)
 {
 	bop_panic("lock_hw_class_list");
-}
-
-void
-cpu_visibility_unconfigure(void)
-{
-	bop_panic("cpu_visibility_unconfigure");
 }
 
 void
@@ -1496,12 +1388,6 @@ page_io_locked(void)
 }
 
 void
-cpu_get_state(void)
-{
-	bop_panic("cpu_get_state");
-}
-
-void
 console_exit(void)
 {
 	bop_panic("console_exit");
@@ -1526,12 +1412,6 @@ hat_pageunload(void)
 }
 
 void
-brand_setbrand(void)
-{
-	bop_panic("brand_setbrand");
-}
-
-void
 spec_fence_snode(void)
 {
 	bop_panic("spec_fence_snode");
@@ -1541,12 +1421,6 @@ void
 page_alloc_pages(void)
 {
 	bop_panic("page_alloc_pages");
-}
-
-void
-mmapobj(void)
-{
-	bop_panic("mmapobj");
 }
 
 void
@@ -1604,12 +1478,6 @@ lbolt_softint_post(void)
 }
 
 void
-cpucaps_project_remove(void)
-{
-	bop_panic("cpucaps_project_remove");
-}
-
-void
 page_migrate(void)
 {
 	bop_panic("page_migrate");
@@ -1619,12 +1487,6 @@ void
 door_revoke_all(void)
 {
 	bop_panic("door_revoke_all");
-}
-
-void
-brand_init(void)
-{
-	bop_panic("brand_init");
 }
 
 void
@@ -1694,18 +1556,6 @@ dump_plat_data(void)
 }
 
 void
-cpu_get_state_str(void)
-{
-	bop_panic("cpu_get_state_str");
-}
-
-void
-bitset_init_fanout(void)
-{
-	bop_panic("bitset_init_fanout");
-}
-
-void
 au_to_arg32(void)
 {
 	bop_panic("au_to_arg32");
@@ -1715,12 +1565,6 @@ void
 mod_hash_iddata_gen(void)
 {
 	bop_panic("mod_hash_iddata_gen");
-}
-
-void
-cpu_visibility_remove(void)
-{
-	bop_panic("cpu_visibility_remove");
 }
 
 void
@@ -1766,12 +1610,6 @@ no_fault(void)
 }
 
 void
-weakbinding_stop(void)
-{
-	bop_panic("weakbinding_stop");
-}
-
-void
 anon_dup(void)
 {
 	bop_panic("anon_dup");
@@ -1808,18 +1646,6 @@ sock_getmsg(void)
 }
 
 void
-cpu_offline(void)
-{
-	bop_panic("cpu_offline");
-}
-
-void
-cpucaps_zone_remove(void)
-{
-	bop_panic("cpucaps_zone_remove");
-}
-
-void
 getsetcontext(void)
 {
 	bop_panic("getsetcontext");
@@ -1835,12 +1661,6 @@ void
 i_ddi_rnumber_to_regspec(void)
 {
 	bop_panic("i_ddi_rnumber_to_regspec");
-}
-
-void
-rw_tryupgrade(void)
-{
-	bop_panic("rw_tryupgrade");
 }
 
 void
@@ -1868,21 +1688,9 @@ anon_decref(void)
 }
 
 void
-pg_cpupart_out(void)
-{
-	bop_panic("pg_cpupart_out");
-}
-
-void
 anon_fill_cow_holes(void)
 {
 	bop_panic("anon_fill_cow_holes");
-}
-
-void
-softcall(void)
-{
-	bop_panic("softcall");
 }
 
 void
@@ -1919,18 +1727,6 @@ void
 lgrp_choose(void)
 {
 	bop_panic("lgrp_choose");
-}
-
-void
-kstat_named_setstr(void)
-{
-	bop_panic("kstat_named_setstr");
-}
-
-void
-weakbinding_start(void)
-{
-	bop_panic("weakbinding_start");
 }
 
 void
@@ -1994,12 +1790,6 @@ page_io_trylock(void)
 }
 
 void
-bp_mapout(void)
-{
-	bop_panic("bp_mapout");
-}
-
-void
 anon_grow(void)
 {
 	bop_panic("anon_grow");
@@ -2045,12 +1835,6 @@ void
 anon_dup_fill_holes(void)
 {
 	bop_panic("anon_dup_fill_holes");
-}
-
-void
-cpu_online(void)
-{
-	bop_panic("cpu_online");
 }
 
 void
@@ -2144,12 +1928,6 @@ door_slam(void)
 }
 
 void
-cpu_visibility_add(void)
-{
-	bop_panic("cpu_visibility_add");
-}
-
-void
 _remque(void)
 {
 	bop_panic("_remque");
@@ -2216,12 +1994,6 @@ getpcstack(void)
 }
 
 void
-ddi_strtol(void)
-{
-	bop_panic("ddi_strtol");
-}
-
-void
 va_to_pfn(void)
 {
 	bop_panic("va_to_pfn");
@@ -2249,12 +2021,6 @@ void
 i_ddi_drv_ereport_post(void)
 {
 	bop_panic("i_ddi_drv_ereport_post");
-}
-
-void
-cpu_unbind(void)
-{
-	bop_panic("cpu_unbind");
 }
 
 void
@@ -2348,12 +2114,6 @@ pty_initspace(void)
 }
 
 void
-cpu_poweron(void)
-{
-	bop_panic("cpu_poweron");
-}
-
-void
 audit_setppriv(void)
 {
 	bop_panic("audit_setppriv");
@@ -2435,12 +2195,6 @@ void
 i_ddi_add_softint(void)
 {
 	bop_panic("i_ddi_add_softint");
-}
-
-void
-cpu_state_change_notify(void)
-{
-	bop_panic("cpu_state_change_notify");
 }
 
 void
@@ -2540,12 +2294,6 @@ vfs_devismounted(void)
 }
 
 void
-putnext(void)
-{
-	bop_panic("putnext");
-}
-
-void
 membar_consumer(void)
 {
 	bop_panic("membar_consumer");
@@ -2600,12 +2348,6 @@ dcopy_free(void)
 }
 
 void
-cpu_visibility_online(void)
-{
-	bop_panic("cpu_visibility_online");
-}
-
-void
 mod_read_system_file(void)
 {
 	bop_panic("mod_read_system_file");
@@ -2645,12 +2387,6 @@ void
 makectty(void)
 {
 	bop_panic("makectty");
-}
-
-void
-cmt_balance(void)
-{
-	bop_panic("cmt_balance");
 }
 
 void
@@ -2750,12 +2486,6 @@ audit_setfsat_path(void)
 }
 
 void
-kstat_init(void)
-{
-	bop_panic("kstat_init");
-}
-
-void
 hat_dump(void)
 {
 	bop_panic("hat_dump");
@@ -2783,24 +2513,6 @@ void
 suword8_noerr(void)
 {
 	bop_panic("suword8_noerr");
-}
-
-void
-cpucaps_project_set(void)
-{
-	bop_panic("cpucaps_project_set");
-}
-
-void
-cpucaps_project_get(void)
-{
-	bop_panic("cpucaps_project_get");
-}
-
-void
-cpucaps_project_add(void)
-{
-	bop_panic("cpucaps_project_add");
 }
 
 void
@@ -2870,12 +2582,6 @@ i_mod_hash_insert_nosync(void)
 }
 
 void
-clock_tick_schedule(void)
-{
-	bop_panic("clock_tick_schedule");
-}
-
-void
 mod_hash_destroy_hash(void)
 {
 	bop_panic("mod_hash_destroy_hash");
@@ -2942,12 +2648,6 @@ hat_chgattr(void)
 }
 
 void
-rw_tryenter(void)
-{
-	bop_panic("rw_tryenter");
-}
-
-void
 syscall_ap(void)
 {
 	bop_panic("syscall_ap");
@@ -2957,12 +2657,6 @@ void
 page_exists_physcontig(void)
 {
 	bop_panic("page_exists_physcontig");
-}
-
-void
-start_cpus(void)
-{
-	bop_panic("start_cpus");
 }
 
 void
@@ -2978,21 +2672,9 @@ gethrtime_unscaled(void)
 }
 
 void
-pg_ev_thread_swtch(void)
-{
-	bop_panic("pg_ev_thread_swtch");
-}
-
-void
 map_pgszcvec(void)
 {
 	bop_panic("map_pgszcvec");
-}
-
-void
-pause_cpus(void)
-{
-	bop_panic("pause_cpus");
 }
 
 void
@@ -3029,36 +2711,6 @@ void
 setregs(void)
 {
 	bop_panic("setregs");
-}
-
-void
-bitset_add(void)
-{
-	bop_panic("bitset_add");
-}
-
-void
-bitset_and(void)
-{
-	bop_panic("bitset_and");
-}
-
-void
-bitset_del(void)
-{
-	bop_panic("bitset_del");
-}
-
-void
-bitset_xor(void)
-{
-	bop_panic("bitset_xor");
-}
-
-void
-rw_init(void)
-{
-	bop_panic("rw_init");
 }
 
 void
@@ -3320,12 +2972,6 @@ splhigh(void)
 }
 
 void
-cpu_get(void)
-{
-	bop_panic("cpu_get");
-}
-
-void
 lgrp_home_id(void)
 {
 	bop_panic("lgrp_home_id");
@@ -3347,12 +2993,6 @@ void
 mod_hash_create_idhash(void)
 {
 	bop_panic("mod_hash_create_idhash");
-}
-
-void
-pg_ev_thread_remain(void)
-{
-	bop_panic("pg_ev_thread_remain");
 }
 
 void
@@ -3416,12 +3056,6 @@ systeminfo(void)
 }
 
 void
-rw_destroy(void)
-{
-	bop_panic("rw_destroy");
-}
-
-void
 fastboot_update_and_load(void)
 {
 	bop_panic("fastboot_update_and_load");
@@ -3431,12 +3065,6 @@ void
 suword8(void)
 {
 	bop_panic("suword8");
-}
-
-void
-ddi_strtoul(void)
-{
-	bop_panic("ddi_strtoul");
 }
 
 void
@@ -3632,12 +3260,6 @@ page_vpadd(void)
 }
 
 void
-cpu_spare(void)
-{
-	bop_panic("cpu_spare");
-}
-
-void
 page_vpsub(void)
 {
 	bop_panic("page_vpsub");
@@ -3764,12 +3386,6 @@ prom_decode_composite_string(void)
 }
 
 void
-rw_downgrade(void)
-{
-	bop_panic("rw_downgrade");
-}
-
-void
 atomic_add_64_nv(void)
 {
 	bop_panic("atomic_add_64_nv");
@@ -3848,12 +3464,6 @@ hat_kpm_page2va(void)
 }
 
 void
-brand_clearbrand(void)
-{
-	bop_panic("brand_clearbrand");
-}
-
-void
 sigsendproc(void)
 {
 	bop_panic("sigsendproc");
@@ -3869,12 +3479,6 @@ void
 hat_unshare(void)
 {
 	bop_panic("hat_unshare");
-}
-
-void
-pg_cpupart_move(void)
-{
-	bop_panic("pg_cpupart_move");
 }
 
 void
@@ -3896,21 +3500,9 @@ dounmount(void)
 }
 
 void
-mmapobj_unmap(void)
-{
-	bop_panic("mmapobj_unmap");
-}
-
-void
 sigcld_delete(void)
 {
 	bop_panic("sigcld_delete");
-}
-
-void
-cpu_is_poweredoff(void)
-{
-	bop_panic("cpu_is_poweredoff");
 }
 
 void
@@ -3944,12 +3536,6 @@ prom_finddevice(void)
 }
 
 void
-brand_unregister_zone(void)
-{
-	bop_panic("brand_unregister_zone");
-}
-
-void
 i_ddi_set_softint_pri(void)
 {
 	bop_panic("i_ddi_set_softint_pri");
@@ -3959,12 +3545,6 @@ void
 makespecvp(void)
 {
 	bop_panic("makespecvp");
-}
-
-void
-kstat_zone_remove(void)
-{
-	bop_panic("kstat_zone_remove");
 }
 
 void
@@ -3995,12 +3575,6 @@ void
 fuword32_noerr(void)
 {
 	bop_panic("fuword32_noerr");
-}
-
-void
-pg_cmt_can_migrate(void)
-{
-	bop_panic("pg_cmt_can_migrate");
 }
 
 void
@@ -4037,12 +3611,6 @@ void
 mutex_sync(void)
 {
 	bop_panic("mutex_sync");
-}
-
-void
-cpu_faulted(void)
-{
-	bop_panic("cpu_faulted");
 }
 
 void
@@ -4136,48 +3704,6 @@ impl_acc_hdl_get(void)
 }
 
 void
-bitset_in_set(void)
-{
-	bop_panic("bitset_in_set");
-}
-
-void
-cpu_intr_disable(void)
-{
-	bop_panic("cpu_intr_disable");
-}
-
-void
-bitset_copy(void)
-{
-	bop_panic("bitset_copy");
-}
-
-void
-bitset_fini(void)
-{
-	bop_panic("bitset_fini");
-}
-
-void
-bitset_init(void)
-{
-	bop_panic("bitset_init");
-}
-
-void
-bitset_zero(void)
-{
-	bop_panic("bitset_zero");
-}
-
-void
-rctlproc_default_init(void)
-{
-	bop_panic("rctlproc_default_init");
-}
-
-void
 atomic_dec_32(void)
 {
 	bop_panic("atomic_dec_32");
@@ -4268,12 +3794,6 @@ vfs_optionisset(void)
 }
 
 void
-rctlproc_init(void)
-{
-	bop_panic("rctlproc_init");
-}
-
-void
 anon_swap_free(void)
 {
 	bop_panic("anon_swap_free");
@@ -4295,12 +3815,6 @@ void
 idmap_purge_cache(void)
 {
 	bop_panic("idmap_purge_cache");
-}
-
-void
-brand_register_zone(void)
-{
-	bop_panic("brand_register_zone");
 }
 
 void
@@ -4331,12 +3845,6 @@ void
 vfs_makefsops(void)
 {
 	bop_panic("vfs_makefsops");
-}
-
-void
-rw_owner(void)
-{
-	bop_panic("rw_owner");
 }
 
 void
@@ -4490,18 +3998,6 @@ i_mod_hash_find_nosync(void)
 }
 
 void
-cpucaps_zone_set(void)
-{
-	bop_panic("cpucaps_zone_set");
-}
-
-void
-cpucaps_zone_get(void)
-{
-	bop_panic("cpucaps_zone_get");
-}
-
-void
 atomic_add_64(void)
 {
 	bop_panic("atomic_add_64");
@@ -4547,12 +4043,6 @@ void
 page_subclaim(void)
 {
 	bop_panic("page_subclaim");
-}
-
-void
-cpu_bind_thread(void)
-{
-	bop_panic("cpu_bind_thread");
 }
 
 void
@@ -4790,12 +4280,6 @@ atomic_cas_uint(void)
 }
 
 void
-cpu_visibility_offline(void)
-{
-	bop_panic("cpu_visibility_offline");
-}
-
-void
 mod_containing_pc(void)
 {
 	bop_panic("mod_containing_pc");
@@ -4814,12 +4298,6 @@ anonmap_free(void)
 }
 
 void
-cpu_intr_enable(void)
-{
-	bop_panic("cpu_intr_enable");
-}
-
-void
 upimutex_cleanup(void)
 {
 	bop_panic("upimutex_cleanup");
@@ -4829,12 +4307,6 @@ void
 driver_active(void)
 {
 	bop_panic("driver_active");
-}
-
-void
-kstat_install(void)
-{
-	bop_panic("kstat_install");
 }
 
 void
@@ -4994,12 +4466,6 @@ lwp_freeregs(void)
 }
 
 void
-bitset_resize(void)
-{
-	bop_panic("bitset_resize");
-}
-
-void
 xcopyin_nta(void)
 {
 	bop_panic("xcopyin_nta");
@@ -5009,12 +4475,6 @@ void
 i_ddi_mem_free(void)
 {
 	bop_panic("i_ddi_mem_free");
-}
-
-void
-rw_lock_held(void)
-{
-	bop_panic("rw_lock_held");
 }
 
 void
@@ -5144,114 +4604,6 @@ vfs_syncprogress(void)
 }
 
 void
-idle(void)
-{
-	bop_panic("idle");
-}
-
-void
-swtch(void)
-{
-	bop_panic("swtch");
-}
-
-void
-disp_swapped_enq(void)
-{
-	bop_panic("disp_swapped_enq");
-}
-
-void
-cpupart_create(void)
-{
-	bop_panic("cpupart_create");
-}
-
-void
-cpupart_bind_thread(void)
-{
-	bop_panic("cpupart_bind_thread");
-}
-
-void
-cpupart_query_cpu(void)
-{
-	bop_panic("cpupart_query_cpu");
-}
-
-void
-cpupart_destroy(void)
-{
-	bop_panic("cpupart_destroy");
-}
-
-void
-cpupart_movable_thread(void)
-{
-	bop_panic("cpupart_movable_thread");
-}
-
-void
-cpupart_get_loadavg(void)
-{
-	bop_panic("cpupart_get_loadavg");
-}
-
-void
-cpupart_attach_cpu(void)
-{
-	bop_panic("cpupart_attach_cpu");
-}
-
-void
-swtch_from_zombie(void)
-{
-	bop_panic("swtch_from_zombie");
-}
-
-void
-setbackdq(void)
-{
-	bop_panic("setbackdq");
-}
-
-void
-dq_sruninc(void)
-{
-	bop_panic("dq_sruninc");
-}
-
-void
-dq_srundec(void)
-{
-	bop_panic("dq_srundec");
-}
-
-void
-dispdeq(void)
-{
-	bop_panic("dispdeq");
-}
-
-void
-setfrontdq(void)
-{
-	bop_panic("setfrontdq");
-}
-
-void
-disp_lowpri_cpu(void)
-{
-	bop_panic("disp_lowpri_cpu");
-}
-
-void
-swtch_to(void)
-{
-	bop_panic("swtch_to");
-}
-
-void
 __aeabi_llsr(void)
 {
 	bop_panic("__aeabi_llsr");
@@ -5264,7 +4616,397 @@ __aeabi_llsl(void)
 }
 
 void
-cpupart_find(void)
+cu_pg_update(void)
 {
-	bop_panic("cpupart_find");
+	bop_panic("cu_pg_update");
+}
+
+void
+siron(void)
+{
+	bop_panic("siron");
+}
+
+void
+panic_saveregs(void)
+{
+	bop_panic("panic_saveregs");
+}
+
+void
+panic_savetrap(void)
+{
+	bop_panic("panic_savetrap");
+}
+
+void
+lgrp_mnode_update(void)
+{
+	bop_panic("lgrp_mnode_update");
+}
+
+void
+turnstile_lookup(void)
+{
+	bop_panic("turnstile_lookup");
+}
+
+void
+turnstile_stay_asleep(void)
+{
+	bop_panic("turnstile_stay_asleep");
+}
+
+void
+ddi_modclose(void)
+{
+	bop_panic("ddi_modclose");
+}
+
+void
+panic_quiesce_hw(void)
+{
+	bop_panic("panic_quiesce_hw");
+}
+
+void
+panic_stopcpus(void)
+{
+	bop_panic("panic_stopcpus");
+}
+
+void
+turnstile_wakeup(void)
+{
+	bop_panic("turnstile_wakeup");
+}
+
+void
+mp_cpu_poweroff(void)
+{
+	bop_panic("mp_cpu_poweroff");
+}
+
+void
+lgrp_kstat_create(void)
+{
+	bop_panic("lgrp_kstat_create");
+}
+
+void
+turnstile_block(void)
+{
+	bop_panic("turnstile_block");
+}
+
+void
+ddi_modopen(void)
+{
+	bop_panic("ddi_modopen");
+}
+
+void
+cpu_create_intrstat(void)
+{
+	bop_panic("cpu_create_intrstat");
+}
+
+void
+mp_cpu_faulted_enter(void)
+{
+	bop_panic("mp_cpu_faulted_enter");
+}
+
+void
+pg_plat_hw_shared(void)
+{
+	bop_panic("pg_plat_hw_shared");
+}
+
+void
+lgrp_create(void)
+{
+	bop_panic("lgrp_create");
+}
+
+void
+cpupm_plat_domain_id(void)
+{
+	bop_panic("cpupm_plat_domain_id");
+}
+
+void
+bp_color(void)
+{
+	bop_panic("bp_color");
+}
+
+void
+pg_plat_cmt_policy(void)
+{
+	bop_panic("pg_plat_cmt_policy");
+}
+
+void
+siron_poke_cpu(void)
+{
+	bop_panic("siron_poke_cpu");
+}
+
+void
+mod_remove(void)
+{
+	bop_panic("mod_remove");
+}
+
+void
+getpil(void)
+{
+	bop_panic("getpil");
+}
+
+void
+lgrp_plat_root_hand(void)
+{
+	bop_panic("lgrp_plat_root_hand");
+}
+
+void
+panic_showtrap(void)
+{
+	bop_panic("panic_showtrap");
+}
+
+void
+cpu_disable_intr(void)
+{
+	bop_panic("cpu_disable_intr");
+}
+
+void
+setjmp(void)
+{
+	bop_panic("setjmp");
+}
+
+void
+traceregs(void)
+{
+	bop_panic("traceregs");
+}
+
+void
+unscalehrtime(void)
+{
+	bop_panic("unscalehrtime");
+}
+
+void
+cpupm_plat_state_enumerate(void)
+{
+	bop_panic("cpupm_plat_state_enumerate");
+}
+
+void
+mp_cpu_stop(void)
+{
+	bop_panic("mp_cpu_stop");
+}
+
+void
+membar_sync(void)
+{
+	bop_panic("membar_sync");
+}
+
+void
+membar_exit(void)
+{
+	bop_panic("membar_exit");
+}
+
+void
+pg_plat_cpus_share(void)
+{
+	bop_panic("pg_plat_cpus_share");
+}
+
+void
+pg_plat_hw_rank(void)
+{
+	bop_panic("pg_plat_hw_rank");
+}
+
+void
+cpu_enable_intr(void)
+{
+	bop_panic("cpu_enable_intr");
+}
+
+void
+mp_cpu_faulted_exit(void)
+{
+	bop_panic("mp_cpu_faulted_exit");
+}
+
+void
+turnstile_change_pri(void)
+{
+	bop_panic("turnstile_change_pri");
+}
+
+void
+mp_cpu_unconfigure(void)
+{
+	bop_panic("mp_cpu_unconfigure");
+}
+
+void
+pg_plat_get_core_id(void)
+{
+	bop_panic("pg_plat_get_core_id");
+}
+
+void
+get_cpu_mstate(void)
+{
+	bop_panic("get_cpu_mstate");
+}
+
+void
+lpl_topo_flatten(void)
+{
+	bop_panic("lpl_topo_flatten");
+}
+
+void
+elfexec(void)
+{
+	bop_panic("elfexec");
+}
+
+void
+pg_plat_hw_instance_id(void)
+{
+	bop_panic("pg_plat_hw_instance_id");
+}
+
+void
+atomic_dec_ulong(void)
+{
+	bop_panic("atomic_dec_ulong");
+}
+
+void
+atomic_cas_ulong(void)
+{
+	bop_panic("atomic_cas_ulong");
+}
+
+void
+atomic_clear_long_excl(void)
+{
+	bop_panic("atomic_clear_long_excl");
+}
+
+void
+mapexec_brand(void)
+{
+	bop_panic("mapexec_brand");
+}
+
+void
+panic_trigger(void)
+{
+	bop_panic("panic_trigger");
+}
+
+void
+cpu_delete_intrstat(void)
+{
+	bop_panic("cpu_delete_intrstat");
+}
+
+void
+panic_dump_hw(void)
+{
+	bop_panic("panic_dump_hw");
+}
+
+void
+atomic_inc_64(void)
+{
+	bop_panic("atomic_inc_64");
+}
+
+void
+atomic_inc_32(void)
+{
+	bop_panic("atomic_inc_32");
+}
+
+void
+panic_enter_hw(void)
+{
+	bop_panic("panic_enter_hw");
+}
+
+void
+lgrp_destroy(void)
+{
+	bop_panic("lgrp_destroy");
+}
+
+void
+cpupm_plat_change_state(void)
+{
+	bop_panic("cpupm_plat_change_state");
+}
+
+void
+mp_cpu_start(void)
+{
+	bop_panic("mp_cpu_start");
+}
+
+void
+turnstile_exit(void)
+{
+	bop_panic("turnstile_exit");
+}
+
+void
+mp_cpu_configure(void)
+{
+	bop_panic("mp_cpu_configure");
+}
+
+void
+mach_cpu_pause(void)
+{
+	bop_panic("mach_cpu_pause");
+}
+
+void
+lgrp_kstat_destroy(void)
+{
+	bop_panic("lgrp_kstat_destroy");
+}
+
+void
+kdi_siron(void)
+{
+	bop_panic("kdi_siron");
+}
+
+void
+ld_ib_prop(void)
+{
+	bop_panic("ld_ib_prop");
+}
+
+void
+mp_cpu_poweron(void)
+{
+	bop_panic("mp_cpu_poweron");
 }
