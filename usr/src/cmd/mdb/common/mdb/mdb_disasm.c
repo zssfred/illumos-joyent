@@ -419,7 +419,6 @@ libdisasm_create(mdb_disasm_t *dp, const char *name,
 	return (0);
 }
 
-#if defined(__i386) || defined(__amd64)
 static int
 ia16_create(mdb_disasm_t *dp)
 {
@@ -437,9 +436,7 @@ ia32_create(mdb_disasm_t *dp)
 	    "Intel 32-bit disassembler",
 	    DIS_X86_SIZE32));
 }
-#endif
 
-#if defined(__amd64)
 static int
 amd64_create(mdb_disasm_t *dp)
 {
@@ -448,9 +445,7 @@ amd64_create(mdb_disasm_t *dp)
 	    "AMD64 and IA32e 64-bit disassembler",
 	    DIS_X86_SIZE64));
 }
-#endif
 
-#if defined(__sparc)
 static int
 sparc1_create(mdb_disasm_t *dp)
 {
@@ -504,7 +499,15 @@ sparcv9plus_create(mdb_disasm_t *dp)
 	    "UltraSPARC1-v9 disassembler",
 	    DIS_SPARC_V9 | DIS_SPARC_V9_SGI));
 }
-#endif
+
+static int
+arm_create(mdb_disasm_t *dp)
+{
+	return (libdisasm_create(dp,
+	    "arm",
+	    "ARM disassembler",
+	    DIS_ARM));
+}
 
 /*ARGSUSED*/
 static void
@@ -556,20 +559,17 @@ defdis_create(mdb_disasm_t *dp)
 
 mdb_dis_ctor_f *const mdb_dis_builtins[] = {
 	defdis_create,
-#if defined(__amd64)
 	ia16_create,
 	ia32_create,
 	amd64_create,
-#elif defined(__i386)
 	ia16_create,
 	ia32_create,
-#elif defined(__sparc)
 	sparc1_create,
 	sparc2_create,
 	sparc4_create,
 	sparcv8_create,
 	sparcv9_create,
 	sparcv9plus_create,
-#endif
+	arm_create,
 	NULL
 };
