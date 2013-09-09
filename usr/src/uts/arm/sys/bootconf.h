@@ -60,6 +60,10 @@ extern int modrootloaded;
 extern char kern_bootargs[];
 extern char kern_bootfile[];
 
+extern int strplumb(void);
+extern void consconfig(void);
+extern void release_bootstrap(void);
+
 extern void bop_panic(const char *);
 extern void boot_prop_finish(void);
 extern void bop_printf(struct bootops *, const char *, ...);

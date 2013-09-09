@@ -54,7 +54,6 @@ GENUNIX_NOTYET_OBJS = \
 		systeminfo.o	\
 		sig.o		\
 		ndifm.o		\
-		main.o		\
 		lwp_sobj.o	\
 		kcpc.o		\
 		disp_lock.o	\
@@ -197,6 +196,7 @@ GENUNIX_OBJS +=	\
 		memcntl.o	\
 		memstr.o	\
 		lgrpsys.o	\
+		main.o		\
 		mkdir.o		\
 		mknod.o		\
 		mount.o		\

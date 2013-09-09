@@ -85,18 +85,6 @@ SHA1Final(void)
 }
 
 void
-initargs(void)
-{
-	bop_panic("initargs");
-}
-
-void
-initname(void)
-{
-	bop_panic("initname");
-}
-
-void
 mod_lock(void)
 {
 	bop_panic("mod_lock");
@@ -299,12 +287,6 @@ void
 prom_printf(void)
 {
 	bop_panic("prom_prinf");
-}
-
-void
-main(void)
-{
-	bop_panic("main!");
 }
 
 void
@@ -3308,12 +3290,6 @@ fsop_vnstate(void)
 }
 
 void
-exec_init(void)
-{
-	bop_panic("exec_init");
-}
-
-void
 page_downgrade(void)
 {
 	bop_panic("page_downgrade");
@@ -4514,12 +4490,6 @@ mod_hash_insert(void)
 }
 
 void
-start_init_common(void)
-{
-	bop_panic("start_init_common");
-}
-
-void
 shutdown(void)
 {
 	bop_panic("shutdown");
@@ -5009,4 +4979,100 @@ void
 mp_cpu_poweron(void)
 {
 	bop_panic("mp_cpu_poweron");
+}
+
+void
+strplumb(void)
+{
+	bop_panic("strplumb");
+}
+
+void
+consconfig(void)
+{
+	bop_panic("consconfig");
+}
+
+void
+release_bootstrap(void)
+{
+	bop_panic("release_bootstrap");
+}
+
+void
+cluster(void)
+{
+	bop_panic("cluster");
+}
+
+void
+reset_syscall_args(void)
+{
+	bop_panic("reset_syscall_args");
+}
+
+void
+halt(void)
+{
+	bop_panic("halt");
+}
+
+void
+lgrp_init(void)
+{
+	bop_panic("lgrp_init");
+}
+
+void
+startup(void)
+{
+	bop_panic("startup");
+}
+
+void
+segkmem_gc(void)
+{
+	bop_panic("segkmem_gc");
+}
+
+void
+cbe_init_pre(void)
+{
+	bop_panic("cbe_init_pre");
+}
+
+void
+cbe_init(void)
+{
+	bop_panic("cbe_init");
+}
+
+void
+vm_init(void)
+{
+	bop_panic("vm_init");
+}
+
+void
+vfs_mountroot(void)
+{
+	bop_panic("vfs_mountroot");
+}
+
+void
+post_startup(void)
+{
+	bop_panic("post_startup");
+}
+
+void
+start_other_cpus(void)
+{
+	bop_panic("start_other_cpus");
+}
+
+void
+mod_uninstall_daemon(void)
+{
+	bop_panic("mod_uninstall_daemon");
 }
