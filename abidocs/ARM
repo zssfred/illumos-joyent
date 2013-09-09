@@ -110,6 +110,26 @@ document. illumos will never defined the preprocessor symbol _AEABI_PORTABLE.
 
 At this time, C++ and DWARF for illumos on ARM are not defined.
 
+# Architectural use of CP15, c13, Thread and process ID Registers #
+###################################################################
+
+The ARM architecture provides three registers to serve as thread and process ID
+registers which are available in CP15, c13. Each one has different semantics for
+read and write based on mode. You get the following three:
+
+  o User read/write, Privileged read/write (CP15, c13, c0, 2)
+  o User read-only,  Privileged read/write (CP15, c13, c0, 3)
+  o Privileged read/write only (CP15, c13, c0, 4)
+
+These are reserved for use by the OS for ARM. At this time we allocate them as
+follows:
+
+  o The user read/write register will be used for the user's curthread. It
+    points to a ulwp_t.
+  o The user read-only register is reserved for future use by illumos.
+  o The privileged read/write register will be for the kernel's curthread. It
+    points to a kthread_t.
+
 # References #
 ##############
 [0] CodeSourcery ARM GNU/Linux Application Binary Interface Supplement (2005)
