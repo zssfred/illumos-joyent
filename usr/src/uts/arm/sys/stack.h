@@ -49,7 +49,7 @@ extern "C" {
 #if defined(DEBUG)
 #define	ASSERT_STACK_ALIGNED()						\
 	{								\
-		uint32_t __tmp;						\
+		uint64_t __tmp;						\
 		ASSERT((((uintptr_t)&__tmp) & (STACK_ALIGN - 1)) == 0);	\
 	}
 #else /* DEBUG */
