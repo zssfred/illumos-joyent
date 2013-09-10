@@ -28,6 +28,7 @@ KRTLD_OBJS +=		\
 	kobj_reloc.o
 
 CORE_OBJS += \
+	arm_subr.o \
 	decompress.o
 
 #

@@ -61,6 +61,7 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	 *  o Enable our I/D-caches
 	 *  o Save the boot syscalls and bootops for later
 	 *  o Set up our stack to be the real stack of t0stack.
+	 *  o Save t0 as curthread
 	 *  o Set up a struct REGS for mlsetup
 	 *  o Make sure that we're 8 byte aligned for the call
 	 */
@@ -100,6 +101,12 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	ldr	r2, =bootopsp
 	ldr	r2, [r2]
 	str	r1, [r2]
+
+	/*
+	 * Set up our curthread pointer
+	 */
+	ldr	r0, =t0
+	mcr	p15, 0, r0, c13, c0, 4
 
 	/*
 	 * Go ahead now and enable unaligned access, the L1 I/D caches.

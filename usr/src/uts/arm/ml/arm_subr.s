@@ -13,40 +13,32 @@
  * Copyright 2013 (c) Joyent, Inc. All rights reserved.
  */
 
-#ifndef _ASM_THREAD_H
-#define	_ASM_THREAD_H
+/*
+ * This file contains various ARM subroutines that are generic across all ARM
+ * platforms.
+ */
 
-#include <sys/ccompile.h>
-#include <sys/types.h>
+#include <sys/asm_linkage.h>
 
-#ifdef	__cplusplus
-extern "C" {
-#endif
+#if defined(__lint)
+#include <sys/thread.h>
+#endif /* __lint */
 
-#if !defined(__lint) && defined(__GNUC__)
-struct _kthread;
+#if defined(__lint)
 
-
-extern __GNU_INLINE struct _kthread *
+/*
+ * Return the current kernel thread that's running. Note that this is also
+ * available as an inline function.
+ */
+kthread_id_t
 threadp(void)
-{
-	void *__value;
+{ return ((kthread_id_t)0); }
 
-#if defined(__arm__)
-	__asm__ __volatile__(
-	    "mrc p15, 0, %0, c13, c0, 4"
-	    : "=r" (__value));
-#else
-#error	"port me"
-#endif
-	return (__value);
-}
+#else	/* __lint */
 
+	ENTRY(threadp)
+	mrc	p15, 0, r0, c13, c0, 4
+	bx	lr
+	SET_SIZE(threadp)
 
-#endif	/* !__lint && __GNUC__ */
-
-#ifdef	__cplusplus
-}
-#endif
-
-#endif	/* _ASM_THREAD_H */
+#endif	/* __lint */

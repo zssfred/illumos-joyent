@@ -189,12 +189,6 @@ kdi_vtop(void)
 }
 
 void
-threadp(void)
-{
-	bop_panic("threadp");
-}
-
-void
 stubs_end(void)
 {
 	bop_panic("stubs_end");
