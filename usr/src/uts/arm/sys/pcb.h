@@ -36,6 +36,22 @@ typedef struct pcb {
 
 #endif /* _ASM */
 
+/*
+ * XXX
+ * This is almost certainly an incomplete list of flags. Some of them are
+ * expected to exist, eg. NORMAL_STEP, by functions like issig_forreal.
+ *
+ * Currently this is the minimum combination of intel and sparc flags that are
+ * used by common code. There may be additions and subtractions to the final set
+ * used here.
+ */
+#define	PRSTOP_CALLED	0x01	/* prstop() has been called for this lwp */
+#define	INSTR_VALID	0x02	/* value in pcb_instr is valid (/proc) */
+#define	NORMAL_STEP	0x04	/* normal debugger requested single-step */
+#define	WATCH_STEP	0x08	/* single-stepping in watchpoint emulation */
+#define	CPC_OVERFLOW	0x10	/* performance counters overflowed */
+#define	ASYNC_HWERR	0x20	/* asynchronous h/w error (e.g. parity error) */
+
 #ifdef __cplusplus
 }
 #endif

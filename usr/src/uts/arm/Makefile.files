@@ -53,7 +53,6 @@ GENUNIX_NOTYET_OBJS = \
 		urw.o		\
 		turnstile.o	\
 		systeminfo.o	\
-		sig.o		\
 		ndifm.o		\
 		lwp_sobj.o	\
 		kcpc.o		\
@@ -272,6 +271,7 @@ GENUNIX_OBJS +=	\
 		session.o	\
 		share.o		\
 		shuttle.o	\
+		sig.o		\
 		sigaction.o	\
 		sigaltstack.o	\
 		signotify.o	\

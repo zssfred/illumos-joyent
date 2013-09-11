@@ -362,12 +362,6 @@ splx(void)
 }
 
 void
-stop(void)
-{
-	bop_panic("stop");
-}
-
-void
 atomic_inc_ulong_nv(void)
 {
 	bop_panic("atomic_inc_ulong_nv");
@@ -503,12 +497,6 @@ void
 indir(void)
 {
 	bop_panic("indir");
-}
-
-void
-issig(void)
-{
-	bop_panic("issig");
 }
 
 void
@@ -857,12 +845,6 @@ void
 membar_enter(void)
 {
 	bop_panic("membar_enter");
-}
-
-void
-signal_is_blocked(void)
-{
-	bop_panic("signal_is_blocked");
 }
 
 void
@@ -1496,12 +1478,6 @@ page_destroy_pages(void)
 }
 
 void
-siginfofree(void)
-{
-	bop_panic("siginfofree");
-}
-
-void
 anon_get_slot(void)
 {
 	bop_panic("anon_get_slot");
@@ -1958,12 +1934,6 @@ socket_setsockopt(void)
 }
 
 void
-sigwillqueue(void)
-{
-	bop_panic("sigwillqueue");
-}
-
-void
 getpcstack(void)
 {
 	bop_panic("getpcstack");
@@ -2231,18 +2201,6 @@ void
 sendto(void)
 {
 	bop_panic("sendto");
-}
-
-void
-sigcld(void)
-{
-	bop_panic("sigcld");
-}
-
-void
-psignal(void)
-{
-	bop_panic("psignal");
 }
 
 void
@@ -2660,12 +2618,6 @@ lwp_setrval(void)
 }
 
 void
-sigsendset(void)
-{
-	bop_panic("sigsendset");
-}
-
-void
 semexit(void)
 {
 	bop_panic("semexit");
@@ -2735,18 +2687,6 @@ void
 hat_supported(void)
 {
 	bop_panic("hat_supported");
-}
-
-void
-sigaddq(void)
-{
-	bop_panic("sigaddq");
-}
-
-void
-sigdelq(void)
-{
-	bop_panic("sigdelq");
 }
 
 void
@@ -2978,12 +2918,6 @@ hat_page_getshare(void)
 }
 
 void
-jobstopped(void)
-{
-	bop_panic("jobstopped");
-}
-
-void
 prom_getprop(void)
 {
 	bop_panic("prom_getprop");
@@ -3011,12 +2945,6 @@ void
 hat_swapout(void)
 {
 	bop_panic("hat_swapout");
-}
-
-void
-sigdefault(void)
-{
-	bop_panic("sigdefault");
 }
 
 void
@@ -3077,12 +3005,6 @@ void
 gethrtime(void)
 {
 	bop_panic("gethrtime");
-}
-
-void
-sigdiffset(void)
-{
-	bop_panic("sigdiffset");
 }
 
 void
@@ -3296,18 +3218,6 @@ so_socketpair(void)
 }
 
 void
-setsigact(void)
-{
-	bop_panic("setsigact");
-}
-
-void
-tsignal(void)
-{
-	bop_panic("tsignal");
-}
-
-void
 getpeername(void)
 {
 	bop_panic("getpeername");
@@ -3422,21 +3332,9 @@ door_ki_upcall_limited(void)
 }
 
 void
-sigqhdralloc(void)
-{
-	bop_panic("sigqhdralloc");
-}
-
-void
 hat_kpm_page2va(void)
 {
 	bop_panic("hat_kpm_page2va");
-}
-
-void
-sigsendproc(void)
-{
-	bop_panic("sigsendproc");
 }
 
 void
@@ -3467,12 +3365,6 @@ void
 dounmount(void)
 {
 	bop_panic("dounmount");
-}
-
-void
-sigcld_delete(void)
-{
-	bop_panic("sigcld_delete");
 }
 
 void
@@ -3836,12 +3728,6 @@ hat_getpagesize(void)
 }
 
 void
-sigandset(void)
-{
-	bop_panic("sigandset");
-}
-
-void
 cpu_intr_swtch_enter(void)
 {
 	bop_panic("cpu_intr_swtch_enter");
@@ -4154,12 +4040,6 @@ page_relocate(void)
 }
 
 void
-sigqalloc(void)
-{
-	bop_panic("sigqalloc");
-}
-
-void
 hat_dup(void)
 {
 	bop_panic("hat_dup");
@@ -4214,12 +4094,6 @@ idmap_unreg_dh(void)
 }
 
 void
-sigtoproc(void)
-{
-	bop_panic("sigtoproc");
-}
-
-void
 set_idle_cpu(void)
 {
 	bop_panic("set_idle_cpu");
@@ -4229,12 +4103,6 @@ void
 modgetsymname(void)
 {
 	bop_panic("modgetsymname");
-}
-
-void
-sigqhdrfree(void)
-{
-	bop_panic("sigqhdrfree");
 }
 
 void
@@ -4424,12 +4292,6 @@ dtrace_interrupt_disable(void)
 }
 
 void
-sigcld_repost(void)
-{
-	bop_panic("sigcld_repost");
-}
-
-void
 lwp_freeregs(void)
 {
 	bop_panic("lwp_freeregs");
@@ -4508,18 +4370,6 @@ i_convert_boot_device_name(void)
 }
 
 void
-sigaddqa(void)
-{
-	bop_panic("sigaddqa");
-}
-
-void
-sigcheck(void)
-{
-	bop_panic("sigcheck");
-}
-
-void
 mod_hash_destroy_strhash(void)
 {
 	bop_panic("mod_hash_destroy_strhash");
@@ -4538,27 +4388,9 @@ page_release(void)
 }
 
 void
-sigorset(void)
-{
-	bop_panic("sigorset");
-}
-
-void
-sigqfree(void)
-{
-	bop_panic("sigqfree");
-}
-
-void
 vfs_list_unlock(void)
 {
 	bop_panic("vfs_list_unlock");
-}
-
-void
-sigqsend(void)
-{
-	bop_panic("sigqsend");
 }
 
 void
@@ -5069,4 +4901,51 @@ void
 mod_uninstall_daemon(void)
 {
 	bop_panic("mod_uninstall_daemon");
+}
+void
+dtrace_safe_synchronous_signal(void)
+{
+	bop_panic("dtrace_safe_synchronous_signal");
+}
+
+void
+prstop(void)
+{
+	bop_panic("prstop");
+}
+
+void
+prnotify(void)
+{
+	bop_panic("prnotify");
+}
+
+void
+prnostep(void)
+{
+	bop_panic("prnostep");
+}
+
+void
+sendsig(void)
+{
+	bop_panic("sendsig");
+}
+
+void
+audit_core_start(void)
+{
+	bop_panic("audit_core_start");
+}
+
+void
+dtrace_safe_defer_signal(void)
+{
+	bop_panic("dtrace_safe_defer_signal");
+}
+
+void
+audit_core_finish(void)
+{
+	bop_panic("audit_core_finish");
 }
