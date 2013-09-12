@@ -63,6 +63,7 @@ function setup
 	mkdir "$mkp_tmpdir" || fatal "failed to create temp dir: $mkp_tmpdir"
 	trap 'cleanup' EXIT
 	mkfile "$mkp_size"k "$mkp_rdfile" || fatal "failed to create file"
+	chmod 644 $mkp_rdfile
 	chown $USER $mkp_rdfile || fatal "failed to chown"
 	mkdir $mkp_rdmnt || fatal "failed to make mount point"
 }
