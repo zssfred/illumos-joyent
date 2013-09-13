@@ -137,7 +137,7 @@ x:	RTMCOUNT(x)
  * ENTRY2 is identical to ENTRY but provides two labels for the entry point.
  */
 #define	ENTRY2(x, y) \
-	text; \
+	.text; \
 	.align	4; \
 	.globl	x; \
 	.type	x, %function; \
@@ -146,7 +146,7 @@ x:	; \
 y:	MCOUNT(x)
 
 #define	ENTRY_NP2(x, y) \
-	text; \
+	.text; \
 	.align	4; \
 	.globl	x; \
 	.type	x, %function; \
