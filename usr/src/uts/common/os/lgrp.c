@@ -1440,8 +1440,8 @@ lgrp_mem_fini(int mnode, lgrp_handle_t hand, boolean_t is_copy_rename)
 		 * Remove memory node from lgroup.
 		 */
 		lgrp->lgrp_mnodes &= ~mnodes_mask;
+		ASSERT(lgrp->lgrp_nmnodes > 0);
 		lgrp->lgrp_nmnodes--;
-		ASSERT(lgrp->lgrp_nmnodes >= 0);
 	}
 	ASSERT(lgrp_root->lgrp_nmnodes > 0);
 
