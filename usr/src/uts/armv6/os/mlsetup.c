@@ -173,6 +173,4 @@ mlsetup(struct regs *rp)
 	}
 
 	ASSERT_STACK_ALIGNED();
-
-	bop_panic("mlsetup!");
 }
