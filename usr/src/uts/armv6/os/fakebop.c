@@ -29,6 +29,8 @@
 #include <sys/systm.h>
 #include <sys/ctype.h>
 #include <sys/bootstat.h>
+#include <sys/privregs.h>
+#include <sys/cpu_asm.h>
 
 static bootops_t bootop;
 
@@ -666,6 +668,93 @@ boot_compinfo(int fd, struct compinfo *cbp)
 	return (0);
 }
 
+extern void (*exception_table[])(void);
+
+void
+primordial_handler(void)
+{
+	bop_panic("TRAP");
+}
+
+void
+primordial_svc(void *arg)
+{
+	struct regs *r = (struct regs *)arg;
+	uint32_t *insaddr = (uint32_t *)(r->r_lr - 4);
+
+	bop_printf(NULL, "TRAP: svc #%d from %p\n", *insaddr & 0x00ffffff,
+	    insaddr);
+}
+
+void
+primordial_undef(void *arg)
+{
+	struct regs *r = (struct regs *)arg;
+	uint32_t *insaddr = (uint32_t *)(r->r_lr - 4);
+
+	bop_printf(NULL, "TRAP: undefined instruction %x at %p\n",
+	    *insaddr, insaddr);
+}
+
+void
+primordial_reset(void *arg)
+{
+	struct regs *r = (struct regs *)arg;
+	uint32_t *insaddr = (uint32_t *)(r->r_lr - 4);
+
+	bop_printf(NULL, "TRAP: reset from %p\n",
+	    insaddr);
+	bop_panic("cannot recover from reset\n");
+}
+
+void
+primordial_prefetchabt(void *arg)
+{
+	struct regs *r = (struct regs *)arg;
+	uint32_t *insaddr = (uint32_t *)(r->r_lr - 4);
+	uint32_t bkptno = ((*insaddr & 0xfff00) >> 4) | (*insaddr & 0xf);
+
+	bop_printf(NULL, "TRAP: prefetch (or bkpt #%d) at %p\n",
+	    bkptno, insaddr);
+}
+
+/*
+ * XXX: This can't be tested without the MMU on, I don't think
+ *
+ * So while I'm sure (surely) we can decode this into a useful "what went
+ * wrong and why", I have no idea how, and couldn't test it if I did.
+ *
+ * I will say that I currently have the awful feeling that it would require an
+ * instruction decoder to decode *insaddr and find the memory refs...
+ */
+void
+primordial_dataabt(void *arg)
+{
+	struct regs *r = (struct regs *)arg;
+	/* XXX: Yes, really +8 see ARM A2.6.6 */
+	uint32_t *insaddr = (uint32_t *)(r->r_lr - 8);
+
+	bop_printf(NULL, "TRAP: data abort at (insn) %p\n", insaddr);
+}
+
+void
+bad_interrupt(void *arg)
+{
+	bop_panic("Interrupt with VE == 0 (non-vectored)\n");
+}
+
+/* XXX: This should probably be somewhere else */
+void (*trap_table[ARM_EXCPT_NUM])(void *) = {
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+
 /*
  * Welcome to the kernel. We need to make a fake version of the boot_ops and the
  * boot_syscalls and then jump our way to _kobj_boot(). Here, we're borrowing
@@ -686,6 +775,21 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 
 	fakebop_getatags(tagstart);
 	bcons_init(bip->bi_cmdline);
+
+	/* Now that we have a console, we can usefully handle traps */
+	trap_table[ARM_EXCPT_RESET] = primordial_reset;
+	trap_table[ARM_EXCPT_UNDINS] = primordial_undef;
+	trap_table[ARM_EXCPT_SVC] = primordial_svc;
+	trap_table[ARM_EXCPT_PREFETCH] = primordial_prefetchabt;
+	trap_table[ARM_EXCPT_DATA] = primordial_dataabt;
+	trap_table[ARM_EXCPT_IRQ] = bad_interrupt;
+	trap_table[ARM_EXCPT_FIQ] = bad_interrupt;
+
+	bop_printf(NULL, "Testing some exceptions\n");
+	__asm__ __volatile__(".word 0xffffffff");
+	__asm__ __volatile__("svc #14");
+	/* the high and low bit in each field, so we can check the decode */
+	__asm__ __volatile__("bkpt #32793");
 
 	/* Clear some lines from the bootloader */
 	bop_printf(NULL, "\nWelcome to fakebop -- ARM edition\n");

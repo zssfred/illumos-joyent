@@ -15,6 +15,16 @@
 
 $mapfile_version 2
 
+# NB: Order matters for name-based entry!
+LOAD_SEGMENT exception_vector {
+	FLAGS = READ EXECUTE;
+	NOHDR;
+	PADDR = 0x0;
+	VADDR = 0x0;
+	OS_ORDER = .exception_vector;
+	ASSIGN_SECTION { IS_NAME = .exception_vector };
+};
+
 LOAD_SEGMENT text {
 	FLAGS = READ EXECUTE;
 	NOHDR;

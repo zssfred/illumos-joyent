@@ -30,7 +30,8 @@ MISC_OBJS +=			\
 
 ML_OBJS +=			\
 	cache.o			\
-	glocore.o
+	glocore.o		\
+	trap.o
 
 OS_OBJS +=			\
 	bsmdep.o		\

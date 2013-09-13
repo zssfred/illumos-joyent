@@ -14,6 +14,7 @@
  */
 
 #include <sys/asm_linkage.h>
+#include <sys/cpu_asm.h>
 
 /*
  * Every story needs a beginning. This is ours.
@@ -67,13 +68,27 @@
  * Recall that _start is the traditional entry point for an ELF binary.
  */
 	ENTRY(_start)
-	mov sp,#0x8000
-        /*
-         * XXX Currently we're using u-boot to allow us to make forward progress
-         * while the .data section is a bit tumultuous. It loads that, but we
-         * can say for certain that it does not correctly pass in the machid and
-         * tagstart. Since we know what it is, we manually fix it up here.
-         */
+	mov sp, #0x8000
+	/*
+	 * establish temporary stacks for exceptional CPU states which occur prior
+	 * to us being really set up
+	 */
+	cps #(CPU_MODE_UND)
+	mov sp, #0x9000
+	cps #(CPU_MODE_ABT)
+	mov sp, #0x10000
+	cps #(CPU_MODE_FIQ)
+	mov sp, #0x11000
+	cps #(CPU_MODE_IRQ)
+	mov sp, #0x12000
+	cps #(CPU_MODE_SVC)
+
+	/*
+	 * XXX Currently we're using u-boot to allow us to make forward progress
+	 * while the .data section is a bit tumultuous. It loads that, but we
+	 * can say for certain that it does not correctly pass in the machid and
+	 * tagstart. Since we know what it is, we manually fix it up here.
+	 */
 	mov r2,#0x100
 	bl _fakebop_start
 	SET_SIZE(_start)
@@ -85,5 +100,5 @@
 
 	ENTRY(arm_reg_write)
 	str r1, [r0]
-	bx lr	
+	bx lr
 	SET_SIZE(arm_reg_write)

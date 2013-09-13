@@ -15,6 +15,7 @@
 
 #include <sys/asm_linkage.h>
 #include <sys/machparam.h>
+#include <sys/cpu_asm.h>
 
 #include "assym.h"
 
@@ -37,9 +38,22 @@
 	.globl	bootops
 	.globl	bootopsp
 	.globl	t0
-	
+
 	.data
 	.comm	t0stack, DEFAULTSTKSZ, 32
+	/*
+	 * exception handling stacks
+	 *
+	 * XXX: We actually need one of these per-cpu, and they need to be
+	 * deep enough to account for (I believe) potential nesting.
+	 *
+	 * We only use a tiny bit at a time, however, so right now they are tiny.
+	 * XXX: Do we really need all of them?
+	 */
+	.comm	undstack, 128, 32
+	.comm	fiqstack, 128, 32
+	.comm	irqstack, 128, 32
+	.comm	abtstack, 128, 32
 	.comm	t0, 4094, 32
 
 #if defined(__lint)
@@ -56,7 +70,7 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	 * tasks that we need to take care of before we hop into mlsetup and
 	 * then main. We're never going back so we shouldn't feel compelled to
 	 * preserve any registers.
-	 * 
+	 *
 	 *  o Enable unaligned access
 	 *  o Enable our I/D-caches
 	 *  o Save the boot syscalls and bootops for later
@@ -69,12 +83,22 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	ENTRY(_locore_start)
 
 	/*
-	 * It's time to say good bye to the fake stack that the various platform
+	 * It's time to say good bye to the fake stacks that the various platform
 	 * locore's set up for us. We'll see sp to the special stack pointer for
 	 * t0 and also have room for a 'struct regs' for lwp0.
 	 */
 	ldr	sp, =t0stack
-	/* XXX Am I missing a derference here? */
+	cps	#(CPU_MODE_UND)
+	ldr	sp, =undstack
+	cps	#(CPU_MODE_ABT)
+	ldr	sp, =abtstack
+	cps	#(CPU_MODE_FIQ)
+	ldr	sp, =fiqstack
+	cps	#(CPU_MODE_IRQ)
+	ldr	sp, =irqstack
+	cps	#(CPU_MODE_SVC)
+
+	/* XXX Am I missing a dereference here? */
 	ldr	r4, =(DEFAULTSTKSZ - REGSIZE)
 	add	sp, r4
 #if (REGSIZE & 7) == 0
