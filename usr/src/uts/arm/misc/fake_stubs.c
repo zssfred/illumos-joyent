@@ -657,12 +657,6 @@ ddi_rep_put16(void)
 }
 
 void
-lgrp_move_thread(void)
-{
-	bop_panic("lgrp_move_thread");
-}
-
-void
 group_page_unlock(void)
 {
 	bop_panic("group_page_unlock");
@@ -921,12 +915,6 @@ page_tryupgrade(void)
 }
 
 void
-lgrp_optimizations(void)
-{
-	bop_panic("lgrp_optimizations");
-}
-
-void
 mod_hash_create_ptrhash(void)
 {
 	bop_panic("mod_hash_create_ptrhash");
@@ -984,18 +972,6 @@ void
 i_ddi_apply_range(void)
 {
 	bop_panic("i_ddi_apply_range");
-}
-
-void
-lgrp_shm_policy_get(void)
-{
-	bop_panic("lgrp_shm_policy_get");
-}
-
-void
-lgrp_shm_policy_set(void)
-{
-	bop_panic("lgrp_shm_policy_set");
 }
 
 void
@@ -1170,12 +1146,6 @@ void
 audit_finish(void)
 {
 	bop_panic("audit_finish");
-}
-
-void
-lgrp_madv_to_policy(void)
-{
-	bop_panic("lgrp_madv_to_policy");
 }
 
 void
@@ -1425,12 +1395,6 @@ ndi_fmc_entry_error(void)
 }
 
 void
-lgrp_plat_latency(void)
-{
-	bop_panic("lgrp_plat_latency");
-}
-
-void
 anon_array_try_enter(void)
 {
 	bop_panic("anon_array_try_enter");
@@ -1647,18 +1611,6 @@ vfs_has_feature(void)
 }
 
 void
-lgrp_choose(void)
-{
-	bop_panic("lgrp_choose");
-}
-
-void
-lgrp_config(void)
-{
-	bop_panic("lgrp_config");
-}
-
-void
 lwp_cond_broadcast(void)
 {
 	bop_panic("lwp_cond_broadcast");
@@ -1794,12 +1746,6 @@ void
 i_ddi_free_intr_phdl(void)
 {
 	bop_panic("i_ddi_free_intr_phdl");
-}
-
-void
-lgrp_loadavg(void)
-{
-	bop_panic("lgrp_loadavg");
 }
 
 void
@@ -2043,18 +1989,6 @@ page_szc_lock(void)
 }
 
 void
-lgrp_shm_policy_fini(void)
-{
-	bop_panic("lgrp_shm_policy_fini");
-}
-
-void
-lgrp_shm_policy_init(void)
-{
-	bop_panic("lgrp_shm_policy_init");
-}
-
-void
 listen(void)
 {
 	bop_panic("listen");
@@ -2226,12 +2160,6 @@ void
 pagezero(void)
 {
 	bop_panic("pagezero");
-}
-
-void
-lpl_topo_bootstrap(void)
-{
-	bop_panic("lpl_topo_bootstrap");
 }
 
 void
@@ -2661,12 +2589,6 @@ mod_hash_bystr(void)
 }
 
 void
-lgrp_privm_policy_set(void)
-{
-	bop_panic("lgrp_privm_policy_set");
-}
-
-void
 spec_assoc_vp_with_devi(void)
 {
 	bop_panic("spec_assoc_vp_with_devi");
@@ -2835,12 +2757,6 @@ splhigh(void)
 }
 
 void
-lgrp_home_id(void)
-{
-	bop_panic("lgrp_home_id");
-}
-
-void
 lwp_mutex_timedlock(void)
 {
 	bop_panic("lwp_mutex_timedlock");
@@ -2904,12 +2820,6 @@ void
 suword8(void)
 {
 	bop_panic("suword8");
-}
-
-void
-lgrp_mem_size(void)
-{
-	bop_panic("lgrp_mem_size");
 }
 
 void
@@ -2988,12 +2898,6 @@ void
 read_dacf_binding_file(void)
 {
 	bop_panic("read_dacf_binding_file");
-}
-
-void
-lgrp_update_trthr_migrations(void)
-{
-	bop_panic("lgrp_update_trthr_migrations");
 }
 
 void
@@ -3297,12 +3201,6 @@ mod_hash_null_valdtor(void)
 }
 
 void
-lgrp_plat_cpu_to_hand(void)
-{
-	bop_panic("lgrp_plat_cpu_to_hand");
-}
-
-void
 page_numtopp_nolock(void)
 {
 	bop_panic("page_numtopp_nolock");
@@ -3558,12 +3456,6 @@ void
 pr_allstopped(void)
 {
 	bop_panic("pr_allstopped");
-}
-
-void
-lgrp_pfn_to_lgrp(void)
-{
-	bop_panic("lgrp_pfn_to_lgrp");
 }
 
 void
@@ -3885,12 +3777,6 @@ mutex_owner(void)
 }
 
 void
-lgrp_plat_max_lgrps(void)
-{
-	bop_panic("lgrp_plat_max_lgrps");
-}
-
-void
 anon_release(void)
 {
 	bop_panic("anon_release");
@@ -4038,12 +3924,6 @@ void
 mod_containing_pc(void)
 {
 	bop_panic("mod_containing_pc");
-}
-
-void
-lgrp_mem_policy_default(void)
-{
-	bop_panic("lgrp_mem_policy_default");
 }
 
 void
@@ -4353,12 +4233,6 @@ panic_savetrap(void)
 }
 
 void
-lgrp_mnode_update(void)
-{
-	bop_panic("lgrp_mnode_update");
-}
-
-void
 turnstile_lookup(void)
 {
 	bop_panic("turnstile_lookup");
@@ -4401,12 +4275,6 @@ mp_cpu_poweroff(void)
 }
 
 void
-lgrp_kstat_create(void)
-{
-	bop_panic("lgrp_kstat_create");
-}
-
-void
 turnstile_block(void)
 {
 	bop_panic("turnstile_block");
@@ -4434,12 +4302,6 @@ void
 pg_plat_hw_shared(void)
 {
 	bop_panic("pg_plat_hw_shared");
-}
-
-void
-lgrp_create(void)
-{
-	bop_panic("lgrp_create");
 }
 
 void
@@ -4476,12 +4338,6 @@ void
 getpil(void)
 {
 	bop_panic("getpil");
-}
-
-void
-lgrp_plat_root_hand(void)
-{
-	bop_panic("lgrp_plat_root_hand");
 }
 
 void
@@ -4587,12 +4443,6 @@ get_cpu_mstate(void)
 }
 
 void
-lpl_topo_flatten(void)
-{
-	bop_panic("lpl_topo_flatten");
-}
-
-void
 elfexec(void)
 {
 	bop_panic("elfexec");
@@ -4665,12 +4515,6 @@ panic_enter_hw(void)
 }
 
 void
-lgrp_destroy(void)
-{
-	bop_panic("lgrp_destroy");
-}
-
-void
 cpupm_plat_change_state(void)
 {
 	bop_panic("cpupm_plat_change_state");
@@ -4698,12 +4542,6 @@ void
 mach_cpu_pause(void)
 {
 	bop_panic("mach_cpu_pause");
-}
-
-void
-lgrp_kstat_destroy(void)
-{
-	bop_panic("lgrp_kstat_destroy");
 }
 
 void
@@ -4758,12 +4596,6 @@ void
 halt(void)
 {
 	bop_panic("halt");
-}
-
-void
-lgrp_init(void)
-{
-	bop_panic("lgrp_init");
 }
 
 void
