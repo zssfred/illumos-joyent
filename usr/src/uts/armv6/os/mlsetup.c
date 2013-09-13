@@ -136,9 +136,6 @@ mlsetup(struct regs *rp)
 	init_mstate(&t0, LMS_SYSTEM);
 	init_cpu_mstate(CPU, CMS_SYSTEM);
 
-	bop_panic("mlsetup!");
-
-#if 0
 	/*
 	 * Initialize lists of available and active CPUs.
 	 */
@@ -146,10 +143,36 @@ mlsetup(struct regs *rp)
 
 	pg_cpu_bootstrap(CPU);
 
+#ifdef XXX_ARM_VM
 	cpu_vm_data_init(CPU);
+#else
+	bop_printf(NULL, "XXX_ARM_VM: cpu_vm_data_init\n");
+#endif
+
+	/*
+	 * XXX This is where we should be entering kmdb
+	 */
 
 	rp->r_fp = 0;	/* terminate kernel stack traces! */
 
 	prom_init("kernel", (void *)NULL);
-#endif
+
+	/*
+	 * We support zero CPU DR at this time.
+	 */
+	max_ncpus = boot_max_ncpus = boot_ncpus;
+
+	/*
+	 * Initialize the lgrp framework
+	 */
+	lgrp_init(LGRP_INIT_STAGE1);
+
+	if (boothowto & RB_HALT) {
+		prom_printf("unix: kernel halted by -h flag\n");
+		prom_enter_mon();
+	}
+
+	ASSERT_STACK_ALIGNED();
+
+	bop_panic("mlsetup!");
 }

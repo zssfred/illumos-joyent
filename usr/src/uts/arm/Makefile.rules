@@ -55,4 +55,10 @@ $(OBJS_DIR)/%.o:		$(UTSBASE)/arm/misc/%.c
 # XXX Do we keep this CPPFLAG?
 $(OBJS_DIR)/kobj.o		:= CPPFLAGS += -D_DBOOT
 
-
+#
+# XXX We are actually building intel's prom modules. We should really make these
+# some more common place that's not quite uts/common.
+#
+$(OBJS_DIR)/%.o:		$(SRC)/psm/promif/fake1275/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)

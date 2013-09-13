@@ -248,6 +248,10 @@ $(OBJS_DIR)/%.o:		$(UTSBASE)/intel/pcbe/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)
 
+#
+# XXX We have copied this to its own module in psm to share with ARM. We should
+# remove the Intel copy of the code and move it over there once we test it.
+#
 $(OBJS_DIR)/%.o:		$(UTSBASE)/intel/promif/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)

@@ -38,6 +38,7 @@ extern "C" {
 
 extern greg_t getfp(void);
 extern int getpil(void);
+extern void reset(void) __NORETURN;
 
 #endif /* _KERNEL */
 

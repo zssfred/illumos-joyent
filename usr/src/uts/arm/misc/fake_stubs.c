@@ -272,17 +272,6 @@ mutex_owned(void)
 	bop_panic("mutex_owned");
 }
 
-/*
- * prom_printf and co. are supposed to come from genunix. Further rather than
- * reinvent the wheel here, we should move uts/intel/promif to psm/non1275/ and
- * make a common set of code here rather than just reinvent everything.
- */
-void
-prom_printf(void)
-{
-	bop_panic("prom_prinf");
-}
-
 void
 anon_init(void)
 {
@@ -572,12 +561,6 @@ page_subclaim_pages(void)
 }
 
 void
-prom_writestr(void)
-{
-	bop_panic("prom_writestr");
-}
-
-void
 lwp_mutex_wakeup(void)
 {
 	bop_panic("lwp_mutex_wakeup");
@@ -623,12 +606,6 @@ void
 door_ki_upcall(void)
 {
 	bop_panic("door_ki_upcall");
-}
-
-void
-prom_putchar(void)
-{
-	bop_panic("prom_putchar");
 }
 
 void
@@ -899,12 +876,6 @@ void
 lwp_detach_brand_hdlrs(void)
 {
 	bop_panic("lwp_detach_brand_hdlrs");
-}
-
-void
-prom_getproplen(void)
-{
-	bop_panic("prom_getproplen");
 }
 
 void
@@ -2108,12 +2079,6 @@ modctl(void)
 }
 
 void
-prom_childnode(void)
-{
-	bop_panic("prom_childnode");
-}
-
-void
 door_ki_rele(void)
 {
 	bop_panic("door_ki_rele");
@@ -2600,12 +2565,6 @@ tnf_opaque_array_1(void)
 }
 
 void
-gethrtime_unscaled(void)
-{
-	bop_panic("gethrtime_unscaled");
-}
-
-void
 map_pgszcvec(void)
 {
 	bop_panic("map_pgszcvec");
@@ -2720,12 +2679,6 @@ dcopy_cmd_post(void)
 }
 
 void
-prom_vprintf(void)
-{
-	bop_panic("prom_vprintf");
-}
-
-void
 dcopy_cmd_poll(void)
 {
 	bop_panic("dcopy_cmd_poll");
@@ -2783,12 +2736,6 @@ void
 lwp_rtt_initial(void)
 {
 	bop_panic("lwp_rtt_initial");
-}
-
-void
-prom_set_outfuncs(void)
-{
-	bop_panic("prom_set_outfuncs");
 }
 
 void
@@ -2918,21 +2865,9 @@ hat_page_getshare(void)
 }
 
 void
-prom_getprop(void)
-{
-	bop_panic("prom_getprop");
-}
-
-void
 disp_lock_exit(void)
 {
 	bop_panic("disp_lock_exit");
-}
-
-void
-prom_getchar(void)
-{
-	bop_panic("prom_getchar");
 }
 
 void
@@ -3164,12 +3099,6 @@ page_vpsub(void)
 }
 
 void
-prom_nextnode(void)
-{
-	bop_panic("prom_nextnode");
-}
-
-void
 disp_lock_exit_nopreempt(void)
 {
 	bop_panic("disp_lock_exit_nopreempt");
@@ -3257,12 +3186,6 @@ void
 getuserpc(void)
 {
 	bop_panic("getuserpc");
-}
-
-void
-prom_decode_composite_string(void)
-{
-	bop_panic("prom_decode_composite_string");
 }
 
 void
@@ -3389,12 +3312,6 @@ void
 atomic_inc_ulong(void)
 {
 	bop_panic("atomic_inc_ulong");
-}
-
-void
-prom_finddevice(void)
-{
-	bop_panic("prom_finddevice");
 }
 
 void
@@ -4948,4 +4865,16 @@ void
 audit_core_finish(void)
 {
 	bop_panic("audit_core_finish");
+}
+
+void
+reset(void)
+{
+	bop_panic("reset");
+}
+
+void
+prom_enter_mon(void)
+{
+	bop_panic("prom_enter_mon");
 }

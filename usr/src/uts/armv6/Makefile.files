@@ -30,6 +30,7 @@ ML_OBJS +=			\
 	glocore.o
 
 OS_OBJS +=			\
+	bsmdep.o		\
 	flush.o			\
 	fakebop.o		\
 	mlsetup.o		\
@@ -56,14 +57,14 @@ CORE_OBJS += \
 # uts/common yet, so we instead clobber it with our stuff.
 #
 CORE_NOTYET_OBJS = \
+		vm_pagelist.o	\
 		mutex.o		\
 		page_retire.o	\
 		page_lock.o	\
 		seg_kmem.o	\
 		vm_page.o	\
 		lgrp.o		\
-		cap_util.o	\
-		vm_pagelist.o
+		cap_util.o
 
 CORE_OBJS +=	\
 		beep.o		\
