@@ -54,7 +54,7 @@ function cleanup
 {
 	umount -f "$mkp_rdfile" 2>/dev/null
 	lofiadm -d ${mkp_rdfile} 2>/dev/null
-	[[ -n "$rddir" ]] && rm -rf "$rddir" 2>/dev/null
+	[[ -n "$mkp_tmpdir" ]] && rm -rf "$mkp_tmpdir" 2>/dev/null
 }
 
 function setup
