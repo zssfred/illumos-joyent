@@ -40,6 +40,10 @@ extern greg_t getfp(void);
 extern int getpil(void);
 extern void reset(void) __NORETURN;
 
+/* ARM specific synchronization barriers */
+extern void instr_sbarrier(void);
+extern void data_sbarrier(void);
+
 #endif /* _KERNEL */
 
 #ifdef __cplusplus

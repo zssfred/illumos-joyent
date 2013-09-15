@@ -35,8 +35,7 @@ UTSBASE	= ../../..
 UNIX		= unix
 OBJECTS		= $(QVPB_OBJS:%=$(OBJS_DIR)/%) \
 		  $(CORE_OBJS:%=$(OBJS_DIR)/%) \
-		  $(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
-		  $(OBJS_DIR)/zlib_obj.o
+		  $(KRTLD_OBJS:%=$(OBJS_DIR)/%)
 
 ROOTMODULE	= $(ROOT_QVPB_KERN_DIR)/$(UNIX)
 UNIX_BIN	= $(OBJS_DIR)/$(UNIX)

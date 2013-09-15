@@ -29,6 +29,7 @@ KRTLD_OBJS +=		\
 
 CORE_OBJS += \
 	arm_subr.o \
+	lock_prim.o \
 	decompress.o
 
 #

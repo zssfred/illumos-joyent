@@ -12,6 +12,9 @@
 #
 # Copyright (c) 2013 Joyent, Inc.  All rights reserved.
 #
+ATOMIC_OBJS +=			\
+	atomic.o
+
 BOOT_OBJS +=			\
 	atag.o
 
@@ -23,10 +26,10 @@ MATH_OBJS += 			\
 	qdivrem.o
 
 MISC_OBJS +=			\
-	copy.o			\
-	arm_subr.o
+	copy.o
 
 ML_OBJS +=			\
+	cache.o			\
 	glocore.o
 
 OS_OBJS +=			\
@@ -40,6 +43,7 @@ OS_OBJS +=			\
 	startup.o
 
 CORE_OBJS =			\
+	$(ATOMIC_OBJS)		\
 	$(BOOT_OBJS)		\
 	$(MATH_OBJS)		\
 	$(MISC_OBJS)		\
@@ -51,7 +55,9 @@ CORE_OBJS =			\
 # uts/arm/Makefile.files CORE_OBJS here.
 #
 CORE_OBJS += \
-	decompress.o
+	decompress.o \
+	arm_subr.o \
+	lock_prim.o
 
 #
 # XXX this is also specified in uts/arm/Makefile.files, but note the = sign for
@@ -60,7 +66,6 @@ CORE_OBJS += \
 #
 CORE_NOTYET_OBJS = \
 		vm_pagelist.o	\
-		mutex.o		\
 		page_retire.o	\
 		page_lock.o	\
 		seg_kmem.o	\
@@ -87,6 +92,7 @@ CORE_OBJS +=	\
 		lgrp.o		\
 		lgrp_topo.o	\
 		mmapobj.o	\
+		mutex.o		\
 		panic.o		\
 		param.o		\
 		pg.o		\

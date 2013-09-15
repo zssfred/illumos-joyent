@@ -752,15 +752,15 @@ main(int argc, char *argv[])
 	/*
 	 * gas for 32-bit arm defaults to a much older version of the arm
 	 * architecture than we can really support. Because of that, we instead
-	 * opt to make sure that we set the minimum architecture to armv6, the
+	 * opt to make sure that we set the minimum architecture to armv6k, the
 	 * minimum of what we actually support.
 	 */
 #if defined(AW_TARGET_arm)
 	if (as64)
 		return (error("no 64-bit aw target for arm"));
 	else
-		newae(as, "-march=armv6");
-#endif	
+		newae(as, "-march=armv6k");
+#endif
 
 	if (srcfile == NULL)
 		return (usage("no source file(s) specified"));

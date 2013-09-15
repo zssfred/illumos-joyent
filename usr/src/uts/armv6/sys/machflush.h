@@ -13,8 +13,8 @@
  * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
  */
 
-#ifndef _SYS_FLUSH_H
-#define	_SYS_FLUSH_H
+#ifndef _SYS_MACHFLUSH_H
+#define	_SYS_MACHFLUSH_H
 
 #include <sys/types.h>
 
@@ -28,7 +28,11 @@ extern "C" {
 
 #ifdef _KERNEL
 
-extern void arm_text_flush(caddr_t, size_t);
+void armv6_icache_inval(void);
+void armv6_dcache_inval(void);
+void armv6_dcache_flush(void);
+void armv6_text_flush_range(caddr_t, size_t);
+void armv6_text_flush(void);
 
 #endif /* _KERNEL */
 
@@ -36,4 +40,4 @@ extern void arm_text_flush(caddr_t, size_t);
 }
 #endif
 
-#endif /* _SYS_FLUSH_H */
+#endif /* _SYS_MACHFLUSH_H */

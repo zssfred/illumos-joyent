@@ -20,6 +20,7 @@ HDRS = \
 	clock.h \
 	boot_console.h \
 	machparam.h \
+	machflush.h \
 	vm_machparam.h
 
 

@@ -26,6 +26,8 @@
 
 #include <sys/types.h>
 #include <sys/proc.h>
+#include <sys/thread.h>
+#include <sys/cpuvar.h>
 
 \
 \ XXX Token entry to allow us to make forward progress (we'll need it later to
@@ -50,3 +52,70 @@ proc		PROCSIZE
 	p_brand
 	p_brand_data
 
+_kthread	THREAD_SIZE
+	t_pcb			T_LABEL
+	t_lock
+	t_lockstat
+	t_lockp
+	t_lock_flush
+	t_kpri_req
+	t_oldspl
+	t_pri
+	t_pil
+	t_lwp
+	t_procp
+	t_link
+	t_state
+	t_mstate
+	t_preempt_lk
+	t_stk			T_STACK
+	t_swap
+	t_lwpchan.lc_wchan	T_WCHAN
+	t_flag			T_FLAGS
+	t_ctx
+	t_lofault
+	t_onfault
+	t_ontrap
+	t_cpu
+	t_lpl
+	t_bound_cpu
+	t_intr
+	t_forw
+	t_back
+	t_sig
+	t_tid
+	t_pre_sys
+	t_preempt
+	t_proc_flag
+	t_startpc
+	t_sysnum
+	t_intr_start
+	_tu._ts._t_astflag	T_ASTFLAG
+	_tu._ts._t_post_sys	T_POST_SYS
+	_tu._t_post_sys_ast	T_POST_SYS_AST
+	t_copyops
+
+cpu
+	cpu_id
+	cpu_flags
+	cpu_self
+	cpu_thread
+	cpu_thread_lock
+	cpu_kprunrun
+	cpu_lwp
+	cpu_fpowner
+	cpu_idle_thread
+	cpu_intr_thread
+	cpu_intr_actv
+	cpu_base_spl
+	cpu_intr_stack
+	cpu_stats.sys.cpumigrate	CPU_STATS_SYS_CPUMIGRATE
+	cpu_stats.sys.intr		CPU_STATS_SYS_INTR
+	cpu_stats.sys.intrblk		CPU_STATS_SYS_INTRBLK
+	cpu_stats.sys.syscall		CPU_STATS_SYS_SYSCALL
+	cpu_profile_pc
+	cpu_profile_upc
+	cpu_profile_pil
+	cpu_ftrace.ftd_state		CPU_FTRACE_STATE
+	cpu_mstate
+	cpu_intracct
