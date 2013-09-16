@@ -21,6 +21,7 @@ HDRS = \
 	boot_console.h \
 	machparam.h \
 	machflush.h \
+	memnode.h \
 	vm_machparam.h
 
 

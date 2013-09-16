@@ -25,6 +25,7 @@
  */
 
 #include <sys/lgrp.h>
+#include <sys/memnode.h>
 
 /* XXX Basically panic most functions until we implement them */
 extern void bop_panic(const char *) __NORETURN;
@@ -35,35 +36,46 @@ extern void bop_panic(const char *) __NORETURN;
 #define	NLGRP	1
 
 /*
- * Static array to hold lgroup statistics
+ * Static array to hold lgroup statistics and lgrps themselves
  */
+static lgrp_t lgrp_space[NLGRP];
 struct lgrp_stats lgrp_stats[NLGRP];
 
 lgrp_t *
 lgrp_plat_alloc(lgrp_id_t lgrpid)
 {
-	bop_panic("lgrp_plat_alloc");
+	if (lgrpid != 0)
+		return (NULL);
+
+	return (&lgrp_space[0]);
 }
 
+/*
+ * Configuration is not currently supported.
+ */
 void
 lgrp_plat_config(lgrp_config_flag_t flag, uintptr_t arg)
 {
-	bop_panic("lgrp_plat_config");
+	ASSERT(max_mem_nodes == 1);
 }
 
 lgrp_handle_t
 lgrp_plat_cpu_to_hand(processorid_t id)
 {
-	bop_panic("lgrp_plat_cpu_to_hand");
+	ASSERT(max_mem_nodes == 1);
+	return (LGRP_DEFAULT_HANDLE);
 }
 
 void
 lgrp_plat_init(lgrp_init_stages_t stage)
 {
-	if (stage != LGRP_INIT_STAGE1)
-		bop_panic("lgrp_plat_init - Not STAGE1\n");
-
-	/* Nothing to do in our UMA case */
+	/*
+	 * There isn't much to do in any other stage. Just make sure that we've
+	 * set max_mem_nodes properly to 1.
+	 */
+	if (stage == LGRP_INIT_STAGE1) {
+		max_mem_nodes = 1;
+	}
 }
 
 /*
@@ -74,6 +86,7 @@ int
 lgrp_plat_latency(lgrp_handle_t from, lgrp_handle_t to)
 {
 	ASSERT(from == to);
+	ASSERT(max_mem_nodes == 1);
 	return (0);
 }
 
@@ -93,17 +106,18 @@ lgrp_plat_mem_size(lgrp_handle_t plathand, lgrp_mem_query_t query)
 lgrp_handle_t
 lgrp_plat_pfn_to_hand(pfn_t pfn)
 {
-	bop_panic("lgrp_plat_pfn_to_hand");
+	ASSERT(max_mem_nodes == 1);
+	return (LGRP_DEFAULT_HANDLE);
 }
 
 void
 lgrp_plat_probe(void)
 {
-	/* Nothing to scan due to single node support */
+	ASSERT(max_mem_nodes == 1);
 }
 
 lgrp_handle_t
 lgrp_plat_root_hand(void)
 {
-	bop_panic("lgrp_plat_pfn_to_hand");
+	return (LGRP_DEFAULT_HANDLE);
 }
