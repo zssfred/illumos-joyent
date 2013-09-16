@@ -642,7 +642,7 @@
 	and	r3, r1, r2
 	cmp	r3, r1
 	bne	2f
-	bic	r2, r1, r2
+	bic	r2, r2, r1		@ r2 = r2 & ~r1
 	strex	r3, r1, [r0]
 	cmp	r3, #0
 	bne	1b
