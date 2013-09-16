@@ -83,6 +83,19 @@
 	mov sp, #0x12000
 	cps #(CPU_MODE_SVC)
 
+	/* Try to enable highvecs */
+	mrc	p15, 0, r3, c1, c0, 0
+	mov	r4, #1
+	lsl	r4, r4, #13
+	orr	r3, r3, r4
+	mcr	p15, 0, r3, c1, c0, 0
+
+	/* Disable A */
+	mrc	p15, 0, r3, c1, c0, 0
+	mov	r4, #2
+	bic	r3, r3, r4
+	mcr	p15, 0, r3, c1, c0, 0
+
 	/*
 	 * XXX Currently we're using u-boot to allow us to make forward progress
 	 * while the .data section is a bit tumultuous. It loads that, but we
