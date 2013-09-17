@@ -65,7 +65,7 @@ sdt_reloc_resolve(struct module *mp, char *symname, uint32_t *instr)
 		return (1);
 
 #ifdef	KOBJ_DEBUG
-	if (kobj_debug) {
+	if (kobj_debug & D_DEBUG) {
 		_kobj_printf(ops, "sdt_reloc_resolve: not recording %s\n",
 		    symname);
 	}
