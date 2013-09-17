@@ -41,19 +41,6 @@
 
 	.data
 	.comm	t0stack, DEFAULTSTKSZ, 32
-	/*
-	 * exception handling stacks
-	 *
-	 * XXX: We actually need one of these per-cpu, and they need to be
-	 * deep enough to account for (I believe) potential nesting.
-	 *
-	 * We only use a tiny bit at a time, however, so right now they are tiny.
-	 * XXX: Do we really need all of them?
-	 */
-	.comm	undstack, 128, 32
-	.comm	fiqstack, 128, 32
-	.comm	irqstack, 128, 32
-	.comm	abtstack, 128, 32
 	.comm	t0, 4094, 32
 
 #if defined(__lint)
@@ -82,28 +69,18 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 
 	ENTRY(_locore_start)
 
+
 	/*
-	 * It's time to say good bye to the fake stacks that the various platform
-	 * locore's set up for us. We'll see sp to the special stack pointer for
-	 * t0 and also have room for a 'struct regs' for lwp0.
+	 * We've been running in t0stack anyway, up to this point, but
+	 * _locore_start represents what is in effect a fresh start in the
+	 * real kernel -- We'll never return back through here.
+	 *
+	 * So reclaim those few bytes
 	 */
 	ldr	sp, =t0stack
-	cps	#(CPU_MODE_UND)
-	ldr	sp, =undstack
-	cps	#(CPU_MODE_ABT)
-	ldr	sp, =abtstack
-	cps	#(CPU_MODE_FIQ)
-	ldr	sp, =fiqstack
-	cps	#(CPU_MODE_IRQ)
-	ldr	sp, =irqstack
-	cps	#(CPU_MODE_SVC)
-
-	/* XXX Am I missing a dereference here? */
 	ldr	r4, =(DEFAULTSTKSZ - REGSIZE)
 	add	sp, r4
-#if (REGSIZE & 7) == 0
-	sub	sp, #-4
-#endif
+	bic	sp, sp, #0xff
 
 	/*
 	 * Save flags and arguments for potential debugging
@@ -164,5 +141,4 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 
 __return_from_main:
 	.string "main() returned"
-
 #endif	/* __lint */

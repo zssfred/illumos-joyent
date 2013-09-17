@@ -14,6 +14,7 @@
  */
 
 #include <sys/asm_linkage.h>
+#include <sys/machparam.h>
 #include <sys/cpu_asm.h>
 
 /*
@@ -68,32 +69,36 @@
  * Recall that _start is the traditional entry point for an ELF binary.
  */
 	ENTRY(_start)
-	mov sp, #0x8000
+	ldr sp, =t0stack
+	ldr r4, =DEFAULTSTKSZ
+	add sp, r4
+	bic sp, sp, #0xff
+
 	/*
-	 * establish temporary stacks for exceptional CPU states which occur prior
-	 * to us being really set up
+	 * establish bogus stacks for exceptional CPU states, our exception
+	 * code should never make use of these, and we want loud and violent
+	 * failure should we accidentally try.
 	 */
 	cps #(CPU_MODE_UND)
-	mov sp, #0x9000
+	mov sp, #-1
 	cps #(CPU_MODE_ABT)
-	mov sp, #0x10000
+	mov sp, #-1
 	cps #(CPU_MODE_FIQ)
-	mov sp, #0x11000
+	mov sp, #-1
 	cps #(CPU_MODE_IRQ)
-	mov sp, #0x12000
+	mov sp, #-1
 	cps #(CPU_MODE_SVC)
 
-	/* Try to enable highvecs */
+	/* Enable highvecs (moves the base of the exception vector) */
 	mrc	p15, 0, r3, c1, c0, 0
 	mov	r4, #1
 	lsl	r4, r4, #13
 	orr	r3, r3, r4
 	mcr	p15, 0, r3, c1, c0, 0
 
-	/* Disable A */
+	/* Disable A (disables strict alignment checks) */
 	mrc	p15, 0, r3, c1, c0, 0
-	mov	r4, #2
-	bic	r3, r3, r4
+	bic	r3, r3, #2
 	mcr	p15, 0, r3, c1, c0, 0
 
 	/*
