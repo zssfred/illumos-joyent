@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  */
 
 #include <sys/zfs_context.h>
@@ -226,13 +226,13 @@ feature_get_refcount(objset_t *os, uint64_t read_obj, uint64_t write_obj,
 	 * have been allocated yet.  Act as though all features are disabled.
 	 */
 	if (zapobj == 0)
-		return (ENOTSUP);
+		return (SET_ERROR(ENOTSUP));
 
 	err = zap_lookup(os, zapobj, feature->fi_guid, sizeof (uint64_t), 1,
 	    &refcount);
 	if (err != 0) {
 		if (err == ENOENT)
-			return (ENOTSUP);
+			return (SET_ERROR(ENOTSUP));
 		else
 			return (err);
 	}
@@ -273,16 +273,16 @@ feature_do_action(objset_t *os, uint64_t read_obj, uint64_t write_obj,
 		break;
 	case FEATURE_ACTION_INCR:
 		if (error == ENOENT)
-			return (ENOTSUP);
+			return (SET_ERROR(ENOTSUP));
 		if (refcount == UINT64_MAX)
-			return (EOVERFLOW);
+			return (SET_ERROR(EOVERFLOW));
 		refcount++;
 		break;
 	case FEATURE_ACTION_DECR:
 		if (error == ENOENT)
-			return (ENOTSUP);
+			return (SET_ERROR(ENOTSUP));
 		if (refcount == 0)
-			return (EOVERFLOW);
+			return (SET_ERROR(EOVERFLOW));
 		refcount--;
 		break;
 	default:
@@ -361,34 +361,44 @@ spa_feature_enable(spa_t *spa, zfeature_info_t *feature, dmu_tx_t *tx)
 	    spa->spa_feat_desc_obj, feature, FEATURE_ACTION_ENABLE, tx));
 }
 
-/*
- * If the specified feature has not yet been enabled, this function returns
- * ENOTSUP; otherwise, this function increments the feature's refcount (or
- * returns EOVERFLOW if the refcount cannot be incremented). This function must
- * be called from syncing context.
- */
 void
 spa_feature_incr(spa_t *spa, zfeature_info_t *feature, dmu_tx_t *tx)
 {
+	ASSERT(dmu_tx_is_syncing(tx));
 	ASSERT3U(spa_version(spa), >=, SPA_VERSION_FEATURES);
 	VERIFY3U(0, ==, feature_do_action(spa->spa_meta_objset,
 	    spa->spa_feat_for_read_obj, spa->spa_feat_for_write_obj,
 	    spa->spa_feat_desc_obj, feature, FEATURE_ACTION_INCR, tx));
 }
 
-/*
- * If the specified feature has not yet been enabled, this function returns
- * ENOTSUP; otherwise, this function decrements the feature's refcount (or
- * returns EOVERFLOW if the refcount is already 0). This function must
- * be called from syncing context.
- */
 void
 spa_feature_decr(spa_t *spa, zfeature_info_t *feature, dmu_tx_t *tx)
 {
+	ASSERT(dmu_tx_is_syncing(tx));
 	ASSERT3U(spa_version(spa), >=, SPA_VERSION_FEATURES);
 	VERIFY3U(0, ==, feature_do_action(spa->spa_meta_objset,
 	    spa->spa_feat_for_read_obj, spa->spa_feat_for_write_obj,
 	    spa->spa_feat_desc_obj, feature, FEATURE_ACTION_DECR, tx));
+}
+
+/*
+ * This interface is for debugging only. Normal consumers should use
+ * spa_feature_is_enabled/spa_feature_is_active.
+ */
+int
+spa_feature_get_refcount(spa_t *spa, zfeature_info_t *feature)
+{
+	int err;
+	uint64_t refcount;
+
+	if (spa_version(spa) < SPA_VERSION_FEATURES)
+		return (B_FALSE);
+
+	err = feature_get_refcount(spa->spa_meta_objset,
+	    spa->spa_feat_for_read_obj, spa->spa_feat_for_write_obj,
+	    feature, &refcount);
+	ASSERT(err == 0 || err == ENOTSUP);
+	return (err == 0 ? refcount : 0);
 }
 
 boolean_t

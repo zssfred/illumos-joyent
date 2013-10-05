@@ -30,7 +30,6 @@
  * Copyright 2012 Joshua M. Clulow <josh@sysmgr.org>
  */
 
-
 /*
  * The sparc disassembler is mostly straightforward, each instruction is
  * represented by an inst_t structure.  The inst_t definitions are organized
@@ -216,6 +215,13 @@ dis_sparc_previnstr(dis_handle_t *dhp, uint64_t pc, int n)
 	return (pc - n*4);
 }
 
+/* ARGSUSED */
+static int
+dis_sparc_instrlen(dis_handle_t *dhp, uint64_t pc)
+{
+	return (4);
+}
+
 static int
 dis_sparc_disassemble(dis_handle_t *dhp, uint64_t addr, char *buf,
     size_t buflen)
@@ -348,5 +354,6 @@ const dis_arch_t dis_arch_sparc = {
 	dis_sparc_disassemble,
 	dis_sparc_previnstr,
 	dis_sparc_min_instrlen,
-	dis_sparc_max_instrlen
+	dis_sparc_max_instrlen,
+	dis_sparc_instrlen
 };

@@ -83,6 +83,8 @@ def all clean clobber clean.lint: genassym unix .WAIT \
 	$(KMODS) $(CLOSED_KMODS) $(XMODS) $(CLOSED_XMODS) \
 	$(IMPLEMENTATIONS) $(CLOSED_IMPLEMENTATIONS)
 
+clobber: clobber.targ
+
 # list the modules under sun4u.
 modlist: unix $(KMODS) $(CLOSED_KMODS) $(XMODS) $(CLOSED_XMODS) \
 	$(IMPLEMENTATIONS:.WAIT=) $(CLOSED_IMPLEMENTATIONS)
@@ -115,6 +117,7 @@ PRIVS_C = $(UTSBASE)/common/os/priv_const.c
 $(PRIVS_C): $(PRIVS_AWK) $(PRIVS_DEF)
 	$(NAWK) -f $(PRIVS_AWK) < $(PRIVS_DEF) cfile=$@
 
+CLOBBERFILES += $(PRIVS_C)
 
 #
 # Prerequisites
@@ -285,17 +288,6 @@ globallint:
 
 lint:	lintlib .WAIT modlintlib .WAIT $(SPARC_LINTS) $(LINT_DEPS) \
 	$(IMPLEMENTATIONS) $(CLOSED_IMPLEMENTATIONS) $(CPU_KMODS)
-
-# EXPORT DELETE START
-
-EXPORT_SRC:
-	$(RM) Makefile+
-	sed -e "/^# EXPORT DELETE START/,/^# EXPORT DELETE END/d" \
-	    < Makefile > Makefile+
-	$(MV) Makefile+ Makefile
-	$(CHMOD) 444 Makefile
-
-# EXPORT DELETE END
 
 include ../Makefile.targ
 

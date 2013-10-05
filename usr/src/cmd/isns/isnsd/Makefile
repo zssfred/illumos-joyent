@@ -51,7 +51,7 @@ ROOTMANIFESTDIR	= $(ROOTSVCNETWORK)
 $(ROOTSVCNETWORK)/isns_server.xml	:= FILEMODE = 0444
 
 CFLAGS 		+=	$(CCVERBOSE)
-CPPFLAGS 	+= -I./ -I/usr/include/libxml2
+CPPFLAGS 	+= -I./ -I$(ADJUNCT_PROTO)/usr/include/libxml2
 CPPFLAGS	+= -DTARGET_DATA_STORE=$(DATA_STORE)
 CPPFLAGS	+= -D_POSIX_PTHREAD_SEMANTICS
 LINTFLAGS += -xerroff=E_BAD_PTR_CAST_ALIGN
@@ -62,6 +62,8 @@ CERRWARN += -_gcc=-Wno-char-subscripts
 CERRWARN += -_gcc=-Wno-ignored-qualifiers
 CERRWARN += -_gcc=-Wno-uninitialized
 CERRWARN += -_gcc=-Wno-implicit-function-declaration
+
+CLOBBERFILES += $(DTRACE_HEADER)
 
 obj.o := CERRWARN += -erroff=E_CONST_OBJ_SHOULD_HAVE_INITIZR
 obj.o := CERRWARN += -erroff=E_IMPLICIT_DECL_FUNC_RETURN_INT

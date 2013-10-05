@@ -215,3 +215,9 @@ dis_max_instrlen(dis_handle_t *dhp)
 {
 	return (dhp->dh_arch->da_max_instrlen(dhp));
 }
+
+int
+dis_instrlen(dis_handle_t *dhp, uint64_t pc)
+{
+	return (dhp->dh_arch->da_instrlen(dhp, pc));
+}

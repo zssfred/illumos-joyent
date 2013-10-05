@@ -20,6 +20,7 @@
 
 # Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2012 Nexenta Systems, Inc. All rights reserved.
+# Copyright (c) 2013 Andrew Stormont.  All rights reserved.
 
 #
 #	This makefile contains the common definitions for all intel
@@ -151,9 +152,9 @@ DEBUG_DEFS_OBJ64	=
 DEBUG_DEFS_DBG64	= -DDEBUG
 DEBUG_DEFS		= $(DEBUG_DEFS_$(BUILD_TYPE))
 
-DEBUG_COND_OBJ32	:sh = echo \\043
+DEBUG_COND_OBJ32	= $(POUND_SIGN)
 DEBUG_COND_DBG32	=
-DEBUG_COND_OBJ64	:sh = echo \\043
+DEBUG_COND_OBJ64	= $(POUND_SIGN)
 DEBUG_COND_DBG64	=
 IF_DEBUG_OBJ		= $(DEBUG_COND_$(BUILD_TYPE))$(OBJS_DIR)/
 
@@ -216,6 +217,7 @@ DRV_KMODS	+= bridge
 DRV_KMODS	+= bscbus
 DRV_KMODS	+= bscv
 DRV_KMODS	+= chxge
+DRV_KMODS	+= cxgbe
 DRV_KMODS	+= ntxn
 DRV_KMODS	+= myri10ge
 DRV_KMODS	+= clone
@@ -223,6 +225,7 @@ DRV_KMODS	+= cmdk
 DRV_KMODS	+= cn
 DRV_KMODS	+= conskbd
 DRV_KMODS	+= consms
+DRV_KMODS	+= cpqary3
 DRV_KMODS	+= cpuid
 DRV_KMODS	+= cpunex
 DRV_KMODS	+= crypto
@@ -653,7 +656,8 @@ MISC_KMODS	+= hwa1480_fw
 MISC_KMODS	+= uathfw
 MISC_KMODS	+= uwba
 
-$(CLOSED_BUILD)CLOSED_MISC_KMODS	+= klmmod klmops
+MISC_KMODS	+= klmmod klmops
+
 $(CLOSED_BUILD)CLOSED_MISC_KMODS	+= scsi_vhci_f_asym_lsi
 $(CLOSED_BUILD)CLOSED_MISC_KMODS	+= scsi_vhci_f_asym_emc
 $(CLOSED_BUILD)CLOSED_MISC_KMODS	+= scsi_vhci_f_sym_emc

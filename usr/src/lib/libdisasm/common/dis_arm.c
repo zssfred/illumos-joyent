@@ -2531,6 +2531,13 @@ dis_arm_max_instrlen(dis_handle_t *dhp)
 	return (4);
 }
 
+/* ARGSUSED */
+static int
+dis_arm_instrlen(dis_handle_t *dhp, uint64_t pc)
+{
+	return (4);
+}
+
 dis_arch_t dis_arch_arm = {
 	dis_arm_supports_flags,
 	dis_arm_handle_attach,
@@ -2538,5 +2545,6 @@ dis_arch_t dis_arch_arm = {
 	dis_arm_disassemble,
 	dis_arm_previnstr,
 	dis_arm_min_instrlen,
-	dis_arm_max_instrlen
+	dis_arm_max_instrlen,
+	dis_arm_instrlen
 };

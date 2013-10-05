@@ -23,9 +23,9 @@
  * Copyright (c) 1990, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2011 Bayard G. Bell.  All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 /*
  * Copyright 2011 cyril.galibern@opensvc.com
@@ -3888,8 +3888,7 @@ sd_process_sdconf_file(struct sd_lun *un)
 		 */
 		vidptr = config_list[i];
 		vidlen = (int)strlen(vidptr);
-		if ((vidlen == 0) ||
-		    (sd_sdconf_id_match(un, vidptr, vidlen) != SD_SUCCESS)) {
+		if (sd_sdconf_id_match(un, vidptr, vidlen) != SD_SUCCESS) {
 			continue;
 		}
 
@@ -4232,6 +4231,18 @@ sd_set_properties(struct sd_lun *un, char *name, char *value)
 		    "physical block size set to %d\n", un->un_phy_blocksize);
 	}
 
+	if (strcasecmp(name, "retries-victim") == 0) {
+		if (ddi_strtol(value, &endptr, 0, &val) == 0) {
+			un->un_victim_retry_count = val;
+		} else {
+			goto value_invalid;
+		}
+		SD_INFO(SD_LOG_ATTACH_DETACH, un, "sd_set_properties: "
+		    "victim retry count set to %d\n",
+		    un->un_victim_retry_count);
+		return;
+	}
+
 	/*
 	 * Validate the throttle values.
 	 * If any of the numbers are invalid, set everything to defaults.
@@ -4392,9 +4403,6 @@ sd_process_sdconf_table(struct sd_lun *un)
 	    table_index++) {
 		id = sd_disk_table[table_index].device_id;
 		idlen = strlen(id);
-		if (idlen == 0) {
-			continue;
-		}
 
 		/*
 		 * The static configuration table currently does not
@@ -12647,16 +12655,17 @@ sd_mapblockaddr_iostart(int index, struct sd_lun *un, struct buf *bp)
 		if (is_aligned) {
 			xp->xb_blkno = SD_SYS2TGTBLOCK(un, xp->xb_blkno);
 		} else {
-			switch (un->un_f_rmw_type) {
-			case SD_RMW_TYPE_RETURN_ERROR:
-				if (un->un_f_enable_rmw)
-					break;
-				else {
-					bp->b_flags |= B_ERROR;
-					goto error_exit;
-				}
-
-			case SD_RMW_TYPE_DEFAULT:
+			/*
+			 * There is no RMW if we're just reading, so don't
+			 * warn or error out because of it.
+			 */
+			if (bp->b_flags & B_READ) {
+				/*EMPTY*/
+			} else if (!un->un_f_enable_rmw &&
+			    un->un_f_rmw_type == SD_RMW_TYPE_RETURN_ERROR) {
+				bp->b_flags |= B_ERROR;
+				goto error_exit;
+			} else if (un->un_f_rmw_type == SD_RMW_TYPE_DEFAULT) {
 				mutex_enter(SD_MUTEX(un));
 				if (!un->un_f_enable_rmw &&
 				    un->un_rmw_msg_timeid == NULL) {
@@ -12674,11 +12683,6 @@ sd_mapblockaddr_iostart(int index, struct sd_lun *un, struct buf *bp)
 					un->un_rmw_incre_count ++;
 				}
 				mutex_exit(SD_MUTEX(un));
-				break;
-
-			case SD_RMW_TYPE_NO_WARNING:
-			default:
-				break;
 			}
 
 			nblocks = SD_TGT2SYSBLOCK(un, nblocks);
@@ -13651,7 +13655,8 @@ sd_init_cdb_limits(struct sd_lun *un)
 
 	un->un_status_len = (int)((un->un_f_arq_enabled == TRUE)
 	    ? sizeof (struct scsi_arq_status) : 1);
-	un->un_cmd_timeout = (ushort_t)sd_io_time;
+	if (!ISCD(un))
+		un->un_cmd_timeout = (ushort_t)sd_io_time;
 	un->un_uscsi_timeout = ((ISCD(un)) ? 2 : 1) * un->un_cmd_timeout;
 }
 

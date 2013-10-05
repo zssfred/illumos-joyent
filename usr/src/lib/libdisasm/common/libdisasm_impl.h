@@ -40,6 +40,7 @@ typedef struct dis_arch {
 	uint64_t (*da_previnstr)(dis_handle_t *, uint64_t, int n);
 	int (*da_min_instrlen)(dis_handle_t *);
 	int (*da_max_instrlen)(dis_handle_t *);
+	int (*da_instrlen)(dis_handle_t *, uint64_t);
 } dis_arch_t;
 
 struct dis_handle {

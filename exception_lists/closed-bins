@@ -13,10 +13,17 @@
 ./etc/snmp/conf
 ./etc/snmp/conf/mibiisa.reg
 ./etc/snmp/conf/snmp.conf
+./kernel/drv/cpqary3
+./kernel/drv/cpqary3.conf
+./kernel/drv/amd64/cpqary3
 ./kernel/drv/iprb
 ./kernel/drv/amd64/iprb
 ./kernel/drv/pcn
 ./kernel/drv/amd64/pcn
+./kernel/misc/klmmod
+./kernel/misc/amd64/klmmod
+./kernel/misc/klmops
+./kernel/misc/amd64/klmops
 ./lib/crypto
 ./lib/crypto/kcfd
 ./lib/libc_i18n.a
@@ -61,6 +68,7 @@
 ./usr/lib/localedef/src/iso_8859_1/charmap.src
 ./usr/lib/localedef/src/iso_8859_1/extension.src
 ./usr/lib/localedef/src/iso_8859_1/localedef.src
+./usr/lib/nfs/lockd
 ./usr/lib/snmp
 ./usr/lib/snmp/mibiisa
 ./usr/bin/kbdcomp

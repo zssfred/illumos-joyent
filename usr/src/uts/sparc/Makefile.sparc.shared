@@ -20,6 +20,7 @@
 #
 
 # Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2013 Andrew Stormont.  All rights reserved.
 
 
 #
@@ -141,6 +142,8 @@ CFLAGS		+= $(IROPTFLAG)
 CFLAGS		+= $(CGLOBALSTATIC)
 CFLAGS		+= -xregs=no%float
 CFLAGS		+= -xstrconst
+CFLAGS		+= $(CSOURCEDEBUGFLAGS)
+CFLAGS		+= $(CUSERFLAGS)
 
 ASFLAGS		+= $(XARCH)
 
@@ -176,9 +179,9 @@ DEBUG_DEFS_OBJ64	=
 DEBUG_DEFS_DBG64	= -DDEBUG
 DEBUG_DEFS		= $(DEBUG_DEFS_$(BUILD_TYPE))
 
-DEBUG_COND_OBJ32	:sh = echo \\043
+DEBUG_COND_OBJ32	= $(POUND_SIGN)
 DEBUG_COND_DBG32	=
-DEBUG_COND_OBJ64	:sh = echo \\043
+DEBUG_COND_OBJ64	= $(POUND_SIGN)
 DEBUG_COND_DBG64	=
 IF_DEBUG_OBJ		= $(DEBUG_COND_$(BUILD_TYPE))$(OBJS_DIR)/
 
@@ -432,7 +435,8 @@ MISC_KMODS	+= spuni
 MISC_KMODS	+= hwa1480_fw uwba
 MISC_KMODS	+= mii
 
-$(CLOSED_BUILD)CLOSED_MISC_KMODS	+= klmmod klmops
+MISC_KMODS	+= klmmod klmops
+
 $(CLOSED_BUILD)CLOSED_MISC_KMODS	+= scsi_vhci_f_asym_lsi
 $(CLOSED_BUILD)CLOSED_MISC_KMODS	+= scsi_vhci_f_asym_emc
 $(CLOSED_BUILD)CLOSED_MISC_KMODS	+= scsi_vhci_f_sym_emc

@@ -23,6 +23,10 @@
  * Copyright 2005 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+/*
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012 by Delphix. All rights reserved.
+ */
 
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
 /*	  All Rights Reserved  	*/
@@ -36,8 +40,6 @@
  * software developed by the University of California, Berkeley, and its
  * contributors.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <stdio.h>
 #include <sys/types.h>
@@ -58,6 +60,8 @@
 #include <netdir.h>
 #include <synch.h>
 #include <thread.h>
+#include <ifaddrs.h>
+#include <errno.h>
 #include <assert.h>
 #include "sm_statd.h"
 
@@ -88,14 +92,12 @@ extern struct lifconf *getmyaddrs(void);
 
 /* ARGSUSED */
 void
-sm_status(namep, resp)
-	sm_name *namep;
-	sm_stat_res *resp;
+sm_stat_svc(sm_name *namep, sm_stat_res *resp)
 {
 
 	if (debug)
 		(void) printf("proc sm_stat: mon_name = %s\n",
-				namep->mon_name);
+		    namep->mon_name);
 
 	resp->res_stat = stat_succ;
 	resp->state = LOCAL_STATE;
@@ -103,9 +105,7 @@ sm_status(namep, resp)
 
 /* ARGSUSED */
 void
-sm_mon(monp, resp)
-	mon *monp;
-	sm_stat_res *resp;
+sm_mon_svc(mon *monp, sm_stat_res *resp)
 {
 	mon_id *monidp;
 	monidp = &monp->mon_id;
@@ -113,7 +113,7 @@ sm_mon(monp, resp)
 	rw_rdlock(&thr_rwlock);
 	if (debug) {
 		(void) printf("proc sm_mon: mon_name = %s, id = %d\n",
-		monidp->mon_name, * ((int *)monp->priv));
+		    monidp->mon_name, * ((int *)monp->priv));
 		pr_mon(monp->mon_id.mon_name);
 	}
 
@@ -131,17 +131,15 @@ sm_mon(monp, resp)
 
 /* ARGSUSED */
 void
-sm_unmon(monidp, resp)
-	mon_id *monidp;
-	sm_stat *resp;
+sm_unmon_svc(mon_id *monidp, sm_stat *resp)
 {
 	rw_rdlock(&thr_rwlock);
 	if (debug) {
 		(void) printf(
-			"proc sm_unmon: mon_name = %s, [%s, %d, %d, %d]\n",
-			monidp->mon_name, monidp->my_id.my_name,
-			monidp->my_id.my_prog, monidp->my_id.my_vers,
-			monidp->my_id.my_proc);
+		    "proc sm_unmon: mon_name = %s, [%s, %d, %d, %d]\n",
+		    monidp->mon_name, monidp->my_id.my_name,
+		    monidp->my_id.my_prog, monidp->my_id.my_vers,
+		    monidp->my_id.my_proc);
 		pr_mon(monidp->mon_name);
 	}
 
@@ -153,16 +151,14 @@ sm_unmon(monidp, resp)
 
 /* ARGSUSED */
 void
-sm_unmon_all(myidp, resp)
-	my_id *myidp;
-	sm_stat *resp;
+sm_unmon_all_svc(my_id *myidp, sm_stat *resp)
 {
 	rw_rdlock(&thr_rwlock);
 	if (debug)
 		(void) printf("proc sm_unmon_all: [%s, %d, %d, %d]\n",
-		myidp->my_name,
-		myidp->my_prog, myidp->my_vers,
-		myidp->my_proc);
+		    myidp->my_name,
+		    myidp->my_prog, myidp->my_vers,
+		    myidp->my_proc);
 	delete_mon((char *)NULL, myidp);
 	pr_mon(NULL);
 	resp->state = local_state;
@@ -173,21 +169,19 @@ sm_unmon_all(myidp, resp)
  * Notifies lockd specified by name that state has changed for this server.
  */
 void
-sm_notify(ntfp)
-	stat_chge *ntfp;
+sm_notify_svc(stat_chge *ntfp)
 {
 	rw_rdlock(&thr_rwlock);
 	if (debug)
 		(void) printf("sm_notify: %s state =%d\n",
-			ntfp->mon_name, ntfp->state);
+		    ntfp->mon_name, ntfp->state);
 	send_notice(ntfp->mon_name, ntfp->state);
 	rw_unlock(&thr_rwlock);
 }
 
 /* ARGSUSED */
 void
-sm_simu_crash(myidp)
-	void *myidp;
+sm_simu_crash_svc(void *myidp)
 {
 	int i;
 	struct mon_entry *monitor_q;
@@ -726,17 +720,14 @@ thr_send_notice(void *arg)
 	moninfo_t *minfop;
 
 	minfop = (moninfo_t *)arg;
-
 	if (statd_call_lockd(&minfop->id, minfop->state) == -1) {
 		if (debug && minfop->id.mon_id.mon_name)
-			(void) printf(
-		"problem with notifying %s failure, give up\n",
-			minfop->id.mon_id.mon_name);
+			(void) printf("problem with notifying %s failure, "
+			    "give up\n", minfop->id.mon_id.mon_name);
 	} else {
 		if (debug)
-			(void) printf(
-		"send_notice: %s, %d notified.\n",
-		minfop->id.mon_id.mon_name, minfop->state);
+			(void) printf("send_notice: %s, %d notified.\n",
+			    minfop->id.mon_id.mon_name, minfop->state);
 	}
 
 	free(minfop->id.mon_id.mon_name);
@@ -760,7 +751,7 @@ statd_call_lockd(monp, state)
 {
 	enum clnt_stat clnt_stat;
 	struct timeval tottimeout;
-	struct status stat;
+	struct sm_status stat;
 	my_id *my_idp;
 	char *mon_name;
 	int i;
@@ -769,7 +760,7 @@ statd_call_lockd(monp, state)
 
 	mon_name = monp->mon_id.mon_name;
 	my_idp = &monp->mon_id.my_id;
-	(void) memset(&stat, 0, sizeof (struct status));
+	(void) memset(&stat, 0, sizeof (stat));
 	stat.mon_name = mon_name;
 	stat.state = state;
 	for (i = 0; i < 16; i++) {
@@ -782,12 +773,14 @@ statd_call_lockd(monp, state)
 	tottimeout.tv_sec = SM_RPC_TIMEOUT;
 	tottimeout.tv_usec = 0;
 
-	if ((clnt = create_client(my_idp->my_name, my_idp->my_prog,
-		my_idp->my_vers, &tottimeout)) == (CLIENT *) NULL) {
-			return (-1);
+	clnt = create_client(my_idp->my_name, my_idp->my_prog, my_idp->my_vers,
+	    "ticotsord", &tottimeout);
+	if (clnt == NULL) {
+		return (-1);
 	}
 
-	clnt_stat = clnt_call(clnt, my_idp->my_proc, xdr_status, (char *)&stat,
+	clnt_stat = clnt_call(clnt, my_idp->my_proc,
+				xdr_sm_status, (char *)&stat,
 				xdr_void, NULL, tottimeout);
 	if (debug) {
 		(void) printf("clnt_stat=%s(%d)\n",
@@ -809,21 +802,35 @@ statd_call_lockd(monp, state)
  * Client handle created.
  */
 CLIENT *
-create_client(host, prognum, versnum, utimeout)
-	char	*host;
-	int	prognum;
-	int	versnum;
-	struct timeval	*utimeout;
+create_client(char *host, int prognum, int versnum, char *netid,
+    struct timeval *utimeout)
 {
 	int		fd;
 	struct timeval	timeout;
 	CLIENT		*client;
 	struct t_info	tinfo;
 
-	if ((client = clnt_create_timed(host, prognum, versnum,
-			"netpath", utimeout)) == NULL) {
+	if (netid == NULL) {
+		client = clnt_create_timed(host, prognum, versnum,
+		    "netpath", utimeout);
+	} else {
+		struct netconfig *nconf;
+
+		nconf = getnetconfigent(netid);
+		if (nconf == NULL) {
+			return (NULL);
+		}
+
+		client = clnt_tp_create_timed(host, prognum, versnum, nconf,
+		    utimeout);
+
+		freenetconfigent(nconf);
+	}
+
+	if (client == NULL) {
 		return (NULL);
 	}
+
 	(void) CLNT_CONTROL(client, CLGET_FD, (caddr_t)&fd);
 	if (t_getinfo(fd, &tinfo) != -1) {
 		if (tinfo.servtype == T_CLTS) {
@@ -833,7 +840,7 @@ create_client(host, prognum, versnum, utimeout)
 			timeout.tv_usec = 0;
 			timeout.tv_sec = SM_CLTS_TIMEOUT;
 			(void) CLNT_CONTROL(client,
-				CLSET_RETRY_TIMEOUT, (caddr_t)&timeout);
+			    CLSET_RETRY_TIMEOUT, (caddr_t)&timeout);
 		}
 	} else
 		return (NULL);
@@ -914,24 +921,22 @@ pr_name_addr(name_addr_entry_t *name_addr)
 	(void) printf("name-to-address translation table:\n");
 	for (entry = name_addr; entry != NULL; entry = entry->next) {
 		(void) printf("\t%s: ",
-				(entry->name ? entry->name : "(null)"));
+		    (entry->name ? entry->name : "(null)"));
 		for (addr = entry->addresses; addr; addr = addr->next) {
 			switch (addr->family) {
-				case AF_INET:
-					ipv4_addr = *(struct in_addr *)addr->ah.
-n_bytes;
-					(void) printf(" %s (fam %d)",
-							inet_ntoa(ipv4_addr),
-							addr->family);
-					break;
-				case AF_INET6:
-					ipv6_addr = (char *)addr->ah.n_bytes;
-					(void) printf(" %s (fam %d)",
-							inet_ntop(addr->family,
-ipv6_addr, abuf, sizeof (abuf)), addr->family);
-					break;
-				default:
-					return;
+			case AF_INET:
+				ipv4_addr = *(struct in_addr *)addr->ah.n_bytes;
+				(void) printf(" %s (fam %d)",
+				    inet_ntoa(ipv4_addr), addr->family);
+				break;
+			case AF_INET6:
+				ipv6_addr = (char *)addr->ah.n_bytes;
+				(void) printf(" %s (fam %d)",
+				    inet_ntop(addr->family, ipv6_addr, abuf,
+				    sizeof (abuf)), addr->family);
+				break;
+			default:
+				return;
 			}
 		}
 		printf("\n");
@@ -939,14 +944,13 @@ ipv6_addr, abuf, sizeof (abuf)), addr->family);
 }
 
 /*
- * Statd has trouble dealing with hostname aliases because two
- * different aliases for the same machine don't match each other
- * when using strcmp.  To deal with this, the hostnames must be
- * translated into some sort of universal identifier.  These
- * identifiers can be compared.  Universal network addresses are
- * currently used for this identifier because it is general and
- * easy to do.  Other schemes are possible and this routine
- * could be converted if required.
+ * First, try to compare the hostnames as strings.  If the hostnames does not
+ * match we might deal with the hostname aliases.  In this case two different
+ * aliases for the same machine don't match each other when using strcmp.  To
+ * deal with this, the hostnames must be translated into some sort of universal
+ * identifier.  These identifiers can be compared.  Universal network addresses
+ * are currently used for this identifier because it is general and easy to do.
+ * Other schemes are possible and this routine could be converted if required.
  *
  * If it can't find an address for some reason, 0 is returned.
  */
@@ -957,6 +961,11 @@ hostname_eq(char *host1, char *host2)
 	char *sysid2;
 	int rv;
 
+	/* Compare hostnames as strings */
+	if (host1 != NULL && host2 != NULL && strcmp(host1, host2) == 0)
+		return (1);
+
+	/* Try harder if hostnames do not match */
 	sysid1 = get_system_id(host1);
 	sysid2 = get_system_id(host2);
 	if ((sysid1 == NULL) || (sysid2 == NULL))
@@ -1003,7 +1012,7 @@ get_system_id(char *hostname)
 	}
 	while ((ncp = getnetconfig(hp)) != (struct netconfig *)NULL) {
 		if ((strcmp(ncp->nc_protofmly, NC_INET) == 0) ||
-			(strcmp(ncp->nc_protofmly, NC_INET6) == 0)) {
+		    (strcmp(ncp->nc_protofmly, NC_INET6) == 0)) {
 			addrs = NULL;
 			rv = netdir_getbyname(ncp, &service, &addrs);
 			if (rv != 0) {
@@ -1065,7 +1074,7 @@ merge_hosts(void)
 	for (n = lifc->lifc_len / sizeof (struct lifreq); n > 0; n--, lifrp++) {
 
 		(void) strncpy(lifr.lifr_name, lifrp->lifr_name,
-				sizeof (lifr.lifr_name));
+		    sizeof (lifr.lifr_name));
 
 		af = lifrp->lifr_addr.ss_family;
 		sock = socket(af, SOCK_DGRAM, 0);
@@ -1077,7 +1086,7 @@ merge_hosts(void)
 		/* If it's the loopback interface, ignore */
 		if (ioctl(sock, SIOCGLIFFLAGS, (caddr_t)&lifr) < 0) {
 			syslog(LOG_ERR,
-				"statd: SIOCGLIFFLAGS failed, error: %m\n");
+			    "statd: SIOCGLIFFLAGS failed, error: %m\n");
 			goto finish;
 		}
 		if (lifr.lifr_flags & IFF_LOOPBACK)
@@ -1085,7 +1094,7 @@ merge_hosts(void)
 
 		if (ioctl(sock, SIOCGLIFADDR, (caddr_t)&lifr) < 0) {
 			syslog(LOG_ERR,
-				"statd: SIOCGLIFADDR failed, error: %m\n");
+			    "statd: SIOCGLIFADDR failed, error: %m\n");
 			goto finish;
 		}
 		sa = (struct sockaddr_storage *)&(lifr.lifr_addr);
@@ -1216,7 +1225,7 @@ str_cmp_unqual_hostname(char *rawname1, char *rawname2)
 
 	if (debug) {
 		(void) printf("str_cmp_unqual: rawname1= %s, rawname2= %s\n",
-				rawname1, rawname2);
+		    rawname1, rawname2);
 	}
 
 	unq_len1 = strcspn(rawname1, ".");
@@ -1224,12 +1233,12 @@ str_cmp_unqual_hostname(char *rawname1, char *rawname2)
 	domain = strchr(rawname1, '.');
 	if (domain != NULL) {
 		if ((strncmp(rawname1, SM_ADDR_IPV4, unq_len1) == 0) ||
-			(strncmp(rawname1, SM_ADDR_IPV6, unq_len1) == 0))
+		    (strncmp(rawname1, SM_ADDR_IPV6, unq_len1) == 0))
 		return (1);
 	}
 
 	if ((unq_len1 == unq_len2) &&
-			(strncmp(rawname1, rawname2, unq_len1) == 0)) {
+	    (strncmp(rawname1, rawname2, unq_len1) == 0)) {
 		return (0);
 	}
 
@@ -1252,7 +1261,7 @@ str_cmp_address_specifier(char *specifier1, char *specifier2)
 
 	if (debug) {
 		(void) printf("str_cmp_addr: specifier1= %s, specifier2= %s\n",
-				specifier1, specifier2);
+		    specifier1, specifier2);
 	}
 
 	/*
@@ -1293,10 +1302,79 @@ str_cmp_address_specifier(char *specifier1, char *specifier2)
 		++rawaddr2;
 
 		if (inet_pton(af1, rawaddr1, dst1) == 1 &&
-			inet_pton(af2, rawaddr1, dst2) == 1 &&
-			memcmp(dst1, dst2, len) == 0) {
+		    inet_pton(af2, rawaddr1, dst2) == 1 &&
+		    memcmp(dst1, dst2, len) == 0) {
 			return (0);
 		}
 	}
 	return (1);
+}
+
+/*
+ * Add IP address strings to the host_name list.
+ */
+void
+merge_ips(void)
+{
+	struct ifaddrs *ifap, *cifap;
+	int error;
+
+	error = getifaddrs(&ifap);
+	if (error) {
+		syslog(LOG_WARNING, "getifaddrs error: '%s'",
+		    strerror(errno));
+		return;
+	}
+
+	for (cifap = ifap; cifap != NULL; cifap = cifap->ifa_next) {
+		struct sockaddr *sa = cifap->ifa_addr;
+		char addr_str[INET6_ADDRSTRLEN];
+		void *addr = NULL;
+
+		switch (sa->sa_family) {
+		case AF_INET: {
+			struct sockaddr_in *sin = (struct sockaddr_in *)sa;
+
+			/* Skip loopback addresses. */
+			if (sin->sin_addr.s_addr == htonl(INADDR_LOOPBACK)) {
+				continue;
+			}
+
+			addr = &sin->sin_addr;
+			break;
+		}
+
+		case AF_INET6: {
+			struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)sa;
+
+			/* Skip loopback addresses. */
+			if (IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr)) {
+				continue;
+			}
+
+			addr = &sin6->sin6_addr;
+			break;
+		}
+
+		default:
+			syslog(LOG_WARNING, "Unknown address family %d for "
+			    "interface %s", sa->sa_family, cifap->ifa_name);
+			continue;
+		}
+
+		if (inet_ntop(sa->sa_family, addr, addr_str, sizeof (addr_str))
+		    == NULL) {
+			syslog(LOG_WARNING, "Failed to convert address into "
+			    "string representation for interface '%s' "
+			    "address family %d", cifap->ifa_name,
+			    sa->sa_family);
+			continue;
+		}
+
+		if (!in_host_array(addr_str)) {
+			add_to_host_array(addr_str);
+		}
+	}
+
+	freeifaddrs(ifap);
 }

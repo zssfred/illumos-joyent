@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  */
 
@@ -237,8 +237,8 @@ kmem_cache_t *spa_buffer_pool;
 int spa_mode_global;
 
 #ifdef ZFS_DEBUG
-/* Everything except dprintf is on by default in debug builds */
-int zfs_flags = ~ZFS_DEBUG_DPRINTF;
+/* Everything except dprintf and spa is on by default in debug builds */
+int zfs_flags = ~(ZFS_DEBUG_DPRINTF | ZFS_DEBUG_SPA);
 #else
 int zfs_flags = 0;
 #endif
@@ -250,18 +250,21 @@ int zfs_flags = 0;
  */
 int zfs_recover = 0;
 
-extern int zfs_txg_synctime_ms;
+/*
+ * Expiration time in milliseconds. This value has two meanings. First it is
+ * used to determine when the spa_deadman() logic should fire. By default the
+ * spa_deadman() will fire if spa_sync() has not completed in 1000 seconds.
+ * Secondly, the value determines if an I/O is considered "hung". Any I/O that
+ * has not completed in zfs_deadman_synctime_ms is considered "hung" resulting
+ * in a system panic.
+ */
+uint64_t zfs_deadman_synctime_ms = 1000000ULL;
 
 /*
- * Expiration time in units of zfs_txg_synctime_ms. This value has two
- * meanings. First it is used to determine when the spa_deadman logic
- * should fire. By default the spa_deadman will fire if spa_sync has
- * not completed in 1000 * zfs_txg_synctime_ms (i.e. 1000 seconds).
- * Secondly, the value determines if an I/O is considered "hung".
- * Any I/O that has not completed in zfs_deadman_synctime is considered
- * "hung" resulting in a system panic.
+ * Check time in milliseconds. This defines the frequency at which we check
+ * for hung I/O.
  */
-uint64_t zfs_deadman_synctime = 1000ULL;
+uint64_t zfs_deadman_checktime_ms = 5000ULL;
 
 /*
  * Override the zfs deadman behavior via /etc/system. By default the
@@ -269,6 +272,16 @@ uint64_t zfs_deadman_synctime = 1000ULL;
  */
 int zfs_deadman_enabled = -1;
 
+/*
+ * The worst case is single-sector max-parity RAID-Z blocks, in which
+ * case the space requirement is exactly (VDEV_RAIDZ_MAXPARITY + 1)
+ * times the size; so just assume that.  Add to this the fact that
+ * we can have up to 3 DVAs per bp, and one more factor of 2 because
+ * the block may be dittoed with up to 3 DVAs by ddt_sync().  All together,
+ * the worst case is:
+ *     (VDEV_RAIDZ_MAXPARITY + 1) * SPA_DVAS_PER_BP * 2 == 24
+ */
+int spa_asize_inflation = 24;
 
 /*
  * ==========================================================================
@@ -282,7 +295,7 @@ spa_config_lock_init(spa_t *spa)
 		spa_config_lock_t *scl = &spa->spa_config_lock[i];
 		mutex_init(&scl->scl_lock, NULL, MUTEX_DEFAULT, NULL);
 		cv_init(&scl->scl_cv, NULL, CV_DEFAULT, NULL);
-		refcount_create(&scl->scl_count);
+		refcount_create_untracked(&scl->scl_count);
 		scl->scl_writer = NULL;
 		scl->scl_write_wanted = 0;
 	}
@@ -334,6 +347,8 @@ void
 spa_config_enter(spa_t *spa, int locks, void *tag, krw_t rw)
 {
 	int wlocks_held = 0;
+
+	ASSERT3U(SCL_LOCKS, <, sizeof (wlocks_held) * NBBY);
 
 	for (int i = 0; i < SCL_LOCKS; i++) {
 		spa_config_lock_t *scl = &spa->spa_config_lock[i];
@@ -413,26 +428,21 @@ spa_lookup(const char *name)
 	static spa_t search;	/* spa_t is large; don't allocate on stack */
 	spa_t *spa;
 	avl_index_t where;
-	char c;
 	char *cp;
 
 	ASSERT(MUTEX_HELD(&spa_namespace_lock));
+
+	(void) strlcpy(search.spa_name, name, sizeof (search.spa_name));
 
 	/*
 	 * If it's a full dataset name, figure out the pool name and
 	 * just use that.
 	 */
-	cp = strpbrk(name, "/@");
-	if (cp) {
-		c = *cp;
+	cp = strpbrk(search.spa_name, "/@");
+	if (cp != NULL)
 		*cp = '\0';
-	}
 
-	(void) strlcpy(search.spa_name, name, sizeof (search.spa_name));
 	spa = avl_find(&spa_namespace_avl, &search, &where);
-
-	if (cp)
-		*cp = c;
 
 	return (spa);
 }
@@ -446,6 +456,14 @@ void
 spa_deadman(void *arg)
 {
 	spa_t *spa = arg;
+
+	/*
+	 * Disable the deadman timer if the pool is suspended.
+	 */
+	if (spa_suspended(spa)) {
+		VERIFY(cyclic_reprogram(spa->spa_deadman_cycid, CY_INFINITY));
+		return;
+	}
 
 	zfs_dbgmsg("slow spa_sync: started %llu seconds ago, calls %llu",
 	    (gethrtime() - spa->spa_sync_starttime) / NANOSEC,
@@ -480,6 +498,7 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	mutex_init(&spa->spa_scrub_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa->spa_suspend_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa->spa_vdev_top_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&spa->spa_iokstat_lock, NULL, MUTEX_DEFAULT, NULL);
 
 	cv_init(&spa->spa_async_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&spa->spa_proc_cv, NULL, CV_DEFAULT, NULL);
@@ -501,16 +520,15 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	hdlr.cyh_arg = spa;
 	hdlr.cyh_level = CY_LOW_LEVEL;
 
-	spa->spa_deadman_synctime = zfs_deadman_synctime *
-	    zfs_txg_synctime_ms * MICROSEC;
+	spa->spa_deadman_synctime = MSEC2NSEC(zfs_deadman_synctime_ms);
 
 	/*
 	 * This determines how often we need to check for hung I/Os after
 	 * the cyclic has already fired. Since checking for hung I/Os is
 	 * an expensive operation we don't want to check too frequently.
-	 * Instead wait for 5 synctimes before checking again.
+	 * Instead wait for 5 seconds before checking again.
 	 */
-	when.cyt_interval = 5ULL * zfs_txg_synctime_ms * MICROSEC;
+	when.cyt_interval = MSEC2NSEC(zfs_deadman_checktime_ms);
 	when.cyt_when = CY_INFINITY;
 	mutex_enter(&cpu_lock);
 	spa->spa_deadman_cycid = cyclic_add(&hdlr, &when);
@@ -558,6 +576,15 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 		VERIFY(nvlist_alloc(&spa->spa_label_features, NV_UNIQUE_NAME,
 		    KM_SLEEP) == 0);
 	}
+
+	spa->spa_iokstat = kstat_create("zfs", 0, name,
+	    "disk", KSTAT_TYPE_IO, 1, 0);
+	if (spa->spa_iokstat) {
+		spa->spa_iokstat->ks_lock = &spa->spa_iokstat_lock;
+		kstat_install(spa->spa_iokstat);
+	}
+
+	spa->spa_debug = ((zfs_flags & ZFS_DEBUG_SPA) != 0);
 
 	return (spa);
 }
@@ -608,6 +635,9 @@ spa_remove(spa_t *spa)
 
 	spa_config_lock_destroy(spa);
 
+	kstat_delete(spa->spa_iokstat);
+	spa->spa_iokstat = NULL;
+
 	for (int t = 0; t < TXG_SIZE; t++)
 		bplist_destroy(&spa->spa_free_bplist[t]);
 
@@ -625,6 +655,7 @@ spa_remove(spa_t *spa)
 	mutex_destroy(&spa->spa_scrub_lock);
 	mutex_destroy(&spa->spa_suspend_lock);
 	mutex_destroy(&spa->spa_vdev_top_lock);
+	mutex_destroy(&spa->spa_iokstat_lock);
 
 	kmem_free(spa, sizeof (spa_t));
 }
@@ -1002,7 +1033,7 @@ spa_vdev_config_exit(spa_t *spa, vdev_t *vd, uint64_t txg, int error, char *tag)
 		txg_wait_synced(spa->spa_dsl_pool, txg);
 
 	if (vd != NULL) {
-		ASSERT(!vd->vdev_detached || vd->vdev_dtl_smo.smo_object == 0);
+		ASSERT(!vd->vdev_detached || vd->vdev_dtl_sm == NULL);
 		spa_config_enter(spa, SCL_ALL, spa, RW_WRITER);
 		vdev_free(vd);
 		spa_config_exit(spa, SCL_ALL, spa);
@@ -1323,7 +1354,7 @@ zfs_panic_recover(const char *fmt, ...)
 
 /*
  * This is a stripped-down version of strtoull, suitable only for converting
- * lowercase hexidecimal numbers that don't overflow.
+ * lowercase hexadecimal numbers that don't overflow.
  */
 uint64_t
 strtonum(const char *str, char **nptr)
@@ -1488,14 +1519,7 @@ spa_freeze_txg(spa_t *spa)
 uint64_t
 spa_get_asize(spa_t *spa, uint64_t lsize)
 {
-	/*
-	 * The worst case is single-sector max-parity RAID-Z blocks, in which
-	 * case the space requirement is exactly (VDEV_RAIDZ_MAXPARITY + 1)
-	 * times the size; so just assume that.  Add to this the fact that
-	 * we can have up to 3 DVAs per bp, and one more factor of 2 because
-	 * the block may be dittoed with up to 3 DVAs by ddt_sync().
-	 */
-	return (lsize * (VDEV_RAIDZ_MAXPARITY + 1) * SPA_DVAS_PER_BP * 2);
+	return (lsize * spa_asize_inflation);
 }
 
 uint64_t
@@ -1686,7 +1710,7 @@ spa_init(int mode)
 
 	refcount_init();
 	unique_init();
-	space_map_init();
+	range_tree_init();
 	zio_init();
 	dmu_init();
 	zil_init();
@@ -1709,7 +1733,7 @@ spa_fini(void)
 	zil_fini();
 	dmu_fini();
 	zio_fini();
-	space_map_fini();
+	range_tree_fini();
 	unique_fini();
 	refcount_fini();
 
@@ -1809,7 +1833,7 @@ spa_scan_get_stats(spa_t *spa, pool_scan_stat_t *ps)
 	dsl_scan_t *scn = spa->spa_dsl_pool ? spa->spa_dsl_pool->dp_scan : NULL;
 
 	if (scn == NULL || scn->scn_phys.scn_func == POOL_SCAN_NONE)
-		return (ENOENT);
+		return (SET_ERROR(ENOENT));
 	bzero(ps, sizeof (pool_scan_stat_t));
 
 	/* data stored on disk */

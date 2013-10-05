@@ -23,8 +23,8 @@
  */
 
 /*
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright 2012 DEY Storage Systems, Inc.  All rights reserved.
+ * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -683,6 +683,7 @@ e1000g_regs_map(struct e1000g *Adapter)
 	case e1000_ich10lan:
 	case e1000_pchlan:
 	case e1000_pch2lan:
+	case e1000_pch_lpt:
 		rnumber = ICH_FLASH_REG_SET;
 
 		/* get flash size */
@@ -889,6 +890,7 @@ e1000g_setup_max_mtu(struct e1000g *Adapter)
 		break;
 	/* pch2 can do jumbo frames up to 9K */
 	case e1000_pch2lan:
+	case e1000_pch_lpt:
 		Adapter->max_mtu = MAXIMUM_MTU_9K;
 		break;
 	/* types with a special limit */
@@ -1450,6 +1452,8 @@ e1000g_init(struct e1000g *Adapter)
 	} else if (hw->mac.type == e1000_pchlan) {
 		pba = E1000_PBA_26K;
 	} else if (hw->mac.type == e1000_pch2lan) {
+		pba = E1000_PBA_26K;
+	} else if (hw->mac.type == e1000_pch_lpt) {
 		pba = E1000_PBA_26K;
 	} else {
 		/*
@@ -2438,7 +2442,8 @@ e1000g_init_unicst(struct e1000g *Adapter)
 
 	if (Adapter->init_count == 0) {
 		/* Initialize the multiple unicast addresses */
-		Adapter->unicst_total = MAX_NUM_UNICAST_ADDRESSES;
+		Adapter->unicst_total = min(hw->mac.rar_entry_count,
+		    MAX_NUM_UNICAST_ADDRESSES);
 
 		/* Workaround for an erratum of 82571 chipst */
 		if ((hw->mac.type == e1000_82571) &&
