@@ -4500,3 +4500,15 @@ splr(void)
 {
 	bop_panic("splr");
 }
+
+void
+ddi_periodic_init(void)
+{
+	bop_panic("ddi_periodic_init");
+}
+
+void
+ddi_periodic_fini(void)
+{
+	bop_panic("ddi_periodic_fini");
+}
