@@ -52,7 +52,7 @@ install: $(ROOT_QVPB_DIR) $(USR_QVPB_DIR) \
 	$(USR_QVPB_LIB_DIR) \
 	$(QVPB_CRYPTO_LINKS) \
 	unix .WAIT $(QVPB_CPU_KMODS) \
-	$(QVPB_KMODS)
+	$(QVPB_KMODS) loader
 
 unix loader $(QVPB_KMODS) $(QVPB_CPU_KMODS): FRC
 	@cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET)
