@@ -100,8 +100,9 @@ typedef struct atag_illumos_mapping {
 
 #define	ATAG_ILLUMOS_STATUS_SIZE	6
 #define	ATAG_ILLUMOS_MAPPING_SIZE	7
-#define	PF_NORELOC	0x8
+#define	PF_NORELOC	0x08
 #define	PF_DEVICE	0x10
+#define	PF_LOADER	0x20
 
 extern atag_header_t *atag_next(atag_header_t *);
 extern const atag_header_t *atag_find(atag_header_t *, uint32_t);
