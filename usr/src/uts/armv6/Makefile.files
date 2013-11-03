@@ -111,6 +111,11 @@ CORE_OBJS +=	\
 		zlib_obj.o	\
 		clock_tick.o
 
+ARM_LOADER_OBJS = \
+		atag.o \
+		cache.o \
+		fakeloader_core.o \
+		fakeloader.o
 
 #
 # Definitions and Include Paths

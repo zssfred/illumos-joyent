@@ -20,9 +20,8 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/atag.h>
-#include <sys/boot_console.h>
 
-#define	DBG_MSG(x)	{ bcons_puts(x); bcons_puts("\n\r"); }
+extern void bcopy(const void *, void *, size_t);
 
 atag_header_t *
 atag_next(atag_header_t *cur)
@@ -36,4 +35,58 @@ atag_next(atag_header_t *cur)
 		return (NULL);
 
 	return (cur);
+}
+
+const atag_header_t *
+atag_find(atag_header_t *start, uint32_t type)
+{
+	while (start != NULL) {
+		if (start->ah_tag == type)
+			return (start);
+		start = atag_next(start);
+	}
+
+	return (NULL);
+}
+
+/*
+ * Append an atag header to the end of the chain. Note that this will clobber
+ * memory.
+ */
+void
+atag_append(atag_header_t *chain, atag_header_t *val)
+{
+	atag_header_t hdr, *next;
+
+	while (chain->ah_tag != ATAG_NONE) {
+		next = atag_next(chain);
+		if (next == NULL) {
+			chain = (atag_header_t *)
+			    (((uintptr_t)chain) + chain->ah_size * 4);
+		} else {
+			chain = next;
+		}
+	}
+
+	hdr.ah_size = chain->ah_size;
+	hdr.ah_tag = chain->ah_tag;
+
+	(void) bcopy(val, chain, val->ah_size * 4);
+	chain = (atag_header_t *)(((uintptr_t)chain) + val->ah_size * 4);
+	chain->ah_size = hdr.ah_size;
+	chain->ah_tag = hdr.ah_tag;
+}
+
+size_t
+atag_length(atag_header_t *chain)
+{
+	size_t len = 0;
+	while (chain != NULL) {
+		len += chain->ah_size * 4;
+		chain = atag_next(chain);
+	}
+	/* Add in the zero tag */
+	len += sizeof (atag_header_t);
+
+	return (len);
 }

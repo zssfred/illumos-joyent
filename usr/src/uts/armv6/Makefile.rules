@@ -46,6 +46,15 @@ $(OBJS_DIR)/%.o:		$(SRC)/common/atomic/arm/%.s
 	$(CTFCONVERT_O)
 
 #
+# ARM Loader  (no CTF is intentional)
+#
+$(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/loader/%.c
+	$(COMPILE.c) -o $@ $<
+
+$(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/loader/%.s
+	$(COMPILE.s) -o $@ $<
+
+#
 # dtrace stubs
 #
 

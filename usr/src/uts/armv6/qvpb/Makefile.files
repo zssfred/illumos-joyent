@@ -16,3 +16,6 @@
 QVPB_OBJS = \
 	locore.o \
 	boot_console.o
+
+QVPB_LOADER_OBJS = \
+	qvpb_ldep.o	

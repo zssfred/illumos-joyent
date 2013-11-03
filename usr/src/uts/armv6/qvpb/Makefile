@@ -37,10 +37,11 @@ check		:=	TARGET= check
 #
 .KEEP_STATE:
 
-def all clean clobber clean.lint: unix .WAIT \
+def all clean clobber clean.lint: unix loader .WAIT \
 		$(QVPB_CPU_KMODS) $(QVPB_KMODS)
 
 modlist:	unix \
+		loader \
 		$(QVPB_CPU_KMODS) $(QVPB_KMODS)
 
 IMPLEMENTED_PLATFORM = Qemu,VersatilePB
@@ -53,7 +54,7 @@ install: $(ROOT_QVPB_DIR) $(USR_QVPB_DIR) \
 	unix .WAIT $(QVPB_CPU_KMODS) \
 	$(QVPB_KMODS)
 
-unix $(QVPB_KMODS) $(QVPB_CPU_KMODS): FRC
+unix loader $(QVPB_KMODS) $(QVPB_CPU_KMODS): FRC
 	@cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET)
 
 install_h check:	FRC

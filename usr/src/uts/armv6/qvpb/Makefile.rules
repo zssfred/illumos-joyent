@@ -13,6 +13,9 @@
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
+$(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/qvpb/loader/%.c
+	$(COMPILE.c) -o $@ $<
+
 $(OBJS_DIR)/%.o:		$(UTSBASE)/$(PLATFORM)/qvpb/os/%.c
 	$(COMPILE.c) -o $@ $<
 

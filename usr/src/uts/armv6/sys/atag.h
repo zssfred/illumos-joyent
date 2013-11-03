@@ -36,6 +36,8 @@ extern "C" {
 #define	ATAG_REVISION   0x54410007
 #define	ATAG_VIDEOLFB   0x54410008
 #define	ATAG_CMDLINE	0x54410009
+#define	ATAG_ILLUMOS_STATUS	0x726d0000
+#define	ATAG_ILLUMOS_MAPPING	0x726d0001
 
 typedef struct atag_header {
 	uint32_t	ah_size;	/* size in 4 byte words */
@@ -79,7 +81,32 @@ typedef struct atag_cmdline {
 	char 		al_cmdline[1];
 } atag_cmdline_t;
 
+typedef struct atag_illumos_status {
+	atag_header_t	ais_header;
+	uint32_t	ais_version;
+	uint32_t	ais_ptbase;
+	uint32_t	ais_freemem;
+	uint32_t	ais_freeused;
+} atag_illumos_status_t;
+
+typedef struct atag_illumos_mapping {
+	atag_header_t	aim_header;
+	uint32_t	aim_paddr;
+	uint32_t	aim_plen;
+	uint32_t	aim_vaddr;
+	uint32_t	aim_vlen;
+	uint32_t	aim_mapflags;
+} atag_illumos_mapping_t;
+
+#define	ATAG_ILLUMOS_STATUS_SIZE	6
+#define	ATAG_ILLUMOS_MAPPING_SIZE	7
+#define	PF_NORELOC	0x8
+#define	PF_DEVICE	0x10
+
 extern atag_header_t *atag_next(atag_header_t *);
+extern const atag_header_t *atag_find(atag_header_t *, uint32_t);
+extern void atag_append(atag_header_t *, atag_header_t *);
+extern size_t atag_length(atag_header_t *);
 
 #ifdef __cplusplus
 }

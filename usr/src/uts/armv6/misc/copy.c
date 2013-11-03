@@ -27,7 +27,6 @@
  * 2) 100% overlap, src == dest, copy forwards or backwards or return
  * 3) partial overlap, src < dest, copy backwards
  * 4) partial overlap, dest < src, copy forwards
- *
  */
 void
 bcopy(const void *s, void *d, size_t n)

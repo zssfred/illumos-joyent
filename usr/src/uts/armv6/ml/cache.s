@@ -127,6 +127,22 @@ data_sbarrier(void)
  */
 
 void
+armv6_icache_disable(void)
+{}
+
+void
+armv6_icache_enable(void)
+{}
+
+void
+armv6_dcache_disable(void)
+{}
+
+void
+armv6_dcache_enable(void)
+{}
+
+void
 armv6_icache_inval(void)
 {}
 
@@ -147,6 +163,30 @@ armv6_text_flush(void)
 {}
 
 #else	/* __lint */
+
+	ENTRY(armv6_icache_enable)
+	mrc	p15, 0, r0, c1, c0, 0
+	orr	r0, #0x1000
+	mcr	p15, 0, r0, c1, c0, 0
+	SET_SIZE(armv6_icache_enable)
+
+	ENTRY(armv6_dcache_enable)
+	mrc	p15, 0, r0, c1, c0, 0
+	orr	r0, #0x2
+	mcr	p15, 0, r0, c1, c0, 0
+	SET_SIZE(armv6_dcache_enable)
+
+	ENTRY(armv6_icache_disable)
+	mrc	p15, 0, r0, c1, c0, 0
+	bic	r0, #0x1000
+	mcr	p15, 0, r0, c1, c0, 0
+	SET_SIZE(armv6_icache_disable)
+
+	ENTRY(armv6_dcache_disable)
+	mrc	p15, 0, r0, c1, c0, 0
+	bic	r0, #0x2
+	mcr	p15, 0, r0, c1, c0, 0
+	SET_SIZE(armv6_dcache_disable)
 
 	ENTRY(armv6_icache_inval)
 	mcr	p15, 0, r0, c7, c5, 0		@ Invalidate i-cache
