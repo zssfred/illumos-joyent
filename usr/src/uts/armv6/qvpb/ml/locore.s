@@ -89,13 +89,13 @@
 	mov sp, #-1
 	cps #(CPU_MODE_SVC)
 
-	/*
-	 * XXX Currently we're using u-boot to allow us to make forward progress
-	 * while the .data section is a bit tumultuous. It loads that, but we
-	 * can say for certain that it does not correctly pass in the machid and
-	 * tagstart. Since we know what it is, we manually fix it up here.
-	 */
-	mov r2,#0x100
+	/* Enable highvecs (moves the base of the exception vector) */
+	mrc	p15, 0, r3, c1, c0, 0
+	mov	r4, #1
+	lsl	r4, r4, #13
+	orr	r3, r3, r4
+	mcr	p15, 0, r3, c1, c0, 0
+
 	bl _fakebop_start
 	SET_SIZE(_start)
 
