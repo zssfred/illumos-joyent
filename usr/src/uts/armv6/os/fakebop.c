@@ -155,6 +155,7 @@ fakebop_alloc_init(void)
 	top = bootinfo.bi_memstart + bootinfo.bi_memsize;
 	top -= bop_alloc_nfree;
 
+	bop_panic("allocator needs to be revamped for a VM-enabled world\n");
 
 	if (fakebop_alloc_debug != 0)
 		bop_printf(NULL, "bot_alloc_nfree: %d\n", bop_alloc_nfree);
