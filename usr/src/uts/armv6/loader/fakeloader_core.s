@@ -103,7 +103,7 @@ fakeload_mmu_enable(void)
 
 	ENTRY(fakeload_exec)
 	mov	r4, r0
-	mov	r2, #100
+	mov	r2, #0x100
 	blx	r4
 	/* We should never execute this. If we do we'll go back to a panic */
 	bx	lr
