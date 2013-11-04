@@ -16,7 +16,8 @@ ATOMIC_OBJS +=			\
 	atomic.o
 
 BOOT_OBJS +=			\
-	atag.o
+	atag.o			\
+	boot_mmu.o
 
 MATH_OBJS += 			\
 	divsi3.o 		\

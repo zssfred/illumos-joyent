@@ -47,8 +47,6 @@
 #define	FAKELOAD_DPRINTF(x)
 #endif 	/* DEBUG */
 
-#define	MAP_DEBUG
-
 /*
  * XXX ASSUMES WE HAVE Free memory following the boot archive
  */
@@ -216,7 +214,8 @@ fakeload_pt_arena_init(const atag_initrd_t *aii)
  * header.
  */
 static uintptr_t
-fakeload_archive_mappings(atag_header_t *chain, const void *addr)
+fakeload_archive_mappings(atag_header_t *chain, const void *addr,
+    atag_illumos_status_t *aisp)
 {
 	atag_illumos_mapping_t aim;
 	fakeloader_hdr_t *hdr;
@@ -317,6 +316,8 @@ fakeload_archive_mappings(atag_header_t *chain, const void *addr)
 	aim.aim_vlen = aim.aim_plen;
 	aim.aim_mapflags = PF_R | PF_W | PF_X;
 	atag_append(chain, &aim.aim_header);
+	aisp->ais_archive = aim.aim_paddr;
+	aisp->ais_archivelen = aim.aim_plen;
 
 	return (ret);
 }
@@ -565,7 +566,7 @@ fakeload_init(void *ident, void *ident2, void *atag)
 	 * Map the boot archive and all of unix
 	 */
 	unix_start = fakeload_archive_mappings(chain,
-	    (const void *)(uintptr_t)initrd->ai_start);
+	    (const void *)(uintptr_t)initrd->ai_start, aisp);
 	FAKELOAD_DPRINTF("filled out unix and the archive's mappings\n");
 
 	/*

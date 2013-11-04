@@ -31,6 +31,8 @@
 #include <sys/bootstat.h>
 #include <sys/privregs.h>
 #include <sys/cpu_asm.h>
+#include <sys/boot_mmu.h>
+#include <sys/elf.h>
 
 static bootops_t bootop;
 
@@ -47,28 +49,24 @@ static uint_t kbm_debug = 1;
 static char buffer[BUFFERSIZE];
 
 /*
- * Fakebop Memory allocation Scheme
+ * fakebop memory allocations scheme
  *
- * Early on during boot we need to be able to allocate memory before we get the
- * normal kernel memory allocator up and running. Currently this memory is never
- * freed by the system, or so it appears. As such we take a much simpler
- * approach to the memory allocation. Mostly, we care off a region of memory
- * from the top of our physical range equal to bop_alloc_nfree which is
- * currently 16 MB. From there, allocations are given a 4-byte aligned chunks of
- * memory from bop_alloc_start until we run out of memory. Because of the lack
- * of any callers of the memory free routing in the system, we do not bother
- * with anything like a free list or even size and next pointers. This does make
- * the debugging a bit harder, but hopefully our use of this will be minimal
- * overall.
+ * It's a virtual world out there. The loader thankfully tells us all the areas
+ * that it has mapped for us. What we'll do is to ahead and find a region of
+ * physical memory that's just after the area it's taken and map that into our
+ * VA space. We're going to carve off a fixed region for these early mappings,
+ * currently 16 MB (FAKEBOP_ALLOC_SIZE) and just set that up at the beginning of
+ * time. If we need more, then we'll go back and make this a bit more dynamic.
+ * We're going to do this as a series of identity mappings in our VA space.
+ * These may end up getting thrown out or rewritten and if that's not the case
+ * we'll have to rethink where these go and how we pick an address.
  *
- * TODO On other platforms this often includes using virtual memory instead of
- * physical memory. While it would be great to do that on ARM, let's start with
- * this strawman approach and later revamp it. The goal here is that it's meant
- * to be very simple... albeit this will probably be too simple in time to come.
+ * Some users of the early allocations may ask for a specific VA area. That's
+ * fine, we just don't use the reserved mapping then.
  */
 #define	FAKEBOP_ALLOC_SIZE	(16 * 1024 * 1024)
-static uintptr_t bop_alloc_start = 0;
-static uintptr_t bop_alloc_nfree = FAKEBOP_ALLOC_SIZE;
+static uintptr_t bop_alloc_pstart, bop_alloc_vstart, bop_alloc_vnext;
+static size_t bop_alloc_size, bop_alloc_nfree;
 
 #define	BI_HAS_RAMDISK	0x1
 
@@ -148,24 +146,49 @@ fakebop_hack_ultostr(unsigned long value, char *ptr)
  * the initial ram disk or the kernel.
  */
 static void
-fakebop_alloc_init(void)
+fakebop_alloc_init(atag_header_t *chain)
 {
-	uintptr_t top;
+	uintptr_t pstart, vstart;
+	size_t len;
+	atag_illumos_mapping_t *aimp;
+	atag_illumos_status_t *aisp;
 
-	top = bootinfo.bi_memstart + bootinfo.bi_memsize;
-	top -= bop_alloc_nfree;
+	aisp = (atag_illumos_status_t *)atag_find(chain, ATAG_ILLUMOS_STATUS);
+	if (aisp == NULL)
+		bop_panic("missing ATAG_ILLUMOS_STATUS!\n");
+	pstart = aisp->ais_freemem + aisp->ais_freeused;
+	/* Align to next 1 MB boundary */
+	if (pstart & 0xfffff) {
+		pstart &= ~0xfffff;
+		pstart += 0x100000;
+	}
+	len = FAKEBOP_ALLOC_SIZE;
+	vstart = pstart;
 
-	bop_panic("allocator needs to be revamped for a VM-enabled world\n");
+	/* Make sure the paddrs and vaddrs don't overlap at all */
+	for (aimp =
+	    (atag_illumos_mapping_t *)atag_find(chain, ATAG_ILLUMOS_MAPPING);
+	    aimp != NULL; aimp =
+	    (atag_illumos_mapping_t *)atag_find(atag_next(&aimp->aim_header),
+	    ATAG_ILLUMOS_MAPPING)) {
+		if (aimp->aim_paddr < pstart &&
+		    aimp->aim_paddr + aimp->aim_vlen > pstart)
+			bop_panic("phys addresses overlap\n");
+		if (pstart < aimp->aim_paddr && pstart + len > aimp->aim_paddr)
+			bop_panic("phys addresses overlap\n");
+		if (aimp->aim_vaddr < vstart && aimp->aim_vaddr +
+		    aimp->aim_vlen > vstart)
+			bop_panic("virt addreses overlap\n");
+		if (vstart < aimp->aim_vaddr && vstart + len > aimp->aim_vaddr)
+			bop_panic("virt addresses overlap\n");
+	}
 
-	if (fakebop_alloc_debug != 0)
-		bop_printf(NULL, "bot_alloc_nfree: %d\n", bop_alloc_nfree);
-	if (top > bootinfo.bi_ramdisk &&
-	    top < bootinfo.bi_ramdisk + bootinfo.bi_ramsize)
-		bop_panic("fakebop_alloc_init memory range has overlaps");
-	bop_alloc_start = top;
-	if (fakebop_alloc_debug != 0)
-		bop_printf(NULL, "malloc arena starts at 0x%x "
-		    "with %d bytes\n", top, bop_alloc_nfree);
+	armboot_mmu_map(pstart, vstart, len, PF_R | PF_W);
+	bop_alloc_pstart = pstart;
+	bop_alloc_vstart = vstart;
+	bop_alloc_vnext = vstart;
+	bop_alloc_size = len;
+	bop_alloc_nfree = len;
 }
 
 static void
@@ -299,7 +322,7 @@ fakebop_getatags(void *tagstart)
 	atag_mem_t *amp;
 	atag_cmdline_t *alp;
 	atag_header_t *ahp = tagstart;
-	atag_initrd_t *aip;
+	atag_illumos_status_t *aisp;
 	bootinfo_t *bp = &bootinfo;
 
 	bp->bi_flags = 0;
@@ -314,10 +337,10 @@ fakebop_getatags(void *tagstart)
 			alp = (atag_cmdline_t *)ahp;
 			bp->bi_cmdline = alp->al_cmdline;
 			break;
-		case ATAG_INITRD2:
-			aip = (atag_initrd_t *)ahp;
-			bp->bi_ramdisk = aip->ai_start;
-			bp->bi_ramsize = aip->ai_size;
+		case ATAG_ILLUMOS_STATUS:
+			aisp = (atag_illumos_status_t *)ahp;
+			bp->bi_ramdisk = aisp->ais_archive;
+			bp->bi_ramsize = aisp->ais_archivelen;
 			bp->bi_flags |= BI_HAS_RAMDISK;
 			break;
 		default:
@@ -332,9 +355,13 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 {
 	caddr_t start;
 
+	if (virthint != NULL) {
+		bop_printf(NULL, "asked to alloc at %p\n", virthint);
+		bop_panic("XXX rm figure out the virthint\n");
+	}
 	if (fakebop_alloc_debug != 0)
 		bop_printf(bops, "Asked to allocated %d bytes\n", size);
-	if (bop_alloc_start == 0)
+	if (bop_alloc_vnext == 0)
 		bop_panic("fakebop_alloc_init not called");
 
 	if (align == BO_ALIGN_DONTCARE || align == 0)
@@ -347,11 +374,12 @@ fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 	if (size > bop_alloc_nfree)
 		bop_panic("fakebop_alloc ran out of memory");
 
-	start = (caddr_t)bop_alloc_start;
-	bop_alloc_start += size;
+	start = (caddr_t)bop_alloc_vnext;
+	bop_alloc_vnext += size;
 	bop_alloc_nfree -= size;
 	if (fakebop_alloc_debug != 0)
 		bop_printf(bops, "returning address: %p\n", start);
+
 	return (start);
 }
 
@@ -736,6 +764,7 @@ primordial_dataabt(void *arg)
 	uint32_t *insaddr = (uint32_t *)(r->r_lr - 8);
 
 	bop_printf(NULL, "TRAP: data abort at (insn) %p\n", insaddr);
+	bop_panic("Page Fault! Go fix it\n");
 }
 
 void
@@ -807,7 +836,8 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	bops->bsys_getprop = fakebop_getprop;
 	bops->bsys_printf = bop_printf;
 
-	fakebop_alloc_init();
+	armboot_mmu_init(tagstart);
+	fakebop_alloc_init(tagstart);
 	fakebop_bootprops_init();
 	bop_printf(NULL, "booting into _kobj\n");
 	_kobj_boot(&bop_sysp, NULL, bops);
