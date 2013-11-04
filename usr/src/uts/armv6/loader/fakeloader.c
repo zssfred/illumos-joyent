@@ -422,12 +422,12 @@ fakeload_create_map(armpte_t *pt, atag_illumos_mapping_t *aimp)
 		if (start & 0xfff) {
 			start &= ~0xfff;
 			start += 0x1000;
-			bcopy((void *)aimp->aim_paddr, (void *)start,
-			    aimp->aim_plen);
-			if (aimp->aim_vlen > aimp->aim_plen) {
-				bzero((void *)(start + aimp->aim_plen),
-				    aimp->aim_vlen - aimp->aim_vlen);
-			}
+		}
+		bcopy((void *)aimp->aim_paddr, (void *)start,
+		    aimp->aim_plen);
+		if (aimp->aim_vlen > aimp->aim_plen) {
+			bzero((void *)(start + aimp->aim_plen),
+			    aimp->aim_vlen - aimp->aim_plen);
 		}
 		aimp->aim_paddr = start;
 		freemem = start + aimp->aim_vlen;
