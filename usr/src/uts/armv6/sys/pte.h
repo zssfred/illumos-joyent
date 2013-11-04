@@ -103,6 +103,7 @@ typedef struct arm_l2le {
 
 #define	ARMPT_VADDR_TO_L1E(vaddr)	(vaddr >> 20)
 #define	ARMPT_ADDR_TO_L1PTADDR(addr)	(addr >> 10)
+#define	ARMPT_PADDR_TO_L1SECT(addr)	(addr >> 20)
 #define	ARMPT_L1E_ISVALID(entry)	\
 	((entry & 0x3) != 0 && (entry & 0x3) != 0x3)
 

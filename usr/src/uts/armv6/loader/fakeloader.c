@@ -47,11 +47,16 @@
 #define	FAKELOAD_DPRINTF(x)
 #endif 	/* DEBUG */
 
+#define	MAP_DEBUG
+
 /*
  * XXX ASSUMES WE HAVE Free memory following the boot archive
  */
 static uintptr_t freemem;
+static uintptr_t pt_arena;
+static uintptr_t pt_arena_max;
 static uint32_t *pt_addr;
+static int nl2pages;
 
 /* Simple copy routines */
 void
@@ -141,6 +146,69 @@ fakeload_selfmap(atag_header_t *chain)
 	aim.aim_vlen = aim.aim_plen;
 	aim.aim_mapflags = PF_R | PF_X | PF_LOADER;
 	atag_append(chain, &aim.aim_header);
+}
+
+static void
+fakeload_map_1mb(uintptr_t pa, uintptr_t va, int prot)
+{
+	int entry;
+	armpte_t *pte;
+	arm_l1s_t *l1e;
+
+	entry = ARMPT_VADDR_TO_L1E(va);
+	pte = &pt_addr[entry];
+	if (ARMPT_L1E_ISVALID(*pte))
+		fakeload_panic("armboot_mmu: asked to map a mapped region!\n");
+	l1e = (arm_l1s_t *)pte;
+	*pte = 0;
+	l1e->al_type = ARMPT_L1_TYPE_SECT;
+	/* Assume it's not device memory */
+	l1e->al_bbit = 1;
+	l1e->al_cbit = 1;
+	l1e->al_tex = 1;
+	l1e->al_sbit = 1;
+
+	if (!(prot & PF_X))
+		l1e->al_xn = 1;
+	l1e->al_domain = 0;
+
+	if (prot & PF_W) {
+		l1e->al_ap2 = 1;
+		l1e->al_ap = 1;
+	} else {
+		l1e->al_ap2 = 0;
+		l1e->al_ap = 1;
+	}
+	l1e->al_ngbit = 0;
+	l1e->al_issuper = 0;
+	l1e->al_addr = ARMPT_PADDR_TO_L1SECT(pa);
+}
+/*
+ * Set freemem to be 1 MB aligned at the end of boot archive. While the L1 Page
+ * table only needs to be 16 KB aligned, we opt for 1 MB alignment so that way
+ * we can map it and all the other L2 page tables we might need. If we don't do
+ * this, it'll become problematic for unix to actually modify this.
+ */
+static void
+fakeload_pt_arena_init(const atag_initrd_t *aii)
+{
+	int entry, i;
+	armpte_t *pte;
+	arm_l1s_t *l1e;
+
+	pt_arena = aii->ai_start + aii->ai_size;
+	if (pt_arena & 0xfffff) {
+		pt_arena &= ~0xfffff;
+		pt_arena += 0x100000;
+	}
+	pt_arena_max = pt_arena + 0x100000;
+	freemem = pt_arena_max;
+
+	/* Set up the l1 page table by first invalidating it */
+	pt_addr = (armpte_t *)pt_arena;
+	pt_arena += ARMPT_L1_SIZE;
+	bzero(pt_addr, ARMPT_L1_SIZE);
+	fakeload_map_1mb((uintptr_t)pt_addr, (uintptr_t)pt_addr, PF_R | PF_W);
 }
 
 /*
@@ -275,17 +343,29 @@ fakeload_alloc_l2pt(void)
 {
 	uintptr_t ret;
 
-	if (freemem & ARMPT_L2_MASK) {
-		ret = freemem;
+	if (pt_arena & ARMPT_L2_MASK) {
+		ret = pt_arena;
 		ret &= ~ARMPT_L2_MASK;
 		ret += ARMPT_L2_SIZE;
-		freemem = ret + ARMPT_L2_SIZE;
+		pt_arena = ret + ARMPT_L2_SIZE;
 	} else {
-		ret = freemem;
-		freemem = ret + ARMPT_L2_SIZE;
+		ret = pt_arena;
+		pt_arena = ret + ARMPT_L2_SIZE;
+	}
+	if (pt_arena >= pt_arena_max) {
+		fakeload_puts("pt_arena, max\n");
+		fakeload_ultostr(pt_arena);
+		fakeload_puts("\n");
+		fakeload_ultostr(pt_arena_max);
+		fakeload_puts("\n");
+		fakeload_puts("l2pts alloced\n");
+		fakeload_ultostr(nl2pages);
+		fakeload_puts("\n");
+		fakeload_panic("ran out of page tables!");
 	}
 
 	bzero((void *)ret, ARMPT_L2_SIZE);
+	nl2pages++;
 	return (ret);
 }
 
@@ -477,12 +557,7 @@ fakeload_init(void *ident, void *ident2, void *atag)
 		fakeload_panic("can't find ATAG_ILLUMOS_MAPPING");
 	FAKELOAD_DPRINTF("created proto atags\n");
 
-	/*
-	 * Set freemem to be 16 KB aligned at the end of freemem.
-	 */
-	freemem = initrd->ai_start + initrd->ai_size;
-	freemem &= ~ARMPT_L1_MASK;
-	freemem += ARMPT_L1_SIZE;
+	fakeload_pt_arena_init(initrd);
 
 	fakeload_selfmap(chain);
 
@@ -527,13 +602,8 @@ fakeload_init(void *ident, void *ident2, void *atag)
 
 	/* Last bits of the atag */
 	aisp->ais_freemem = freemem;
-	pt_addr = (void *)freemem;
-	freemem += sizeof (uint32_t) * 4096;
 	aisp->ais_version = 1;
 	aisp->ais_ptbase = (uintptr_t)pt_addr;
-
-	/* Set up the l1 page table by first invalidating it */
-	bzero(pt_addr, sizeof (uint32_t) * 4096);
 
 	/*
 	 * Our initial page table is a series of 1 MB sections. While we really
