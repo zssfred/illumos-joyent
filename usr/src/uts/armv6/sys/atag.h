@@ -89,6 +89,8 @@ typedef struct atag_illumos_status {
 	uint32_t	ais_freeused;
 	uint32_t	ais_archive;
 	uint32_t	ais_archivelen;
+	uint32_t	ais_pt_arena;
+	uint32_t	ais_pt_arena_max;
 } atag_illumos_status_t;
 
 typedef struct atag_illumos_mapping {
@@ -100,7 +102,7 @@ typedef struct atag_illumos_mapping {
 	uint32_t	aim_mapflags;
 } atag_illumos_mapping_t;
 
-#define	ATAG_ILLUMOS_STATUS_SIZE	8
+#define	ATAG_ILLUMOS_STATUS_SIZE	10	
 #define	ATAG_ILLUMOS_MAPPING_SIZE	7
 #define	PF_NORELOC	0x08
 #define	PF_DEVICE	0x10

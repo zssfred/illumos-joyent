@@ -33,6 +33,7 @@ void armv6_dcache_inval(void);
 void armv6_dcache_flush(void);
 void armv6_text_flush_range(caddr_t, size_t);
 void armv6_text_flush(void);
+void armv6_tlb_sync(void);
 
 #endif /* _KERNEL */
 

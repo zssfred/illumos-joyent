@@ -52,21 +52,30 @@ static char buffer[BUFFERSIZE];
  * fakebop memory allocations scheme
  *
  * It's a virtual world out there. The loader thankfully tells us all the areas
- * that it has mapped for us. What we'll do is to ahead and find a region of
- * physical memory that's just after the area it's taken and map that into our
- * VA space. We're going to carve off a fixed region for these early mappings,
- * currently 16 MB (FAKEBOP_ALLOC_SIZE) and just set that up at the beginning of
- * time. If we need more, then we'll go back and make this a bit more dynamic.
- * We're going to do this as a series of identity mappings in our VA space.
- * These may end up getting thrown out or rewritten and if that's not the case
- * we'll have to rethink where these go and how we pick an address.
+ * that it has mapped for us and it also tells us about the page table arena --
+ * a set of addresses that have already been set aside for us. We have two
+ * different kinds of allocations to worry about:
  *
- * Some users of the early allocations may ask for a specific VA area. That's
- * fine, we just don't use the reserved mapping then.
+ *    o Those that specify a particular vaddr
+ *    o Those that do not specify a particular vaddr
+ * 
+ * Those that do not specify a particular vaddr will come out of our scratch
+ * space which is a fixed size arena of 16 MB (FAKEBOP_ALLOC_SIZE) that we set
+ * aside at the beginning of the allocator. If we end up running out of that
+ * then we'll go ahead and figure out a slightly larger area to worry about.
+ *
+ * Now, for those that do specify a particular vaddr we'll allocate more
+ * physical address space for it. The loader set aside enough L2 page tables for
+ * us that we'll go ahead and use the next 4k aligned address.
  */
 #define	FAKEBOP_ALLOC_SIZE	(16 * 1024 * 1024)
-static uintptr_t bop_alloc_pstart, bop_alloc_vstart, bop_alloc_vnext;
-static size_t bop_alloc_size, bop_alloc_nfree;
+
+static size_t bop_alloc_scratch_size;
+static uintptr_t bop_alloc_scratch_next;	/* Next scratch address */
+static uintptr_t bop_alloc_scratch_last;	/* Last scratch address */
+
+static uintptr_t bop_alloc_pnext;		/* Next paddr */
+static uintptr_t bop_alloc_plast;		/* Cross this paddr and we panic! */
 
 #define	BI_HAS_RAMDISK	0x1
 
@@ -141,14 +150,13 @@ fakebop_hack_ultostr(unsigned long value, char *ptr)
 }
 
 /*
- * We need to reserve bop_alloc_nfree bytes from the top of our memory range. We
- * also need to make sure that nothing else is using that region of memory, eg.
- * the initial ram disk or the kernel.
+ * We need to map and reserve the scratch arena. As a part of this we'll go
+ * through and set up the right place for other paddrs.
  */
 static void
 fakebop_alloc_init(atag_header_t *chain)
 {
-	uintptr_t pstart, vstart;
+	uintptr_t pstart, vstart, pmax;
 	size_t len;
 	atag_illumos_mapping_t *aimp;
 	atag_illumos_status_t *aisp;
@@ -158,13 +166,14 @@ fakebop_alloc_init(atag_header_t *chain)
 		bop_panic("missing ATAG_ILLUMOS_STATUS!\n");
 	pstart = aisp->ais_freemem + aisp->ais_freeused;
 	/* Align to next 1 MB boundary */
-	if (pstart & 0xfffff) {
-		pstart &= ~0xfffff;
-		pstart += 0x100000;
+	if (pstart & MMU_PAGEOFFSET1M) {
+		pstart &= MMU_PAGEMASK1M;
+		pstart += MMU_PAGESIZE1M;
 	}
 	len = FAKEBOP_ALLOC_SIZE;
 	vstart = pstart;
 
+	pmax = 0xffffffff;
 	/* Make sure the paddrs and vaddrs don't overlap at all */
 	for (aimp =
 	    (atag_illumos_mapping_t *)atag_find(chain, ATAG_ILLUMOS_MAPPING);
@@ -181,14 +190,18 @@ fakebop_alloc_init(atag_header_t *chain)
 			bop_panic("virt addreses overlap\n");
 		if (vstart < aimp->aim_vaddr && vstart + len > aimp->aim_vaddr)
 			bop_panic("virt addresses overlap\n");
+
+		if (aimp->aim_paddr > pstart && aimp->aim_paddr < pmax)
+			pmax = aimp->aim_paddr;
 	}
 
-	armboot_mmu_map(pstart, vstart, len, PF_R | PF_W);
-	bop_alloc_pstart = pstart;
-	bop_alloc_vstart = vstart;
-	bop_alloc_vnext = vstart;
-	bop_alloc_size = len;
-	bop_alloc_nfree = len;
+	armboot_mmu_map(pstart, vstart, len, PF_R | PF_W | PF_X);
+	bop_alloc_scratch_next = vstart;
+	bop_alloc_scratch_last = vstart + len;
+	bop_alloc_scratch_size = len;
+
+	bop_alloc_pnext = pstart + len;
+	bop_alloc_plast = pmax;
 }
 
 static void
@@ -350,35 +363,46 @@ fakebop_getatags(void *tagstart)
 	}
 }
 
+/*
+ * We've been asked to allocate at a specific VA. Allocate the next ragne of
+ * physical addresses and go from there.
+ */
+static caddr_t
+fakebop_alloc_hint(caddr_t virt, size_t size, int align)
+{
+	uintptr_t start = P2ROUNDUP(bop_alloc_pnext, align);
+	if (fakebop_alloc_debug != 0)
+		bop_printf(NULL, "asked to allocate %d bytes at v/p %p/%p\n",
+		    size, virt, start);
+	if (start + size > bop_alloc_plast)
+		bop_panic("fakebop_alloc_hint: No more physical address -_-\n");
+
+	armboot_mmu_map(start, (uintptr_t)virt, size, PF_R | PF_W | PF_X);
+	bop_alloc_pnext = start + size;
+	return (virt);
+}
+
 static caddr_t
 fakebop_alloc(struct bootops *bops, caddr_t virthint, size_t size, int align)
 {
 	caddr_t start;
 
-	if (virthint != NULL) {
-		bop_printf(NULL, "asked to alloc at %p\n", virthint);
-		bop_panic("XXX rm figure out the virthint\n");
-	}
+	if (virthint != NULL)
+		return (fakebop_alloc_hint(virthint, size, align));
 	if (fakebop_alloc_debug != 0)
-		bop_printf(bops, "Asked to allocated %d bytes\n", size);
-	if (bop_alloc_vnext == 0)
+		bop_printf(bops, "asked to allocate %d bytes\n", size);
+	if (bop_alloc_scratch_next == 0)
 		bop_panic("fakebop_alloc_init not called");
 
 	if (align == BO_ALIGN_DONTCARE || align == 0)
 		align = 4;
 
-	size = P2ROUNDUP(size, align);
-	if (fakebop_alloc_debug != 0)
-		bop_printf(bops, "Allocating (aligned) %d bytes %d free\n",
-		    size, bop_alloc_nfree);
-	if (size > bop_alloc_nfree)
-		bop_panic("fakebop_alloc ran out of memory");
-
-	start = (caddr_t)bop_alloc_vnext;
-	bop_alloc_vnext += size;
-	bop_alloc_nfree -= size;
+	start = (caddr_t)P2ROUNDUP(bop_alloc_scratch_next, align);
+	if ((uintptr_t)start + size > bop_alloc_scratch_last)
+		bop_panic("fakebop_alloc: ran out of scratch space!\n");
 	if (fakebop_alloc_debug != 0)
 		bop_printf(bops, "returning address: %p\n", start);
+	bop_alloc_scratch_next = (uintptr_t)start + size;
 
 	return (start);
 }

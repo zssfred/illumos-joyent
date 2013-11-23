@@ -21,6 +21,7 @@
 #include <sys/atag.h>
 #include <sys/pte.h>
 #include <sys/sysmacros.h>
+#include <sys/machparam.h>
 
 /*
  * This is the stock ARM fake uniboot loader.
@@ -181,6 +182,7 @@ fakeload_map_1mb(uintptr_t pa, uintptr_t va, int prot)
 	l1e->al_issuper = 0;
 	l1e->al_addr = ARMPT_PADDR_TO_L1SECT(pa);
 }
+
 /*
  * Set freemem to be 1 MB aligned at the end of boot archive. While the L1 Page
  * table only needs to be 16 KB aligned, we opt for 1 MB alignment so that way
@@ -195,18 +197,21 @@ fakeload_pt_arena_init(const atag_initrd_t *aii)
 	arm_l1s_t *l1e;
 
 	pt_arena = aii->ai_start + aii->ai_size;
-	if (pt_arena & 0xfffff) {
-		pt_arena &= ~0xfffff;
-		pt_arena += 0x100000;
+	if (pt_arena & MMU_PAGEOFFSET1M) {
+		pt_arena &= MMU_PAGEMASK1M;
+		pt_arena += MMU_PAGESIZE1M;
 	}
-	pt_arena_max = pt_arena + 0x100000;
+	pt_arena_max = pt_arena + 4 * MMU_PAGESIZE1M;
 	freemem = pt_arena_max;
 
 	/* Set up the l1 page table by first invalidating it */
 	pt_addr = (armpte_t *)pt_arena;
 	pt_arena += ARMPT_L1_SIZE;
 	bzero(pt_addr, ARMPT_L1_SIZE);
-	fakeload_map_1mb((uintptr_t)pt_addr, (uintptr_t)pt_addr, PF_R | PF_W);
+	for (i = 0; i < 4; i++)
+		fakeload_map_1mb((uintptr_t)pt_addr + i * MMU_PAGESIZE1M,
+		    (uintptr_t)pt_addr + i * MMU_PAGESIZE1M,
+		    PF_R | PF_W);
 }
 
 /*
@@ -387,21 +392,22 @@ fakeload_map(armpte_t *pt, uintptr_t pstart, uintptr_t vstart, size_t len,
 	/*
 	 * Make sure both pstart + vstart are 4k aligned, along with len.
 	 */
-	if (pstart & 0xfff)
+	if (pstart & MMU_PAGEOFFSET)
 		fakeload_panic("pstart is not 4k aligned");
-	if (vstart & 0xfff)
+	if (vstart & MMU_PAGEOFFSET)
 		fakeload_panic("vstart is not 4k aligned");
-	if (len & 0xfff)
+	if (len & MMU_PAGEOFFSET)
 		fakeload_panic("len is not 4k aligned");
 
 	/*
 	 * We're going to logically deal with each 1 MB chunk at a time.
 	 */
 	while (len > 0) {
-		if (vstart & 0xfffff) {
-			chunksize = MIN(len, 0x100000 - (vstart & 0xfffff));
+		if (vstart & MMU_PAGEOFFSET1M) {
+			chunksize = MIN(len, MMU_PAGESIZE1M -
+			    (vstart & MMU_PAGEOFFSET1M));
 		} else {
-			chunksize = MIN(len, 0x100000);
+			chunksize = MIN(len, MMU_PAGESIZE1M);
 		}
 
 		entry = ARMPT_VADDR_TO_L1E(vstart);
@@ -409,6 +415,15 @@ fakeload_map(armpte_t *pt, uintptr_t pstart, uintptr_t vstart, size_t len,
 
 		if (!ARMPT_L1E_ISVALID(*pte)) {
 			uintptr_t l2table;
+
+			if (!(vstart & MMU_PAGEOFFSET1M) && !(pstart & MMU_PAGEOFFSET1M) &&
+			    len == MMU_PAGESIZE1M) {
+				fakeload_map_1mb(pstart, vstart, prot);
+				vstart += MMU_PAGESIZE1M;
+				pstart += MMU_PAGESIZE1M;
+				len -= MMU_PAGESIZE1M;
+				continue;
+			}
 
 			l2table = fakeload_alloc_l2pt();
 			*pte = 0;
@@ -462,9 +477,9 @@ fakeload_map(armpte_t *pt, uintptr_t pstart, uintptr_t vstart, size_t len,
 			l2pte->ale_ngbit = 0;
 			l2pte->ale_addr = ARMPT_PADDR_TO_L2ADDR(pstart);
 
-			chunksize -= 4096;
-			vstart += 4096;
-			pstart += 4096;
+			chunksize -= MMU_PAGESIZE;
+			vstart += MMU_PAGESIZE;
+			pstart += MMU_PAGESIZE;
 		}
 	}
 }
@@ -491,7 +506,8 @@ fakeload_create_map(armpte_t *pt, atag_illumos_mapping_t *aimp)
 	 *
 	 * Criteria for this: we have a vlen > plen. plen is not page aligned.
 	 */
-	if (aimp->aim_vlen > aimp->aim_plen || (aimp->aim_paddr & 0xfff) != 0) {
+	if (aimp->aim_vlen > aimp->aim_plen ||
+	    (aimp->aim_paddr & MMU_PAGEOFFSET) != 0) {
 		uintptr_t start;
 
 		if (aimp->aim_mapflags & PF_NORELOC)
@@ -500,9 +516,9 @@ fakeload_create_map(armpte_t *pt, atag_illumos_mapping_t *aimp)
 		FAKELOAD_DPRINTF("reloacting paddr\n");
 #endif
 		start = freemem;
-		if (start & 0xfff) {
-			start &= ~0xfff;
-			start += 0x1000;
+		if (start & MMU_PAGEOFFSET) {
+			start &= MMU_PAGEMASK;
+			start += MMU_PAGESIZE;
 		}
 		bcopy((void *)aimp->aim_paddr, (void *)start,
 		    aimp->aim_plen);
@@ -620,8 +636,12 @@ fakeload_init(void *ident, void *ident2, void *atag)
 		hdr = atag_next(hdr);
 	}
 
-	/* Now that we've mapped, update freeused */
+	/*
+	 * Now that we've mapped everything, update the status atag.
+	 */
 	aisp->ais_freeused = freemem - aisp->ais_freemem;
+	aisp->ais_pt_arena = pt_arena;
+	aisp->ais_pt_arena_max = pt_arena_max;
 
 	/* Cache disable */
 	FAKELOAD_DPRINTF("Flushing and disabling caches\n");

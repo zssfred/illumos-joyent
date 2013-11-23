@@ -18,13 +18,20 @@
 #include <sys/atag.h>
 #include <sys/pte.h>
 #include <sys/elf.h>
+#include <sys/systm.h>
+#include <sys/machflush.h>
 
 /*
  * Routines for mainpulating page tables during fakebop.
  */
 
-/* Root of the boot page table */
+/* Root of the boot page table and the L2 page table arenas */
 static armpte_t *armboot_pt;
+static uintptr_t armboot_pt_arena;
+static uintptr_t armboot_pt_arena_max;
+
+/* Include debug messages */
+static int armboot_map_debug = 1;
 
 /*
  * Get the root of the page table the loader gave us. Go through and remove the
@@ -39,7 +46,56 @@ armboot_mmu_init(atag_header_t *chain)
 	if (aisp == NULL)
 		bop_panic("missing ATAG_ILLUMOS_STATUS!\n");
 	armboot_pt = (armpte_t *)(uintptr_t)aisp->ais_ptbase;
+	armboot_pt_arena = aisp->ais_pt_arena;
+	armboot_pt_arena_max = aisp->ais_pt_arena_max;
+	if (armboot_map_debug)
+		bop_printf(NULL,
+		    "root page table at %p\nl2pt arena from %p->%p\n",
+		    armboot_pt, armboot_pt_arena, armboot_pt_arena_max);
 	/* XXX Unmap the loader region */
+}
+
+static void
+armboot_mmu_map_4k(armpte_t *l2table, uintptr_t pa, uintptr_t va, int prot)
+{
+	int entry;
+	armpte_t *pte;
+	armpte_t ptt;
+	arm_l2e_t *l2pte;
+
+	entry = ARMPT_VADDR_TO_L2E(va);
+	pte = &l2table[entry];
+
+	if ((*pte & ARMPT_L2_TYPE_MASK) != ARMPT_L2_TYPE_INVALID)
+		bop_panic("asked to remap a valid 4k page!");
+
+	if (armboot_map_debug) {
+		bop_printf(NULL, "mapping 4k page from (p->v) %p->%p\n",
+		    pa, va);
+		bop_printf(NULL, "l2pt root: %p, offset: %d\n", l2table, entry);
+	}
+
+	ptt = 0;
+	l2pte = (arm_l2e_t *)&ptt;
+	if (!(prot & PF_X))
+		l2pte->ale_xn = 1;
+	l2pte->ale_ident = 1;
+	/* XXX Assume it's not device memory */
+	l2pte->ale_bbit = 1;
+	l2pte->ale_cbit = 1;
+	l2pte->ale_tex = 1;
+	l2pte->ale_sbit = 1;
+	if (prot & PF_W) {
+		l2pte->ale_ap2 = 1;
+		l2pte->ale_ap = 1;
+	} else {
+		l2pte->ale_ap2 = 0;
+		l2pte->ale_ap = 1;
+	}
+	l2pte->ale_ngbit = 0;
+	l2pte->ale_addr = ARMPT_PADDR_TO_L2ADDR(pa);
+
+	*pte = ptt;
 }
 
 static void
@@ -54,10 +110,16 @@ armboot_mmu_map_1mb(uintptr_t pa, uintptr_t va, int prot)
 	pte = &armboot_pt[entry];
 	if (ARMPT_L1E_ISVALID(*pte))
 		bop_panic("armboot_mmu: asked to map a mapped region!\n");
+
+	if (armboot_map_debug) {
+		bop_printf(NULL, "mapping 1MB page from (p->v) %p->%p\n",
+		    pa, va);
+	}
+
 	ptt = 0;
 	l1e = (arm_l1s_t *)&ptt;
 	l1e->al_type = ARMPT_L1_TYPE_SECT;
-	/* Assume it's not device memory */
+	/* XXX Assume it's not device memory */
 	l1e->al_bbit = 1;
 	l1e->al_cbit = 1;
 	l1e->al_tex = 1;
@@ -82,20 +144,80 @@ armboot_mmu_map_1mb(uintptr_t pa, uintptr_t va, int prot)
 	*pte = ptt;
 }
 
+static uintptr_t
+armboot_mmu_l2pt_alloc(void)
+{
+	uintptr_t ret;
+
+	if (armboot_pt_arena & ARMPT_L2_MASK) {
+		ret = armboot_pt_arena;
+		ret &= ~ARMPT_L2_MASK;
+		ret += ARMPT_L2_SIZE;
+		armboot_pt_arena = ret + ARMPT_L2_SIZE;
+	} else {
+		ret = armboot_pt_arena;
+		armboot_pt_arena = ret + ARMPT_L2_SIZE;
+	}
+	if (armboot_pt_arena >= armboot_pt_arena_max) {
+		bop_panic("ran out of l2 page tables!");
+	}
+
+	if (armboot_map_debug)
+		bop_printf(NULL, "allocating l2pt at %p\n", ret);
+
+	bzero((void *)ret, ARMPT_L2_SIZE);
+	return (ret);
+}
+
+
 void
 armboot_mmu_map(uintptr_t pa, uintptr_t va, size_t len, int prot)
 {
-	if (len & 0xfffff)
-		bop_panic("need to add non-1MB aligned MMU support\n");
-	if (pa & 0xfffff)
-		bop_panic("need to add non-1<B aligned MMU support");
-	if (va & 0xfffff)
-		bop_panic("need to add non-1<B aligned MMU support");
+	int entry;
+	armpte_t *pte, *l2table;
+	armpte_t ptt;
+	arm_l1pt_t *l1pt;
+
+	if (pa & MMU_PAGEOFFSET)
+		bop_panic("armboot_mmu_map: pa should be 4k aligned\n");
+	if (va & MMU_PAGEOFFSET)
+		bop_panic("armboot_mmu_map: va should be 4k aligned\n");
+	if (len & MMU_PAGEOFFSET)
+		bop_panic("armboot_mmu_map: len should be 4k aligned\n");
 
 	while (len > 0) {
-		armboot_mmu_map_1mb(pa, va, prot);
-		len -= 0x100000;
-		pa += 0x100000;
-		va += 0x100000;
+		/* Can we map a 1 MB page? */
+		if (!(pa & MMU_PAGEOFFSET1M) && !(va & MMU_PAGEOFFSET1M) &&
+		    !(len & MMU_PAGEOFFSET1M)) {
+			armboot_mmu_map_1mb(pa, va, prot);
+			len -= MMU_PAGESIZE1M;
+			pa += MMU_PAGESIZE1M;
+			va += MMU_PAGESIZE1M;
+			continue;
+		}
+
+		/* It's time to 4k page it up */
+		entry = ARMPT_VADDR_TO_L1E(pa);
+		pte = &armboot_pt[entry];
+
+		if (!(ARMPT_L1E_ISVALID(*pte))) {
+			l2table = (armpte_t *)armboot_mmu_l2pt_alloc();
+			ptt = 0;
+			l1pt = (arm_l1pt_t *)&ptt;
+			l1pt->al_type = ARMPT_L1_TYPE_L2PT;
+			l1pt->al_ptaddr = ARMPT_ADDR_TO_L1PTADDR((uintptr_t)l2table);
+			*pte = ptt;
+		} else if ((*pte & ARMPT_L1_TYPE_MASK) != ARMPT_L1_TYPE_L2PT) {
+			bop_panic("expected l2 table, but found a l1 entry\n");
+		} else {
+			l1pt = (arm_l1pt_t *)pte;
+			l2table = (armpte_t *)(l1pt->al_ptaddr <<
+			    ARMPT_L1PT_TO_L2_SHIFT);
+		}
+		armboot_mmu_map_4k(l2table, pa, va, prot);
+		len -= MMU_PAGESIZE;
+		pa += MMU_PAGESIZE;
+		va += MMU_PAGESIZE;
 	}
+	armv6_tlb_sync();
 }

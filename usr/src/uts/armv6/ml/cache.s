@@ -224,3 +224,28 @@ armv6_text_flush(void)
 	SET_SIZE(armv6_text_flush)
 
 #endif
+
+#ifdef __lint
+
+/*
+ * Perform all of the operations necessary for tlb maintenance after an update
+ * to the page tables.
+ */
+void
+armv6_tlb_sync(void)
+{}
+
+#else	/* __lint */
+
+	ENTRY(armv6_tlb_sync)
+	mov	r0, #0
+	mcr	p15, 0, r0, c7, c10, 4		@ Flush d-cache
+	ARM_DSB_INSTR(r0)
+	mcr	p15, 0, r0, c8, c7, 0		@ invalidate tlb
+	mcr	p15, 0, r0, c8, c5, 0		@ Invalidate I-cache + btc
+	ARM_DSB_INSTR(r0)
+	ARM_ISB_INSTR(r0)
+	bx	lr
+	SET_SIZE(armv6_tlb_sync)
+
+#endif	/* __lint */
