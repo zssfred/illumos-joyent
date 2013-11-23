@@ -52,4 +52,8 @@ $(PROG):	$(OBJS)
 	$(NATIVECC) $(CFLAGS) $(OBJS) -o $@
 	$(POST_PROCESS)
 
+%.o: %.c
+	$(NATIVECC) $(CFLAGS) -o $@ -c $<
+	$(POST_PROCESS_O)
+
 include	../../Makefile.targ
