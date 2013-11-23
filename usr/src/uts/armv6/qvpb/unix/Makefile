@@ -50,6 +50,12 @@ LIBOPTS		= $(GENOPTS)
 
 CTFEXTRAOBJS	= $(OBJS_DIR)/vers.o
 
+ARCHIVE		= boot_archive
+
+INITRD		= initrd
+BOOT_MODULE	= $(ROOT_QVPB_KERN_DIR)/$(INITRD)
+INITRD_BIN	= $(OBJS_DIR)/$(INITRD)
+
 #
 #	Include common rules.
 #
@@ -59,7 +65,7 @@ include $(UTSBASE)/armv6/qvpb/Makefile.qvpb
 #	Define targets
 #
 ALL_TARGET	= $(UNIX_BIN)
-INSTALL_TARGET	= $(UNIX_BIN) $(ROOTMODULE)
+INSTALL_TARGET	= $(UNIX_BIN) $(ROOTMODULE) $(BOOT_MODULE)
 
 #
 #	This is UNIX_DIR. Use a short path.
@@ -86,6 +92,10 @@ CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 # The mapfile used to link unix
 MAPFILE		= $(UTSBASE)/armv6/qvpb/conf/Mapfile
 
+# Tools to build the platform and loader kernel.
+MKPLATFORM	= $(UTSBASE)/$(PLATFORM)/tools/mkplatform
+MKUNI		= $(UTSBASE)/$(PLATFORM)/tools/mkuni
+
 #
 #	Default build targets.
 #
@@ -99,12 +109,7 @@ clean:		$(CLEAN_DEPS)
 
 clobber:	$(CLOBBER_DEPS)
 
-MKPLATFORM	= $(UTSBASE)/$(PLATFORM)/tools/mkplatform.sh
-
-install:  	$(INSTALL_DEPS)
-	pfexec $(MKPLATFORM) -u $(ROOT_QVPB_MOD_DIR:$(ROOT)/%=/%) $(UNIX_BIN) \
-	    $(GENUNIX_DIR)/$(OBJS_DIR)/genunix
-	$(MV) boot_archive $(OBJS_DIR)/
+install:  	$(INSTALL_DEPS) $(MKPLATFORM) $(MKUNI)
 
 symcheck:       $(SYM_DEPS)
 
@@ -123,6 +128,15 @@ symcheck.targ:	$(UNIX_O) $(KRTLD_O) $(MODSTUBS_O) $(LIBS) $(DTRACESTUBS)
 
 $(KRTLD_O):	$(KRTLD_OBJECTS)
 	$(LD) -r -o $@ -M$(KRTLD_MAPFILE) $(KRTLD_OBJECTS)
+
+$(MKPLATFORM) $(MKUNI):
+	cd ../../tools && pwd && dmake
+
+$(INITRD_BIN): $(MKPLATFORM_MKUNI) $(UNIX_BIN) $(GENUNIX_DIR)/$(OBJS_DIR)/$(GENUNIX)
+	pfexec $(MKPLATFORM) -u $(ROOT_QVPB_MOD_DIR:$(ROOT)/%=/%) $(UNIX_BIN) \
+	    $(GENUNIX_DIR)/$(OBJS_DIR)/$(GENUNIX)
+	$(MV) $(ARCHIVE) $(OBJS_DIR)/
+	$(MKUNI) $(UNIX_BIN) $(OBJS_DIR)/$(ARCHIVE) $(OBJS_DIR)/$(INITRD)
 
 #
 #	Include common targets.

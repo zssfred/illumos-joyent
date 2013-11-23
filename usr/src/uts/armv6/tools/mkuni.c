@@ -19,7 +19,7 @@
  * archive. Each is aligned to a 4k boundary to aid memory mapping.
  */
 
-#include "../loader/fakeloader.h"
+#include <loader/fakeloader.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>

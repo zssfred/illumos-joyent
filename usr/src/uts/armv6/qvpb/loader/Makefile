@@ -71,8 +71,6 @@ clean:		$(CLEAN_DEPS)
 
 clobber:	$(CLOBBER_DEPS)
 
-MKPLATFORM	= $(UTSBASE)/$(PLATFORM)/tools/mkplatform.sh
-
 install:  	$(INSTALL_DEPS)
 
 symcheck:       $(SYM_DEPS)
