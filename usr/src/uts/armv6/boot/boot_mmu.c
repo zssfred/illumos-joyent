@@ -31,7 +31,7 @@ static uintptr_t armboot_pt_arena;
 static uintptr_t armboot_pt_arena_max;
 
 /* Include debug messages */
-static int armboot_map_debug = 1;
+static int armboot_map_debug = 0;
 
 /*
  * Get the root of the page table the loader gave us. Go through and remove the
@@ -208,7 +208,8 @@ armboot_mmu_map(uintptr_t pa, uintptr_t va, size_t len, int prot)
 			ptt = 0;
 			l1pt = (arm_l1pt_t *)&ptt;
 			l1pt->al_type = ARMPT_L1_TYPE_L2PT;
-			l1pt->al_ptaddr = ARMPT_ADDR_TO_L1PTADDR((uintptr_t)l2table);
+			l1pt->al_ptaddr =
+			    ARMPT_ADDR_TO_L1PTADDR((uintptr_t)l2table);
 			*pte = ptt;
 
 			if (armboot_map_debug)

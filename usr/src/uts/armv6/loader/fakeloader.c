@@ -228,6 +228,7 @@ fakeload_archive_mappings(atag_header_t *chain, const void *addr,
 	Elf32_Phdr *phdr;
 	int nhdrs, i;
 	uintptr_t ret;
+	uintptr_t text = 0, data = 0;
 
 	hdr = (fakeloader_hdr_t *)addr;
 
@@ -310,7 +311,27 @@ fakeload_archive_mappings(atag_header_t *chain, const void *addr,
 		}
 		aim.aim_mapflags = phdr->p_flags;
 		atag_append(chain, &aim.aim_header);
+
+		/*
+		 * When built with highvecs we need to account for the fact that
+		 * _edata, _etext and _end are built assuming that the highvecs
+		 * are normally part of our segments. ld is not doing anything
+		 * wrong, but this breaks the assumptions that krtld currently
+		 * has. As such, unix will use this information to overwrite the
+		 * normal entry points that krtld uses in a similar style to
+		 * SPARC.
+		 */
+		if (aim.aim_vaddr != 0xffff0000) {
+			if ((phdr->p_flags & PF_W) != 0) {
+				data = aim.aim_vaddr + aim.aim_vlen;
+			} else {
+				text = aim.aim_vaddr + aim.aim_vlen;
+			}
+		}
 	}
+
+	aisp->ais_etext = text;
+	aisp->ais_edata = data;
 
 	/* 1:1 map the boot archive */
 	aim.aim_header.ah_size = ATAG_ILLUMOS_MAPPING_SIZE;
@@ -416,7 +437,8 @@ fakeload_map(armpte_t *pt, uintptr_t pstart, uintptr_t vstart, size_t len,
 		if (!ARMPT_L1E_ISVALID(*pte)) {
 			uintptr_t l2table;
 
-			if (!(vstart & MMU_PAGEOFFSET1M) && !(pstart & MMU_PAGEOFFSET1M) &&
+			if (!(vstart & MMU_PAGEOFFSET1M) &&
+			    !(pstart & MMU_PAGEOFFSET1M) &&
 			    len == MMU_PAGESIZE1M) {
 				fakeload_map_1mb(pstart, vstart, prot);
 				vstart += MMU_PAGESIZE1M;

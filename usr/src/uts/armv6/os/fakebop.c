@@ -58,7 +58,7 @@ static char buffer[BUFFERSIZE];
  *
  *    o Those that specify a particular vaddr
  *    o Those that do not specify a particular vaddr
- * 
+ *
  * Those that do not specify a particular vaddr will come out of our scratch
  * space which is a fixed size arena of 16 MB (FAKEBOP_ALLOC_SIZE) that we set
  * aside at the beginning of the allocator. If we end up running out of that
@@ -75,7 +75,7 @@ static uintptr_t bop_alloc_scratch_next;	/* Next scratch address */
 static uintptr_t bop_alloc_scratch_last;	/* Last scratch address */
 
 static uintptr_t bop_alloc_pnext;		/* Next paddr */
-static uintptr_t bop_alloc_plast;		/* Cross this paddr and we panic! */
+static uintptr_t bop_alloc_plast;		/* cross this paddr and panic */
 
 #define	BI_HAS_RAMDISK	0x1
 
@@ -788,6 +788,11 @@ primordial_dataabt(void *arg)
 	uint32_t *insaddr = (uint32_t *)(r->r_lr - 8);
 
 	bop_printf(NULL, "TRAP: data abort at (insn) %p\n", insaddr);
+	bop_printf(NULL, "r0: %08x\tr1: %08x\n", r->r_r0, r->r_r1);
+	bop_printf(NULL, "r2: %08x\tr3: %08x\n", r->r_r2, r->r_r3);
+	bop_printf(NULL, "r4: %08x\tr5: %08x\n", r->r_r4, r->r_r5);
+	bop_printf(NULL, "r6: %08x\tr7: %08x\n", r->r_r6, r->r_r7);
+	bop_printf(NULL, "r8: %08x\tr9: %08x\n", r->r_r8, r->r_fp);
 	bop_panic("Page Fault! Go fix it\n");
 }
 
@@ -819,13 +824,10 @@ void (*trap_table[ARM_EXCPT_NUM])(void *) = {
 void
 _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 {
+	atag_illumos_status_t *aisp;
 	bootinfo_t *bip = &bootinfo;
 	bootops_t *bops = &bootop;
 	extern void _kobj_boot();
-
-	/*
-	 * TODO Turn on caches and unaligned access!
-	 */
 
 	fakebop_getatags(tagstart);
 	bcons_init(bip->bi_cmdline);
@@ -850,6 +852,11 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	if (fakebop_atag_debug != 0)
 		fakebop_dump_tags(tagstart);
 
+	aisp = (atag_illumos_status_t *)atag_find(tagstart,
+	    ATAG_ILLUMOS_STATUS);
+	if (aisp == NULL)
+		bop_panic("missing ATAG_ILLUMOS_STATUS!\n");
+
 	/*
 	 * Fill in the bootops vector
 	 */
@@ -864,7 +871,17 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	fakebop_alloc_init(tagstart);
 	fakebop_bootprops_init();
 	bop_printf(NULL, "booting into _kobj\n");
-	_kobj_boot(&bop_sysp, NULL, bops);
+
+	/*
+	 * krtld uses _etext and _edata as part of its segment brks. ARM is a
+	 * bit different from other versions of unix because we have our
+	 * exception vector in the binary at the top of our address space. As
+	 * such, we basically pass in values to krtld that represent what our
+	 * _etext and _edata would have looked like if not for the exception
+	 * vector.
+	 */
+	_kobj_boot(&bop_sysp, NULL, bops, aisp->ais_etext, aisp->ais_edata,
+	    EXCEPTION_ADDRESS);
 
 	bop_panic("Returned from kobj_init\n");
 }

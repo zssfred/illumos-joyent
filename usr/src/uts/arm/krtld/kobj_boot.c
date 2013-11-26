@@ -37,7 +37,8 @@ extern void _locore_start();
 
 /*ARGSUSED3*/
 void
-_kobj_boot(struct boot_syscalls *bsysp, void *dvec, struct bootops *bops)
+_kobj_boot(struct boot_syscalls *bsysp, void *dvec, struct bootops *bops,
+    caddr_t text, caddr_t data, caddr_t limit)
 {
 	val_t auxv[BA_NUM];
 	int i;
@@ -47,11 +48,12 @@ _kobj_boot(struct boot_syscalls *bsysp, void *dvec, struct bootops *bops)
 
 	auxv[BA_ENTRY].ba_ptr = _locore_start;
 	auxv[BA_IFLUSH].ba_val = 1;
-	/*
-	 * XXX Currently PAGESIZE is being defined to _pagesize which isn't the
-	 * case here on other platforms. For now we manually set the size to 4k.
-	 */
-	auxv[BA_PAGESZ].ba_val = 0x1000;
+
+	auxv[BA_PAGESZ].ba_val = MMU_PAGESIZE;
+
+	auxv[BA_ETEXT].ba_ptr = text;
+	auxv[BA_EDATA].ba_ptr = data;
+	auxv[BA_ELIMIT].ba_ptr = limit;
 
 	kobj_init(bsysp, dvec, bops, auxv);
 }

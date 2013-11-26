@@ -21,6 +21,7 @@
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright (c) 2013, Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -29,8 +30,6 @@
 
 #ifndef	_SYS_KOBJ_IMPL_H
 #define	_SYS_KOBJ_IMPL_H
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <sys/kdi.h>
 #include <sys/kobj.h>
@@ -59,7 +58,10 @@ extern "C" {
 #define	BA_MMU		13
 #define	BA_GOTADDR	14
 #define	BA_NEXTGOT	15
-#define	BA_NUM		16
+#define	BA_ETEXT	16
+#define	BA_EDATA	17
+#define	BA_ELIMIT	18
+#define	BA_NUM		19
 
 typedef union {
 	unsigned long ba_val;

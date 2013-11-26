@@ -169,6 +169,11 @@ extern "C" {
 #define	USERLIMIT	KERNELBASE - ADDRESS_C(0x4000)
 #define	USERLIMIT32	USERLIMIT
 
+/*
+ * The exception table is always mapped into the high vector space on illumos.
+ */
+#define	EXCEPTION_ADDRESS	ADDRESS_C(0xffff0000)
+
 #ifdef __cplusplus
 }
 #endif

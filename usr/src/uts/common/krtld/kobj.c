@@ -25,6 +25,7 @@
 /*
  * Copyright 2011 Bayard G. Bell <buffer.g.overflow@gmail.com>.
  * All rights reserved. Use is subject to license terms.
+ * Copyright (c) 2013, Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -275,6 +276,12 @@ const char		*sdt_prefix = "__dtrace_probe_";
 static caddr_t _text;
 static caddr_t _etext;
 static caddr_t _data;
+
+/*
+ * Optional address that describes the last valid address we're allowed to touch
+ * during the kernel's relocations.
+ */
+static caddr_t _elimit;
 
 /*
  * The sparc linker doesn't create a memory location
@@ -689,6 +696,15 @@ attr_val(val_t *bootaux)
 			}
 		}
 	}
+
+	if (bootaux[BA_ETEXT].ba_ptr != NULL)
+		_etext = bootaux[BA_ETEXT].ba_ptr;
+
+	if (bootaux[BA_EDATA].ba_ptr != NULL)
+		_edata = bootaux[BA_EDATA].ba_ptr;
+
+	if (bootaux[BA_ELIMIT].ba_ptr != NULL)
+		_elimit = bootaux[BA_ELIMIT].ba_ptr;
 
 	/* To do the kobj_alloc, _edata needs to be set. */
 	for (i = 0; i < NLIBMACROS; i++) {
@@ -2311,10 +2327,11 @@ get_progbits(struct module *mp, struct _buf *file)
 		 */
 		if (mp->text == NULL) {
 			mp->text = kobj_segbrk(&_edata, mp->text_size,
-			    tp->align, 0);
+			    tp->align, _elimit);
 		}
 
-		mp->data = kobj_segbrk(&_edata, mp->data_size, dp->align, 0);
+		mp->data = kobj_segbrk(&_edata, mp->data_size, dp->align,
+		    _elimit);
 
 		if (mp->text == NULL || mp->data == NULL)
 			goto done;
@@ -2953,7 +2970,7 @@ do_common(struct module *mp)
 	if (mp->bss_size) {
 		if (standalone)
 			mp->bss = (uintptr_t)kobj_segbrk(&_edata, mp->bss_size,
-			    MINALIGN, 0);
+			    MINALIGN, _elimit);
 		else
 			mp->bss = (uintptr_t)vmem_alloc(data_arena,
 			    mp->bss_size, VM_SLEEP | VM_BESTFIT);
@@ -4050,7 +4067,7 @@ kobj_alloc(size_t size, int flag)
 		if (flag & (KM_TMP | KM_SCRATCH))
 			return (BOP_ALLOC(ops, 0, size, MINALIGN));
 #endif
-		return (kobj_segbrk(&_edata, size, MINALIGN, 0));
+		return (kobj_segbrk(&_edata, size, MINALIGN, _elimit));
 	}
 
 	kobj_stat.nalloc_calls++;
