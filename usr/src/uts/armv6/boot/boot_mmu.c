@@ -185,6 +185,9 @@ armboot_mmu_map(uintptr_t pa, uintptr_t va, size_t len, int prot)
 	if (len & MMU_PAGEOFFSET)
 		bop_panic("armboot_mmu_map: len should be 4k aligned\n");
 
+	if (armboot_map_debug)
+		bop_printf(NULL, "mapping 0x%x->0x%x, len 0x%x\n", va, pa, len);
+
 	while (len > 0) {
 		/* Can we map a 1 MB page? */
 		if (!(pa & MMU_PAGEOFFSET1M) && !(va & MMU_PAGEOFFSET1M) &&
@@ -197,7 +200,7 @@ armboot_mmu_map(uintptr_t pa, uintptr_t va, size_t len, int prot)
 		}
 
 		/* It's time to 4k page it up */
-		entry = ARMPT_VADDR_TO_L1E(pa);
+		entry = ARMPT_VADDR_TO_L1E(va);
 		pte = &armboot_pt[entry];
 
 		if (!(ARMPT_L1E_ISVALID(*pte))) {
@@ -207,6 +210,11 @@ armboot_mmu_map(uintptr_t pa, uintptr_t va, size_t len, int prot)
 			l1pt->al_type = ARMPT_L1_TYPE_L2PT;
 			l1pt->al_ptaddr = ARMPT_ADDR_TO_L1PTADDR((uintptr_t)l2table);
 			*pte = ptt;
+
+			if (armboot_map_debug)
+				bop_printf(NULL, "set up l2pt at entry 0x%x\n",
+				    entry);
+
 		} else if ((*pte & ARMPT_L1_TYPE_MASK) != ARMPT_L1_TYPE_L2PT) {
 			bop_panic("expected l2 table, but found a l1 entry\n");
 		} else {

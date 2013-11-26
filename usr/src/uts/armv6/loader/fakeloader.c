@@ -446,6 +446,18 @@ fakeload_map(armpte_t *pt, uintptr_t pstart, uintptr_t vstart, size_t len,
 			entry = ARMPT_VADDR_TO_L2E(vstart);
 			pte = &l2pt[entry];
 
+#ifdef	MAP_DEBUG
+			fakeload_puts("4k page pa->va, l2root, entry\n");
+			fakeload_ultostr(pstart);
+			fakeload_puts("->");
+			fakeload_ultostr(vstart);
+			fakeload_puts(", ");
+			fakeload_ultostr((uintptr_t)l2pt);
+			fakeload_puts(", ");
+			fakeload_ultostr(entry);
+			fakeload_puts("\n");
+#endif
+
 			if ((*pte & ARMPT_L2_TYPE_MASK) !=
 			    ARMPT_L2_TYPE_INVALID)
 				fakeload_panic("found existing l2 page table, "
