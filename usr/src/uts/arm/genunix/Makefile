@@ -60,7 +60,7 @@ include $(UTSBASE)/arm/Makefile.arm
 #	Define targets
 #
 ALL_TARGET	= $(LIBGEN)
-INSTALL_TARGET	= $(GENUNIX) $(ROOTMODULE)
+INSTALL_TARGET	= $(GENUNIX) $(ROOTMODULE) $(LIBGEN)
 
 #
 #	Overrides
