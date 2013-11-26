@@ -108,20 +108,6 @@ kdi_pwrite(void)
 	bop_panic("kdi_pwrite");
 }
 
-int boothowto;
-
-void
-e_data(void)
-{
-	bop_panic("e_data");
-}
-
-void
-e_text(void)
-{
-	bop_panic("e_text");
-}
-
 void
 SHA1Update(void)
 {
@@ -132,18 +118,6 @@ void
 hat_unload(void)
 {
 	bop_panic("hat_unload");
-}
-
-void
-s_data(void)
-{
-	bop_panic("s_data");
-}
-
-void
-s_text(void)
-{
-	bop_panic("s_text");
 }
 
 void
@@ -4374,12 +4348,6 @@ void
 halt(void)
 {
 	bop_panic("halt");
-}
-
-void
-startup(void)
-{
-	bop_panic("startup");
 }
 
 void
