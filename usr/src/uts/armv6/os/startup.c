@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/bootconf.h>
 #include <sys/obpdefs.h>
+#include <sys/promif.h>
 
 /*
  *	32-bit Kernel's Virtual memory layout.
@@ -76,10 +77,21 @@ caddr_t e_moddata;	/* end of loadable module data reserved */
  */
 uintptr_t hole_start, hole_end;
 
+/*
+ * PROM debugging facilities
+ */
+int prom_debug = 1;
+
+/*
+ * Do basic set up.
+ */
 static void
 startup_init()
 {
-	bop_panic("startup_init");
+	if (BOP_GETPROPLEN(bootops, "prom_debug") >= 0) {
+		++prom_debug;
+		prom_printf("prom_debug found in boot enviroment");
+	}
 }
 
 static void
