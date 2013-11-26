@@ -13,15 +13,12 @@
 
 uint_t adj_shift = ADJ_SHIFT;
 void *segkp = NULL;
-timespec_t panic_hrestime;
 int interrupts_unleashed;
 void *process_cache;
 void *static_arena;
 void *proc_pageout;
 void *anonhash_lock;
-void *panic_thread;
 uint64_t total_pages;
-hrtime_t panic_hrtime;
 void *heap32_arena;
 pgcnt_t kcage_needfree;
 void *ani_free_pool;
@@ -63,11 +60,6 @@ uint_t (*mutex_lock_backoff)(uint_t);
 const k_sigset_t nullsmask;
 uintptr_t orphanlist;
 pgcnt_t pages_locked;
-int panic_bootfcn;
-int panic_dump;
-int panic_sync;
-uintptr_t panicargs;
-char *volatile panicstr;
 void *phys_install;
 char *platform_module_list[] = { NULL };
 void *proc_fsflush, *proc_init, *proc_sched;
