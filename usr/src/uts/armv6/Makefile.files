@@ -31,11 +31,13 @@ MISC_OBJS +=			\
 
 ML_OBJS +=			\
 	cache.o			\
+	cpuid_ml.o		\
 	glocore.o		\
 	trap.o
 
 OS_OBJS +=			\
 	bsmdep.o		\
+	cpuid.o			\
 	flush.o			\
 	fakebop.o		\
 	lgrpplat.o		\

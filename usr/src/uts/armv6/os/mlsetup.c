@@ -26,6 +26,7 @@
 #include <sys/disp.h>
 #include <sys/cpupart.h>
 #include <sys/reboot.h>
+#include <sys/arm_archext.h>
 
 #include <sys/bootconf.h>
 
@@ -76,6 +77,13 @@ mlsetup(struct regs *rp)
 
 	/* Verify that we correctly set up curthread */
 	ASSERT((uintptr_t)&t0 == (uintptr_t)threadp());
+
+	/*
+	 * Pass through cpuid data now and make sure that we have everything
+	 * that we expect from our CPU in addition to making sure that we gather
+	 * everything that we might want later on.
+	 */
+	cpuid_setup();
 
 	cpu[0]->cpu_self = cpu[0];
 	t0.t_stk = (caddr_t)rp - MINFRAME;

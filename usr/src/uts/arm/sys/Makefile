@@ -16,6 +16,7 @@
 include ../../../Makefile.master
 
 HDRS = \
+	arm_archext.h \
 	asm_linkage.h \
 	bootconf.h \
 	bootsvcs.h \
