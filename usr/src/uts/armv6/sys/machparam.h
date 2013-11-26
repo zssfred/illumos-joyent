@@ -162,11 +162,11 @@ extern "C" {
 #define	SEGDEBUGSIZE	ADDRESS_C(0x400000)
 
 /*
- * Define upper limit on user address space. We give ourselves a slight red
- * zone of one page inbetween KERNELBASE and USERLIMIT to help us detect
- * address-space overruns.
+ * Define upper limit on user address space.  Note that we don't need to give
+ * ourselves an explicit red zone here as that'll be taken care of as we set up
+ * the kernel address space.
  */
-#define	USERLIMIT	KERNELBASE - ADDRESS_C(0x4000)
+#define	USERLIMIT	KERNELBASE
 #define	USERLIMIT32	USERLIMIT
 
 /*
