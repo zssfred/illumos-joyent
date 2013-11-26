@@ -756,10 +756,13 @@ main(int argc, char *argv[])
 	 * minimum of what we actually support.
 	 */
 #if defined(AW_TARGET_arm)
-	if (as64)
+	if (as64) {
 		return (error("no 64-bit aw target for arm"));
-	else
+	} else {
 		newae(as, "-march=armv6k");
+		newae(as, "-mfpu=vfpv2");
+		newae(as, "-mfloat-abi=hard");
+	}
 #endif
 
 	if (srcfile == NULL)
