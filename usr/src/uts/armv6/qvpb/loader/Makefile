@@ -78,6 +78,7 @@ symcheck:       $(SYM_DEPS)
 $(LOADER_BIN): $(OBJECTS)
 	$(LD) -dy -b -znointerp -o $@ -e _start -M $(MAPFILE) \
 	$(OBJECTS)
+	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $(LOADER_BIN) $(OBJECTS)
 
 #
 #	Include common targets.
