@@ -19,9 +19,10 @@
 #include <sys/param.h>
 #include <sys/elf.h>
 #include <sys/atag.h>
-#include <sys/pte.h>
 #include <sys/sysmacros.h>
 #include <sys/machparam.h>
+
+#include <vm/pte.h>
 
 /*
  * This is the stock ARM fake uniboot loader.

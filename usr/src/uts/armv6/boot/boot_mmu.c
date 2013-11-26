@@ -16,10 +16,10 @@
 #include <sys/param.h>
 #include <sys/bootconf.h>
 #include <sys/atag.h>
-#include <sys/pte.h>
 #include <sys/elf.h>
 #include <sys/systm.h>
 #include <sys/machflush.h>
+#include <vm/pte.h>
 
 /*
  * Routines for mainpulating page tables during fakebop.
