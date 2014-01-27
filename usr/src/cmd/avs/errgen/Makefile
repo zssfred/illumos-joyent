@@ -49,11 +49,11 @@ clean:
 	$(RM) $(OBJS)
 
 $(PROG):	$(OBJS)
-	$(NATIVECC) $(CFLAGS) $(OBJS) -o $@
+	$(NATIVECC) $(NATIVE_CFLAGS) $(OBJS) -o $@
 	$(POST_PROCESS)
 
 %.o: %.c
-	$(NATIVECC) $(CFLAGS) -o $@ -c $<
+	$(NATIVECC) $(NATIVE_CFLAGS) $(CPPFLAGS.native) -o $@ -c $<
 	$(POST_PROCESS_O)
 
 include	../../Makefile.targ
