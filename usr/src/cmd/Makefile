@@ -21,7 +21,7 @@
 
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2010 Nexenta Systems, Inc.  All rights reserved.
-# Copyright 2011 Joyent, Inc.  All rights reserved.
+# Copyright (c) 2012 Joyent, Inc.  All rights reserved.
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright (c) 2013 DEY Storage Systems, Inc. All rights reserved.
 
@@ -207,6 +207,7 @@ COMMON_SUBDIRS=		\
 	intrstat	\
 	ipcrm		\
 	ipcs		\
+	ipdadm		\
 	ipf		\
 	isainfo		\
 	isalist		\
@@ -468,19 +469,6 @@ COMMON_SUBDIRS=		\
 	zonestat	\
 	zstreamdump	\
 	ztest
-
-$(CLOSED_BUILD)COMMON_SUBDIRS += \
-	$(CLOSED)/cmd/iconv	\
-	$(CLOSED)/cmd/ksh	\
-	$(CLOSED)/cmd/localedef	\
-	$(CLOSED)/cmd/more_xpg4	\
-	$(CLOSED)/cmd/mtst	\
-	$(CLOSED)/cmd/od	\
-	$(CLOSED)/cmd/patch	\
-	$(CLOSED)/cmd/pax	\
-	$(CLOSED)/cmd/printf	\
-	$(CLOSED)/cmd/sed	\
-	$(CLOSED)/cmd/sed_xpg4
 
 i386_SUBDIRS=		\
 	acpihpd		\
@@ -751,18 +739,6 @@ MSGSUBDIRS=		\
 	zpool		\
 	zonestat
 
-$(CLOSED_BUILD)MSGSUBDIRS += \
-	$(CLOSED)/cmd/iconv	\
-	$(CLOSED)/cmd/ksh	\
-	$(CLOSED)/cmd/localedef	\
-	$(CLOSED)/cmd/more_xpg4	\
-	$(CLOSED)/cmd/od	\
-	$(CLOSED)/cmd/patch	\
-	$(CLOSED)/cmd/pax	\
-	$(CLOSED)/cmd/printf	\
-	$(CLOSED)/cmd/sed	\
-	$(CLOSED)/cmd/sed_xpg4
-
 sparc_MSGSUBDIRS=	\
 	fruadm		\
 	prtdscp		\
@@ -788,9 +764,6 @@ DCSUBDIRS=		\
 	who		\
 	whodo		\
 	write
-
-$(CLOSED_BUILD)DCSUBDIRS += \
-	$(CLOSED)/cmd/pax
 
 #
 # commands that belong only to audit.

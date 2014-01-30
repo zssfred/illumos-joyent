@@ -23,6 +23,7 @@
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright (c) 2012, Joyent, Inc. All rights reserved.
+# Copyright (c) 2013 Gary Mills
 
 include ../Makefile.master
 
@@ -44,13 +45,6 @@ include ../Makefile.master
 #
 .PARALLEL:
 
-#
-# The $(CLOSED_BUILD) additions to SUBDIRS & MSGSUBDIRS are unfortunate,
-# but required due to the "dependencies" of using .WAIT to barrier the
-# parallel dmake builds.  once 4631488 has been fixed, they can be
-# consolidated into one $(CLOSED_BUILD)SUBDIRS += (all closed libs) as
-# shown in HDRSUBDIRS
-#
 SUBDIRS= \
 	common			.WAIT	\
 	../cmd/sgs/libconv		\
@@ -111,6 +105,7 @@ SUBDIRS += \
 	libcryptoutil	\
 	libinetutil	\
 	libipadm	\
+	libipd		\
 	libipmp		\
 	libiscsit	\
 	libkmf		\
@@ -182,10 +177,7 @@ SUBDIRS += \
 	libdhcpdu	\
 	libdhcputil	\
 	libxnet		\
-	libipsecutil
-$(CLOSED_BUILD)SUBDIRS += \
-	$(CLOSED)/lib/libike
-SUBDIRS += \
+	libipsecutil	\
 	nsswitch	\
 	print		\
 	libuutil	\
@@ -197,6 +189,7 @@ SUBDIRS += \
 	pkcs11		.WAIT	\
 	libpctx		.WAIT	\
 	libcpc		\
+	getloginx	\
 	watchmalloc	\
 	extendedFILE	\
 	madv		\
@@ -415,6 +408,7 @@ HDRSUBDIRS=		\
 	libfstyp	\
 	libgen		\
 	libipadm	\
+	libipd		\
 	libipsecutil	\
 	libinetsvc	\
 	libinetutil	\
@@ -510,9 +504,6 @@ HDRSUBDIRS=		\
 	libreparse	\
 	$($(MACH)_HDRSUBDIRS)
 
-$(CLOSED_BUILD)HDRSUBDIRS += \
-	$(CLOSED)/lib/libike
-
 i386_HDRSUBDIRS=	\
 	libparted	\
 	libfdisk	\
@@ -605,7 +596,6 @@ libnsl:		libmd5
 libmapid:	libresolv
 librdc:		libsocket libnsl libnsctl libunistat libdscfg
 libuuid:	libdlpi
-$(CLOSED_BUILD)libike:	libipsecutil libxnet libcryptoutil
 libinetutil:	libsocket
 libipsecutil:	libtecla libsocket
 libinstzones:	libzonecfg libcontract

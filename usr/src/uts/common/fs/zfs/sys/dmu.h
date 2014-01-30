@@ -24,6 +24,7 @@
  * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc. All rights reserved.
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
+ * Copyright 2013 DEY Storage Systems, Inc.
  */
 
 /* Portions Copyright 2010 Robert Milkowski */
@@ -292,6 +293,7 @@ typedef void dmu_buf_evict_func_t(struct dmu_buf *db, void *user_ptr);
 #define	DMU_POOL_FEATURES_FOR_WRITE	"features_for_write"
 #define	DMU_POOL_FEATURES_FOR_READ	"features_for_read"
 #define	DMU_POOL_FEATURE_DESCRIPTIONS	"feature_descriptions"
+#define	DMU_POOL_FEATURE_ENABLED_TXG	"feature_enabled_txg"
 #define	DMU_POOL_ROOT_DATASET		"root_dataset"
 #define	DMU_POOL_SYNC_BPOBJ		"sync_bplist"
 #define	DMU_POOL_ERRLOG_SCRUB		"errlog_scrub"
@@ -805,6 +807,8 @@ int dmu_diff(const char *tosnap_name, const char *fromsnap_name,
 /* CRC64 table */
 #define	ZFS_CRC64_POLY	0xC96C5795D7870F42ULL	/* ECMA-182, reflected form */
 extern uint64_t zfs_crc64_table[256];
+
+extern int zfs_mdcomp_disable;
 
 #ifdef	__cplusplus
 }
