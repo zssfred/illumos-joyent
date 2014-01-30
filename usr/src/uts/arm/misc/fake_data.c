@@ -10,15 +10,17 @@
 #include <sys/clock.h>
 #include <sys/kmem.h>
 #include <sys/ksynch.h>
+#include <sys/vnode.h>
+#include <vm/seg.h>
+#include <vm/as.h>
 
 uint_t adj_shift = ADJ_SHIFT;
 void *segkp = NULL;
 int interrupts_unleashed;
 void *process_cache;
 void *static_arena;
-void *proc_pageout;
 void *anonhash_lock;
-uint64_t total_pages;
+pgcnt_t total_pages;
 void *heap32_arena;
 pgcnt_t kcage_needfree;
 void *ani_free_pool;
@@ -53,7 +55,7 @@ int kcage_on = 0;
 int klustsize = 56 * 1024;
 int maxphys = 56 * 1024;
 void *mb_hashtab[64];
-void *memsegs;
+struct memseg *memsegs;
 uintptr_t mod_nodev_ops[8];
 void (*mutex_lock_delay)(uint_t);
 uint_t (*mutex_lock_backoff)(uint_t);
@@ -62,7 +64,7 @@ uintptr_t orphanlist;
 pgcnt_t pages_locked;
 void *phys_install;
 char *platform_module_list[] = { NULL };
-void *proc_fsflush, *proc_init, *proc_sched;
+proc_t *proc_fsflush, *proc_init, *proc_sched, *proc_pageout;
 volatile int quiesce_active;
 void *rootvfs;
 void *segkmap;
@@ -84,3 +86,13 @@ pgcnt_t obp_pages;
 caddr_t econtig;
 pgcnt_t pages_useclaim;
 int swaploaded;
+struct as kas;
+vmem_t *heap_arena;
+vmem_t *heaptext_arena;
+struct seg kvseg;
+int last_module_id;
+kmutex_t mod_lock;
+int moddebug = 0x0;
+int modrootloaded;
+pgcnt_t physmem;
+vnode_t *rootdir;
