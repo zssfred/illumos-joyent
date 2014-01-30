@@ -415,6 +415,12 @@ htonl(void)
 }
 
 void
+htons(void)
+{
+	bop_panic("htons");
+}
+
+void
 indir(void)
 {
 	bop_panic("indir");
