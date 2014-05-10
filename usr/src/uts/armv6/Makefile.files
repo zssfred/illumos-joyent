@@ -69,7 +69,6 @@ CORE_OBJS += \
 # uts/common yet, so we instead clobber it with our stuff.
 #
 CORE_NOTYET_OBJS = \
-		vm_pagelist.o	\
 		page_retire.o	\
 		page_lock.o	\
 		seg_kmem.o	\
@@ -111,6 +110,7 @@ CORE_OBJS +=	\
 		strtoll.o	\
 		strtoull.o	\
 		thread_intr.o	\
+		vm_pagelist.o	\
 		zlib_obj.o	\
 		clock_tick.o
 
