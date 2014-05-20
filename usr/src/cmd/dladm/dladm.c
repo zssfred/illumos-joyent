@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012 Joyent, Inc. All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc. All rights reserved.
  */
 
 #include <stdio.h>
@@ -60,6 +60,7 @@
 #include <libdliptun.h>
 #include <libdlsim.h>
 #include <libdlbridge.h>
+#include <libdloverlay.h>
 #include <libinetutil.h>
 #include <libvrrpadm.h>
 #include <bsm/adt.h>
@@ -221,6 +222,7 @@ static cmdfunc_t do_create_bridge, do_modify_bridge, do_delete_bridge;
 static cmdfunc_t do_add_bridge, do_remove_bridge, do_show_bridge;
 static cmdfunc_t do_create_iptun, do_modify_iptun, do_delete_iptun;
 static cmdfunc_t do_show_iptun, do_up_iptun, do_down_iptun;
+static cmdfunc_t do_create_overlay, do_delete_overlay;
 
 static void 	do_up_vnic_common(int, char **, const char *, boolean_t);
 
@@ -352,7 +354,7 @@ static cmd_t	cmds[] = {
 	    "    delete-vnic      [-t] [-z zonename] <vnic-link>"	},
 	{ "show-vnic",		do_show_vnic,
 	    "    show-vnic        [-pP] [-l <link>] [-z zonename] "
-	    "[-s [-i <interval>]] [<link>]\n"						},
+	    "[-s [-i <interval>]] [<link>]\n"				},
 	{ "up-vnic",		do_up_vnic,		NULL		},
 	{ "create-part",	do_create_part,
 	    "    create-part      [-t] [-f] -l <link> [-P <pkey>]\n"
@@ -403,6 +405,10 @@ static cmd_t	cmds[] = {
 	    " <bridge>\n"
 	    "    show-bridge      -t [-p] [-o <field>,...] [-s [-i <interval>]]"
 	    " <bridge>\n"						},
+	{ "create-overlay",	do_create_overlay,
+	    "    create-overlay  -e <encap> <overlay-name>"		},
+	{ "delete-overlay",	do_delete_overlay,
+	    "    delete-overlay  <overlay-name>"			},
 	{ "show-usage",		do_show_usage,
 	    "    show-usage       [-a] [-d | -F <format>] "
 	    "[-s <DD/MM/YYYY,HH:MM:SS>]\n"
@@ -5044,7 +5050,7 @@ print_vnic(show_vnic_state_t *state, datalink_id_t linkid)
 	    NULL, devname, sizeof (devname)) != DLADM_STATUS_OK)
 		(void) sprintf(devname, "?");
 
-	
+
 	zonename[0] = '\0';
 	if (!is_etherstub) {
 		valptr[0] = zonename;
@@ -5053,7 +5059,7 @@ print_vnic(show_vnic_state_t *state, datalink_id_t linkid)
 	}
 
 	if (state->vs_zonename != NULL &&
-	     strcmp(state->vs_zonename, zonename) != 0)
+	    strcmp(state->vs_zonename, zonename) != 0)
 		return (DLADM_STATUS_OK);
 
 	state->vs_found = B_TRUE;
@@ -5137,7 +5143,7 @@ print_vnic(show_vnic_state_t *state, datalink_id_t linkid)
 				    sizeof (vbuf.vnic_zone), "%s", zonename);
 			else
 				(void) strlcpy(vbuf.vnic_zone, "--",
-				     sizeof (vbuf.vnic_zone));
+				    sizeof (vbuf.vnic_zone));
 		}
 
 		ofmt_print(state->vs_ofmt, &vbuf);
@@ -9759,4 +9765,60 @@ do_up_part(int argc, char *argv[], const char *use)
 	}
 
 	(void) dladm_part_up(handle, partid, 0);
+}
+
+static void
+do_create_overlay(int argc, char *argv[], const char *use)
+{
+	int		opt;
+	char		*encap;
+	char		name[MAXLINKNAMELEN];
+	dladm_status_t	status;
+	uint32_t	flags = DLADM_OPT_ACTIVE | DLADM_OPT_TRANSIENT;
+
+	while ((opt = getopt(argc, argv, ":e:")) != -1) {
+		switch (opt) {
+		case 'e':
+			encap = optarg;
+			break;
+		default:
+			die_opterr(optopt, opt, use);
+		}
+	}
+
+	if (optind != (argc - 1))
+		usage();
+
+	if (strlcpy(name, argv[optind], MAXLINKNAMELEN) >= MAXLINKNAMELEN)
+		die("link name too long '%s'", argv[optind]);
+
+	if (!dladm_valid_linkname(name))
+		die("invalid link name '%s'", argv[optind]);
+
+	if (strlen(encap) + 1 > MAXLINKNAMELEN)
+		die("encapsulation protocol name too long '%s'", encap);
+
+	status = dladm_overlay_create(handle, name, encap, flags);
+	if (status != DLADM_STATUS_OK) {
+		die_dlerr(status, "overlay creation failed");
+	}
+}
+
+static void
+do_delete_overlay(int argc, char *argv[], const char *use)
+{
+	datalink_id_t	linkid = DATALINK_ALL_LINKID;
+	dladm_status_t	status;
+
+	if (argc != 2) {
+		usage();
+	}
+
+	status = dladm_name2info(handle, argv[1], &linkid, NULL, NULL, NULL);
+	if (status != DLADM_STATUS_OK)
+		die_dlerr(status, "failed to delete %s", argv[1]);
+
+	status = dladm_overlay_delete(handle, linkid);
+	if (status != DLADM_STATUS_OK)
+		die_dlerr(status, "failed to delete %s", argv[1]);
 }

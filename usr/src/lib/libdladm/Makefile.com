@@ -27,7 +27,8 @@ VERS    = .1
 OBJECTS = libdladm.o secobj.o linkprop.o libdllink.o libdlaggr.o \
 	libdlwlan.o libdlvnic.o libdlmgmt.o libdlvlan.o	libdlib.o\
 	flowattr.o flowprop.o propfuncs.o libdlflow.o libdlstat.o \
-	usage.o libdlether.o libdlsim.o libdlbridge.o libdliptun.o
+	usage.o libdlether.o libdlsim.o libdlbridge.o libdliptun.o \
+	libdloverlay.o
 
 include ../../Makefile.lib
 

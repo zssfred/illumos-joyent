@@ -651,6 +651,7 @@ f kernel/drv/amd64/oce 0755 root sys
 f kernel/drv/amd64/ohci 0755 root sys
 f kernel/drv/amd64/openeepr 0755 root sys
 f kernel/drv/amd64/options 0755 root sys
+f kernel/drv/amd64/overlay 0755 root sys
 f kernel/drv/amd64/pci_pci 0755 root sys
 f kernel/drv/amd64/pcieb 0755 root sys
 f kernel/drv/amd64/physmem 0755 root sys
@@ -793,6 +794,7 @@ f kernel/drv/nxge.conf 0644 root sys
 f kernel/drv/ohci.conf 0644 root sys
 f kernel/drv/openeepr.conf 0644 root sys
 f kernel/drv/options.conf 0644 root sys
+f kernel/drv/overlay.conf 0644 root sys
 f kernel/drv/pcieb.conf 0644 root sys
 f kernel/drv/physmem.conf 0644 root sys
 f kernel/drv/pmcs.conf 0644 root sys
@@ -1044,6 +1046,12 @@ f kernel/misc/scsi_vhci/amd64/scsi_vhci_f_sym_hds 0755 root sys
 f kernel/misc/scsi_vhci/amd64/scsi_vhci_f_tape 0755 root sys
 f kernel/misc/scsi_vhci/amd64/scsi_vhci_f_tpgs 0755 root sys
 f kernel/misc/scsi_vhci/amd64/scsi_vhci_f_tpgs_tape 0755 root sys
+d kernel/overlay 0755 root sys
+d kernel/overlay/amd64 0755 root sys
+f kernel/overlay/amd64/geneve 0755 root sys
+f kernel/overlay/amd64/nvgre 0755 root sys
+f kernel/overlay/amd64/stt 0755 root sys
+f kernel/overlay/amd64/vxlan 0755 root sys
 d kernel/sched 0755 root sys
 d kernel/sched/amd64 0755 root sys
 f kernel/sched/amd64/SDC 0755 root sys

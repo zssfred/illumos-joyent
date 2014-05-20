@@ -419,6 +419,7 @@ CHKHDRS=			\
 	ontrap.h		\
 	open.h			\
 	openpromio.h		\
+	overlay.h		\
 	panic.h			\
 	param.h			\
 	pathconf.h		\

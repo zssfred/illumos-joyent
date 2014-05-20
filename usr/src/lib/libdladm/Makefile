@@ -29,7 +29,7 @@ HDRS =		libdladm.h libdladm_impl.h libdllink.h libdlaggr.h	\
 		libdlwlan.h libdlwlan_impl.h libdlvnic.h libdlvlan.h	\
 		libdlmgmt.h libdlflow.h libdlflow_impl.h libdlstat.h	\
 		libdlether.h libdlsim.h libdlbridge.h libdliptun.h	\
-		libdlib.h
+		libdlib.h libdloverlay.h
 
 HDRDIR =	common
 

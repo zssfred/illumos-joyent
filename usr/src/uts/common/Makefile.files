@@ -680,6 +680,16 @@ NET80211_OBJS += net80211.o net80211_proto.o net80211_input.o \
 
 VNIC_OBJS +=	vnic_ctl.o vnic_dev.o
 
+OVERLAY_OBJS +=	overlay.o overlay_plugin.o
+
+OVERLAY_STT_OBJS +=	overlay_stt.o
+
+OVERLAY_GENEVE_OBJS +=	overlay_geneve.o
+
+OVERLAY_NVGRE_OBJS +=	overlay_nvgre.o
+
+OVERLAY_VXLAN_OBJS +=	overlay_vxlan.o
+
 VND_OBJS +=	vnd.o frameio.o
 
 GSQUEUE_OBJS +=	gsqueue.o

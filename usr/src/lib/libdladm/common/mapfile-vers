@@ -272,6 +272,9 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	dladm_strs2range;
 	dladm_range2list;
 	dladm_list2range;
+
+	dladm_overlay_create;
+	dladm_overlay_delete;
     local:
 	*;
 };
