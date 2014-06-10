@@ -40,13 +40,71 @@
 #include <sys/errno.h>
 #include <sys/byteorder.h>
 #include <sys/vxlan.h>
+#include <inet/ip.h>
 
 static const char *vxlan_ident = "vxlan";
+static uint16_t vxlan_defport = 4789;
+char *vxlan_ip = "::ffff:0.0.0.0";
+
+static const char *vxlan_props[] = {
+	"vxlan/listen_ip",
+	"vxlan/listen_port",
+	NULL
+};
+
+/* XXX Should we do locking or let the higher level do it for us? */
+typedef struct vxlan {
+	kmutex_t vxl_lock;
+	uint16_t vxl_lport;
+	struct in6_addr vxl_laddr;
+} vxlan_t;
+
+static int
+vxlan_o_init(void **outp)
+{
+	vxlan_t *vxl;
+
+	vxl = kmem_alloc(sizeof (vxlan_t), KM_SLEEP);
+	*outp = vxl;
+	mutex_init(&vxl->vxl_lock, NULL, MUTEX_DRIVER, NULL);
+	vxl->vxl_lport = vxlan_defport;
+	(void) inet_pton(AF_INET6, vxlan_ip, &vxl->vxl_laddr);
+
+	return (0);
+}
+
+static void
+vxlan_o_fini(void *arg)
+{
+	kmem_free(arg, sizeof (vxlan_t));
+}
+
+static int
+vxlan_o_socket(void *arg, int *dp, int *fp, int *pp, struct sockaddr *addr,
+    socklen_t *slenp)
+{
+	vxlan_t *vxl = arg;
+	struct sockaddr_in6 *in = (struct sockaddr_in6 *)addr;
+
+	*dp = AF_INET6;
+	*fp = SOCK_DGRAM;
+	*pp = 0;
+	bzero(in, sizeof (struct sockaddr_in6));
+	in->sin6_family = AF_INET6;
+
+	mutex_enter(&vxl->vxl_lock);
+	in->sin6_port = htons(vxl->vxl_lport);
+	in->sin6_addr = vxl->vxl_laddr;
+	mutex_exit(&vxl->vxl_lock);
+	*slenp = sizeof (struct sockaddr_in6);
+
+	return (0);
+}
 
 /*
  * XXX Stats?
  */
-int
+static int
 vxlan_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
     mblk_t **outp)
 {
@@ -74,7 +132,7 @@ vxlan_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
 }
 
 /* XXX Stats */
-int
+static int
 vxlan_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 {
 	vxlan_hdr_t *vxh;
@@ -92,10 +150,34 @@ vxlan_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 	return (0);
 }
 
+static int
+vxlan_o_getprop(void *arg, const char *pr_name, void *buf, size_t *bufsize)
+{
+	return (EINVAL);
+}
+
+static int
+vxlan_o_setprop(void *arg, const char *pr_name, const void *buf, size_t bufsize)
+{
+	return (EINVAL);
+}
+
+static int
+vxlan_o_propinfo(void *arg, const char *pr_name, mac_prop_info_handle_t prh)
+{
+	return (EINVAL);
+}
+
 static struct overlay_plugin_ops vxlan_o_ops = {
 	0,
+	vxlan_o_init,
+	vxlan_o_fini,
 	vxlan_o_encap,
-	vxlan_o_decap
+	vxlan_o_decap,
+	vxlan_o_socket,
+	vxlan_o_getprop,
+	vxlan_o_setprop,
+	vxlan_o_propinfo
 };
 
 static struct modlmisc vxlan_modlmisc = {
@@ -123,7 +205,8 @@ _init(void)
 	ovrp->ovep_flags = OVEP_F_VLAN_TAG;
 	ovrp->ovep_hdr_min = VXLAN_HDR_LEN;
 	ovrp->ovep_hdr_max = VXLAN_HDR_LEN;
-	ovrp->ovep_media = OVERLAY_PLUGIN_M_UDP;
+	ovrp->ovep_dest = OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT;
+	ovrp->ovep_props = vxlan_props;
 
 	if ((err = overlay_plugin_register(ovrp)) == 0) {
 		if ((err = mod_install(&vxlan_modlinkage)) != 0) {

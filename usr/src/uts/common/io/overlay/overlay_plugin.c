@@ -125,24 +125,34 @@ overlay_plugin_register(overlay_plugin_register_t *ovrp)
 	if (ovrp->ovep_hdr_max < ovrp->ovep_hdr_min)
 		return (EINVAL);
 
-	if (ovrp->ovep_media == OVERLAY_PLUGIN_M_INVALID ||
-	    ovrp->ovep_media >= OVERLAY_PLUGIN_M_MAX)
+	if (ovrp->ovep_dest == OVERLAY_PLUGIN_D_INVALID)
+		return (EINVAL);
+
+	if ((ovrp->ovep_dest & ~OVERLAY_PLUGIN_D_MASK) != 0)
 		return (EINVAL);
 
 	/* Dont' support anything that has an id size larger than 8 bytes */
 	if (ovrp->ovep_id_size > 8)
 		return (ENOTSUP);
 
+	/* XXX Check to make sure overlay property namelen is okay */
 
 	opp = kmem_cache_alloc(overlay_plugin_cache, KM_SLEEP);
 	opp->ovp_active = 0;
 	opp->ovp_name = ovrp->ovep_name;
 	opp->ovp_ops = ovrp->ovep_ops;
+	opp->ovp_props = ovrp->ovep_props;
 	opp->ovp_id_size = ovrp->ovep_id_size;
 	opp->ovp_flags = ovrp->ovep_flags;
 	opp->ovp_hdr_min = ovrp->ovep_hdr_min;
 	opp->ovp_hdr_max = ovrp->ovep_hdr_max;
-	opp->ovp_media = ovrp->ovep_media;
+	opp->ovp_dest = ovrp->ovep_dest;
+
+	opp->ovp_nprops = 0;
+	if (ovrp->ovep_props != NULL) {
+		while (ovrp->ovep_props[opp->ovp_nprops] != NULL)
+			opp->ovp_nprops++;
+	}
 
 	mutex_enter(&overlay_plugin_lock);
 	for (ipp = list_head(&overlay_plugin_list); ipp != NULL;

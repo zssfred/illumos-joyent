@@ -36,6 +36,10 @@
 #include <sys/mac_provider.h>
 #include <sys/mac_ether.h>
 #include <sys/vlan.h>
+/* XXX Should we really need this? */
+#include <sys/socket.h>
+#include <inet/ip.h>
+
 #include <sys/overlay_impl.h>
 
 static kmutex_t overlay_dev_lock;
@@ -44,16 +48,44 @@ static dev_info_t *overlay_dip;
 static uint8_t overlay_xxx_macaddr[ETHERADDRL] =
 	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-typedef enum overlay_dev_flag {
-	OVERLAY_F_INACTIVE = 0x01	/* Indicates create in progress */
-} overlay_dev_flag_t;
+char *dest_ip = "::ffff:10.88.88.00";
 
-typedef struct overlay_dev {
-	list_node_t	odd_link;
-	mac_handle_t	odd_mh;
-	datalink_id_t	odd_linkid;
-	overlay_plugin_t *odd_plugin;
-} overlay_dev_t;
+static const char *overlay_dev_props[] = {
+	"mtu",
+	"vnetid",
+	"encap"
+};
+#define	OVERLAY_DEV_NPROPS	3
+
+static overlay_dev_t *
+overlay_hold_by_dlid(datalink_id_t id)
+{
+	overlay_dev_t *o;
+
+	mutex_enter(&overlay_dev_lock);
+	for (o = list_head(&overlay_dev_list); o != NULL;
+	    o = list_next(&overlay_dev_list, o)) {
+		if (id == o->odd_linkid) {
+			mutex_enter(&o->odd_lock);
+			o->odd_ref++;
+			mutex_exit(&o->odd_lock);
+			mutex_exit(&overlay_dev_lock);
+			return (0);
+		}
+	}
+
+	mutex_exit(&overlay_dev_lock);
+	return (NULL);
+}
+
+static void
+overlay_hold_rele(overlay_dev_t *odd)
+{
+	mutex_enter(&odd->odd_lock);
+	ASSERT(odd->odd_ref > 0);
+	odd->odd_ref--;
+	mutex_exit(&odd->odd_lock);
+}
 
 static int
 overlay_m_stat(void *arg, uint_t stat, uint64_t *val)
@@ -61,20 +93,49 @@ overlay_m_stat(void *arg, uint_t stat, uint64_t *val)
 	return (ENOTSUP);
 }
 
+/*
+ * XXX We should use this as a means of lazily opening the lower level
+ * port that we end up using.
+ */
 static int
 overlay_m_start(void *arg)
 {
+	overlay_dev_t *odd = arg;
+	overlay_mux_t *mux;
+	int ret, domain, family, prot;
+	struct sockaddr_storage storage;
+	socklen_t slen;
+
 	/*
-	 * XXX We should use this as a means of lazily opening the lower level
-	 * port that we end up using.
+	 * XXX Serialization around odd
 	 */
+
+	ret = odd->odd_plugin->ovp_ops->ovpo_socket(odd->odd_pvoid, &domain,
+	    &family, &prot, (struct sockaddr *)&storage, &slen);
+	if (ret != 0)
+		return (ret);
+
+	mux = overlay_mux_open(odd->odd_plugin, domain, family, prot,
+	    (struct sockaddr *)&storage, slen, &ret);
+	if (mux == NULL)
+		return (ret);
+
+	overlay_mux_add_dev(mux, odd);
+	odd->odd_mux = mux;
+
 	return (0);
 }
 
 static void
 overlay_m_stop(void *arg)
 {
-	/* XXX Undo anything we do in start, eg. close ports, etc. */
+	overlay_dev_t *odd = arg;
+
+	/*
+	 * XXX Serialization around odd
+	 */
+	overlay_mux_close(odd->odd_mux);
+	odd->odd_mux = NULL;
 }
 
 static int
@@ -109,11 +170,45 @@ overlay_m_unicast(void *arg, const uint8_t *macaddr)
 static mblk_t *
 overlay_m_tx(void *arg, mblk_t *mp_chain)
 {
-	/*
-	 * XXX this should go through and actually send this over our underlying
-	 * encapsulation protocol...
-	 */
-	freemsgchain(mp_chain);
+	overlay_dev_t *odd = arg;
+	mblk_t *mp, *ep;
+	int ret;
+	ovep_encap_info_t einfo;
+	struct msghdr hdr;
+	struct sockaddr_in6 in6;
+
+	/* XXX The header should be dynamic... */
+	bzero(&hdr, sizeof (struct msghdr));
+	bzero(&in6, sizeof (struct sockaddr_in6));
+	in6.sin6_port = htons(4789);
+	(void) inet_pton(AF_INET6, dest_ip, &in6.sin6_addr);
+	hdr.msg_name = &in6;
+	hdr.msg_namelen = sizeof (struct sockaddr_in6);
+
+
+	/* XXX Zero this out */
+	einfo.ovdi_id = odd->odd_vid;
+	mp = mp_chain;
+	while (mp != NULL) {
+		mp_chain = mp->b_next;
+		mp->b_next = NULL;
+		ep = NULL;
+
+		ret = odd->odd_plugin->ovp_ops->ovpo_encap(odd->odd_mh, mp,
+		    &einfo, &ep);
+		if (ret != 0 || ep == NULL) {
+			freemsg(mp);
+			return (mp_chain);
+		}
+
+		ep->b_cont = mp;
+		ret = overlay_mux_tx(odd->odd_mux, &hdr, ep);
+		if (ret != 0)
+			return (mp_chain);
+
+		mp = mp_chain;
+	}
+
 	return (NULL);
 }
 
@@ -192,24 +287,13 @@ static int
 overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 {
 	int err;
-	overlay_dev_t *odd;
+	overlay_dev_t *odd, *o;
 	mac_register_t *mac;
 	char name[MAXLINKNAMELEN];
 	overlay_ioc_create_t *oicp = karg;
 
 	if (overlay_valid_name(oicp->oic_encap, MAXLINKNAMELEN) == B_FALSE)
 		return (EINVAL);
-
-
-	mutex_enter(&overlay_dev_lock);
-	for (odd = list_head(&overlay_dev_list); odd != NULL;
-	    odd = list_next(&overlay_dev_list, odd)) {
-		if (odd->odd_linkid == oicp->oic_overlay_id) {
-			mutex_exit(&overlay_dev_lock);
-			return (EEXIST);
-		}
-	}
-
 
 	odd = kmem_zalloc(sizeof (overlay_dev_t), KM_SLEEP);
 	odd->odd_linkid = oicp->oic_overlay_id;
@@ -219,10 +303,22 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 		kmem_free(odd, sizeof (overlay_dev_t));
 		return (ENOENT);
 	}
+	err = odd->odd_plugin->ovp_ops->ovpo_init(&odd->odd_pvoid);
+	if (err != 0) {
+		mutex_exit(&overlay_dev_lock);
+		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
+		overlay_plugin_rele(odd->odd_plugin);
+		kmem_free(odd, sizeof (overlay_dev_t));
+		return (EINVAL);
+	}
+
+	/* XXX Hardcoding for testing */
+	odd->odd_vid = 69;
 
 	mac = mac_alloc(MAC_VERSION);
 	if (mac == NULL) {
 		mutex_exit(&overlay_dev_lock);
+		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 		overlay_plugin_rele(odd->odd_plugin);
 		kmem_free(odd, sizeof (overlay_dev_t));
 		return (EINVAL);
@@ -254,7 +350,7 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	 * XXX These should come from the underlying device that we've been
 	 * created over and be influenced based on the encap method.
 	 */
-	mac->m_min_sdu = 1300;
+	mac->m_min_sdu = 1;
 	mac->m_max_sdu = 1400;
 
 	/*
@@ -279,10 +375,23 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	 */
 	mac->m_multicast_sdu = 0;
 
+	mutex_enter(&overlay_dev_lock);
+	for (o = list_head(&overlay_dev_list); o != NULL;
+	    o = list_next(&overlay_dev_list, o)) {
+		if (o->odd_linkid == oicp->oic_overlay_id) {
+			mutex_exit(&overlay_dev_lock);
+			odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
+			overlay_plugin_rele(odd->odd_plugin);
+			kmem_free(odd, sizeof (overlay_dev_t));
+			return (EEXIST);
+		}
+	}
+
 	err = mac_register(mac, &odd->odd_mh);
 	mac_free(mac);
 	if (err != 0) {
 		mutex_exit(&overlay_dev_lock);
+		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 		overlay_plugin_rele(odd->odd_plugin);
 		kmem_free(odd, sizeof (overlay_dev_t));
 		return (err);
@@ -293,11 +402,14 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	if (err != 0) {
 		mutex_exit(&overlay_dev_lock);
 		(void) mac_unregister(odd->odd_mh);
+		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 		overlay_plugin_rele(odd->odd_plugin);
 		kmem_free(odd, sizeof (overlay_dev_t));
 		return (err);
 	}
 
+	mutex_init(&odd->odd_lock, NULL, MUTEX_DRIVER, NULL);
+	odd->odd_ref = 0;
 	list_insert_tail(&overlay_dev_list, odd);
 	mutex_exit(&overlay_dev_lock);
 
@@ -322,6 +434,13 @@ overlay_ioc_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	if (odd == NULL) {
 		mutex_exit(&overlay_dev_lock);
 		return (ENOENT);
+	}
+
+	mutex_enter(&odd->odd_lock);
+	if (odd->odd_ref != 0) {
+		mutex_exit(&odd->odd_lock);
+		mutex_exit(&overlay_dev_lock);
+		return (EBUSY);
 	}
 
 	/*
@@ -350,9 +469,47 @@ overlay_ioc_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	list_remove(&overlay_dev_list, odd);
 	mutex_exit(&overlay_dev_lock);
 
+	odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 	overlay_plugin_rele(odd->odd_plugin);
 	kmem_free(odd, sizeof (overlay_dev_t));
 
+	return (0);
+}
+
+static int
+overlay_ioc_nprops(void *karg, intptr_t arg, int mode, cred_t *cred,
+    int *rvalp)
+{
+	overlay_dev_t *odd;
+	overlay_ioc_nprops_t *on = karg;
+
+	odd = overlay_hold_by_dlid(on->oipn_overlay_id);
+	if (odd == NULL)
+		return (ENOENT);
+	on->oipn_nprops = odd->odd_plugin->ovp_nprops + OVERLAY_DEV_NPROPS;
+	overlay_hold_rele(odd);
+
+	return (0);
+}
+
+static int
+overlay_ioc_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
+    int *rvalp)
+{
+	return (0);
+}
+
+static int
+overlay_ioc_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
+    int *rvalp)
+{
+	return (0);
+}
+
+static int
+overlay_ioc_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
+    int *rvalp)
+{
 	return (0);
 }
 
@@ -361,6 +518,18 @@ static dld_ioc_info_t overlay_ioc_list[] = {
 		overlay_ioc_create, secpolicy_dl_config },
 	{ OVERLAY_IOC_DELETE, DLDCOPYIN, sizeof (overlay_ioc_delete_t),
 		overlay_ioc_delete, secpolicy_dl_config },
+	{ OVERLAY_IOC_PROPINFO, DLDCOPYIN | DLDCOPYOUT,
+		sizeof (overlay_ioc_propinfo_t), overlay_ioc_propinfo,
+		secpolicy_dl_config },
+	{ OVERLAY_IOC_GETPROP, DLDCOPYIN | DLDCOPYOUT,
+		sizeof (overlay_ioc_prop_t), overlay_ioc_getprop,
+		secpolicy_dl_config },
+	{ OVERLAY_IOC_SETPROP, DLDCOPYIN,
+		sizeof (overlay_ioc_prop_t), overlay_ioc_setprop,
+		secpolicy_dl_config },
+	{ OVERLAY_IOC_NPROPS, DLDCOPYIN | DLDCOPYOUT,
+		sizeof (overlay_ioc_prop_t), overlay_ioc_nprops,
+		secpolicy_dl_config }
 };
 
 static int
@@ -466,6 +635,7 @@ overlay_init(void)
 	mutex_init(&overlay_dev_lock, NULL, MUTEX_DRIVER, NULL);
 	list_create(&overlay_dev_list, sizeof (overlay_dev_t),
 	    offsetof(overlay_dev_t, odd_link));
+	overlay_mux_init();
 	overlay_plugin_init();
 
 	return (DDI_SUCCESS);
@@ -475,6 +645,7 @@ static void
 overlay_fini(void)
 {
 	overlay_plugin_fini();
+	overlay_mux_fini();
 	mutex_destroy(&overlay_dev_lock);
 	list_destroy(&overlay_dev_list);
 }

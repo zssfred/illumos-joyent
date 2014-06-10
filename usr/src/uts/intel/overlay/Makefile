@@ -28,7 +28,7 @@ INSTALL_TARGET  = $(BINARY) $(ROOTMODULE) $(ROOT_CONFFILE)
 CONF_SRCDIR	= $(UTSBASE)/common/io/overlay
 MAPFILE		= $(UTSBASE)/common/io/overlay/overlay.mapfile
 
-LDFLAGS += -dy -Nmisc/mac -Ndrv/dld -Nmisc/dls -M$(MAPFILE)
+LDFLAGS += -dy -Nmisc/mac -Ndrv/dld -Nmisc/dls -Nmisc/ksocket
 
 .KEEP_STATE:
 

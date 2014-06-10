@@ -13,8 +13,8 @@
  * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
-#ifndef _OVERLAY_PLUGIN_H
-#define	_OVERLAY_PLUGIN_H
+#ifndef _SYS_OVERLAY_PLUGIN_H
+#define	_SYS_OVERLAY_PLUGIN_H
 
 /*
  * Plugin interface for encapsulation/decapsulation modules
@@ -22,7 +22,8 @@
  */
 
 #include <sys/stream.h>
-#include <sys/mac.h>
+#include <sys/mac_provider.h>
+#include <sys/overlay_prop.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,32 +77,46 @@ typedef int (*overlay_plugin_encap_t)(mac_handle_t, mblk_t *,
     ovep_encap_info_t *, mblk_t **);
 typedef int (*overlay_plugin_decap_t)(mac_handle_t, mblk_t *,
     ovep_encap_info_t *);
+typedef int (*overlay_plugin_init_t)(void **);
+typedef void (*overlay_plugin_fini_t)(void *);
+typedef int (*overlay_plugin_socket_t)(void *, int *, int *, int *,
+    struct sockaddr *, socklen_t *);
+typedef int (*overlay_plugin_getprop_t)(void *, const char *, void *, size_t *);
+typedef int (*overlay_plugin_setprop_t)(void *, const char *, const void *,
+    size_t);
+typedef int (*overlay_plugin_propinfo_t)(void *, const char *,
+    mac_prop_info_handle_t);
 
 typedef struct overlay_plugin_ops {
 	uint_t			ovpo_callbacks;
+	overlay_plugin_init_t	ovpo_init;
+	overlay_plugin_fini_t	ovpo_fini;
 	overlay_plugin_encap_t	ovpo_encap;
 	overlay_plugin_decap_t	ovpo_decap;
+	overlay_plugin_socket_t ovpo_socket;
+	overlay_plugin_getprop_t ovpo_getprop;
+	overlay_plugin_setprop_t ovpo_setprop;
+	overlay_plugin_propinfo_t ovpo_propinfo;
 } overlay_plugin_ops_t;
 
-typedef enum overlay_plugin_media {
-	OVERLAY_PLUGIN_M_INVALID = 0x0,
-	OVERLAY_PLUGIN_M_ETHERNET,
-	OVERLAY_PLUGIN_M_IP,
-	OVERLAY_PLUGIN_M_UDP,
-	OVERLAY_PLUGIN_M_TCPLIKE,
-	OVERLAY_PLUGIN_M_TCP,
-	OVERLAY_PLUGIN_M_MAX
-} overlay_plugin_media_t;
+typedef enum overlay_plugin_dest {
+	OVERLAY_PLUGIN_D_INVALID	= 0x0,
+	OVERLAY_PLUGIN_D_ETHERNET	= 0x1,
+	OVERLAY_PLUGIN_D_IP		= 0x2,
+	OVERLAY_PLUGIN_D_PORT 		= 0x4,
+	OVERLAY_PLUGIN_D_MASK		= 0x7
+} overlay_plugin_dest_t;
 
 typedef struct overlay_plugin_register {
 	uint_t			ovep_version;
 	const char		*ovep_name;
-	overlay_plugin_ops_t	*ovep_ops;
+	const overlay_plugin_ops_t	*ovep_ops;
+	const char 		**ovep_props;
 	uint_t			ovep_id_size;
 	uint_t			ovep_flags;
 	uint_t			ovep_hdr_min;
 	uint_t			ovep_hdr_max;
-	uint_t			ovep_media;
+	uint_t			ovep_dest;
 } overlay_plugin_register_t;
 
 /*
@@ -116,4 +131,4 @@ extern int overlay_plugin_unregister(const char *);
 }
 #endif
 
-#endif /* _OVERLAY_PLUGIN_H */
+#endif /* _SYS_OVERLAY_PLUGIN_H */

@@ -23,6 +23,25 @@
 #include <sys/geneve.h>
 
 static const char *geneve_ident = "geneve";
+static uint16_t geneve_defport = 1;
+
+static const char *geneve_props[] = {
+	"geneve/listen_ip",
+	"geneve/listen_port",
+	NULL
+};
+
+static int
+geneve_o_init(void **outp)
+{
+	*outp = NULL;
+	return (0);
+}
+
+static void
+geneve_o_fini(void *arg)
+{
+}
 
 int
 geneve_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
@@ -91,6 +110,8 @@ geneve_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 
 static struct overlay_plugin_ops geneve_o_ops = {
 	0,
+	geneve_o_init,
+	geneve_o_fini,
 	geneve_o_encap,
 	geneve_o_decap
 };
@@ -120,7 +141,8 @@ _init(void)
 	ovrp->ovep_flags = OVEP_F_VLAN_TAG;
 	ovrp->ovep_hdr_min = GENEVE_HDR_MIN;
 	ovrp->ovep_hdr_max = GENEVE_HDR_MAX;
-	ovrp->ovep_media = OVERLAY_PLUGIN_M_UDP;
+	ovrp->ovep_dest = OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT;
+	ovrp->ovep_props = geneve_props;
 
 	if ((err = overlay_plugin_register(ovrp)) == 0) {
 		if ((err = mod_install(&geneve_modlinkage)) != 0) {

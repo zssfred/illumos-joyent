@@ -26,7 +26,7 @@ ALL_TARGET      = $(BINARY)
 LINT_TARGET     = $(MODULE).lint
 INSTALL_TARGET  = $(BINARY) $(ROOTMODULE)
 
-LDFLAGS += -dy -Ndrv/overlay
+LDFLAGS += -dy -Ndrv/overlay -Ndrv/ip
 
 .KEEP_STATE:
 

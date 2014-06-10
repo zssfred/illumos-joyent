@@ -36,6 +36,18 @@
 
 static const char *stt_ident = "stt";
 
+static int
+stt_o_init(void **outp)
+{
+	*outp = NULL;
+	return (0);
+}
+
+static void
+stt_o_fini(void *arg)
+{
+}
+
 int
 stt_o_encap(mac_handle_t mh, mblk_t *mp, ovep_encap_info_t *einfop,
     mblk_t **outp)
@@ -161,6 +173,8 @@ stt_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 
 static struct overlay_plugin_ops stt_o_ops = {
 	0,
+	stt_o_init,
+	stt_o_fini,
 	stt_o_encap,
 	stt_o_decap
 };
@@ -190,7 +204,7 @@ _init(void)
 	ovrp->ovep_flags = OVEP_F_VLAN_TAG | OVEP_F_STRIP_TAG;
 	ovrp->ovep_hdr_min = STT_HDR_LEN;
 	ovrp->ovep_hdr_max = STT_HDR_LEN;
-	ovrp->ovep_media = OVERLAY_PLUGIN_M_TCPLIKE;
+	ovrp->ovep_dest = OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT;
 
 	if ((err = overlay_plugin_register(ovrp)) == 0) {
 		if ((err = mod_install(&stt_modlinkage)) != 0) {

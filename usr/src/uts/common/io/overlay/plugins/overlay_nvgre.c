@@ -25,6 +25,23 @@
 
 static const char *nvgre_ident = "nvgre";
 
+static const char *nvgre_props[] = {
+	"nvgre/listen_ip",
+	NULL
+};
+
+static int
+nvgre_o_init(void **outp)
+{
+	*outp = NULL;
+	return (0);
+}
+
+static void
+nvgre_o_fini(void *arg)
+{
+}
+
 /* XXX Should we keep track of kstats here? */
 
 int
@@ -79,6 +96,8 @@ nvgre_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 
 static struct overlay_plugin_ops nvgre_o_ops = {
 	0,
+	nvgre_o_init,
+	nvgre_o_fini,
 	nvgre_o_encap,
 	nvgre_o_decap
 };
@@ -108,7 +127,8 @@ _init(void)
 	ovrp->ovep_flags = 0;
 	ovrp->ovep_hdr_min = NVGRE_HDR_LEN;
 	ovrp->ovep_hdr_max = NVGRE_HDR_LEN;
-	ovrp->ovep_media = OVERLAY_PLUGIN_M_IP;
+	ovrp->ovep_dest = OVERLAY_PLUGIN_D_IP;
+	ovrp->ovep_props = nvgre_props;
 
 	if ((err = overlay_plugin_register(ovrp)) == 0) {
 		if ((err = mod_install(&nvgre_modlinkage)) != 0) {
