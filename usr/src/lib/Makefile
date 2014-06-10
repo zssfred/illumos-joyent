@@ -158,7 +158,8 @@ SUBDIRS += \
 	libinstzones	\
 	libpkg		\
 	libpcidb	\
-	libvnd
+	libvnd		\
+	libidspace
 
 SUBDIRS += \
 	passwdutil	\
@@ -402,6 +403,7 @@ HDRSUBDIRS=		\
 	libfru		\
 	libfstyp	\
 	libgen		\
+	libidspace	\
 	libipadm	\
 	libipd		\
 	libipsecutil	\
@@ -658,6 +660,7 @@ libreparse:	libnvpair
 libhotplug:	libnvpair
 cfgadm_plugins:	libhotplug
 libilb:		libsocket
+libidspace:	libumem
 $(INTEL_BUILD)libdiskmgt:libfdisk
 
 #
