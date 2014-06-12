@@ -180,6 +180,7 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 	/* XXX The header should be dynamic... */
 	bzero(&hdr, sizeof (struct msghdr));
 	bzero(&in6, sizeof (struct sockaddr_in6));
+	in6.sin6_family = AF_INET6;
 	in6.sin6_port = htons(4789);
 	(void) inet_pton(AF_INET6, dest_ip, &in6.sin6_addr);
 	hdr.msg_name = &in6;
