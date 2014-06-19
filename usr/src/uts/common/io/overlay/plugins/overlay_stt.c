@@ -49,7 +49,7 @@ stt_o_fini(void *arg)
 }
 
 int
-stt_o_encap(mac_handle_t mh, mblk_t *mp, ovep_encap_info_t *einfop,
+stt_o_encap(void *mh, mblk_t *mp, ovep_encap_info_t *einfop,
     mblk_t **outp)
 {
 	mblk_t *op;
@@ -148,7 +148,7 @@ stt_o_encap(mac_handle_t mh, mblk_t *mp, ovep_encap_info_t *einfop,
 }
 
 int
-stt_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
+stt_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 {
 	stt_hdr_t *hp;
 	uint16_t vlan;

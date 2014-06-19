@@ -105,7 +105,7 @@ vxlan_o_socket(void *arg, int *dp, int *fp, int *pp, struct sockaddr *addr,
  * XXX Stats?
  */
 static int
-vxlan_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
+vxlan_o_encap(void *arg, mblk_t *mp, ovep_encap_info_t *einfop,
     mblk_t **outp)
 {
 	mblk_t *ob;
@@ -133,7 +133,7 @@ vxlan_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
 
 /* XXX Stats */
 static int
-vxlan_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
+vxlan_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 {
 	vxlan_hdr_t *vxh;
 

@@ -73,9 +73,9 @@ typedef struct ovep_encap_info {
  * argument turn into a void * and add a create and destroy endpoint that gets
  * given the corresponding mac handle.
  */
-typedef int (*overlay_plugin_encap_t)(mac_handle_t, mblk_t *,
+typedef int (*overlay_plugin_encap_t)(void *, mblk_t *,
     ovep_encap_info_t *, mblk_t **);
-typedef int (*overlay_plugin_decap_t)(mac_handle_t, mblk_t *,
+typedef int (*overlay_plugin_decap_t)(void *, mblk_t *,
     ovep_encap_info_t *);
 typedef int (*overlay_plugin_init_t)(void **);
 typedef void (*overlay_plugin_fini_t)(void *);

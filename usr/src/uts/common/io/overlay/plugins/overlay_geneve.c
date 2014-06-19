@@ -44,7 +44,7 @@ geneve_o_fini(void *arg)
 }
 
 int
-geneve_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
+geneve_o_encap(void *arg, mblk_t *mp, ovep_encap_info_t *einfop,
     mblk_t **outp)
 {
 	mblk_t *op;
@@ -67,7 +67,7 @@ geneve_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
 }
 
 int
-geneve_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
+geneve_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 {
 	geneve_hdr_t *hp;
 	uint16_t flags;

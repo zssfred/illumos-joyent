@@ -45,7 +45,7 @@ nvgre_o_fini(void *arg)
 /* XXX Should we keep track of kstats here? */
 
 int
-nvgre_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
+nvgre_o_encap(void *arg, mblk_t *mp, ovep_encap_info_t *einfop,
     mblk_t **outp)
 {
 	mblk_t *op;
@@ -70,7 +70,7 @@ nvgre_o_encap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *einfop,
 }
 
 int
-nvgre_o_decap(mac_handle_t arg, mblk_t *mp, ovep_encap_info_t *dinfop)
+nvgre_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 {
 	uint32_t id;
 	nvgre_hdr_t *hp;
