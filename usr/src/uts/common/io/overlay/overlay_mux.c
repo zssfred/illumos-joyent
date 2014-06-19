@@ -121,6 +121,7 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 		 */
 		fmp = mp;
 		mp = fmp->b_cont;
+		fmp->b_cont = NULL;
 		freemsg(fmp);
 
 		/*
@@ -149,7 +150,8 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 				mp->b_rptr += rem;
 				if (rem == blkl) {
 					fmp = mp;
-					mp = mp->b_next;
+					mp = fmp->b_cont;
+					fmp->b_cont = NULL;
 					OVERLAY_FREEMSG(mp,
 					    "freed a fmp block");
 					freemsg(fmp);
