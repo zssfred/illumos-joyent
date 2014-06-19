@@ -24,8 +24,16 @@
 #include <sys/avl.h>
 #include <sys/list.h>
 #include <sys/sysmacros.h>
+#include <sys/strsubr.h>
+#include <sys/strsun.h>
+#include <sys/tihdr.h>
 
 #include <sys/overlay_impl.h>
+
+#include <sys/sdt.h>
+
+#define	OVERLAY_FREEMSG(mp, reason) \
+    DTRACE_PROBE2(overlay__fremsg, mblk_t *, mp, char *, reason)
 
 static list_t overlay_mux_list;
 static kmutex_t overlay_mux_lock;
@@ -57,6 +65,117 @@ overlay_mux_comparator(const void *a, const void *b)
 		return (-1);
 	else
 		return (0);
+}
+
+/*
+ * This is the central receive data path. We need to decode the packet, if we
+ * can, and then deliver it to the appropriate overlay.
+ */
+static boolean_t
+overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
+    void *arg)
+{
+	mblk_t *mp, *nmp, *fmp;
+	overlay_mux_t *mux = arg;
+
+	/*
+	 * We may have a received a chain of messages. Each messsage in the
+	 * chain will likely have a T_unitdata_ind attached to it as an M_PROTO.
+	 * If we aren't getting that, we should probably drop that for the
+	 * moment.
+	 *
+	 * XXX kstats and D Probes
+	 */
+	for (mp = mpchain; mp != NULL; mp = nmp) {
+		struct T_unitdata_ind *tudi;
+		ovep_encap_info_t infop;
+		overlay_dev_t od, *odd;
+		int ret;
+
+		nmp = mp->b_next;
+		mp->b_next = NULL;
+
+		if (DB_TYPE(mp) != M_PROTO) {
+			OVERLAY_FREEMSG(mp, "first one isn't M_PROTO");
+			freemsg(mp);
+			continue;
+		}
+
+		if (mp->b_cont == NULL) {
+			OVERLAY_FREEMSG(mp, "missing a b_cont");
+			freemsg(mp);
+			continue;
+		}
+
+		tudi = (struct T_unitdata_ind *)mp->b_rptr;
+		if (tudi->PRIM_type != T_UNITDATA_IND) {
+			OVERLAY_FREEMSG(mp, "Not a T_unitdata_ind *");
+			freemsg(mp);
+			continue;
+		}
+
+		/*
+		 * XXX In the future, we'll care about the source information
+		 * for purposes of telling varpd for oob invalidation. But for
+		 * now, just drop that block.
+		 */
+		fmp = mp;
+		mp = fmp->b_cont;
+		freemsg(fmp);
+
+		/*
+		 * Decap and deliver.
+		 *
+		 * XXX Zero out infop probably?
+		 */
+		ret = mux->omux_plugin->ovp_ops->ovpo_decap(NULL, mp, &infop);
+		if (ret != 0) {
+			OVERLAY_FREEMSG(mp, "decap failed");
+			freemsg(mp);
+			continue;
+		}
+		if (MBLKL(mp) > infop.ovdi_hdr_size) {
+			mp->b_rptr += infop.ovdi_hdr_size;
+		} else {
+			while (infop.ovdi_hdr_size != 0) {
+				size_t rem, blkl;
+
+				if (mp == NULL)
+					break;
+
+				blkl = MBLKL(mp);
+				rem = MIN(infop.ovdi_hdr_size, blkl);
+				infop.ovdi_hdr_size -= rem;
+				mp->b_rptr += rem;
+				if (rem == blkl) {
+					fmp = mp;
+					mp = mp->b_next;
+					OVERLAY_FREEMSG(mp,
+					    "freed a fmp block");
+					freemsg(fmp);
+				}
+			}
+			if (mp == NULL) {
+				OVERLAY_FREEMSG(mp, "freed it all...");
+				continue;
+			}
+		}
+
+
+		od.odd_vid = infop.ovdi_id;
+		mutex_enter(&mux->omux_lock);
+		odd = avl_find(&mux->omux_devices, &od, NULL);
+		mutex_exit(&mux->omux_lock);
+		if (odd == NULL) {
+			OVERLAY_FREEMSG(mp, "no matching vid");
+			freemsg(mp);
+			continue;
+		}
+
+		mac_rx(odd->odd_mh, NULL, mp);
+	}
+
+	return (B_TRUE);
 }
 
 /*
@@ -131,6 +250,20 @@ overlay_mux_open(overlay_plugin_t *opp, int domain, int family, int protocol,
 	avl_create(&mux->omux_devices, overlay_mux_comparator,
 	    sizeof (overlay_dev_t), offsetof(overlay_dev_t, odd_muxnode));
 	mutex_init(&mux->omux_lock, NULL, MUTEX_DRIVER, NULL);
+
+
+	/* XXX Probably should have a credp here */
+	/* XXX Once this is called, we need to expect to rx data */
+	*errp = ksocket_krecv_set(ksock, overlay_mux_recv, mux);
+	if (*errp != 0) {
+		/* XXX Wrong credp */
+		ksocket_close(ksock, kcred);
+		mutex_destroy(&mux->omux_lock);
+		avl_destroy(&mux->omux_devices);
+		kmem_free(mux->omux_addr, len);
+		kmem_free(mux, sizeof (overlay_mux_t));
+		return (NULL);
+	}
 
 	list_insert_tail(&overlay_mux_list, mux);
 	mutex_exit(&overlay_mux_lock);
