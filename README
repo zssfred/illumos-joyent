@@ -17,6 +17,12 @@ This is a work in progress, things will be changing quickly, and
 panicking is certainly not out of the question. You probably don't want
 to be using this.
 
+## Current Status
+
+Basic VXLAN tunnels that interoperate with not only ourselves, but also
+VXLAN, work. Configuration is currently only through mdb -kw (and
+requires changing a sonode flag). That's up next...
+
 ## High-level Design Overview
 
 WARNING: This is subject to change the further down the implementation
