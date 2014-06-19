@@ -932,3 +932,15 @@ ksocket_rele(ksocket_t ks)
 			cv_signal(&so->so_closing_cv);
 	}
 }
+
+int
+ksocket_krecv_set(ksocket_t ks, ksocket_krecv_f cb, void *arg)
+{
+	return (so_krecv_set(KSTOSO(ks), (so_krecv_f)cb, arg));
+}
+
+void
+ksocket_krecv_unblock(ksocket_t ks)
+{
+	return (so_krecv_unblock(KSTOSO(ks)));
+}

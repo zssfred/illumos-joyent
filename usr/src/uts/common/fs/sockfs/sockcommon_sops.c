@@ -1327,6 +1327,23 @@ so_queue_msg_impl(struct sonode *so, mblk_t *mp,
 		}
 	}
 
+	mutex_enter(&so->so_lock);
+	if (so->so_krecv_cb != NULL) {
+		boolean_t cont;
+
+		cont = so->so_krecv_cb(so, mp, msg_size, flags & MSG_OOB,
+		    so->so_krecv_arg);
+		if (cont == B_TRUE) {
+			space_left = so->so_rcvbuf;
+		} else {
+			so->so_rcv_queued = so->so_rcvlowat;
+			*errorp = ENOSPC;
+			space_left = -1;
+		}
+		goto done_unlock;
+	}
+	mutex_exit(&so->so_lock);
+
 	if (flags & MSG_OOB) {
 		so_queue_oob(so, mp, msg_size);
 		mutex_enter(&so->so_lock);
@@ -1604,6 +1621,13 @@ so_recvmsg(struct sonode *so, struct nmsghdr *msg, struct uio *uiop,
 		SO_UNBLOCK_FALLBACK(so);
 		return (ENOTCONN);
 	}
+
+	mutex_enter(&so->so_lock);
+	if (so->so_krecv_cb != NULL) {
+		mutex_exit(&so->so_lock);
+		return (EOPNOTSUPP);
+	}
+	mutex_exit(&so->so_lock);
 
 	if (msg->msg_flags & MSG_PEEK)
 		msg->msg_flags &= ~MSG_WAITALL;
