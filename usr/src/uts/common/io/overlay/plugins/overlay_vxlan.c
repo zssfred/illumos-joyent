@@ -124,6 +124,7 @@ vxlan_o_encap(void *arg, mblk_t *mp, ovep_encap_info_t *einfop,
 
 
 	vxh = (vxlan_hdr_t *)ob->b_rptr;
+	vxh->vxlan_magic = ntohl(VXLAN_MAGIC);
 	vxh->vxlan_id = htonl((uint32_t)einfop->ovdi_id << VXLAN_ID_SHIFT);
 	ob->b_wptr += VXLAN_HDR_LEN;
 	*outp = ob;
@@ -137,11 +138,12 @@ vxlan_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 {
 	vxlan_hdr_t *vxh;
 
+	/* XXX This assumes that we have a pulled up block, which is false */
 	vxh = (vxlan_hdr_t *)mp->b_rptr;
 	if ((ntohl(vxh->vxlan_magic) & VXLAN_MAGIC) == 0)
 		return (EINVAL);
 
-	dinfop->ovdi_id = ntohl(vxh->vxlan_id >> VXLAN_ID_SHIFT);
+	dinfop->ovdi_id = ntohl(vxh->vxlan_id) >> VXLAN_ID_SHIFT;
 	dinfop->ovdi_hdr_size = VXLAN_HDR_LEN;
 	/* XXX Probably don't need these fields in the long run */
 	dinfop->ovdi_encap_type = -1;
