@@ -22,8 +22,17 @@
 #include <sys/errno.h>
 #include <sys/nvgre.h>
 #include <sys/byteorder.h>
+#include <inet/ip.h>
 
 static const char *nvgre_ident = "nvgre";
+/* XXX this should probably be global across all plugin-modules */
+static char *nvgre_defip = "::ffff:0.0.0.0";
+
+/* XXX We're locking here, should the higher level serialize this for us? */
+typedef struct nvgre {
+	kmutex_t nvg_lock;
+	struct in6_addr nvg_laddr;
+} nvgre_t;
 
 static const char *nvgre_props[] = {
 	"nvgre/listen_ip",
@@ -33,13 +42,46 @@ static const char *nvgre_props[] = {
 static int
 nvgre_o_init(void **outp)
 {
-	*outp = NULL;
+	int ret;
+	nvgre_t *nvg;
+
+	nvg = kmem_alloc(sizeof (nvgre_t), KM_SLEEP);
+	mutex_init(&nvg->nvg_lock, NULL, MUTEX_DRIVER, NULL);
+	/* XXX Assert return? */
+	(void) inet_pton(AF_INET6, nvgre_defip, &nvg->nvg_laddr);
+
 	return (0);
 }
 
 static void
 nvgre_o_fini(void *arg)
 {
+	nvgre_t *nvg = arg;
+	mutex_destroy(&nvg->nvg_lock);
+	kmem_free(arg, sizeof (nvgre_t));
+}
+
+static int
+nvgre_o_socket(void *arg, int *dp, int *fp, int *pp, struct sockaddr *addr,
+    socklen_t *slenp)
+{
+	nvgre_t *nvg = arg;
+	struct sockaddr_in6 *in = (struct sockaddr_in6 *)addr;
+
+	*dp = AF_INET6;
+	*fp = SOCK_RAW;
+	*pp = 0x2f;	/* XXX Move into a IPPPROTO_* def */
+
+	bzero(in, sizeof (struct sockaddr_in6));
+	in->sin6_family = AF_INET6;
+
+	mutex_enter(&nvg->nvg_lock);
+	in->sin6_addr = nvg->nvg_laddr;
+	mutex_exit(&nvg->nvg_lock);
+	in->sin6_port = 0;
+	*slenp = sizeof (struct sockaddr_in6);
+
+	return (0);
 }
 
 /* XXX Should we keep track of kstats here? */
@@ -83,7 +125,7 @@ nvgre_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 		return (EINVAL);
 
 	id = ntohl(hp->nvgre_id);
-	dinfop->ovdi_id = (id & NVGRE_ID_MASK) > NVGRE_ID_SHIFT;
+	dinfop->ovdi_id = (id & NVGRE_ID_MASK) >> NVGRE_ID_SHIFT;
 	dinfop->ovdi_hdr_size = NVGRE_HDR_LEN;
 	/* XXX I'm not really sure why we'd want to save the flow */
 	dinfop->ovdi_hash = id & NVGRE_FLOW_MASK;

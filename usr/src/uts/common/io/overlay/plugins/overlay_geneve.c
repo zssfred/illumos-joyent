@@ -23,7 +23,6 @@
 #include <sys/geneve.h>
 
 static const char *geneve_ident = "geneve";
-static uint16_t geneve_defport = 1;
 
 static const char *geneve_props[] = {
 	"geneve/listen_ip",
