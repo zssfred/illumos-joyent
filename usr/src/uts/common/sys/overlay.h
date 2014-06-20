@@ -37,21 +37,23 @@ extern "C" {
 #define	OVERLAY_IOC_NPROPS	OVERLAYIOC(6)
 
 typedef struct overlay_ioc_create {
-	datalink_id_t	oic_overlay_id;
+	datalink_id_t	oic_linkid;
+	uint32_t	oic_filler;
+	uint64_t	oic_vnetid;
 	char		oic_encap[MAXLINKNAMELEN];
 } overlay_ioc_create_t;
 
 typedef struct overlay_ioc_delete {
-	datalink_id_t	oid_overlay_id;
+	datalink_id_t	oid_linkid;
 } overlay_ioc_delete_t;
 
 typedef struct overlay_ioc_nprops {
-	datalink_id_t	oipn_overlay_id;
+	datalink_id_t	oipn_linkid;
 	int32_t		oipn_nprops;
 } overlay_ioc_nprops_t;
 
 typedef struct overlay_ioc_propinfo {
-	datalink_id_t	oipi_overlay_id;
+	datalink_id_t	oipi_linkid;
 	uint32_t	oipi_id;
 	char		oipi_name[OVERLAY_PROP_NAMELEN];
 	uint_t		oipi_type;
@@ -63,7 +65,7 @@ typedef struct overlay_ioc_propinfo {
 } overlay_ioc_propinfo_t;
 
 typedef struct overlay_ioc_prop {
-	datalink_id_t	oip_overlay_id;
+	datalink_id_t	oip_linkid;
 	int32_t		oip_id;
 	char		oip_name[OVERLAY_PROP_NAMELEN];
 	ssize_t		oip_size;

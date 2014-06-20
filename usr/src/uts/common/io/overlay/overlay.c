@@ -288,6 +288,7 @@ static int
 overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 {
 	int err;
+	uint64_t maxid;
 	overlay_dev_t *odd, *o;
 	mac_register_t *mac;
 	char name[MAXLINKNAMELEN];
@@ -297,24 +298,38 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 		return (EINVAL);
 
 	odd = kmem_zalloc(sizeof (overlay_dev_t), KM_SLEEP);
-	odd->odd_linkid = oicp->oic_overlay_id;
+	odd->odd_linkid = oicp->oic_linkid;
 	odd->odd_plugin = overlay_plugin_lookup(oicp->oic_encap);
 	if (odd->odd_plugin == NULL) {
-		mutex_exit(&overlay_dev_lock);
 		kmem_free(odd, sizeof (overlay_dev_t));
+		/* XXX Better errno */
 		return (ENOENT);
 	}
 	err = odd->odd_plugin->ovp_ops->ovpo_init(&odd->odd_pvoid);
 	if (err != 0) {
-		mutex_exit(&overlay_dev_lock);
 		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 		overlay_plugin_rele(odd->odd_plugin);
 		kmem_free(odd, sizeof (overlay_dev_t));
+		/* XXX Better errno */
 		return (EINVAL);
 	}
 
-	/* XXX Hardcoding for testing */
-	odd->odd_vid = 69;
+	/*
+	 * Make sure that our virtual network id is valid for the given plugin
+	 * that we're working with.
+	 */
+	ASSERT(odd->odd_plugin->ovp_id_size <= 8);
+	maxid = UINT64_MAX;
+	if (odd->odd_plugin->ovp_id_size != 8)
+		maxid = (1ULL << (odd->odd_plugin->ovp_id_size * 8)) - 1ULL;
+	if (oicp->oic_vnetid > maxid) {
+		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
+		overlay_plugin_rele(odd->odd_plugin);
+		kmem_free(odd, sizeof (overlay_dev_t));
+		/* XXX Better errno */
+		return (EINVAL);
+	}
+	odd->odd_vid = oicp->oic_vnetid;
 
 	mac = mac_alloc(MAC_VERSION);
 	if (mac == NULL) {
@@ -379,7 +394,16 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	mutex_enter(&overlay_dev_lock);
 	for (o = list_head(&overlay_dev_list); o != NULL;
 	    o = list_next(&overlay_dev_list, o)) {
-		if (o->odd_linkid == oicp->oic_overlay_id) {
+		if (o->odd_linkid == oicp->oic_linkid) {
+			mutex_exit(&overlay_dev_lock);
+			odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
+			overlay_plugin_rele(odd->odd_plugin);
+			kmem_free(odd, sizeof (overlay_dev_t));
+			return (EEXIST);
+		}
+
+		if (o->odd_vid == oicp->oic_vnetid &&
+		    o->odd_plugin == odd->odd_plugin) {
 			mutex_exit(&overlay_dev_lock);
 			odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 			overlay_plugin_rele(odd->odd_plugin);
@@ -429,7 +453,7 @@ overlay_ioc_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 
 	for (odd = list_head(&overlay_dev_list); odd != NULL;
 	    odd = list_next(&overlay_dev_list, odd)) {
-		if (odd->odd_linkid == oidp->oid_overlay_id)
+		if (odd->odd_linkid == oidp->oid_linkid)
 			break;
 	}
 	if (odd == NULL) {
@@ -484,7 +508,7 @@ overlay_ioc_nprops(void *karg, intptr_t arg, int mode, cred_t *cred,
 	overlay_dev_t *odd;
 	overlay_ioc_nprops_t *on = karg;
 
-	odd = overlay_hold_by_dlid(on->oipn_overlay_id);
+	odd = overlay_hold_by_dlid(on->oipn_linkid);
 	if (odd == NULL)
 		return (ENOENT);
 	on->oipn_nprops = odd->odd_plugin->ovp_nprops + OVERLAY_DEV_NPROPS;

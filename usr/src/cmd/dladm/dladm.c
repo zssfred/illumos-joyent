@@ -406,7 +406,7 @@ static cmd_t	cmds[] = {
 	    "    show-bridge      -t [-p] [-o <field>,...] [-s [-i <interval>]]"
 	    " <bridge>\n"						},
 	{ "create-overlay",	do_create_overlay,
-	    "    create-overlay  -e <encap> <overlay-name>"		},
+	    "    create-overlay  -e <encap> -v <vnetid> <overlay-name>"	},
 	{ "delete-overlay",	do_delete_overlay,
 	    "    delete-overlay  <overlay-name>"			},
 	{ "show-usage",		do_show_usage,
@@ -9771,20 +9771,38 @@ static void
 do_create_overlay(int argc, char *argv[], const char *use)
 {
 	int		opt;
-	char		*encap;
+	char		*encap = NULL, *endp;
 	char		name[MAXLINKNAMELEN];
 	dladm_status_t	status;
 	uint32_t	flags = DLADM_OPT_ACTIVE | DLADM_OPT_TRANSIENT;
+	uint64_t	vid;
+	boolean_t	havevid = B_FALSE;
 
-	while ((opt = getopt(argc, argv, ":e:")) != -1) {
+	while ((opt = getopt(argc, argv, ":e:v:")) != -1) {
 		switch (opt) {
 		case 'e':
 			encap = optarg;
+			break;
+		case 'v':
+			vid = strtoul(optarg, &endp, 10);
+			if (*endp != '\0' || (vid == 0 && errno == EINVAL))
+				die("couldn't parse virtual networkd id: %s",
+				    optarg);
+			if (vid == ULONG_MAX && errno == ERANGE)
+				die("virtual networkd id too large: %s",
+				    optarg);
+			havevid = B_TRUE;
 			break;
 		default:
 			die_opterr(optopt, opt, use);
 		}
 	}
+
+	if (havevid == B_FALSE)
+		die("missing required virtual network id");
+
+	if (encap == NULL)
+		die("missing required encapsulation protocol");
 
 	if (optind != (argc - 1))
 		usage();
@@ -9798,7 +9816,7 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	if (strlen(encap) + 1 > MAXLINKNAMELEN)
 		die("encapsulation protocol name too long '%s'", encap);
 
-	status = dladm_overlay_create(handle, name, encap, flags);
+	status = dladm_overlay_create(handle, name, encap, vid, flags);
 	if (status != DLADM_STATUS_OK) {
 		die_dlerr(status, "overlay creation failed");
 	}
