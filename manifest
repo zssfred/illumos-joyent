@@ -1050,7 +1050,6 @@ d kernel/overlay 0755 root sys
 d kernel/overlay/amd64 0755 root sys
 f kernel/overlay/amd64/geneve 0755 root sys
 f kernel/overlay/amd64/nvgre 0755 root sys
-f kernel/overlay/amd64/stt 0755 root sys
 f kernel/overlay/amd64/vxlan 0755 root sys
 d kernel/sched 0755 root sys
 d kernel/sched/amd64 0755 root sys

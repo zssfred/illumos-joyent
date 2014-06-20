@@ -717,7 +717,6 @@ MAC_KMODS	+= mac_ib
 DRV_KMODS	+= overlay
 OVERLAY_KMODS	+= geneve
 OVERLAY_KMODS	+= nvgre
-OVERLAY_KMODS	+= stt
 OVERLAY_KMODS	+= vxlan
 
 #

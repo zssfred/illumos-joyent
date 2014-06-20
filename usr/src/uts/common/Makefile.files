@@ -682,8 +682,6 @@ VNIC_OBJS +=	vnic_ctl.o vnic_dev.o
 
 OVERLAY_OBJS +=	overlay.o overlay_mux.o overlay_plugin.o
 
-OVERLAY_STT_OBJS +=	overlay_stt.o
-
 OVERLAY_GENEVE_OBJS +=	overlay_geneve.o
 
 OVERLAY_NVGRE_OBJS +=	overlay_nvgre.o
