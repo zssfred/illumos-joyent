@@ -76,6 +76,9 @@ vxlan_o_init(void **outp)
 static void
 vxlan_o_fini(void *arg)
 {
+	vxlan_t *vxl = arg;
+
+	mutex_destroy(&vxl->vxl_lock);
 	kmem_free(arg, sizeof (vxlan_t));
 }
 
