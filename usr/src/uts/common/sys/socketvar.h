@@ -947,6 +947,13 @@ extern struct sonode	*socreate(struct sockparams *, int, int, int, int,
 extern int	so_copyin(const void *, void *, size_t, int);
 extern int	so_copyout(const void *, void *, size_t, int);
 
+/*
+ * Functions to manipulate the use of direct receive callbacks. This should not
+ * be used outside of sockfs and ksocket.
+ */
+extern int	so_krecv_set(sonode_t *, so_krecv_f, void *);
+extern void	so_krecv_unblock(sonode_t *);
+
 #endif
 
 /*
@@ -1038,13 +1045,6 @@ struct sockconfig_filter_props32 {
 #endif	/* _SYSCALL32 */
 
 #define	SOCKMOD_PATH	"socketmod"	/* dir where sockmods are stored */
-
-/*
- * Functions to manipulate the use of direct receive callbacks. This should not
- * be used outside of sockfs and ksocket.
- */
-extern int	so_krecv_set(sonode_t *, so_krecv_f, void *);
-extern void	so_krecv_unblock(sonode_t *);
 
 #ifdef	__cplusplus
 }
