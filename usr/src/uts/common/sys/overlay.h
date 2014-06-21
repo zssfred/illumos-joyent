@@ -54,13 +54,12 @@ typedef struct overlay_ioc_nprops {
 
 typedef struct overlay_ioc_propinfo {
 	datalink_id_t	oipi_linkid;
-	uint32_t	oipi_id;
+	int32_t		oipi_id;
 	char		oipi_name[OVERLAY_PROP_NAMELEN];
 	uint_t		oipi_type;
 	uint_t		oipi_prot;
-	ssize_t		oipi_size;
-	void		*oipi_default;
-	ssize_t		oipi_defsize;
+	uchar_t		oipi_default[OVERLAY_PROP_SIZEMAX];
+	uint32_t	oipi_defsize;
 	mac_propval_range_t oipi_poss;
 } overlay_ioc_propinfo_t;
 
@@ -68,8 +67,8 @@ typedef struct overlay_ioc_prop {
 	datalink_id_t	oip_linkid;
 	int32_t		oip_id;
 	char		oip_name[OVERLAY_PROP_NAMELEN];
-	ssize_t		oip_size;
-	void		*oip_value;
+	uchar_t		oip_value[OVERLAY_PROP_SIZEMAX];
+	uint32_t	oip_size;
 } overlay_ioc_prop_t;
 
 #ifdef __cplusplus

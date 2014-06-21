@@ -20,7 +20,7 @@
 #
 #
 # Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright (c) 2011, Joyent Inc. All rights reserved.
+# Copyright (c) 2014, Joyent Inc. All rights reserved.
 #
 
 #
@@ -275,6 +275,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 
 	dladm_overlay_create;
 	dladm_overlay_delete;
+	dladm_overlay_show;
     local:
 	*;
 };

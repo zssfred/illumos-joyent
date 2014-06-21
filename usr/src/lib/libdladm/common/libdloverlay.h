@@ -30,6 +30,7 @@ extern "C" {
 extern dladm_status_t	dladm_overlay_create(dladm_handle_t, const char *,
     const char *, uint64_t, uint32_t);
 extern dladm_status_t	dladm_overlay_delete(dladm_handle_t, datalink_id_t);
+extern dladm_status_t	dladm_overlay_show(dladm_handle_t, datalink_id_t);
 
 #ifdef __cplusplus
 }

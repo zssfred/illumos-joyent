@@ -244,3 +244,18 @@ overlay_plugin_rele(overlay_plugin_t *opp)
 	opp->ovp_active--;
 	mutex_exit(&opp->ovp_mutex);
 }
+
+void
+overlay_plugin_walk(overlay_plugin_walk_f func, void *arg)
+{
+	overlay_plugin_t *opp;
+	mutex_enter(&overlay_plugin_lock);
+	for (opp = list_head(&overlay_plugin_list); opp != NULL;
+	    opp = list_next(&overlay_plugin_list, opp)) {
+		if (func(opp, arg) != 0) {
+			mutex_exit(&overlay_plugin_lock);
+			return;
+		}
+	}
+	mutex_exit(&overlay_plugin_lock);
+}

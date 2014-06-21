@@ -222,7 +222,7 @@ static cmdfunc_t do_create_bridge, do_modify_bridge, do_delete_bridge;
 static cmdfunc_t do_add_bridge, do_remove_bridge, do_show_bridge;
 static cmdfunc_t do_create_iptun, do_modify_iptun, do_delete_iptun;
 static cmdfunc_t do_show_iptun, do_up_iptun, do_down_iptun;
-static cmdfunc_t do_create_overlay, do_delete_overlay;
+static cmdfunc_t do_create_overlay, do_delete_overlay, do_show_overlay;
 
 static void 	do_up_vnic_common(int, char **, const char *, boolean_t);
 
@@ -409,6 +409,8 @@ static cmd_t	cmds[] = {
 	    "    create-overlay  -e <encap> -v <vnetid> <overlay-name>"	},
 	{ "delete-overlay",	do_delete_overlay,
 	    "    delete-overlay  <overlay-name>"			},
+	{ "show-overlay",	do_show_overlay,
+	    "    show-overlay     <overlay> "				},
 	{ "show-usage",		do_show_usage,
 	    "    show-usage       [-a] [-d | -F <format>] "
 	    "[-s <DD/MM/YYYY,HH:MM:SS>]\n"
@@ -9839,4 +9841,23 @@ do_delete_overlay(int argc, char *argv[], const char *use)
 	status = dladm_overlay_delete(handle, linkid);
 	if (status != DLADM_STATUS_OK)
 		die_dlerr(status, "failed to delete %s", argv[1]);
+}
+
+static void
+do_show_overlay(int argc, char *argv[], const char *use)
+{
+	datalink_id_t	linkid = DATALINK_ALL_LINKID;
+	dladm_status_t	status;
+
+	if (argc != 2) {
+		usage();
+	}
+
+	status = dladm_name2info(handle, argv[1], &linkid, NULL, NULL, NULL);
+	if (status != DLADM_STATUS_OK)
+		die_dlerr(status, "failed to find %s", argv[1]);
+
+	status = dladm_overlay_show(handle, linkid);
+	if (status != DLADM_STATUS_OK)
+		die_dlerr(status, "failed to show %s", argv[1]);
 }

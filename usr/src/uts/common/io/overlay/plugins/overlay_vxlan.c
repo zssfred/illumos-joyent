@@ -44,7 +44,8 @@
 
 static const char *vxlan_ident = "vxlan";
 static uint16_t vxlan_defport = 4789;
-char *vxlan_ip = "::ffff:0.0.0.0";
+static struct in6_addr vxlan_defip;
+static char *vxlan_ip = "::ffff:0.0.0.0";
 
 static const char *vxlan_props[] = {
 	"vxlan/listen_ip",
@@ -68,7 +69,7 @@ vxlan_o_init(void **outp)
 	*outp = vxl;
 	mutex_init(&vxl->vxl_lock, NULL, MUTEX_DRIVER, NULL);
 	vxl->vxl_lport = vxlan_defport;
-	(void) inet_pton(AF_INET6, vxlan_ip, &vxl->vxl_laddr);
+	bcopy(&vxlan_defip, &vxl->vxl_laddr, sizeof (struct in6_addr));
 
 	return (0);
 }
@@ -156,20 +157,67 @@ vxlan_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 }
 
 static int
-vxlan_o_getprop(void *arg, const char *pr_name, void *buf, size_t *bufsize)
+vxlan_o_getprop(void *arg, const char *pr_name, void *buf, uint32_t *bufsize)
+{
+	vxlan_t *vxl = arg;
+
+	/* vxlan/listen_ip */
+	if (strcmp(pr_name, vxlan_props[0]) == 0) {
+		if (*bufsize < sizeof (struct in6_addr))
+			return (EOVERFLOW);
+
+		mutex_enter(&vxl->vxl_lock);
+		bcopy(&vxl->vxl_laddr, buf, sizeof (struct in6_addr));
+		*bufsize = sizeof (struct in6_addr);
+		mutex_exit(&vxl->vxl_lock);
+		return (0);
+	}
+
+	/* vxlan/listen_port */
+	if (strcmp(pr_name, vxlan_props[1]) == 0) {
+		if (*bufsize < sizeof (uint16_t))
+			return (EOVERFLOW);
+
+		mutex_enter(&vxl->vxl_lock);
+		bcopy(&vxl->vxl_lport, buf, sizeof (uint16_t));
+		*bufsize = sizeof (uint16_t);
+		mutex_exit(&vxl->vxl_lock);
+		return (0);
+	}
+
+	return (EINVAL);
+}
+
+static int
+vxlan_o_setprop(void *arg, const char *pr_name, const void *buf,
+    uint32_t bufsize)
 {
 	return (EINVAL);
 }
 
 static int
-vxlan_o_setprop(void *arg, const char *pr_name, const void *buf, size_t bufsize)
+vxlan_o_propinfo(void *arg, const char *pr_name, overlay_prop_handle_t phdl)
 {
-	return (EINVAL);
-}
+	/* vxlan/listen_ip */
+	if (strcmp(pr_name, vxlan_props[0]) == 0) {
+		overlay_prop_set_name(phdl, vxlan_props[0]);
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_IP);
+		overlay_prop_set_default(phdl, &vxlan_defip,
+		    sizeof (struct in6_addr));
+		return (0);
+	}
 
-static int
-vxlan_o_propinfo(void *arg, const char *pr_name, mac_prop_info_handle_t prh)
-{
+	if (strcmp(pr_name, vxlan_props[1]) == 0) {
+		overlay_prop_set_name(phdl, vxlan_props[1]);
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_default(phdl, &vxlan_defport,
+		    sizeof (vxlan_defport));
+		overlay_prop_set_range_uint16(phdl, 1, UINT16_MAX);
+		return (0);
+	}
+
 	return (EINVAL);
 }
 
@@ -200,6 +248,8 @@ _init(void)
 {
 	int err;
 	overlay_plugin_register_t *ovrp;
+
+	(void) inet_pton(AF_INET6, vxlan_ip, &vxlan_defip);
 
 	ovrp = overlay_plugin_alloc(OVEP_VERSION);
 	if (ovrp == NULL)

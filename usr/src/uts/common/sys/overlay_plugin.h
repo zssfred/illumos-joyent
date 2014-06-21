@@ -73,6 +73,8 @@ typedef struct ovep_encap_info {
  * argument turn into a void * and add a create and destroy endpoint that gets
  * given the corresponding mac handle.
  */
+typedef struct __overlay_prop_handle *overlay_prop_handle_t;
+
 typedef int (*overlay_plugin_encap_t)(void *, mblk_t *,
     ovep_encap_info_t *, mblk_t **);
 typedef int (*overlay_plugin_decap_t)(void *, mblk_t *,
@@ -81,11 +83,12 @@ typedef int (*overlay_plugin_init_t)(void **);
 typedef void (*overlay_plugin_fini_t)(void *);
 typedef int (*overlay_plugin_socket_t)(void *, int *, int *, int *,
     struct sockaddr *, socklen_t *);
-typedef int (*overlay_plugin_getprop_t)(void *, const char *, void *, size_t *);
+typedef int (*overlay_plugin_getprop_t)(void *, const char *, void *,
+    uint32_t *);
 typedef int (*overlay_plugin_setprop_t)(void *, const char *, const void *,
-    size_t);
+    uint32_t);
 typedef int (*overlay_plugin_propinfo_t)(void *, const char *,
-    mac_prop_info_handle_t);
+    overlay_prop_handle_t);
 
 typedef struct overlay_plugin_ops {
 	uint_t			ovpo_callbacks;
@@ -126,6 +129,24 @@ extern overlay_plugin_register_t *overlay_plugin_alloc(uint_t);
 extern void overlay_plugin_free(overlay_plugin_register_t *);
 extern int overlay_plugin_register(overlay_plugin_register_t *);
 extern int overlay_plugin_unregister(const char *);
+
+/*
+ * Property information callbacks
+ */
+typedef enum overlay_prop_prot {
+	OVERLAY_PROP_PERM_READ	= 0x1,
+	OVERLAY_PROP_PERM_WRITE	= 0x2,
+	OVERLAY_PROP_PERM_RW 	= 0x3
+} overlay_prop_prot_t;
+
+extern void overlay_prop_set_name(overlay_prop_handle_t, const char *);
+extern void overlay_prop_set_prot(overlay_prop_handle_t, overlay_prop_prot_t);
+extern void overlay_prop_set_type(overlay_prop_handle_t, overlay_prop_type_t);
+extern int overlay_prop_set_default(overlay_prop_handle_t, void *, ssize_t);
+extern void overlay_prop_set_nodefault(overlay_prop_handle_t);
+extern void overlay_prop_set_range_uint16(overlay_prop_handle_t, uint16_t,
+    uint16_t);
+extern void overlay_prop_set_range_str(overlay_prop_handle_t, const char *);
 
 #ifdef __cplusplus
 }

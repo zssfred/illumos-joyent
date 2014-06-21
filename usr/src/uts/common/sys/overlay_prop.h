@@ -25,9 +25,10 @@ extern "C" {
 #endif
 
 typedef enum overlay_prop_type {
-	OVERLAY_PROP_T_INT = 0x1,
-	OVERLAY_PROP_T_IP,
-	OVERLAY_PROP_T_STRING
+	OVERLAY_PROP_T_INT = 0x1,	/* signed int */
+	OVERLAY_PROP_T_UINT,		/* unsigned int */
+	OVERLAY_PROP_T_IP,		/* sinaddr6 */
+	OVERLAY_PROP_T_STRING		/* OVERLAY_PROPS_SIZEMAX */
 } overlay_prop_type_t;
 
 typedef struct overlay_prop {
@@ -35,8 +36,8 @@ typedef struct overlay_prop {
 	overlay_prop_type_t ovpr_type;
 	void *ovpr_val;
 	ssize_t ovpr_size;
-	const void *ovpr_default;
-	const ssize_t ovpr_defsize;
+	void *ovpr_default;
+	ssize_t ovpr_defsize;
 } overlay_prop_t;
 
 #define	OVERLAY_TBL_NPROPS(x)	(sizeof (x) / sizeof (overlay_prop_t))

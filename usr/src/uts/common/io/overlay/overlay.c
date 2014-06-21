@@ -45,17 +45,25 @@
 static kmutex_t overlay_dev_lock;
 static list_t overlay_dev_list;
 static dev_info_t *overlay_dip;
-static uint8_t overlay_xxx_macaddr[ETHERADDRL] =
+static uint8_t overlay_macaddr[ETHERADDRL] =
 	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 char *dest_ip = "::ffff:10.88.88.00";
 
+typedef enum overlay_dev_prop {
+	OVERLAY_DEV_P_MTU = 0,
+	OVERLAY_DEV_P_VNETID,
+	OVERLAY_DEV_P_ENCAP,
+	OVERLAY_DEV_P_VARPDID
+} overlay_dev_prop_t;
+
 static const char *overlay_dev_props[] = {
 	"mtu",
 	"vnetid",
-	"encap"
+	"encap",
+	"varpd/id"
 };
-#define	OVERLAY_DEV_NPROPS	3
+#define	OVERLAY_DEV_NPROPS	4
 
 static overlay_dev_t *
 overlay_hold_by_dlid(datalink_id_t id)
@@ -70,7 +78,7 @@ overlay_hold_by_dlid(datalink_id_t id)
 			o->odd_ref++;
 			mutex_exit(&o->odd_lock);
 			mutex_exit(&overlay_dev_lock);
-			return (0);
+			return (o);
 		}
 	}
 
@@ -285,7 +293,7 @@ overlay_valid_name(const char *name, size_t buflen)
 }
 
 static int
-overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
+overlay_i_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 {
 	int err;
 	uint64_t maxid;
@@ -360,7 +368,7 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	 * should be used here, but saying that we're not ethernet is going to
 	 * cause its own problems.
 	 */
-	mac->m_src_addr = overlay_xxx_macaddr;
+	mac->m_src_addr = overlay_macaddr;
 
 	/*
 	 * XXX These should come from the underlying device that we've been
@@ -442,7 +450,7 @@ overlay_ioc_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 }
 
 static int
-overlay_ioc_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
+overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 {
 	overlay_ioc_delete_t *oidp = karg;
 	overlay_dev_t *odd;
@@ -502,7 +510,7 @@ overlay_ioc_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 }
 
 static int
-overlay_ioc_nprops(void *karg, intptr_t arg, int mode, cred_t *cred,
+overlay_i_nprops(void *karg, intptr_t arg, int mode, cred_t *cred,
     int *rvalp)
 {
 	overlay_dev_t *odd;
@@ -518,21 +526,196 @@ overlay_ioc_nprops(void *karg, intptr_t arg, int mode, cred_t *cred,
 }
 
 static int
-overlay_ioc_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
-    int *rvalp)
+overlay_propinfo_plugin_cb(overlay_plugin_t *opp, void *arg)
 {
+	overlay_prop_handle_t phdl = arg;
+	overlay_prop_set_range_str(phdl, opp->ovp_name);
 	return (0);
 }
 
 static int
-overlay_ioc_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
+overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
     int *rvalp)
 {
+	overlay_dev_t *odd;
+	const char *pname;
+	int ret;
+	uint_t propid = UINT_MAX;
+	overlay_ioc_propinfo_t *oip = karg;
+	overlay_prop_handle_t phdl = (overlay_prop_handle_t)oip;
+
+	odd = overlay_hold_by_dlid(oip->oipi_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	/*
+	 * If the id is -1, then the property that we're looking for is named in
+	 * oipi_name and we should fill in its id. Otherwise, we've been given
+	 * an id and we need to turn that into a name for our plugin's sake. The
+	 * id is our own fabrication for property discovery.
+	 */
+	if (oip->oipi_id == -1) {
+		int i;
+
+		/*
+		 * Determine if it's a known generic property or it belongs to a
+		 * module by checking against the list of known names.
+		 */
+		oip->oipi_name[OVERLAY_PROP_NAMELEN-1] = '\0';
+		for (i = 0; i < OVERLAY_DEV_NPROPS; i++) {
+			if (strcmp(overlay_dev_props[i], oip->oipi_name) == 0) {
+				break;
+			}
+
+			if (i == OVERLAY_DEV_NPROPS) {
+				ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(
+				    odd->odd_pvoid, oip->oipi_name,
+				    (overlay_prop_handle_t)oip);
+				overlay_hold_rele(odd);
+				return (ret);
+			}
+
+			propid = i;
+		}
+	} else if (oip->oipi_id >= OVERLAY_DEV_NPROPS) {
+		uint_t id = oip->oipi_id - OVERLAY_DEV_NPROPS;
+
+		if (id >= odd->odd_plugin->ovp_nprops) {
+			overlay_hold_rele(odd);
+			return (EINVAL);
+		}
+		ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(
+		    odd->odd_pvoid, odd->odd_plugin->ovp_props[id],
+		    (overlay_prop_handle_t)oip);
+		overlay_hold_rele(odd);
+		return (ret);
+	} else if (oip->oipi_id < -1) {
+		overlay_hold_rele(odd);
+		return (EINVAL);
+	} else {
+		ASSERT(oip->oipi_id < OVERLAY_DEV_NPROPS);
+		ASSERT(oip->oipi_id >= 0);
+		propid = oip->oipi_id;
+		(void) strlcpy(oip->oipi_name, overlay_dev_props[propid],
+		    sizeof (oip->oipi_name));
+	}
+
+	switch (propid) {
+	case OVERLAY_DEV_P_MTU:
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_nodefault(phdl);
+		break;
+	case OVERLAY_DEV_P_VNETID:
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_nodefault(phdl);
+		break;
+	case OVERLAY_DEV_P_ENCAP:
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_READ);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_STRING);
+		overlay_prop_set_nodefault(phdl);
+		overlay_plugin_walk(overlay_propinfo_plugin_cb, phdl);
+		break;
+	case OVERLAY_DEV_P_VARPDID:
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_READ);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_nodefault(phdl);
+		break;
+	default:
+		overlay_hold_rele(odd);
+		return (ENOENT);
+	}
+
+	overlay_hold_rele(odd);
 	return (0);
 }
 
 static int
-overlay_ioc_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
+overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
+    int *rvalp)
+{
+	int ret;
+	overlay_dev_t *odd;
+	overlay_ioc_prop_t *oip = karg;
+	uint_t propid;
+
+	odd = overlay_hold_by_dlid(oip->oip_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	oip->oip_size = OVERLAY_PROP_SIZEMAX;
+	oip->oip_name[OVERLAY_PROP_NAMELEN-1] = '\0';
+	if (oip->oip_id == -1) {
+		int i;
+
+		for (i = 0; i < OVERLAY_DEV_NPROPS; i++) {
+			if (strcmp(overlay_dev_props[i], oip->oip_name) == 0)
+				break;
+			if (i == OVERLAY_DEV_NPROPS) {
+				ret = odd->odd_plugin->ovp_ops->ovpo_getprop(
+				    odd->odd_pvoid, oip->oip_name,
+				    oip->oip_value, &oip->oip_size);
+				overlay_hold_rele(odd);
+				return (ret);
+			}
+		}
+
+		propid = i;
+	} else if (oip->oip_id >= OVERLAY_DEV_NPROPS) {
+		uint_t id = oip->oip_id - OVERLAY_DEV_NPROPS;
+
+		if (id > odd->odd_plugin->ovp_nprops) {
+			overlay_hold_rele(odd);
+			return (EINVAL);
+		}
+		ret = odd->odd_plugin->ovp_ops->ovpo_getprop(odd->odd_pvoid,
+		    odd->odd_plugin->ovp_props[id], oip->oip_value,
+		    &oip->oip_size);
+		overlay_hold_rele(odd);
+		return (ret);
+	} else if (oip->oip_id < -1) {
+		overlay_hold_rele(odd);
+		return (EINVAL);
+	} else {
+		ASSERT(oip->oip_id < OVERLAY_DEV_NPROPS);
+		ASSERT(oip->oip_id >= 0);
+		propid = oip->oip_id;
+	}
+
+	ret = 0;
+	switch (propid) {
+	case OVERLAY_DEV_P_MTU:
+		mutex_enter(&odd->odd_lock);
+		bcopy(&odd->odd_mtu, oip->oip_value, sizeof (uint_t));
+		oip->oip_size = sizeof (uint_t);
+		mutex_exit(&odd->odd_lock);
+		break;
+	case OVERLAY_DEV_P_VNETID:
+		/* XXX WTF is the protection here? */
+		bcopy(&odd->odd_vid, oip->oip_value, sizeof (uint64_t));
+		oip->oip_size = sizeof (uint64_t);
+		break;
+	case OVERLAY_DEV_P_ENCAP:
+		oip->oip_size = strlcpy((char *)oip->oip_value,
+		    odd->odd_plugin->ovp_name, oip->oip_size);
+		break;
+	case OVERLAY_DEV_P_VARPDID: {
+		uint64_t varpd = 42;
+		bcopy(&varpd, oip->oip_value, sizeof (uint64_t));
+		oip->oip_size = sizeof (uint64_t);
+		break;
+	}
+	default:
+		ret = ENOENT;
+	}
+
+	overlay_hold_rele(odd);
+	return (ret);
+}
+
+static int
+overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
     int *rvalp)
 {
 	return (0);
@@ -540,20 +723,20 @@ overlay_ioc_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 
 static dld_ioc_info_t overlay_ioc_list[] = {
 	{ OVERLAY_IOC_CREATE, DLDCOPYIN, sizeof (overlay_ioc_create_t),
-		overlay_ioc_create, secpolicy_dl_config },
+		overlay_i_create, secpolicy_dl_config },
 	{ OVERLAY_IOC_DELETE, DLDCOPYIN, sizeof (overlay_ioc_delete_t),
-		overlay_ioc_delete, secpolicy_dl_config },
+		overlay_i_delete, secpolicy_dl_config },
 	{ OVERLAY_IOC_PROPINFO, DLDCOPYIN | DLDCOPYOUT,
-		sizeof (overlay_ioc_propinfo_t), overlay_ioc_propinfo,
+		sizeof (overlay_ioc_propinfo_t), overlay_i_propinfo,
 		secpolicy_dl_config },
 	{ OVERLAY_IOC_GETPROP, DLDCOPYIN | DLDCOPYOUT,
-		sizeof (overlay_ioc_prop_t), overlay_ioc_getprop,
+		sizeof (overlay_ioc_prop_t), overlay_i_getprop,
 		secpolicy_dl_config },
 	{ OVERLAY_IOC_SETPROP, DLDCOPYIN,
-		sizeof (overlay_ioc_prop_t), overlay_ioc_setprop,
+		sizeof (overlay_ioc_prop_t), overlay_i_setprop,
 		secpolicy_dl_config },
 	{ OVERLAY_IOC_NPROPS, DLDCOPYIN | DLDCOPYOUT,
-		sizeof (overlay_ioc_prop_t), overlay_ioc_nprops,
+		sizeof (overlay_ioc_nprops_t), overlay_i_nprops,
 		secpolicy_dl_config }
 };
 
