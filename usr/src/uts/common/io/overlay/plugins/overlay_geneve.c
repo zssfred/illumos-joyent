@@ -31,7 +31,7 @@ static const char *geneve_props[] = {
 };
 
 static int
-geneve_o_init(void **outp)
+geneve_o_init(overlay_handle_t oh, void **outp)
 {
 	*outp = NULL;
 	return (0);

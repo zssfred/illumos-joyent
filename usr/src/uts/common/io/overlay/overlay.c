@@ -34,6 +34,7 @@
 #include <sys/dls.h>
 #include <sys/dld_ioc.h>
 #include <sys/mac_provider.h>
+#include <sys/mac_client_priv.h>
 #include <sys/mac_ether.h>
 #include <sys/vlan.h>
 /* XXX Should we really need this? */
@@ -95,6 +96,39 @@ overlay_hold_rele(overlay_dev_t *odd)
 	mutex_exit(&odd->odd_lock);
 }
 
+void
+overlay_io_start(overlay_dev_t *odd, overlay_dev_flag_t flag)
+{
+	ASSERT(flag == OVERLAY_F_IN_RX || flag == OVERLAY_F_IN_TX);
+	ASSERT(MUTEX_HELD(&odd->odd_lock));
+	ASSERT((odd->odd_flags & flag) == 0);
+
+	/* XXX Stat tracking */
+	odd->odd_flags |= flag;
+}
+
+void
+overlay_io_done(overlay_dev_t *odd, overlay_dev_flag_t flag)
+{
+	ASSERT(flag == OVERLAY_F_IN_RX || flag == OVERLAY_F_IN_TX);
+	ASSERT(MUTEX_HELD(&odd->odd_lock));
+	ASSERT((odd->odd_flags & flag) == flag);
+
+	/* XXX Stat tracking */
+	odd->odd_flags &= ~flag;
+}
+
+static void
+overlay_io_wait(overlay_dev_t *odd, overlay_dev_flag_t flag)
+{
+	ASSERT((flag & ~OVERLAY_F_IOMASK) == 0);
+	ASSERT(MUTEX_HELD(&odd->odd_lock));
+
+	while (odd->odd_flags & flag) {
+		cv_wait(&odd->odd_iowait, &odd->odd_lock);
+	}
+}
+
 static int
 overlay_m_stat(void *arg, uint_t stat, uint64_t *val)
 {
@@ -114,10 +148,6 @@ overlay_m_start(void *arg)
 	struct sockaddr_storage storage;
 	socklen_t slen;
 
-	/*
-	 * XXX Serialization around odd
-	 */
-
 	ret = odd->odd_plugin->ovp_ops->ovpo_socket(odd->odd_pvoid, &domain,
 	    &family, &prot, (struct sockaddr *)&storage, &slen);
 	if (ret != 0)
@@ -130,6 +160,10 @@ overlay_m_start(void *arg)
 
 	overlay_mux_add_dev(mux, odd);
 	odd->odd_mux = mux;
+	mutex_enter(&odd->odd_lock);
+	ASSERT(!(odd->odd_flags & OVERLAY_F_ACTIVE));
+	odd->odd_flags |= OVERLAY_F_ACTIVE;
+	mutex_exit(&odd->odd_lock);
 
 	return (0);
 }
@@ -140,10 +174,25 @@ overlay_m_stop(void *arg)
 	overlay_dev_t *odd = arg;
 
 	/*
-	 * XXX Serialization around odd
+	 * The MAC Perimeter is held here, so we don't have to worry about
+	 * synchornizing this with respect to metadata operations.
 	 */
+	mutex_enter(&odd->odd_lock);
+	VERIFY(odd->odd_flags & OVERLAY_F_ACTIVE);
+	VERIFY(!(odd->odd_flags & OVERLAY_F_MDDROP));
+	odd->odd_flags |= OVERLAY_F_MDDROP;
+	overlay_io_wait(odd, OVERLAY_F_IOMASK);
+	mutex_exit(&odd->odd_lock);
+
+	overlay_mux_remove_dev(odd->odd_mux, odd);
 	overlay_mux_close(odd->odd_mux);
 	odd->odd_mux = NULL;
+
+	mutex_enter(&odd->odd_lock);
+	odd->odd_flags &= ~OVERLAY_F_ACTIVE;
+	odd->odd_flags &= ~OVERLAY_F_MDDROP;
+	VERIFY(odd->odd_flags == 0);
+	mutex_exit(&odd->odd_lock);
 }
 
 static int
@@ -185,6 +234,17 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 	struct msghdr hdr;
 	struct sockaddr_in6 in6;
 
+	mutex_enter(&odd->odd_lock);
+	if ((odd->odd_flags & OVERLAY_F_MDDROP) ||
+	    !(odd->odd_flags & OVERLAY_F_ACTIVE)) {
+		/* XXX Stats, etc. */
+		mutex_exit(&odd->odd_lock);
+		freemsgchain(mp_chain);
+		return (NULL);
+	}
+	overlay_io_start(odd, OVERLAY_F_IN_TX);
+	mutex_exit(&odd->odd_lock);
+
 	/* XXX The header should be dynamic... */
 	bzero(&hdr, sizeof (struct msghdr));
 	bzero(&in6, sizeof (struct sockaddr_in6));
@@ -207,18 +267,22 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 		    &einfo, &ep);
 		if (ret != 0 || ep == NULL) {
 			freemsg(mp);
-			return (mp_chain);
+			goto out;
 		}
 
 		ep->b_cont = mp;
 		ret = overlay_mux_tx(odd->odd_mux, &hdr, ep);
 		if (ret != 0)
-			return (mp_chain);
+			goto out;
 
 		mp = mp_chain;
 	}
 
-	return (NULL);
+out:
+	mutex_enter(&odd->odd_lock);
+	overlay_io_done(odd, OVERLAY_F_IN_TX);
+	mutex_exit(&odd->odd_lock);
+	return (mp_chain);
 }
 
 static void
@@ -313,7 +377,8 @@ overlay_i_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 		/* XXX Better errno */
 		return (ENOENT);
 	}
-	err = odd->odd_plugin->ovp_ops->ovpo_init(&odd->odd_pvoid);
+	err = odd->odd_plugin->ovp_ops->ovpo_init((overlay_handle_t)odd,
+	    &odd->odd_pvoid);
 	if (err != 0) {
 		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 		overlay_plugin_rele(odd->odd_plugin);
@@ -442,7 +507,9 @@ overlay_i_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	}
 
 	mutex_init(&odd->odd_lock, NULL, MUTEX_DRIVER, NULL);
+	cv_init(&odd->odd_iowait, NULL, CV_DRIVER, NULL);
 	odd->odd_ref = 0;
+	odd->odd_flags = 0;
 	list_insert_tail(&overlay_dev_list, odd);
 	mutex_exit(&overlay_dev_lock);
 
@@ -457,22 +524,27 @@ overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	datalink_id_t tid;
 	int ret;
 
-	mutex_enter(&overlay_dev_lock);
-
-	for (odd = list_head(&overlay_dev_list); odd != NULL;
-	    odd = list_next(&overlay_dev_list, odd)) {
-		if (odd->odd_linkid == oidp->oid_linkid)
-			break;
-	}
+	/*
+	 * XXX Need to better understand the semantics of what gld is doing with
+	 * respect to our data structure... This probably needs to be entirely
+	 * reworked.
+	 */
+	odd = overlay_hold_by_dlid(oidp->oid_linkid);
 	if (odd == NULL) {
-		mutex_exit(&overlay_dev_lock);
 		return (ENOENT);
 	}
 
 	mutex_enter(&odd->odd_lock);
-	if (odd->odd_ref != 0) {
+	/* If we're not the only hold, we're busy */
+	if (odd->odd_ref != 1) {
 		mutex_exit(&odd->odd_lock);
-		mutex_exit(&overlay_dev_lock);
+		overlay_hold_rele(odd);
+		return (EBUSY);
+	}
+
+	if (odd->odd_flags & OVERLAY_F_ACTIVE) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
 		return (EBUSY);
 	}
 
@@ -486,7 +558,7 @@ overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	 */
 	ret = dls_devnet_destroy(odd->odd_mh, &tid, B_TRUE);
 	if (ret != 0) {
-		mutex_exit(&overlay_dev_lock);
+		overlay_hold_rele(odd);
 		return (ret);
 	}
 
@@ -495,13 +567,16 @@ overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	if (ret != 0) {
 		(void) dls_devnet_create(odd->odd_mh, odd->odd_linkid,
 		    crgetzoneid(cred));
-		mutex_exit(&overlay_dev_lock);
+		overlay_hold_rele(odd);
 		return (ret);
 	}
 
+	mutex_enter(&overlay_dev_lock);
 	list_remove(&overlay_dev_list, odd);
 	mutex_exit(&overlay_dev_lock);
 
+	cv_destroy(&odd->odd_iowait);
+	mutex_destroy(&odd->odd_lock);
 	odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 	overlay_plugin_rele(odd->odd_plugin);
 	kmem_free(odd, sizeof (overlay_dev_t));
@@ -692,8 +767,14 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 		mutex_exit(&odd->odd_lock);
 		break;
 	case OVERLAY_DEV_P_VNETID:
-		/* XXX WTF is the protection here? */
+		/*
+		 * While it's read-only while inside of a mux, we're not in a
+		 * context that can guarantee that. Therefore we always grab the
+		 * overlay_dev_t's odd_lock.
+		 */
+		mutex_enter(&odd->odd_lock);
 		bcopy(&odd->odd_vid, oip->oip_value, sizeof (uint64_t));
+		mutex_exit(&odd->odd_lock);
 		oip->oip_size = sizeof (uint64_t);
 		break;
 	case OVERLAY_DEV_P_ENCAP:
@@ -714,11 +795,132 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	return (ret);
 }
 
+static void
+overlay_setprop_vnetid(overlay_dev_t *odd, uint64_t vnetid)
+{
+	mutex_enter(&odd->odd_lock);
+
+	/* Simple case, not active */
+	if (!(odd->odd_flags & OVERLAY_F_ACTIVE)) {
+		odd->odd_vid = vnetid;
+		mutex_exit(&odd->odd_lock);
+		return;
+	}
+
+	/*
+	 * In the hard case, we need to set the drop flag, quiesce I/O and then
+	 * we can go ahead and do everything.
+	 */
+	odd->odd_flags |= OVERLAY_F_MDDROP;
+	overlay_io_wait(odd, OVERLAY_F_IOMASK);
+	mutex_exit(&odd->odd_lock);
+
+	overlay_mux_remove_dev(odd->odd_mux, odd);
+	mutex_enter(&odd->odd_lock);
+	odd->odd_vid = vnetid;
+	mutex_exit(&odd->odd_lock);
+	overlay_mux_add_dev(odd->odd_mux, odd);
+
+	mutex_enter(&odd->odd_lock);
+	ASSERT(odd->odd_flags & OVERLAY_F_ACTIVE);
+	odd->odd_flags &= ~OVERLAY_F_ACTIVE;
+	mutex_exit(&odd->odd_lock);
+}
+
 static int
 overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
     int *rvalp)
 {
-	return (0);
+	int ret;
+	overlay_dev_t *odd;
+	overlay_ioc_prop_t *oip = karg;
+	uint_t propid = UINT_MAX;
+	mac_perim_handle_t mph;
+	uint64_t maxid, *vidp;
+
+	odd = overlay_hold_by_dlid(oip->oip_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	if (oip->oip_size > OVERLAY_PROP_SIZEMAX)
+		return (EINVAL);
+
+	mac_perim_enter_by_mh(odd->odd_mh, &mph);
+	oip->oip_name[OVERLAY_PROP_NAMELEN-1] = '\0';
+	if (oip->oip_id == -1) {
+		int i;
+
+		for (i = 0; i < OVERLAY_DEV_NPROPS; i++) {
+			if (strcmp(overlay_dev_props[i], oip->oip_name) == 0)
+				break;
+			if (i == OVERLAY_DEV_NPROPS) {
+				ret = odd->odd_plugin->ovp_ops->ovpo_setprop(
+				    odd->odd_pvoid, oip->oip_name,
+				    oip->oip_value, oip->oip_size);
+				overlay_hold_rele(odd);
+				mac_perim_exit(mph);
+				return (ret);
+			}
+		}
+
+		propid = i;
+	} else if (oip->oip_id >= OVERLAY_DEV_NPROPS) {
+		uint_t id = oip->oip_id - OVERLAY_DEV_NPROPS;
+
+		if (id > odd->odd_plugin->ovp_nprops) {
+			mac_perim_exit(mph);
+			overlay_hold_rele(odd);
+			return (EINVAL);
+		}
+		ret = odd->odd_plugin->ovp_ops->ovpo_setprop(odd->odd_pvoid,
+		    odd->odd_plugin->ovp_props[id], oip->oip_value,
+		    oip->oip_size);
+		mac_perim_exit(mph);
+		overlay_hold_rele(odd);
+		return (ret);
+	} else if (oip->oip_id < -1) {
+		mac_perim_exit(mph);
+		overlay_hold_rele(odd);
+		return (EINVAL);
+	} else {
+		ASSERT(oip->oip_id < OVERLAY_DEV_NPROPS);
+		ASSERT(oip->oip_id >= 0);
+		propid = oip->oip_id;
+	}
+
+	ret = 0;
+	switch (propid) {
+	case OVERLAY_DEV_P_MTU:
+		ret = EPERM;
+		break;
+	case OVERLAY_DEV_P_VNETID:
+		if (oip->oip_size != sizeof (uint64_t)) {
+			ret = EINVAL;
+			break;
+		}
+		vidp = (uint64_t *)oip->oip_value;
+		ASSERT(odd->odd_plugin->ovp_id_size <= 8);
+		maxid = UINT64_MAX;
+		if (odd->odd_plugin->ovp_id_size != 8)
+			maxid = (1ULL << (odd->odd_plugin->ovp_id_size * 8)) -
+			    1ULL;
+		if (*vidp >= maxid) {
+			ret = EINVAL;
+			break;
+		}
+		overlay_setprop_vnetid(odd, *vidp);
+		break;
+	case OVERLAY_DEV_P_ENCAP:
+	case OVERLAY_DEV_P_VARPDID:
+		ret = EPERM;
+		break;
+	default:
+		ret = ENOENT;
+	}
+
+	mac_perim_exit(mph);
+	overlay_hold_rele(odd);
+	return (ret);
 }
 
 static dld_ioc_info_t overlay_ioc_list[] = {

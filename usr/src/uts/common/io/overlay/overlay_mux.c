@@ -167,14 +167,30 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 		od.odd_vid = infop.ovdi_id;
 		mutex_enter(&mux->omux_lock);
 		odd = avl_find(&mux->omux_devices, &od, NULL);
-		mutex_exit(&mux->omux_lock);
 		if (odd == NULL) {
+			mutex_exit(&mux->omux_lock);
 			OVERLAY_FREEMSG(mp, "no matching vid");
 			freemsg(mp);
 			continue;
 		}
+		mutex_enter(&odd->odd_lock);
+		if ((odd->odd_flags & OVERLAY_F_MDDROP) ||
+		    !(odd->odd_flags & OVERLAY_F_ACTIVE)) {
+			mutex_exit(&odd->odd_lock);
+			mutex_exit(&mux->omux_lock);
+			OVERLAY_FREEMSG(mp, "dev dropped");
+			freemsg(mp);
+			continue;
+		}
+		overlay_io_start(odd, OVERLAY_F_IN_RX);
+		mutex_exit(&odd->odd_lock);
+		mutex_exit(&mux->omux_lock);
 
 		mac_rx(odd->odd_mh, NULL, mp);
+
+		mutex_enter(&odd->odd_lock);
+		overlay_io_done(odd, OVERLAY_F_IN_RX);
+		mutex_exit(&odd->odd_lock);
 	}
 
 	return (B_TRUE);

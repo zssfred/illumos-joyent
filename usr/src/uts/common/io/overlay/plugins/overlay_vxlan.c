@@ -56,18 +56,20 @@ static const char *vxlan_props[] = {
 /* XXX Should we do locking or let the higher level do it for us? */
 typedef struct vxlan {
 	kmutex_t vxl_lock;
+	overlay_handle_t vxl_oh;
 	uint16_t vxl_lport;
 	struct in6_addr vxl_laddr;
 } vxlan_t;
 
 static int
-vxlan_o_init(void **outp)
+vxlan_o_init(overlay_handle_t oh, void **outp)
 {
 	vxlan_t *vxl;
 
 	vxl = kmem_alloc(sizeof (vxlan_t), KM_SLEEP);
 	*outp = vxl;
 	mutex_init(&vxl->vxl_lock, NULL, MUTEX_DRIVER, NULL);
+	vxl->vxl_oh = oh;
 	vxl->vxl_lport = vxlan_defport;
 	bcopy(&vxlan_defip, &vxl->vxl_laddr, sizeof (struct in6_addr));
 

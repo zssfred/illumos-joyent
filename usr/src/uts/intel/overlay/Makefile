@@ -30,6 +30,11 @@ MAPFILE		= $(UTSBASE)/common/io/overlay/overlay.mapfile
 
 LDFLAGS += -dy -Nmisc/mac -Ndrv/dld -Nmisc/dls -Nmisc/ksocket
 
+#
+# To ease development
+#
+CERRWARN	+= -_gcc=-Wno-unused-variable
+
 .KEEP_STATE:
 
 def:            $(DEF_DEPS)

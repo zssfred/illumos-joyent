@@ -74,12 +74,17 @@ typedef struct ovep_encap_info {
  * given the corresponding mac handle.
  */
 typedef struct __overlay_prop_handle *overlay_prop_handle_t;
+typedef struct __overlay_handle *overlay_handle_t;
 
+/*
+ * Plugins are guaranteed that calls to setprop are serialized. However, any
+ * number of calls can be going on in parallel otherwise.
+ */
 typedef int (*overlay_plugin_encap_t)(void *, mblk_t *,
     ovep_encap_info_t *, mblk_t **);
 typedef int (*overlay_plugin_decap_t)(void *, mblk_t *,
     ovep_encap_info_t *);
-typedef int (*overlay_plugin_init_t)(void **);
+typedef int (*overlay_plugin_init_t)(overlay_handle_t, void **);
 typedef void (*overlay_plugin_fini_t)(void *);
 typedef int (*overlay_plugin_socket_t)(void *, int *, int *, int *,
     struct sockaddr *, socklen_t *);
@@ -147,6 +152,11 @@ extern void overlay_prop_set_nodefault(overlay_prop_handle_t);
 extern void overlay_prop_set_range_uint16(overlay_prop_handle_t, uint16_t,
     uint16_t);
 extern void overlay_prop_set_range_str(overlay_prop_handle_t, const char *);
+
+/*
+ * Callbacks that should be made -- without locks held by the user.
+ */
+
 
 #ifdef __cplusplus
 }

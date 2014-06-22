@@ -40,9 +40,8 @@ static const char *nvgre_props[] = {
 };
 
 static int
-nvgre_o_init(void **outp)
+nvgre_o_init(overlay_handle_t oh, void **outp)
 {
-	int ret;
 	nvgre_t *nvg;
 
 	nvg = kmem_alloc(sizeof (nvgre_t), KM_SLEEP);
@@ -141,7 +140,8 @@ static struct overlay_plugin_ops nvgre_o_ops = {
 	nvgre_o_init,
 	nvgre_o_fini,
 	nvgre_o_encap,
-	nvgre_o_decap
+	nvgre_o_decap,
+	nvgre_o_socket
 };
 
 static struct modlmisc nvgre_modlmisc = {
