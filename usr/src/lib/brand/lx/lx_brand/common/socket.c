@@ -123,7 +123,7 @@ static struct {
 
 /*
  * What follows are a series of tables we use to translate Linux constants
- * into equivalent Solaris constants and back again.  I wish this were
+ * into equivalent Illumos constants and back again.  I wish this were
  * cleaner, more programmatic, and generally nicer.  Sadly, life is messy,
  * and Unix networking even more so.
  */
@@ -153,31 +153,87 @@ static const int ltos_socktype[LX_SOCK_PACKET + 1] = {
  * Linux socket option type definitions
  *
  * The protocol `levels` are well defined (see in.h) The option values are
- * not so well defined. Linux often uses different values to Solaris
+ * not so well defined. Linux often uses different values vs. Illumos
  * although they mean the same thing. For example, IP_TOS in Linux is
- * defined as value 1 but in Solaris it is defined as value 3. This table
+ * defined as value 1 but in Illumos it is defined as value 3. This table
  * maps all the Protocol levels to their options and maps them between
- * Linux and Solaris and vice versa.  Hence the reason for the complexity.
+ * Linux and Illumos and vice versa.  Hence the reason for the complexity.
  */
 
 typedef struct lx_proto_opts {
-	const int *proto;	/* Linux to Solaris mapping table */
+	const int *proto;	/* Linux to Illumos mapping table */
 	int maxentries;		/* max entries in this table */
 } lx_proto_opts_t;
 
 #define	OPTNOTSUP	-1	/* we don't support it */
 
-static const int ltos_ip_sockopts[LX_IP_DROP_MEMBERSHIP + 1] = {
-	OPTNOTSUP, IP_TOS, IP_TTL, IP_HDRINCL,
-	IP_OPTIONS, OPTNOTSUP, IP_RECVOPTS, IP_RETOPTS,
-	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	IP_RECVTTL, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	IP_MULTICAST_IF, IP_MULTICAST_TTL, IP_MULTICAST_LOOP,
-	IP_ADD_MEMBERSHIP, IP_DROP_MEMBERSHIP
+/*
+ * Linux					Illumos
+ * -----					-------
+ * IP_TOS                     1			IP_TOS      3
+ * IP_TTL                     2			IP_TTL      4
+ * IP_HDRINCL                 3			IP_HDRINCL  2
+ * IP_OPTIONS                 4			IP_OPTIONS  1
+ * IP_ROUTER_ALERT            5
+ * IP_RECVOPTS                6			IP_RECVOPTS 5
+ * IP_RETOPTS                 7			IP_RETOPTS  8
+ * IP_PKTINFO                 8
+ * IP_PKTOPTIONS              9
+ * IP_MTU_DISCOVER            10		emulated for traceroute
+ * IP_RECVERR                 11		emulated for traceroute
+ * IP_RECVTTL                 12		IP_RECVTTL  11
+ * IP_RECVTOS                 13
+ * IP_MTU                     14
+ * IP_FREEBIND                15
+ * IP_IPSEC_POLICY            16
+ * IP_XFRM_POLICY             17
+ * IP_PASSSEC                 18
+ * IP_TRANSPARENT             19
+ * IP_ORIGDSTADDR             20
+ * IP_MINTTL                  21
+ * IP_NODEFRAG                22
+ *
+ *    apparent gap
+ *
+ * IP_MULTICAST_IF            32		IP_MULTICAST_IF    16
+ * IP_MULTICAST_TTL           33		IP_MULTICAST_TTL   17
+ * IP_MULTICAST_LOOP          34		IP_MULTICAST_LOOP  18
+ * IP_ADD_MEMBERSHIP          35		IP_ADD_MEMBERSHIP  19
+ * IP_DROP_MEMBERSHIP         36		IP_DROP_MEMBERSHIP 20
+ * IP_UNBLOCK_SOURCE          37		IP_UNBLOCK_SOURCE  22
+ * IP_BLOCK_SOURCE            38		IP_BLOCK_SOURCE    21
+ * IP_ADD_SOURCE_MEMBERSHIP   39		IP_ADD_SOURCE_MEMBERSHIP 23
+ * IP_DROP_SOURCE_MEMBERSHIP  40		IP_DROP_SOURCE_MEMBERSHIP 24
+ * IP_MSFILTER                41
+ * MCAST_JOIN_GROUP           42		-> MCAST_JOIN_GROUP
+ * MCAST_BLOCK_SOURCE         43		-> MCAST_BLOCK_SOURCE
+ * MCAST_UNBLOCK_SOURCE       44		-> MCAST_UNBLOCK_SOURCE
+ * MCAST_LEAVE_GROUP          45		-> MCAST_LEAVE_GROUP
+ * MCAST_JOIN_SOURCE_GROUP    46		-> MCAST_JOIN_SOURCE_GROUP
+ * MCAST_LEAVE_SOURCE_GROUP   47		-> MCAST_LEAVE_SOURCE_GROUP
+ * MCAST_MSFILTER             48
+ * IP_MULTICAST_ALL           49
+ * IP_UNICAST_IF              50
+ *
+ * The Illumos options preceeded by '->' can be added but we might also need
+ * emulation to convert the ip_mreq_source struct.
+ */
+static const int ltos_ip_sockopts[LX_IP_UNICAST_IF + 1] = {
+	OPTNOTSUP, IP_TOS, IP_TTL, IP_HDRINCL,			/* 3 */
+	IP_OPTIONS, OPTNOTSUP, IP_RECVOPTS, IP_RETOPTS,		/* 7 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 11 */
+	IP_RECVTTL, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 15 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 19 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 23 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 27 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 31 */
+	IP_MULTICAST_IF, IP_MULTICAST_TTL,			/* 33 */
+	IP_MULTICAST_LOOP, IP_ADD_MEMBERSHIP,			/* 35 */
+	IP_DROP_MEMBERSHIP, IP_UNBLOCK_SOURCE,			/* 37 */
+	IP_BLOCK_SOURCE, IP_ADD_SOURCE_MEMBERSHIP,		/* 39 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 43 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 47 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP				/* 50 */
 };
 
 static const int ltos_tcp_sockopts[LX_TCP_QUICKACK + 1] = {
@@ -200,46 +256,96 @@ static const int ltos_igmp_sockopts[IGMP_MTRACE + 1] = {
 	IGMP_MTRACE_RESP, IGMP_MTRACE
 };
 
-static const int ltos_socket_sockopts[LX_SO_ACCEPTCONN + 1] = {
-	OPTNOTSUP,	SO_DEBUG,	SO_REUSEADDR,	SO_TYPE,
-	SO_ERROR,	SO_DONTROUTE,	SO_BROADCAST,	SO_SNDBUF,
-	SO_RCVBUF,	SO_KEEPALIVE,	SO_OOBINLINE,	OPTNOTSUP,
-	OPTNOTSUP,	SO_LINGER,	OPTNOTSUP,	OPTNOTSUP,
-	OPTNOTSUP,	OPTNOTSUP,	SO_RCVLOWAT,	SO_SNDLOWAT,
-	SO_RCVTIMEO,	SO_SNDTIMEO,	OPTNOTSUP,	OPTNOTSUP,
-	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,
-	OPTNOTSUP,	OPTNOTSUP,	SO_ACCEPTCONN
+/*
+ * Socket option mapping:
+ *
+ * Linux				Illumos
+ * -----				-------
+ * SO_DEBUG               1		SO_DEBUG       0x0001
+ * SO_REUSEADDR           2		SO_REUSEADDR   0x0004
+ * SO_TYPE                3		SO_TYPE        0x1008
+ * SO_ERROR               4		SO_ERROR       0x1007
+ * SO_DONTROUTE           5		SO_DONTROUTE   0x0010
+ * SO_BROADCAST           6		SO_BROADCAST   0x0020
+ * SO_SNDBUF              7		SO_SNDBUF      0x1001
+ * SO_RCVBUF              8		SO_RCVBUF      0x1002
+ * SO_KEEPALIVE           9		SO_KEEPALIVE   0x0008
+ * SO_OOBINLINE          10		SO_OOBINLINE   0x0100
+ * SO_NO_CHECK           11
+ * SO_PRIORITY           12
+ * SO_LINGER             13		SO_LINGER      0x0080
+ * SO_BSDCOMPAT          14		ignored by linux, emulation returns 0
+ * SO_REUSEPORT          15
+ * SO_PASSCRED           16		SO_RECVUCRED   0x0400
+ * SO_PEERCRED           17		emulated with getpeerucred
+ * SO_RCVLOWAT           18		SO_RCVLOWAT    0x1004
+ * SO_SNDLOWAT           19		SO_SNDLOWAT    0x1003
+ * SO_RCVTIMEO           20		SO_RCVTIMEO    0x1006
+ * SO_SNDTIMEO           21		SO_SNDTIMEO    0x1005
+ * SO_SECURITY_AUTHENTICATION       22
+ * SO_SECURITY_ENCRYPTION_TRANSPORT 23
+ * SO_SECURITY_ENCRYPTION_NETWORK   24
+ * SO_BINDTODEVICE       25
+ * SO_ATTACH_FILTER      26		SO_ATTACH_FILTER 0x40000001
+ * SO_DETACH_FILTER      27		SO_DETACH_FILTER 0x40000002
+ * SO_PEERNAME           28
+ * SO_TIMESTAMP          29		SO_TIMESTAMP    0x1013
+ * SO_ACCEPTCONN         30		SO_ACCEPTCONN   0x0002
+ * SO_PEERSEC            31
+ * SO_SNDBUFFORCE        32
+ * SO_RCVBUFFORCE        33
+ * SO_PASSSEC            34
+ * SO_TIMESTAMPNS        35
+ * SO_MARK               36
+ * SO_TIMESTAMPING       37
+ * SO_PROTOCOL           38		SO_PROTOTYPE    0x1009
+ * SO_DOMAIN             39		SO_DOMAIN       0x100c
+ * SO_RXQ_OVFL           40
+ * SO_WIFI_STATUS        41
+ * SO_PEEK_OFF           42
+ * SO_NOFCS              43
+ * SO_LOCK_FILTER        44
+ * SO_SELECT_ERR_QUEUE   45
+ * SO_BUSY_POLL          46
+ * SO_MAX_PACING_RATE    47
+ * SO_BPF_EXTENSIONS     48
+ */
+static const int ltos_socket_sockopts[LX_SO_BPF_EXTENSIONS + 1] = {
+	OPTNOTSUP,	SO_DEBUG,	SO_REUSEADDR,	SO_TYPE,	/* 3 */
+	SO_ERROR,	SO_DONTROUTE,	SO_BROADCAST,	SO_SNDBUF,	/* 7 */
+	SO_RCVBUF,	SO_KEEPALIVE,	SO_OOBINLINE,	OPTNOTSUP,	/* 11 */
+	OPTNOTSUP,	SO_LINGER,	OPTNOTSUP,	OPTNOTSUP,	/* 15 */
+	SO_RECVUCRED,	OPTNOTSUP,	SO_RCVLOWAT,	SO_SNDLOWAT,	/* 19 */
+	SO_RCVTIMEO,	SO_SNDTIMEO,	OPTNOTSUP,	OPTNOTSUP,	/* 23 */
+	OPTNOTSUP,	OPTNOTSUP, SO_ATTACH_FILTER, SO_DETACH_FILTER,	/* 27 */
+	OPTNOTSUP,	SO_TIMESTAMP,	SO_ACCEPTCONN,	OPTNOTSUP,	/* 31 */
+	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,	/* 35 */
+	OPTNOTSUP,	OPTNOTSUP,	SO_PROTOTYPE,	SO_DOMAIN,	/* 39 */
+	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,	/* 43 */
+	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,	OPTNOTSUP,	/* 47 */
+	OPTNOTSUP							/* 48 */
+};
+
+/*
+ * See the Linux raw.7 man page for description of the socket options.
+ *    In Linux ICMP_FILTER is defined as 1 in include/uapi/linux/icmp.h
+ */
+static const int ltos_raw_sockopts[LX_ICMP_FILTER + 1] = {
+	OPTNOTSUP, OPTNOTSUP
 };
 
 #define	PROTO_SOCKOPTS(opts)    \
 	{ (opts), sizeof ((opts)) / sizeof ((opts)[0]) }
 
 /*
- * The main Linux to Solaris protocol to options mapping table
- * IPPROTO_TAB_SIZE can be set up to IPPROTO_MAX. All entries above
- * IPPROTO_TAB_SIZE are in effect not implemented,
+ * [gs]etsockopt options mapping tables
  */
-
-#define	IPPROTO_TAB_SIZE	8
-
-static const lx_proto_opts_t ltos_proto_opts[IPPROTO_TAB_SIZE] = {
-	/* IPPROTO_IP		0 */
-	PROTO_SOCKOPTS(ltos_ip_sockopts),
-	/* SOL_SOCKET		1 */
-	PROTO_SOCKOPTS(ltos_socket_sockopts),
-	/* IPPROTO_IGMP		2 */
-	PROTO_SOCKOPTS(ltos_igmp_sockopts),
-	/* NOT IMPLEMENTED	3 */
-	{ NULL, 0 },
-	/* NOT IMPLEMENTED	4 */
-	{ NULL, 0 },
-	/* NOT IMPLEMENTED	5 */
-	{ NULL, 0 },
-	/* IPPROTO_TCP		6 */
-	PROTO_SOCKOPTS(ltos_tcp_sockopts),
-	/* NOT IMPLEMENTED	7 */
-	{ NULL, 0 }
-};
+static lx_proto_opts_t ip_sockopts_tbl = PROTO_SOCKOPTS(ltos_ip_sockopts);
+static lx_proto_opts_t socket_sockopts_tbl =
+    PROTO_SOCKOPTS(ltos_socket_sockopts);
+static lx_proto_opts_t igmp_sockopts_tbl = PROTO_SOCKOPTS(ltos_igmp_sockopts);
+static lx_proto_opts_t tcp_sockopts_tbl = PROTO_SOCKOPTS(ltos_tcp_sockopts);
+static lx_proto_opts_t raw_sockopts_tbl = PROTO_SOCKOPTS(ltos_raw_sockopts);
 
 /*
  * Lifted from socket.h, since these definitions are contained within
@@ -280,9 +386,14 @@ convert_cmsgs(int direction, struct lx_msghdr *msg, char *caller)
 {
 	struct cmsghdr *cmsg, *last;
 	int err = 0;
+	int level = 0;
+	int type = 0;
 
 	cmsg = CMSG_FIRSTHDR(msg);
 	while (cmsg != NULL && err == 0) {
+		level = cmsg->cmsg_level;
+		type = cmsg->cmsg_type;
+
 		if (direction == LX_TO_SOL) {
 			if (cmsg->cmsg_level == LX_SOL_SOCKET) {
 				cmsg->cmsg_level = SOL_SOCKET;
@@ -290,6 +401,8 @@ convert_cmsgs(int direction, struct lx_msghdr *msg, char *caller)
 					cmsg->cmsg_type = SCM_RIGHTS;
 				else if (cmsg->cmsg_type == LX_SCM_CRED)
 					cmsg->cmsg_type = SCM_UCRED;
+				else if (cmsg->cmsg_type == LX_SCM_TIMESTAMP)
+					cmsg->cmsg_type = SCM_TIMESTAMP;
 				else
 					err = ENOTSUP;
 			} else {
@@ -302,6 +415,8 @@ convert_cmsgs(int direction, struct lx_msghdr *msg, char *caller)
 					cmsg->cmsg_type = LX_SCM_RIGHTS;
 				else if (cmsg->cmsg_type == SCM_UCRED)
 					cmsg->cmsg_type = LX_SCM_CRED;
+				else if (cmsg->cmsg_type == SCM_TIMESTAMP)
+					cmsg->cmsg_type = LX_SCM_TIMESTAMP;
 				else
 					err = ENOTSUP;
 			} else {
@@ -313,8 +428,8 @@ convert_cmsgs(int direction, struct lx_msghdr *msg, char *caller)
 		cmsg = CMSG_NXTHDR(msg, last);
 	}
 	if (err)
-		lx_unsupported("Unsupported socket control message in %s\n.",
-		    caller);
+		lx_unsupported("Unsupported socket control message %d "
+		    "(%d) in %s\n.", type, level, caller);
 
 	return (err);
 }
@@ -553,7 +668,7 @@ convert_sock_args(int in_dom, int in_type, int in_protocol, int *out_dom,
 }
 
 static int
-convert_sockflags(int lx_flags)
+convert_sockflags(int lx_flags, char *call)
 {
 	int solaris_flags = 0;
 
@@ -578,8 +693,7 @@ convert_sockflags(int lx_flags)
 	}
 
 	if (lx_flags & LX_MSG_PROXY) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_PROXY flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_PROXY", call);
 		lx_flags &= ~LX_MSG_PROXY;
 	}
 
@@ -604,32 +718,31 @@ convert_sockflags(int lx_flags)
 	}
 
 	if (lx_flags & LX_MSG_FIN) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_FIN flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_FIN", call);
 		lx_flags &= ~LX_MSG_FIN;
 	}
 
 	if (lx_flags & LX_MSG_SYN) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_SYN flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_SYN", call);
 		lx_flags &= ~LX_MSG_SYN;
 	}
 
 	if (lx_flags & LX_MSG_CONFIRM) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_CONFIRM set");
+		/*
+		 * See the Linux arp.7 and sendmsg.2 man pages. We can ignore
+		 * this option.
+		 */
 		lx_flags &= ~LX_MSG_CONFIRM;
 	}
 
 	if (lx_flags & LX_MSG_RST) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_RST flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_RST", call);
 		lx_flags &= ~LX_MSG_RST;
 	}
 
 	if (lx_flags & LX_MSG_ERRQUEUE) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_ERRQUEUE flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_ERRQUEUE",
+		    call);
 		lx_flags &= ~LX_MSG_ERRQUEUE;
 	}
 
@@ -639,31 +752,31 @@ convert_sockflags(int lx_flags)
 	}
 
 	if (lx_flags & LX_MSG_MORE) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_MORE flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_MORE", call);
 		lx_flags &= ~LX_MSG_MORE;
 	}
 
 	if (lx_flags & LX_MSG_WAITFORONE) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_WAITFORONE flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_WAITFORONE",
+		    call);
 		lx_flags &= ~LX_MSG_WAITFORONE;
 	}
 
 	if (lx_flags & LX_MSG_FASTOPEN) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_FASTOPEN flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_FASTOPEN",
+		    call);
 		lx_flags &= ~LX_MSG_FASTOPEN;
 	}
 
 	if (lx_flags & LX_MSG_CMSG_CLOEXEC) {
-		lx_unsupported("Unsupported "
-		    "socket operation with MSG_CMSG_CLOEXEC flag set");
+		lx_unsupported("%s: unsupported socket flag MSG_CMSG_CLOEXEC",
+		    call);
 		lx_flags &= ~LX_MSG_CMSG_CLOEXEC;
 	}
 
 	if (lx_flags != 0)
-		lx_unsupported("unknown socket flag(s) set 0x%x", lx_flags);
+		lx_unsupported("%s: unknown socket flag(s) 0x%x", lx_flags,
+		    call);
 
 	return (solaris_flags);
 }
@@ -1067,7 +1180,7 @@ lx_send(ulong_t *args)
 
 	lx_debug("\tsend(%d, 0x%p, 0x%d, 0x%x)", sockfd, buf, len, flags);
 
-	flags = convert_sockflags(flags);
+	flags = convert_sockflags(flags, "send");
 
 	/*
 	 * If nosigpipe is set, we want to emulate the Linux action of
@@ -1114,7 +1227,7 @@ lx_recv(ulong_t *args)
 
 	lx_debug("\trecv(%d, 0x%p, 0x%d, 0x%x)", sockfd, buf, len, flags);
 
-	flags = convert_sockflags(flags);
+	flags = convert_sockflags(flags, "recv");
 
 	/*
 	 * If nosigpipe is set, we want to emulate the Linux action of
@@ -1180,7 +1293,7 @@ lx_sendto(ulong_t *args)
 	lx_debug("\tsendto(%d, 0x%p, 0x%d, 0x%x, 0x%x, %d)", sockfd, buf, len,
 	    flags, to, tolen);
 
-	flags = convert_sockflags(flags);
+	flags = convert_sockflags(flags, "sendto");
 
 	/*
 	 * Return this error if we try to write to our emulated netlink
@@ -1248,7 +1361,7 @@ lx_recvfrom(ulong_t *args)
 	lx_debug("\trecvfrom(%d, 0x%p, 0x%d, 0x%x, 0x%x, 0x%p)", sockfd, buf,
 	    len, flags, from, from_lenp);
 
-	flags = convert_sockflags(flags);
+	flags = convert_sockflags(flags, "recvfrom");
 
 	/*
 	 * If nosigpipe is set, we want to emulate the Linux action of
@@ -1294,6 +1407,21 @@ lx_shutdown(ulong_t *args)
 	return ((r < 0) ? -errno : r);
 }
 
+static lx_proto_opts_t *
+get_proto_opt_tbl(int level)
+{
+	switch (level) {
+	case LX_IPPROTO_IP:	return (&ip_sockopts_tbl);
+	case LX_SOL_SOCKET:	return (&socket_sockopts_tbl);
+	case LX_IPPROTO_IGMP:	return (&igmp_sockopts_tbl);
+	case LX_IPPROTO_TCP:	return (&tcp_sockopts_tbl);
+	case LX_IPPROTO_RAW:	return (&raw_sockopts_tbl);
+	default:
+		lx_unsupported("Unsupported sockopt level %d", level);
+		return (NULL);
+	}
+}
+
 static int
 lx_setsockopt(ulong_t *args)
 {
@@ -1304,6 +1432,8 @@ lx_setsockopt(ulong_t *args)
 	int optlen = (int)args[4];
 	int internal_opt;
 	int r;
+	lx_proto_opts_t *proto_opts;
+	boolean_t converted = B_FALSE;
 
 	lx_debug("\tsetsockopt(%d, %d, %d, 0x%p, %d)", sockfd, level, optname,
 	    optval, optlen);
@@ -1315,58 +1445,96 @@ lx_setsockopt(ulong_t *args)
 	if (optval == NULL)
 		return (-EFAULT);
 
-	/*
-	 * Do a table lookup of the Solaris equivalent of the given option
-	 */
-	if (level < IPPROTO_IP || level >= IPPROTO_TAB_SIZE) {
-		lx_unsupported("Unsupported sockopt level %d", level);
+	if ((proto_opts = get_proto_opt_tbl(level)) == NULL)
+		return (-ENOPROTOOPT);
+
+	if (optname <= 0 || optname >= proto_opts->maxentries) {
+		lx_unsupported("Unsupported sockopt %d, proto %d", optname,
+		    level);
 		return (-ENOPROTOOPT);
 	}
 
-	if (ltos_proto_opts[level].maxentries == 0 ||
-	    optname <= 0 || optname >= (ltos_proto_opts[level].maxentries)) {
-		lx_unsupported("Unsupported sockopt %d %d", level, optname);
-		return (-ENOPROTOOPT);
-	}
-
-	/*
-	 * Linux sets this option when it wants to send credentials over a
-	 * socket. Currently we just ignore it to make Linux programs happy.
-	 */
-	if ((level == LX_SOL_SOCKET) && (optname == LX_SO_PASSCRED)) {
-		lx_unsupported("Unsupported socket option SO_PASSCRED");
-		return (0);
-	}
-
-
-	if ((level == IPPROTO_TCP) && (optname == LX_TCP_CORK)) {
+	if (level == LX_IPPROTO_IP) {
 		/*
-		 * TCP_CORK is a Linux-only option that instructs the TCP
-		 * stack not to send out partial frames.  Solaris doesn't
-		 * include this option but some apps require it.  So, we do
-		 * our best to emulate the option by disabling TCP_NODELAY.
-		 * If the app requests that we disable TCP_CORK, we just
-		 * ignore it since enabling TCP_NODELAY may be
-		 * overcompensating.
+		 * Ping sets this option to receive errors on raw sockets.
+		 * Currently we just ignore it to make ping happy. From the
+		 * Linux ip.7 man page:
+		 *    For raw sockets, IP_RECVERR enables passing of all
+		 *    received ICMP errors to the application.
 		 */
-		optname = TCP_NODELAY;
-		if (optlen != sizeof (int))
-			return (-EINVAL);
-		if (uucopy(optval, &internal_opt, sizeof (int)) != 0)
-			return (-errno);
-		if (internal_opt == 0)
+		if (optname == LX_IP_RECVERR &&
+		    strcmp(lx_cmd_name, "ping") == 0)
 			return (0);
-		internal_opt = 1;
-		optval = &internal_opt;
-	} else {
-		optname = ltos_proto_opts[level].proto[optname];
 
-		if (optname == OPTNOTSUP)
-			return (-ENOPROTOOPT);
+		if (optname == LX_IP_RECVERR &&
+		    strcmp(lx_cmd_name, "traceroute") == 0)
+			return (0);
+
+		if (optname == LX_IP_MTU_DISCOVER &&
+		    strcmp(lx_cmd_name, "traceroute") == 0) {
+			/*
+			 * The native traceroute uses IP_DONTFRAG. Set this
+			 * and ignore LX_IP_MTU_DISCOVER for traceroute.
+			 */
+			optname = IP_DONTFRAG;
+			converted = B_TRUE;
+		}
+
+	} else if (level == LX_SOL_SOCKET) {
+		/* Linux ignores this option. */
+		if (optname == LX_SO_BSDCOMPAT)
+			return (0);
+
+		level = SOL_SOCKET;
+
+	} else if (level == LX_IPPROTO_TCP) {
+		if (optname == LX_TCP_CORK) {
+			/*
+			 * TCP_CORK is a Linux-only option that instructs the
+			 * TCP stack not to send out partial frames. Illumos
+			 * doesn't include this option but some apps require
+			 * it. So, we do our best to emulate the option by
+			 * disabling TCP_NODELAY. If the app requests that we
+			 * disable TCP_CORK, we just ignore it since enabling
+			 * TCP_NODELAY may be overcompensating.
+			 */
+			optname = TCP_NODELAY;
+			if (optlen != sizeof (int))
+				return (-EINVAL);
+			if (uucopy(optval, &internal_opt, sizeof (int)) != 0)
+				return (-errno);
+			if (internal_opt == 0)
+				return (0);
+			internal_opt = 1;
+			optval = &internal_opt;
+
+			converted = B_TRUE;
+		}
+
+	} else if (level == LX_IPPROTO_RAW) {
+		/*
+		 * Ping sets this option. Currently we just ignore it to make
+		 * ping happy.
+		 */
+		if (optname == LX_ICMP_FILTER &&
+		    strcmp(lx_cmd_name, "ping") == 0)
+			return (0);
 	}
 
-	if (level == LX_SOL_SOCKET)
-		level = SOL_SOCKET;
+	if (!converted) {
+		int orig_optname = optname;
+
+		/*
+		 * Do a table lookup of the Illumos equivalent of the given
+		 * option.
+		 */
+		optname = proto_opts->proto[optname];
+		if (optname == OPTNOTSUP) {
+			lx_unsupported("unsupported sockopt %d, proto %d",
+			    orig_optname, level);
+			return (-ENOPROTOOPT);
+		}
+	}
 
 	r = setsockopt(sockfd, level, optname, optval, optlen);
 
@@ -1382,6 +1550,8 @@ lx_getsockopt(ulong_t *args)
 	void *optval = (void *)args[3];
 	int *optlenp = (int *)args[4];
 	int r;
+	int orig_optname;
+	lx_proto_opts_t *proto_opts;
 
 	lx_debug("\tgetsockopt(%d, %d, %d, 0x%p, 0x%p)", sockfd, level, optname,
 	    optval, optlenp);
@@ -1394,23 +1564,17 @@ lx_getsockopt(ulong_t *args)
 	if (optval == NULL)
 		return (-EFAULT);
 
-	/*
-	 * Do a table lookup of the Solaris equivalent of the given option
-	 */
-	if (level < IPPROTO_IP || level >= IPPROTO_TAB_SIZE)
-		return (-EOPNOTSUPP);
-
-	if (ltos_proto_opts[level].maxentries == 0 ||
-	    optname <= 0 || optname >= (ltos_proto_opts[level].maxentries))
+	if ((proto_opts = get_proto_opt_tbl(level)) == NULL)
 		return (-ENOPROTOOPT);
 
-	if (((level == LX_SOL_SOCKET) && (optname == LX_SO_PASSCRED)) ||
-	    ((level == IPPROTO_TCP) && (optname == LX_TCP_CORK))) {
+	if (optname <= 0 || optname >= (proto_opts->maxentries)) {
+		lx_unsupported("Unsupported sockopt %d, proto %d", optname,
+		    level);
+		return (-ENOPROTOOPT);
+	}
+
+	if ((level == LX_IPPROTO_TCP) && (optname == LX_TCP_CORK)) {
 		/*
-		 * Linux sets LX_SO_PASSCRED when it wants to send credentials
-		 * over a socket. Since we do not support it, it is never set
-		 * and we return 0.
-		 *
 		 * We don't support TCP_CORK but some apps rely on it.  So,
 		 * rather than return an error we just return 0.  This
 		 * isn't exactly a lie, since this option really isn't set,
@@ -1466,10 +1630,14 @@ lx_getsockopt(ulong_t *args)
 		return (0);
 	}
 
-	optname = ltos_proto_opts[level].proto[optname];
+	orig_optname = optname;
 
-	if (optname == OPTNOTSUP)
+	optname = proto_opts->proto[optname];
+	if (optname == OPTNOTSUP) {
+		lx_unsupported("unsupported sockopt %d, proto %d",
+		    orig_optname, level);
 		return (-ENOPROTOOPT);
+	}
 
 	if (level == LX_SOL_SOCKET)
 		level = SOL_SOCKET;
@@ -1501,7 +1669,7 @@ lx_sendmsg(ulong_t *args)
 
 	lx_debug("\tsendmsg(%d, 0x%p, 0x%x)", sockfd, (void *)args[1], flags);
 
-	flags = convert_sockflags(flags);
+	flags = convert_sockflags(flags, "sendmsg");
 
 	if ((uucopy((void *)args[1], &msg, sizeof (msg))) != 0)
 		return (-errno);
@@ -1582,7 +1750,7 @@ lx_recvmsg(ulong_t *args)
 
 	lx_debug("\trecvmsg(%d, 0x%p, 0x%x)", sockfd, msgp, flags);
 
-	flags = convert_sockflags(flags);
+	flags = convert_sockflags(flags, "recvmsg");
 
 	if ((uucopy(msgp, &msg, sizeof (msg))) != 0)
 		return (-errno);

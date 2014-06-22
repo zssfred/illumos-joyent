@@ -98,6 +98,7 @@ static int stol_errno[] = {
 };
 
 char lx_release[LX_VERS_MAX];
+char lx_cmd_name[MAXNAMLEN];
 
 /*
  * Map a linux locale ending string to the solaris equivalent.
@@ -125,7 +126,9 @@ struct lx_locale_ending {
  */
 int lx_traceflag;
 
-#define	NOSYS_NULL		1
+/* Offsets for nosys_msgs */
+#define	NOSYS_NULL		0
+#define	NOSYS_NONE		1
 #define	NOSYS_NO_EQUIV		2
 #define	NOSYS_KERNEL		3
 #define	NOSYS_UNDOC		4
@@ -141,7 +144,7 @@ int lx_traceflag;
 #define	SYS_PASSTHRU		5
 
 static char *nosys_msgs[] = {
-	"Either not yet done, or we haven't come up with an excuse",
+	"Not done yet",
 	"No such Linux system call",
 	"No equivalent Solaris functionality",
 	"Reads/modifies Linux kernel state",
@@ -339,6 +342,7 @@ lx_unsupported(char *msg, ...)
 {
 	va_list	ap;
 	char dmsg[256];
+	int lastc;
 
 	assert(msg != NULL);
 
@@ -347,6 +351,9 @@ lx_unsupported(char *msg, ...)
 	/* LINTED [possible expansion issues] */
 	(void) vsnprintf(dmsg, sizeof (dmsg), msg, ap);
 	dmsg[255] = '\0';
+	lastc = strlen(dmsg) - 1;
+	if (dmsg[lastc] == '\n')
+		dmsg[lastc] = '\0';
 	(void) syscall(SYS_brand, B_UNSUPPORTED, dmsg);
 	va_end(ap);
 
@@ -668,6 +675,7 @@ lx_init(int argc, char *argv[], char *envp[])
 		lx_debug("VERBOSE mode enabled.\n");
 	}
 
+	(void) strlcpy(lx_cmd_name, basename(argv[0]), sizeof (lx_cmd_name));
 	lx_debug("executing linux process: %s", argv[0]);
 	lx_debug("branding myself and setting handler to 0x%p",
 	    (void *)lx_handler_table);
@@ -927,7 +935,7 @@ IN_KERNEL_SYSCALL(get_thread_area, 244)
 IN_KERNEL_SYSCALL(set_tid_address, 258)
 
 static struct lx_sysent sysents[] = {
-	{"nosys",	NULL,		NOSYS_NULL,	0},	/*  0 */
+	{"nosys",	NULL,		NOSYS_NONE,	0},	/*  0 */
 	{"exit",	lx_exit,	0,		1},	/*  1 */
 	{"fork",	lx_fork,	0,		0},	/*  2 */
 	{"read",	lx_read,	0,		3},	/*  3 */

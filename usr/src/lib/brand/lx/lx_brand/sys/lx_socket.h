@@ -103,6 +103,15 @@ extern "C" {
 #define	SOCK_INVAL		-2
 
 /*
+ * IP Protocol levels. Some of these match the Illumos IPPROTO_* values.
+ */
+#define	LX_IPPROTO_IP		0
+#define	LX_IPPROTO_ICMP		1
+#define	LX_IPPROTO_IGMP		2
+#define	LX_IPPROTO_TCP		6
+#define	LX_IPPROTO_RAW		255
+
+/*
  * Options for use with [gs]etsockopt at the IP level.
  * IPPROTO_IP
  */
@@ -121,11 +130,33 @@ extern "C" {
 #define	LX_IP_RECVTOS		13
 #define	LX_IP_MTU		14
 #define	LX_IP_FREEBIND		15
+#define	LX_IP_IPSEC_POLICY	16
+#define	LX_IP_XFRM_POLICY	17
+#define	LX_IP_PASSSEC		18
+#define	LX_IP_TRANSPARENT	19
+#define	LX_IP_ORIGDSTADDR	20
+#define	LX_IP_MINTTL		21
+#define	LX_IP_NODEFRAG		22
+/* Linux apparently leaves a gap here */
 #define	LX_IP_MULTICAST_IF	32
 #define	LX_IP_MULTICAST_TTL	33
 #define	LX_IP_MULTICAST_LOOP	34
 #define	LX_IP_ADD_MEMBERSHIP	35
 #define	LX_IP_DROP_MEMBERSHIP	36
+#define	LX_IP_UNBLOCK_SOURC	37
+#define	LX_IP_BLOCK_SOURCE	38
+#define	LX_IP_ADD_SOURCE_MEMBERSHIP 39
+#define	LX_IP_DROP_SOURCE_MEMBERSHIP 40
+#define	LX_IP_MSFILTER		41
+#define	LX_MCAST_JOIN_GROUP	42
+#define	LX_MCAST_BLOCK_SOURCE	43
+#define	LX_MCAST_UNBLOCK_SOURCE	44
+#define	LX_MCAST_LEAVE_GROUP	45
+#define	LX_MCAST_JOIN_SOURCE_GROUP 46
+#define	LX_MCAST_LEAVE_SOURCE_GROUP 47
+#define	LX_MCAST_MSFILTER	48
+#define	LX_IP_MULTICAST_ALL	49
+#define	LX_IP_UNICAST_IF	50
 
 /*
  * Options for use with [gs]etsockopt at the TCP level.
@@ -182,7 +213,11 @@ extern "C" {
 #define	LX_SO_PRIORITY				12
 #define	LX_SO_LINGER				13
 #define	LX_SO_BSDCOMPAT				14
-/* To add :#define	LX_SO_REUSEPORT 15 */
+#define	LX_SO_REUSEPORT				15
+/*
+ * For Linux see unix(7) man page SO_PASSCRED description. For Illumos see
+ * socket.h(3HEAD) man page SO_RECVUCRED description.
+ */
 #define	LX_SO_PASSCRED				16
 #define	LX_SO_PEERCRED				17
 #define	LX_SO_RCVLOWAT				18
@@ -201,6 +236,34 @@ extern "C" {
 #define	LX_SO_TIMESTAMP				29
 #define	LX_SCM_TIMESTAMP			LX_SO_TIMESTAMP
 #define	LX_SO_ACCEPTCONN			30
+
+#define	LX_SO_PEERSEC				31
+#define	LX_SO_SNDBUFFORCE			32
+#define	LX_SO_RCVBUFFORCE			33
+#define	LX_SO_PASSSEC				34
+#define	LX_SO_TIMESTAMPNS			35
+#define	LX_SCM_TIMESTAMPNS			LX_SO_TIMESTAMPNS
+#define	LX_SO_MARK				36
+#define	LX_SO_TIMESTAMPING			37
+#define	LX_SCM_TIMESTAMPING			LX_SO_TIMESTAMPING
+#define	LX_SO_PROTOCOL				38
+#define	LX_SO_DOMAIN				39
+#define	LX_SO_RXQ_OVFL				40
+#define	LX_SO_WIFI_STATUS			41
+#define	LX_SCM_WIFI_STATUS			LX_SO_WIFI_STATUS
+#define	LX_SO_PEEK_OFF				42
+#define	LX_SO_NOFCS				43
+#define	LX_SO_LOCK_FILTER			44
+#define	LX_SO_SELECT_ERR_QUEUE			45
+#define	LX_SO_BUSY_POLL				46
+#define	LX_SO_MAX_PACING_RATE			47
+#define	LX_SO_BPF_EXTENSIONS			48
+
+/*
+ * Options for use with [gs]etsockopt at the RAW level.
+ * IPPROTO_RAW
+ */
+#define	LX_ICMP_FILTER				1
 
 /*
  * Linux socketcall indices.
