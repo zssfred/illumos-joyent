@@ -618,7 +618,10 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 	uint_t propid = UINT_MAX;
 	overlay_ioc_propinfo_t *oip = karg;
 	overlay_prop_handle_t phdl = (overlay_prop_handle_t)oip;
+	mac_propval_range_t *rangep = (mac_propval_range_t *)oip->oipi_poss;
+	oip->oipi_posssize = sizeof (mac_propval_range_t);
 
+	bzero(rangep, sizeof (mac_propval_range_t));
 	odd = overlay_hold_by_dlid(oip->oipi_linkid);
 	if (odd == NULL)
 		return (ENOENT);
@@ -644,8 +647,7 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 
 			if (i == OVERLAY_DEV_NPROPS) {
 				ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(
-				    odd->odd_pvoid, oip->oipi_name,
-				    (overlay_prop_handle_t)oip);
+				    oip->oipi_name, (overlay_prop_handle_t)oip);
 				overlay_hold_rele(odd);
 				return (ret);
 			}
@@ -660,7 +662,7 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 			return (EINVAL);
 		}
 		ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(
-		    odd->odd_pvoid, odd->odd_plugin->ovp_props[id],
+		    odd->odd_plugin->ovp_props[id],
 		    (overlay_prop_handle_t)oip);
 		overlay_hold_rele(odd);
 		return (ret);

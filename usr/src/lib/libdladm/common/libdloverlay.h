@@ -22,15 +22,24 @@
 
 #include <libdladm.h>
 #include <libdladm_impl.h>
+#include <sys/overlay.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern dladm_status_t	dladm_overlay_create(dladm_handle_t, const char *,
+extern dladm_status_t dladm_overlay_create(dladm_handle_t, const char *,
     const char *, uint64_t, uint32_t);
-extern dladm_status_t	dladm_overlay_delete(dladm_handle_t, datalink_id_t);
-extern dladm_status_t	dladm_overlay_show(dladm_handle_t, datalink_id_t);
+extern dladm_status_t dladm_overlay_delete(dladm_handle_t, datalink_id_t);
+
+typedef int (*dladm_prop_f)(dladm_handle_t, datalink_id_t,
+    overlay_ioc_propinfo_t *, void *);
+extern dladm_status_t dladm_overlay_walk_prop(dladm_handle_t, datalink_id_t,
+    dladm_prop_f, void *arg);
+extern dladm_status_t dladm_overlay_get_prop(dladm_handle_t, datalink_id_t,
+    overlay_ioc_propinfo_t *, overlay_ioc_prop_t *);
+
+extern dladm_status_t dladm_overlay_show(dladm_handle_t, datalink_id_t);
 
 #ifdef __cplusplus
 }

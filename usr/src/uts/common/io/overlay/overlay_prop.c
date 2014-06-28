@@ -57,18 +57,54 @@ overlay_prop_set_default(overlay_prop_handle_t phdl, void *def, ssize_t len)
 void
 overlay_prop_set_nodefault(overlay_prop_handle_t phdl)
 {
-	overlay_ioc_propinfo_t *oip = (overlay_ioc_propinfo_t *)phdl;
-	oip->oipi_default[0] = '\0';
-	oip->oipi_defsize = 0;
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
+	infop->oipi_default[0] = '\0';
+	infop->oipi_defsize = 0;
 }
 
 void
-overlay_prop_set_range_uint16(overlay_prop_handle_t phdl, uint16_t min,
-    uint16_t max)
+overlay_prop_set_range_uint32(overlay_prop_handle_t phdl, uint32_t min,
+    uint32_t max)
 {
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
+	mac_propval_range_t *rangep = (mac_propval_range_t *)infop->oipi_poss;
+
+	/* XXX We should probably set some kind of error here... */
+	if (rangep->mpr_count != 0 && rangep->mpr_type != MAC_PROPVAL_UINT32)
+		return;
+
+	/* XXX We should probably set some kind of error here... */
+	if (infop->oipi_posssize + sizeof (mac_propval_uint32_range_t) >
+	    sizeof (infop->oipi_poss))
+		return;
+
+	infop->oipi_posssize += sizeof (mac_propval_uint32_range_t);
+	rangep->mpr_count++;
+	rangep->mpr_type = MAC_PROPVAL_UINT32;
+	rangep->u.mpr_uint32[rangep->mpr_count-1].mpur_min = min;
+	rangep->u.mpr_uint32[rangep->mpr_count-1].mpur_max = max;
 }
 
 void
 overlay_prop_set_range_str(overlay_prop_handle_t phdl, const char *str)
 {
+	size_t len = strlen(str) + 1; /* Account for a null terminator */
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
+	mac_propval_range_t *rangep = (mac_propval_range_t *)infop->oipi_poss;
+	mac_propval_str_range_t *pstr = &rangep->u.mpr_str;
+
+	/* XXX Errors */
+	if (rangep->mpr_count != 0 && rangep->mpr_type != MAC_PROPVAL_STR)
+		return;
+
+	/* XXX Errors */
+	if (infop->oipi_posssize + len > sizeof (infop->oipi_poss))
+		return;
+
+	rangep->mpr_count++;
+	rangep->mpr_type = MAC_PROPVAL_STR;
+	strlcpy((char *)&pstr->mpur_data[pstr->mpur_nextbyte], str,
+	    sizeof (infop->oipi_poss) - infop->oipi_posssize);
+	pstr->mpur_nextbyte += len;
+	infop->oipi_posssize += len;
 }

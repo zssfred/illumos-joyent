@@ -195,6 +195,7 @@ static ofmt_cb_t print_lacp_cb, print_phys_one_mac_cb;
 static ofmt_cb_t print_xaggr_cb, print_aggr_stats_cb;
 static ofmt_cb_t print_phys_one_hwgrp_cb, print_wlan_attr_cb;
 static ofmt_cb_t print_wifi_status_cb, print_link_attr_cb;
+static ofmt_cb_t print_overlay_cb;
 static void dladm_ofmt_check(ofmt_status_t, boolean_t, ofmt_handle_t);
 
 typedef void cmdfunc_t(int, char **, const char *);
@@ -1438,6 +1439,32 @@ static ofmt_field_t bridge_trill_fields[] = {
 { "NEXTHOP",	17,
     offsetof(bridge_trill_fields_buf_t, bridget_nexthop), print_default_cb },
 { NULL,		0, 0, NULL}};
+
+/*
+ * Structures for dladm show-overlay
+ */
+typedef enum {
+	OVERLAY_LINK,
+	OVERLAY_PROPERTY,
+	OVERLAY_PERM,
+	OVERLAY_REQ,
+	OVERLAY_VALUE,
+	OVERLAY_DEFAULT,
+	OVERLAY_POSSIBLE
+} overlay_field_index_t;
+
+static const ofmt_field_t overlay_fields[] = {
+/* name,	field width,  index */
+{ "LINK",	13,	OVERLAY_LINK,		print_overlay_cb },
+{ "PROPERTY",	20,	OVERLAY_PROPERTY,	print_overlay_cb },
+{ "PERM",	5,	OVERLAY_PERM,		print_overlay_cb },
+{ "REQ",	4,	OVERLAY_REQ,		print_overlay_cb },
+{ "VALUE",	12,	OVERLAY_VALUE,		print_overlay_cb },
+{ "DEFAULT",	12,	OVERLAY_DEFAULT,	print_overlay_cb },
+{ "POSSIBLE",	12,	OVERLAY_POSSIBLE,	print_overlay_cb },
+{ NULL,		0,	0,	NULL }
+};
+
 
 static char *progname;
 static sig_atomic_t signalled;
@@ -9843,21 +9870,236 @@ do_delete_overlay(int argc, char *argv[], const char *use)
 		die_dlerr(status, "failed to delete %s", argv[1]);
 }
 
+typedef struct showoverlay_state {
+	const char 		*sho_linkname;
+	ofmt_handle_t		sho_ofmt;
+	overlay_ioc_prop_t	sho_value;
+	overlay_ioc_propinfo_t	*sho_info;
+} showoverlay_state_t;
+
+static void
+print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, void *pbuf,
+    size_t psize)
+{
+	const struct in6_addr *ipv6;
+	struct in_addr ip;
+
+	switch (type) {
+	case OVERLAY_PROP_T_INT:
+		/* XXX Is ? really the right thing... */
+		if (psize != 1 && psize != 2 && psize != 4 && psize != 8) {
+			snprintf(outbuf, bufsize, "?");
+			break;
+		}
+		if (psize == 1)
+			snprintf(outbuf, bufsize, "%d", *(int8_t *)pbuf);
+		if (psize == 2)
+			snprintf(outbuf, bufsize, "%d", *(int16_t *)pbuf);
+		if (psize == 4)
+			snprintf(outbuf, bufsize, "%d", *(int32_t *)pbuf);
+		if (psize == 8)
+			snprintf(outbuf, bufsize, "%d", *(int64_t *)pbuf);
+		break;
+	case OVERLAY_PROP_T_UINT:
+		if (psize != 1 && psize != 2 && psize != 4 && psize != 8) {
+			snprintf(outbuf, bufsize, "?");
+			break;
+		}
+		if (psize == 1)
+			snprintf(outbuf, bufsize, "%d", *(uint8_t *)pbuf);
+		if (psize == 2)
+			snprintf(outbuf, bufsize, "%d", *(uint16_t *)pbuf);
+		if (psize == 4)
+			snprintf(outbuf, bufsize, "%d", *(uint32_t *)pbuf);
+		if (psize == 8)
+			snprintf(outbuf, bufsize, "%d", *(uint64_t *)pbuf);
+		break;
+	case OVERLAY_PROP_T_IP:
+		if (psize != sizeof (struct in6_addr)) {
+			warn("malformed overlay IP property\n");
+			(void) snprintf(outbuf, bufsize, "--");
+			break;
+		}
+
+		ipv6 = pbuf;
+		if (IN6_IS_ADDR_V4MAPPED(ipv6)) {
+			IN6_V4MAPPED_TO_INADDR(ipv6, &ip);
+			if (inet_ntop(AF_INET, &ip, outbuf, bufsize) == NULL) {
+				warn("malformed overlay IP property\n");
+				(void) snprintf(outbuf, bufsize, "--");
+				break;
+			}
+		} else {
+			if (inet_ntop(AF_INET6, ipv6, outbuf, bufsize) ==
+			    NULL) {
+				warn("malformed overlay IP property\n");
+				(void) snprintf(outbuf, bufsize, "--");
+				break;
+			}
+		}
+
+		break;
+	case OVERLAY_PROP_T_STRING:
+		(void) snprintf(outbuf, bufsize, "%s", pbuf);
+		break;
+	default:
+		abort();
+	}
+
+	return;
+
+}
+
+static boolean_t
+print_overlay_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
+{
+	showoverlay_state_t	*sp = ofarg->ofmt_cbarg;
+	overlay_ioc_propinfo_t	*infop = sp->sho_info;
+	overlay_ioc_prop_t	*oip = &sp->sho_value;
+
+	switch (ofarg->ofmt_id) {
+	case OVERLAY_LINK:
+		snprintf(buf, bufsize, "%s", sp->sho_linkname);
+		break;
+	case OVERLAY_PROPERTY:
+		snprintf(buf, bufsize, "%s", infop->oipi_name);
+		break;
+	case OVERLAY_PERM:
+		if ((infop->oipi_prot & OVERLAY_PROP_PERM_RW) ==
+		    OVERLAY_PROP_PERM_RW) {
+			snprintf(buf, bufsize, "%s", "rw");
+		} else if ((infop->oipi_prot & OVERLAY_PROP_PERM_RW) ==
+		    OVERLAY_PROP_PERM_READ) {
+			snprintf(buf, bufsize, "%s", "r-");
+		} else {
+			snprintf(buf, bufsize, "%s", "--");
+		}
+		break;
+	case OVERLAY_REQ:
+		snprintf(buf, bufsize, "%s",
+		    infop->oipi_prot & OVERLAY_PROP_PERM_REQ ? "y" : "-");
+		break;
+	case OVERLAY_VALUE:
+		if (oip->oip_size == 0) {
+			snprintf(buf, bufsize, "%s", "--");
+		} else {
+			print_overlay_value(buf, bufsize, infop->oipi_type,
+			    oip->oip_value, oip->oip_size);
+		}
+		break;
+	case OVERLAY_DEFAULT:
+		if (infop->oipi_defsize == 0) {
+			snprintf(buf, bufsize, "%s", "--");
+		} else {
+			print_overlay_value(buf, bufsize, infop->oipi_type,
+			    infop->oipi_default, infop->oipi_defsize);
+		}
+		break;
+	case OVERLAY_POSSIBLE: {
+		int i;
+		char **vals, *ptr, *lim;
+		mac_propval_range_t *rangep =
+		    (mac_propval_range_t *)infop->oipi_poss;
+		if (rangep->mpr_count == 0) {
+			snprintf(buf, bufsize, "%s", "--");
+			break;
+		}
+
+		vals = malloc((sizeof (char *) + DLADM_PROP_VAL_MAX) *
+		    rangep->mpr_count);
+		if (vals == NULL)
+			die("insufficient memory");
+		for (i = 0; i < rangep->mpr_count; i++) {
+			vals[i] = (char *)vals + sizeof (char *) *
+			    rangep->mpr_count + i * DLADM_MAX_PROP_VALCNT;
+		}
+
+		if (dladm_range2strs(rangep, vals) != 0) {
+			free(vals);
+			snprintf(buf, bufsize, "%s", "?");
+			break;
+		}
+
+		ptr = buf;
+		lim = buf + bufsize;
+		for (i = 0; i < rangep->mpr_count; i++) {
+			ptr += snprintf(ptr, lim - ptr, "%s,", vals[i]);
+			if (ptr >= lim)
+				break;
+		}
+		if (rangep->mpr_count > 0)
+			buf[strlen(buf) - 1] = '\0';
+		free(vals);
+		break;
+	}
+	default:
+		abort();
+	}
+	return (B_TRUE);
+}
+
+/* XXX Exposing ioctl structures */
+static int
+dladm_overlay_show_one(dladm_handle_t handle, datalink_id_t linkid,
+    overlay_ioc_propinfo_t *iop, void *arg)
+{
+	showoverlay_state_t *sp = arg;
+	sp->sho_info = iop;
+
+	/* XXX Show error somehow? */
+	if (dladm_overlay_get_prop(handle, linkid, iop, &sp->sho_value) !=
+	    DLADM_STATUS_OK)
+		return (DLADM_WALK_CONTINUE);
+
+	ofmt_print(sp->sho_ofmt, sp);
+	return (DLADM_WALK_CONTINUE);
+}
+
+static int
+show_one_overlay(dladm_handle_t hdl, datalink_id_t linkid, void *arg)
+{
+	char			buf[MAXLINKNAMELEN];
+	showoverlay_state_t	state;
+	ofmt_status_t		oferr;
+	datalink_class_t	class;
+
+	if (dladm_datalink_id2info(hdl, linkid, NULL, &class, NULL, buf,
+	    MAXLINKNAMELEN) != DLADM_STATUS_OK ||
+	    class != DATALINK_CLASS_OVERLAY)
+		return (DLADM_WALK_CONTINUE);
+
+	state.sho_linkname = buf;
+	oferr = ofmt_open(NULL, overlay_fields, OFMT_WRAP, 0, &state.sho_ofmt);
+	dladm_ofmt_check(oferr, B_FALSE, state.sho_ofmt);
+
+	(void) dladm_overlay_walk_prop(handle, linkid, dladm_overlay_show_one,
+	    &state);
+
+	return (DLADM_WALK_CONTINUE);
+}
+
+/* XXX Needs all the parseable, selectable options, etc. */
 static void
 do_show_overlay(int argc, char *argv[], const char *use)
 {
-	datalink_id_t	linkid = DATALINK_ALL_LINKID;
-	dladm_status_t	status;
+	int			i;
+	datalink_id_t		linkid = DATALINK_ALL_LINKID;
+	dladm_status_t		status;
 
-	if (argc != 2) {
-		usage();
+	if (argc > 1) {
+		for (i = 1; i < argc; i++) {
+			status = dladm_name2info(handle, argv[i], &linkid,
+			    NULL, NULL, NULL);
+			if (status != DLADM_STATUS_OK) {
+				warn_dlerr(status, "failed to find %s",
+				    argv[i]);
+				continue;
+			}
+			show_one_overlay(handle, linkid, NULL);
+		}
+	} else {
+		(void) dladm_walk_datalink_id(show_one_overlay, handle, NULL,
+		    DATALINK_CLASS_OVERLAY, DATALINK_ANY_MEDIATYPE,
+		    DLADM_OPT_ACTIVE);
 	}
-
-	status = dladm_name2info(handle, argv[1], &linkid, NULL, NULL, NULL);
-	if (status != DLADM_STATUS_OK)
-		die_dlerr(status, "failed to find %s", argv[1]);
-
-	status = dladm_overlay_show(handle, linkid);
-	if (status != DLADM_STATUS_OK)
-		die_dlerr(status, "failed to show %s", argv[1]);
 }

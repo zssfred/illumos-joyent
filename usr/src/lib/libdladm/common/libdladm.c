@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, Joyent, Inc.  All rights reserved.
  */
 
 #include <unistd.h>
@@ -1181,7 +1182,7 @@ dladm_range2strs(mac_propval_range_t *rangep, char **prop_val)
 
 		/* Write ranges and individual elements */
 		ur = &rangep->mpr_range_uint32[0];
-		for (i = 0; i <= rangep->mpr_count; i++, ur++) {
+		for (i = 0; i < rangep->mpr_count; i++, ur++) {
 			if (ur->mpur_min == ur->mpur_max) {
 				/* single element */
 				(void) snprintf(prop_val[i], DLADM_PROP_VAL_MAX,
@@ -1191,6 +1192,20 @@ dladm_range2strs(mac_propval_range_t *rangep, char **prop_val)
 				(void) snprintf(prop_val[i], DLADM_PROP_VAL_MAX,
 				    "%u-%u", ur->mpur_min, ur->mpur_max);
 			}
+		}
+		return (0);
+	}
+	case MAC_PROPVAL_STR: {
+		mac_propval_str_range_t	*str;
+		size_t			coff, len;
+
+		coff = 0;
+		str = &rangep->u.mpr_str;
+		for (i = 0; i < rangep->mpr_count; i++) {
+			len = strlen(&str->mpur_data[coff]);
+			(void) strlcpy(prop_val[i], &str->mpur_data[coff],
+			    DLADM_PROP_VAL_MAX);
+			coff += len + 1;
 		}
 		return (0);
 	}

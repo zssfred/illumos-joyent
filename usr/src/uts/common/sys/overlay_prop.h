@@ -17,7 +17,7 @@
 #define	_SYS_OVERLAY_PROP_H
 
 /*
- * Overlay device sub-system property interfaces
+ * Overlay device sub-system property interfacess
  */
 
 #ifdef __cplusplus
@@ -31,16 +31,15 @@ typedef enum overlay_prop_type {
 	OVERLAY_PROP_T_STRING		/* OVERLAY_PROPS_SIZEMAX */
 } overlay_prop_type_t;
 
-typedef struct overlay_prop {
-	const char *ovpr_name;
-	overlay_prop_type_t ovpr_type;
-	void *ovpr_val;
-	ssize_t ovpr_size;
-	void *ovpr_default;
-	ssize_t ovpr_defsize;
-} overlay_prop_t;
+typedef enum overlay_prop_prot {
+	OVERLAY_PROP_PERM_REQ	= 0x1,
+	OVERLAY_PROP_PERM_READ	= 0x2,
+	OVERLAY_PROP_PERM_WRITE	= 0x4,
+	OVERLAY_PROP_PERM_RW 	= 0x6,
+	OVERLAY_PROP_PERM_RRW	= 0x7,
+	OVERLAY_PROP_PERM_MASK	= 0x7
+} overlay_prop_prot_t;
 
-#define	OVERLAY_TBL_NPROPS(x)	(sizeof (x) / sizeof (overlay_prop_t))
 #define	OVERLAY_PROP_NAMELEN	64
 #define	OVERLAY_PROP_SIZEMAX	256
 

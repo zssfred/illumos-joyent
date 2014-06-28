@@ -85,89 +85,32 @@ dladm_overlay_delete(dladm_handle_t handle, datalink_id_t linkid)
 	return (status);
 }
 
-static void
-dladm_overlay_print_prop(const overlay_ioc_propinfo_t *oipi, const void *buf,
-    const uint32_t bufsize)
+dladm_status_t
+dladm_overlay_get_prop(dladm_handle_t handle, datalink_id_t linkid,
+    overlay_ioc_propinfo_t *infop, overlay_ioc_prop_t *oip)
 {
-	const struct in6_addr *ipv6;
-	struct in_addr ip;
-	char strbuf[INET6_ADDRSTRLEN];
+	int ret;
 
-	switch (oipi->oipi_type) {
-	case OVERLAY_PROP_T_INT:
-		if (bufsize > 8) {
-			printf("%s: <INT E2BIG>\n");
-		} else if (bufsize > 4) {
-			const int64_t *val = buf;
-			printf("%s: %lld\n", oipi->oipi_name, *val);
-		} else if (bufsize > 2) {
-			const int32_t *val = buf;
-			printf("%s: %ld\n", oipi->oipi_name, *val);
-		} else if (bufsize > 1) {
-			const int16_t *val = buf;
-			printf("%s: %d\n", oipi->oipi_name, *val);
-		} else {
-			const int8_t *val = buf;
-			printf("%s: %d\n", oipi->oipi_name, *val);
-		}
-		break;
-	case OVERLAY_PROP_T_UINT:
-		if (bufsize > 8) {
-			printf("%s: <INT E2BIG>\n");
-		} else if (bufsize > 4) {
-			const uint64_t *val = buf;
-			printf("%s: %lld\n", oipi->oipi_name, *val);
-		} else if (bufsize > 2) {
-			const uint32_t *val = buf;
-			printf("%s: %ld\n", oipi->oipi_name, *val);
-		} else if (bufsize > 1) {
-			const uint16_t *val = buf;
-			printf("%s: %d\n", oipi->oipi_name, *val);
-		} else {
-			const uint8_t *val = buf;
-			printf("%s: %d\n", oipi->oipi_name, *val);
-		}
-		break;
-	case OVERLAY_PROP_T_STRING:
-		printf("%s: %s\n", oipi->oipi_name, (const char *)buf);
-		break;
-	case OVERLAY_PROP_T_IP:
-		if (bufsize != sizeof (struct in6_addr)) {
-			printf("%s: <malformed IP>\n", oipi->oipi_name);
-			return;
-		}
-
-		ipv6 = buf;
-		if (IN6_IS_ADDR_V4MAPPED(ipv6)) {
-			IN6_V4MAPPED_TO_INADDR(ipv6, &ip);
-			if (inet_ntop(AF_INET, &ip, strbuf,
-			    sizeof (strbuf)) == NULL) {
-				printf("%s: malformed ip\n", oipi->oipi_name);
-				return;
-			}
-		} else {
-			if (inet_ntop(AF_INET6, ipv6, strbuf,
-			    sizeof (strbuf)) == NULL) {
-				printf("%s: malformed ip\n", oipi->oipi_name);
-				return;
-			}
-		}
-		printf("%s: %s\n", oipi->oipi_name, strbuf);
-		break;
-	default:
-		printf("%s: <unkonwn type>\n", oipi->oipi_name);
+	bzero(oip, sizeof (overlay_ioc_prop_t));
+	oip->oip_linkid = linkid;
+	oip->oip_id = infop->oipi_id;
+	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_GETPROP, oip);
+	if (ret != 0) {
+		return (dladm_errno2status(errno));
 	}
+
+	return (DLADM_STATUS_OK);
 }
 
 dladm_status_t
-dladm_overlay_show(dladm_handle_t handle, datalink_id_t linkid)
+dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
+    dladm_prop_f func, void *arg)
 {
-	int ret, i;
+	int i, ret;
 	dladm_status_t status;
 	datalink_class_t class;
 	overlay_ioc_nprops_t oin;
 	overlay_ioc_propinfo_t oipi;
-	overlay_ioc_prop_t oip;
 
 	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL,
 	    NULL, 0) != DLADM_STATUS_OK)
@@ -176,17 +119,16 @@ dladm_overlay_show(dladm_handle_t handle, datalink_id_t linkid)
 	if (class != DATALINK_CLASS_OVERLAY)
 		return (DLADM_STATUS_BADARG);
 
-	oin.oipn_linkid = linkid;
+	bzero(&oin, sizeof (overlay_ioc_nprops_t));
 	status = DLADM_STATUS_OK;
+	oin.oipn_linkid = linkid;
 	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_NPROPS, &oin);
 	if (ret != 0) {
-		fprintf(stderr, "failed to get NPROPS\n");
 		return (dladm_errno2status(errno));
 	}
 
 	for (i = 0; i < oin.oipn_nprops; i++) {
 		bzero(&oipi, sizeof (overlay_ioc_propinfo_t));
-		bzero(&oip, sizeof (overlay_ioc_prop_t));
 		oipi.oipi_linkid = linkid;
 		oipi.oipi_id = i;
 		ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_PROPINFO, &oipi);
@@ -194,16 +136,9 @@ dladm_overlay_show(dladm_handle_t handle, datalink_id_t linkid)
 			fprintf(stderr, "failed to get propinfo %d\n", i);
 			return (dladm_errno2status(errno));
 		}
-
-		oip.oip_linkid = linkid;
-		oip.oip_id = i;
-		ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_GETPROP, &oip);
-		if (ret != 0) {
-			fprintf(stderr, "failed to get prop %s\n",
-			    oipi.oipi_name);
-			return (dladm_errno2status(errno));
-		}
-		dladm_overlay_print_prop(&oipi, oip.oip_value, oip.oip_size);
+		ret = func(handle, linkid, &oipi, arg);
+		if (ret == DLADM_WALK_TERMINATE)
+			break;
 	}
 
 	return (DLADM_STATUS_OK);

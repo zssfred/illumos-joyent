@@ -41,6 +41,7 @@ typedef struct overlay_ioc_create {
 	uint32_t	oic_filler;
 	uint64_t	oic_vnetid;
 	char		oic_encap[MAXLINKNAMELEN];
+	uint_t		oic_nprops;
 } overlay_ioc_create_t;
 
 typedef struct overlay_ioc_delete {
@@ -58,16 +59,17 @@ typedef struct overlay_ioc_propinfo {
 	char		oipi_name[OVERLAY_PROP_NAMELEN];
 	uint_t		oipi_type;
 	uint_t		oipi_prot;
-	uchar_t		oipi_default[OVERLAY_PROP_SIZEMAX];
+	uint8_t		oipi_default[OVERLAY_PROP_SIZEMAX];
 	uint32_t	oipi_defsize;
-	mac_propval_range_t oipi_poss;
+	uint32_t	oipi_posssize;
+	uint8_t		oipi_poss[OVERLAY_PROP_SIZEMAX];
 } overlay_ioc_propinfo_t;
 
 typedef struct overlay_ioc_prop {
 	datalink_id_t	oip_linkid;
 	int32_t		oip_id;
 	char		oip_name[OVERLAY_PROP_NAMELEN];
-	uchar_t		oip_value[OVERLAY_PROP_SIZEMAX];
+	uint8_t		oip_value[OVERLAY_PROP_SIZEMAX];
 	uint32_t	oip_size;
 } overlay_ioc_prop_t;
 

@@ -275,7 +275,8 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 
 	dladm_overlay_create;
 	dladm_overlay_delete;
-	dladm_overlay_show;
+	dladm_overlay_get_prop;
+	dladm_overlay_walk_prop;
     local:
 	*;
 };

@@ -58,6 +58,7 @@ typedef struct vxlan {
 	kmutex_t vxl_lock;
 	overlay_handle_t vxl_oh;
 	uint16_t vxl_lport;
+	boolean_t vxl_hladdr;
 	struct in6_addr vxl_laddr;
 } vxlan_t;
 
@@ -71,7 +72,7 @@ vxlan_o_init(overlay_handle_t oh, void **outp)
 	mutex_init(&vxl->vxl_lock, NULL, MUTEX_DRIVER, NULL);
 	vxl->vxl_oh = oh;
 	vxl->vxl_lport = vxlan_defport;
-	bcopy(&vxlan_defip, &vxl->vxl_laddr, sizeof (struct in6_addr));
+	vxl->vxl_hladdr = B_FALSE;
 
 	return (0);
 }
@@ -99,6 +100,11 @@ vxlan_o_socket(void *arg, int *dp, int *fp, int *pp, struct sockaddr *addr,
 	in->sin6_family = AF_INET6;
 
 	mutex_enter(&vxl->vxl_lock);
+	if (vxl->vxl_hladdr == B_FALSE) {
+		mutex_exit(&vxl->vxl_lock);
+		/* XXX This errno sucks and is now about trains */
+		return (EINVAL);
+	}
 	in->sin6_port = htons(vxl->vxl_lport);
 	in->sin6_addr = vxl->vxl_laddr;
 	mutex_exit(&vxl->vxl_lock);
@@ -169,8 +175,12 @@ vxlan_o_getprop(void *arg, const char *pr_name, void *buf, uint32_t *bufsize)
 			return (EOVERFLOW);
 
 		mutex_enter(&vxl->vxl_lock);
-		bcopy(&vxl->vxl_laddr, buf, sizeof (struct in6_addr));
-		*bufsize = sizeof (struct in6_addr);
+		if (vxl->vxl_hladdr == B_FALSE) {
+			*bufsize = 0;
+		} else {
+			bcopy(&vxl->vxl_laddr, buf, sizeof (struct in6_addr));
+			*bufsize = sizeof (struct in6_addr);
+		}
 		mutex_exit(&vxl->vxl_lock);
 		return (0);
 	}
@@ -198,25 +208,24 @@ vxlan_o_setprop(void *arg, const char *pr_name, const void *buf,
 }
 
 static int
-vxlan_o_propinfo(void *arg, const char *pr_name, overlay_prop_handle_t phdl)
+vxlan_o_propinfo(const char *pr_name, overlay_prop_handle_t phdl)
 {
 	/* vxlan/listen_ip */
 	if (strcmp(pr_name, vxlan_props[0]) == 0) {
 		overlay_prop_set_name(phdl, vxlan_props[0]);
-		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RRW);
 		overlay_prop_set_type(phdl, OVERLAY_PROP_T_IP);
-		overlay_prop_set_default(phdl, &vxlan_defip,
-		    sizeof (struct in6_addr));
+		overlay_prop_set_nodefault(phdl);
 		return (0);
 	}
 
 	if (strcmp(pr_name, vxlan_props[1]) == 0) {
 		overlay_prop_set_name(phdl, vxlan_props[1]);
-		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RRW);
 		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
 		overlay_prop_set_default(phdl, &vxlan_defport,
 		    sizeof (vxlan_defport));
-		overlay_prop_set_range_uint16(phdl, 1, UINT16_MAX);
+		overlay_prop_set_range_uint32(phdl, 1, UINT16_MAX);
 		return (0);
 	}
 

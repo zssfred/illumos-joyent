@@ -92,8 +92,7 @@ typedef int (*overlay_plugin_getprop_t)(void *, const char *, void *,
     uint32_t *);
 typedef int (*overlay_plugin_setprop_t)(void *, const char *, const void *,
     uint32_t);
-typedef int (*overlay_plugin_propinfo_t)(void *, const char *,
-    overlay_prop_handle_t);
+typedef int (*overlay_plugin_propinfo_t)(const char *, overlay_prop_handle_t);
 
 typedef struct overlay_plugin_ops {
 	uint_t			ovpo_callbacks;
@@ -138,19 +137,13 @@ extern int overlay_plugin_unregister(const char *);
 /*
  * Property information callbacks
  */
-typedef enum overlay_prop_prot {
-	OVERLAY_PROP_PERM_READ	= 0x1,
-	OVERLAY_PROP_PERM_WRITE	= 0x2,
-	OVERLAY_PROP_PERM_RW 	= 0x3
-} overlay_prop_prot_t;
-
 extern void overlay_prop_set_name(overlay_prop_handle_t, const char *);
 extern void overlay_prop_set_prot(overlay_prop_handle_t, overlay_prop_prot_t);
 extern void overlay_prop_set_type(overlay_prop_handle_t, overlay_prop_type_t);
 extern int overlay_prop_set_default(overlay_prop_handle_t, void *, ssize_t);
 extern void overlay_prop_set_nodefault(overlay_prop_handle_t);
-extern void overlay_prop_set_range_uint16(overlay_prop_handle_t, uint16_t,
-    uint16_t);
+extern void overlay_prop_set_range_uint32(overlay_prop_handle_t, uint32_t,
+    uint32_t);
 extern void overlay_prop_set_range_str(overlay_prop_handle_t, const char *);
 
 /*
