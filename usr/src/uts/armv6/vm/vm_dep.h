@@ -196,8 +196,16 @@ extern void page_list_walk_init(uchar_t szc, uint_t flags, uint_t bin,
 #define	USERSZC_2_SZC(userszc)	panic("userszc_2_szc")
 #define	SZC_2_USERSZC(szc)	panic("szc_2_userszc")
 
-#define	L2CACHE_ALIGN		panic("l2cache_align")
-#define	L2CACHE_ALIGN_MAX	panic("l2cache_align_max")
+/*
+ * On ARMv6 the layer two cache isn't architecturally defined. A given
+ * implementation may support it. We always use a platform defined value for the
+ * actual alignment required for L2 cache. However, because the cache line for
+ * most models we care about current is 8 words, we're setting that to the max.
+ * This will not be good for ARMv7
+ */
+extern int	armv6_l2cache_linesz;
+#define	L2CACHE_ALIGN		armv6_l2cache_linesz
+#define	L2CACHE_ALIGN_MAX	32
 #define	CPUSETSIZE()		panic("cpusetsize")
 #define	PAGE_BSZS_SHIFT(szc)	panic("page_bszs_shift")
 
