@@ -19,6 +19,7 @@
 
 #include <sys/conf.h>
 #include <sys/errno.h>
+#include <sys/stat.h>
 #include <sys/ddi.h>
 #include <sys/sunddi.h>
 #include <sys/modctl.h>
@@ -1084,9 +1085,15 @@ overlay_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	if (overlay_dip != NULL || ddi_get_instance(dip) != 0)
 		return (DDI_FAILURE);
 
-	if (dld_ioc_register(OVERLAY_IOC, overlay_ioc_list,
-	    DLDIOCCNT(overlay_ioc_list)) != 0)
+	if (ddi_create_minor_node(dip, OVERLAY_CTL, S_IFCHR,
+	    ddi_get_instance(dip), DDI_PSEUDO, 0) == DDI_FAILURE)
 		return (DDI_FAILURE);
+
+	if (dld_ioc_register(OVERLAY_IOC, overlay_ioc_list,
+	    DLDIOCCNT(overlay_ioc_list)) != 0) {
+		ddi_remove_minor_node(dip, OVERLAY_CTL);
+		return (DDI_FAILURE);
+	}
 
 	overlay_dip = dip;
 	return (DDI_SUCCESS);
@@ -1121,19 +1128,20 @@ overlay_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 		return (DDI_FAILURE);
 
 	dld_ioc_unregister(VNIC_IOC);
+	ddi_remove_minor_node(dip, OVERLAY_CTL);
 	overlay_dip = NULL;
 	return (DDI_SUCCESS);
 }
 
 static struct cb_ops overlay_cbops = {
-	nulldev,		/* cb_open */
-	nulldev,		/* cb_close */
+	overlay_target_open,	/* cb_open */
+	overlay_target_close,	/* cb_close */
 	nodev,			/* cb_strategy */
 	nodev,			/* cb_print */
 	nodev,			/* cb_dump */
 	nodev,			/* cb_read */
 	nodev,			/* cb_write */
-	nodev,			/* cb_ioctl */
+	overlay_target_ioctl,	/* cb_ioctl */
 	nodev,			/* cb_devmap */
 	nodev,			/* cb_mmap */
 	nodev,			/* cb_segmap */
@@ -1180,6 +1188,7 @@ overlay_init(void)
 	    offsetof(overlay_dev_t, odd_link));
 	overlay_mux_init();
 	overlay_plugin_init();
+	overlay_target_init();
 
 	return (DDI_SUCCESS);
 }
@@ -1187,6 +1196,7 @@ overlay_init(void)
 static void
 overlay_fini(void)
 {
+	overlay_target_fini();
 	overlay_plugin_fini();
 	overlay_mux_fini();
 	mutex_destroy(&overlay_dev_lock);
