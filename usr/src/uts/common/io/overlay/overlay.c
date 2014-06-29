@@ -67,7 +67,7 @@ static const char *overlay_dev_props[] = {
 };
 #define	OVERLAY_DEV_NPROPS	4
 
-static overlay_dev_t *
+overlay_dev_t *
 overlay_hold_by_dlid(datalink_id_t id)
 {
 	overlay_dev_t *o;
@@ -88,7 +88,7 @@ overlay_hold_by_dlid(datalink_id_t id)
 	return (NULL);
 }
 
-static void
+void
 overlay_hold_rele(overlay_dev_t *odd)
 {
 	mutex_enter(&odd->odd_lock);
@@ -240,7 +240,6 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 	int ret;
 	ovep_encap_info_t einfo;
 	struct msghdr hdr;
-	struct sockaddr_in6 in6;
 
 	mutex_enter(&odd->odd_lock);
 	if ((odd->odd_flags & OVERLAY_F_MDDROP) ||
@@ -253,23 +252,28 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 	overlay_io_start(odd, OVERLAY_F_IN_TX);
 	mutex_exit(&odd->odd_lock);
 
-	/* XXX The header should be dynamic... */
 	bzero(&hdr, sizeof (struct msghdr));
-	bzero(&in6, sizeof (struct sockaddr_in6));
-	in6.sin6_family = AF_INET6;
-	in6.sin6_port = htons(4789);
-	(void) inet_pton(AF_INET6, dest_ip, &in6.sin6_addr);
-	hdr.msg_name = &in6;
-	hdr.msg_namelen = sizeof (struct sockaddr_in6);
-
 
 	/* XXX Zero this out */
 	einfo.ovdi_id = odd->odd_vid;
 	mp = mp_chain;
 	while (mp != NULL) {
+		socklen_t slen;
+		struct sockaddr_storage storage;
+
 		mp_chain = mp->b_next;
 		mp->b_next = NULL;
 		ep = NULL;
+
+		if (overlay_target_lookup(odd, mp, (struct sockaddr *)&storage,
+		    &slen) != 0) {
+			freemsg(mp);
+			mp = mp_chain;
+			continue;
+		}
+
+		hdr.msg_name = &storage;
+		hdr.msg_namelen = slen;
 
 		ret = odd->odd_plugin->ovp_ops->ovpo_encap(odd->odd_mh, mp,
 		    &einfo, &ep);
@@ -592,6 +596,15 @@ overlay_i_activate(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	}
 
 	mutex_enter(&odd->odd_lock);
+	if (odd->odd_flags & OVERLAY_F_VARPD) {
+		mutex_exit(&odd->odd_lock);
+		mac_perim_exit(mph);
+		overlay_hold_rele(odd);
+		kmem_free(infop, sizeof (overlay_ioc_propinfo_t));
+		kmem_free(oip, sizeof (overlay_ioc_prop_t));
+		return (EINVAL);
+	}
+
 	ASSERT((odd->odd_flags & OVERLAY_F_ACTIVATED) == 0);
 	odd->odd_flags |= OVERLAY_F_ACTIVATED;
 	mutex_exit(&odd->odd_lock);
@@ -665,6 +678,7 @@ overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 
 	cv_destroy(&odd->odd_iowait);
 	mutex_destroy(&odd->odd_lock);
+	overlay_target_free(odd);
 	odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
 	overlay_plugin_rele(odd->odd_plugin);
 	kmem_free(odd, sizeof (overlay_dev_t));

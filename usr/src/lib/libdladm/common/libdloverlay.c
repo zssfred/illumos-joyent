@@ -157,7 +157,8 @@ dladm_overlay_activate_cb(dladm_handle_t handle, datalink_id_t linkid,
 
 dladm_status_t
 dladm_overlay_create(dladm_handle_t handle, const char *name,
-    const char *encap, uint64_t vid, dladm_arg_list_t *props, uint32_t flags)
+    const char *encap, const char *search, uint64_t vid,
+    dladm_arg_list_t *props, uint32_t flags)
 {
 	int ret, i;
 	dladm_status_t status;

@@ -9801,7 +9801,7 @@ static void
 do_create_overlay(int argc, char *argv[], const char *use)
 {
 	int			opt;
-	char			*encap = NULL, *endp;
+	char			*encap = NULL, *endp, *search = NULL;
 	char			name[MAXLINKNAMELEN];
 	dladm_status_t		status;
 	uint32_t		flags = DLADM_OPT_ACTIVE | DLADM_OPT_TRANSIENT;
@@ -9811,10 +9811,13 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	dladm_arg_list_t	*proplist = NULL;
 
 	bzero(propstr, sizeof (propstr));
-	while ((opt = getopt(argc, argv, ":e:v:p:")) != -1) {
+	while ((opt = getopt(argc, argv, ":e:v:p:s:")) != -1) {
 		switch (opt) {
 		case 'e':
 			encap = optarg;
+			break;
+		case 's':
+			search = optarg;
 			break;
 		case 'p':
 			(void) strlcat(propstr, optarg, DLADM_STRSIZE);
@@ -9841,7 +9844,10 @@ do_create_overlay(int argc, char *argv[], const char *use)
 		die("missing required virtual network id");
 
 	if (encap == NULL)
-		die("missing required encapsulation protocol");
+		die("missing required encapsulation plugin");
+
+	if (encap == NULL)
+		die("missing required search plugin");
 
 	if (optind != (argc - 1))
 		usage();
@@ -9853,15 +9859,18 @@ do_create_overlay(int argc, char *argv[], const char *use)
 		die("invalid link name '%s'", argv[optind]);
 
 	if (strlen(encap) + 1 > MAXLINKNAMELEN)
-		die("encapsulation protocol name too long '%s'", encap);
+		die("encapsulation plugin name too long '%s'", encap);
+
+	if (strlen(search) + 1 > MAXLINKNAMELEN)
+		die("search plugin name too long '%s'", encap);
 
 	/* XXX we probably shouldn't use the same thing here... */
 	if (dladm_parse_link_props(propstr, &proplist, B_FALSE)
 	    != DLADM_STATUS_OK)
 		die("invalid overlay property");
 
-	status = dladm_overlay_create(handle, name, encap, vid, proplist,
-	    flags);
+	status = dladm_overlay_create(handle, name, encap, search, vid,
+	    proplist, flags);
 	dladm_free_props(proplist);
 	if (status != DLADM_STATUS_OK) {
 		die_dlerr(status, "overlay creation failed");

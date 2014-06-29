@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
 extern dladm_status_t dladm_overlay_create(dladm_handle_t, const char *,
-    const char *, uint64_t, dladm_arg_list_t *, uint32_t);
+    const char *, const char *, uint64_t, dladm_arg_list_t *, uint32_t);
 extern dladm_status_t dladm_overlay_delete(dladm_handle_t, datalink_id_t);
 
 typedef int (*dladm_prop_f)(dladm_handle_t, datalink_id_t,

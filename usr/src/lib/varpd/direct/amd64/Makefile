@@ -10,27 +10,10 @@
 #
 
 #
-# Copyright 2014 Joyent, Inc.  All rights reserved.
+# Copyright (c) 2014 Joyent, Inc.  All rights reserved.
 #
 
-include		../../Makefile.lib
+include ../Makefile.com
+include ../../../Makefile.lib.64
 
-LIBRARY =	libvarpd.a
-VERS =		.1
-OBJECTS =	libvarpd.o
-
-include ../../Makefile.lib
-
-LIBS =		$(DYNLIB) $(LINTLIB)
-LDLIBS +=	-lc -lumem
-CPPFLAGS +=	-I../common
-
-SRCDIR =	../common
-
-.KEEP_STATE:
-
-all:	$(LIBS)
-
-lint:	lintcheck
-
-include ../../Makefile.targ
+install: all $(ROOTLIBS64) $(ROOTLINKS64) $(ROOTLINT64)
