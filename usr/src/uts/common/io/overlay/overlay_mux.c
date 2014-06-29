@@ -175,7 +175,7 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 		}
 		mutex_enter(&odd->odd_lock);
 		if ((odd->odd_flags & OVERLAY_F_MDDROP) ||
-		    !(odd->odd_flags & OVERLAY_F_ACTIVE)) {
+		    !(odd->odd_flags & OVERLAY_F_IN_MUX)) {
 			mutex_exit(&odd->odd_lock);
 			mutex_exit(&mux->omux_lock);
 			OVERLAY_FREEMSG(mp, "dev dropped");

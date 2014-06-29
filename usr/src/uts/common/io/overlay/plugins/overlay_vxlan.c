@@ -44,8 +44,6 @@
 
 static const char *vxlan_ident = "vxlan";
 static uint16_t vxlan_defport = 4789;
-static struct in6_addr vxlan_defip;
-static char *vxlan_ip = "::ffff:0.0.0.0";
 
 static const char *vxlan_props[] = {
 	"vxlan/listen_ip",
@@ -187,12 +185,14 @@ vxlan_o_getprop(void *arg, const char *pr_name, void *buf, uint32_t *bufsize)
 
 	/* vxlan/listen_port */
 	if (strcmp(pr_name, vxlan_props[1]) == 0) {
-		if (*bufsize < sizeof (uint16_t))
+		uint64_t val;
+		if (*bufsize < sizeof (uint64_t))
 			return (EOVERFLOW);
 
 		mutex_enter(&vxl->vxl_lock);
-		bcopy(&vxl->vxl_lport, buf, sizeof (uint16_t));
-		*bufsize = sizeof (uint16_t);
+		val = vxl->vxl_lport;
+		bcopy(&val, buf, sizeof (uint64_t));
+		*bufsize = sizeof (uint64_t);
 		mutex_exit(&vxl->vxl_lock);
 		return (0);
 	}
@@ -204,6 +204,42 @@ static int
 vxlan_o_setprop(void *arg, const char *pr_name, const void *buf,
     uint32_t bufsize)
 {
+	vxlan_t *vxl = arg;
+
+	/* vxlan/listen_ip */
+	if (strcmp(pr_name, vxlan_props[0]) == 0) {
+		const struct in6_addr *ipv6 = buf;
+		if (bufsize != sizeof (struct in6_addr))
+			return (EINVAL);
+
+		/*
+		 * XXX What else should be disallowed?
+		 */
+		if (IN6_IS_ADDR_V4COMPAT(ipv6))
+			return (EINVAL);
+
+		mutex_enter(&vxl->vxl_lock);
+		vxl->vxl_hladdr = B_TRUE;
+		bcopy(ipv6, &vxl->vxl_laddr, sizeof (struct in6_addr));
+		mutex_exit(&vxl->vxl_lock);
+
+		return (0);
+	}
+
+	/* vxlan/listen_port */
+	if (strcmp(pr_name, vxlan_props[1]) == 0) {
+		const uint64_t *valp = buf;
+		if (bufsize != 8)
+			return (EINVAL);
+
+		if (*valp == 0 || *valp > UINT16_MAX)
+			return (EINVAL);
+
+		mutex_enter(&vxl->vxl_lock);
+		vxl->vxl_lport = *valp;
+		mutex_exit(&vxl->vxl_lock);
+		return (0);
+	}
 	return (EINVAL);
 }
 
@@ -259,8 +295,6 @@ _init(void)
 {
 	int err;
 	overlay_plugin_register_t *ovrp;
-
-	(void) inet_pton(AF_INET6, vxlan_ip, &vxlan_defip);
 
 	ovrp = overlay_plugin_alloc(OVEP_VERSION);
 	if (ovrp == NULL)

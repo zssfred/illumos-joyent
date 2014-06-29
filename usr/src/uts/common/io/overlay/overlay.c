@@ -148,6 +148,13 @@ overlay_m_start(void *arg)
 	struct sockaddr_storage storage;
 	socklen_t slen;
 
+	mutex_enter(&odd->odd_lock);
+	if ((odd->odd_flags & OVERLAY_F_ACTIVATED) == 0) {
+		mutex_exit(&odd->odd_lock);
+		return (EAGAIN);
+	}
+	mutex_exit(&odd->odd_lock);
+
 	ret = odd->odd_plugin->ovp_ops->ovpo_socket(odd->odd_pvoid, &domain,
 	    &family, &prot, (struct sockaddr *)&storage, &slen);
 	if (ret != 0)
@@ -161,8 +168,8 @@ overlay_m_start(void *arg)
 	overlay_mux_add_dev(mux, odd);
 	odd->odd_mux = mux;
 	mutex_enter(&odd->odd_lock);
-	ASSERT(!(odd->odd_flags & OVERLAY_F_ACTIVE));
-	odd->odd_flags |= OVERLAY_F_ACTIVE;
+	ASSERT(!(odd->odd_flags & OVERLAY_F_IN_MUX));
+	odd->odd_flags |= OVERLAY_F_IN_MUX;
 	mutex_exit(&odd->odd_lock);
 
 	return (0);
@@ -178,7 +185,7 @@ overlay_m_stop(void *arg)
 	 * synchornizing this with respect to metadata operations.
 	 */
 	mutex_enter(&odd->odd_lock);
-	VERIFY(odd->odd_flags & OVERLAY_F_ACTIVE);
+	VERIFY(odd->odd_flags & OVERLAY_F_IN_MUX);
 	VERIFY(!(odd->odd_flags & OVERLAY_F_MDDROP));
 	odd->odd_flags |= OVERLAY_F_MDDROP;
 	overlay_io_wait(odd, OVERLAY_F_IOMASK);
@@ -189,7 +196,7 @@ overlay_m_stop(void *arg)
 	odd->odd_mux = NULL;
 
 	mutex_enter(&odd->odd_lock);
-	odd->odd_flags &= ~OVERLAY_F_ACTIVE;
+	odd->odd_flags &= ~OVERLAY_F_IN_MUX;
 	odd->odd_flags &= ~OVERLAY_F_MDDROP;
 	VERIFY(odd->odd_flags == 0);
 	mutex_exit(&odd->odd_lock);
@@ -236,7 +243,7 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 
 	mutex_enter(&odd->odd_lock);
 	if ((odd->odd_flags & OVERLAY_F_MDDROP) ||
-	    !(odd->odd_flags & OVERLAY_F_ACTIVE)) {
+	    !(odd->odd_flags & OVERLAY_F_IN_MUX)) {
 		/* XXX Stats, etc. */
 		mutex_exit(&odd->odd_lock);
 		freemsgchain(mp_chain);
@@ -517,6 +524,86 @@ overlay_i_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 }
 
 static int
+overlay_i_activate(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
+{
+	int i, ret;
+	overlay_dev_t *odd;
+	mac_perim_handle_t mph;
+	overlay_ioc_activate_t *oiap = karg;
+	overlay_ioc_propinfo_t *infop;
+	overlay_ioc_prop_t *oip;
+	overlay_prop_handle_t phdl;
+
+	odd = overlay_hold_by_dlid(oiap->oia_linkid);
+	if (odd == NULL) {
+		return (ENOENT);
+	}
+
+	infop = kmem_alloc(sizeof (overlay_ioc_propinfo_t), KM_SLEEP);
+	oip = kmem_alloc(sizeof (overlay_ioc_prop_t), KM_SLEEP);
+	phdl = (overlay_prop_handle_t)infop;
+
+	mac_perim_enter_by_mh(odd->odd_mh, &mph);
+	mutex_enter(&odd->odd_lock);
+	if (odd->odd_flags & OVERLAY_F_ACTIVATED) {
+		mutex_exit(&odd->odd_lock);
+		mac_perim_exit(mph);
+		overlay_hold_rele(odd);
+		kmem_free(infop, sizeof (overlay_ioc_propinfo_t));
+		kmem_free(oip, sizeof (overlay_ioc_prop_t));
+		return (EEXIST);
+	}
+	mutex_exit(&odd->odd_lock);
+
+	for (i = 0; i < odd->odd_plugin->ovp_nprops; i++) {
+		const char *pname = odd->odd_plugin->ovp_props[i];
+		bzero(infop, sizeof (overlay_ioc_propinfo_t));
+		overlay_prop_init(phdl);
+		ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(pname, phdl);
+		if (ret != 0) {
+			mac_perim_exit(mph);
+			overlay_hold_rele(odd);
+			kmem_free(infop, sizeof (overlay_ioc_propinfo_t));
+			kmem_free(oip, sizeof (overlay_ioc_prop_t));
+			return (ret);
+		}
+
+		if ((infop->oipi_prot & OVERLAY_PROP_PERM_REQ) == 0)
+			continue;
+		bzero(oip, sizeof (overlay_ioc_prop_t));
+		oip->oip_size = sizeof (oip->oip_value);
+		ret = odd->odd_plugin->ovp_ops->ovpo_getprop(odd->odd_pvoid,
+		    pname, oip->oip_value, &oip->oip_size);
+		if (ret != 0) {
+			mac_perim_exit(mph);
+			overlay_hold_rele(odd);
+			kmem_free(infop, sizeof (overlay_ioc_propinfo_t));
+			kmem_free(oip, sizeof (overlay_ioc_prop_t));
+			return (ret);
+		}
+		if (oip->oip_size == 0) {
+			mac_perim_exit(mph);
+			overlay_hold_rele(odd);
+			kmem_free(infop, sizeof (overlay_ioc_propinfo_t));
+			kmem_free(oip, sizeof (overlay_ioc_prop_t));
+			return (EINVAL);
+		}
+	}
+
+	mutex_enter(&odd->odd_lock);
+	ASSERT((odd->odd_flags & OVERLAY_F_ACTIVATED) == 0);
+	odd->odd_flags |= OVERLAY_F_ACTIVATED;
+	mutex_exit(&odd->odd_lock);
+
+	mac_perim_exit(mph);
+	overlay_hold_rele(odd);
+	kmem_free(infop, sizeof (overlay_ioc_propinfo_t));
+	kmem_free(oip, sizeof (overlay_ioc_prop_t));
+
+	return (0);
+}
+
+static int
 overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 {
 	overlay_ioc_delete_t *oidp = karg;
@@ -542,7 +629,7 @@ overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 		return (EBUSY);
 	}
 
-	if (odd->odd_flags & OVERLAY_F_ACTIVE) {
+	if (odd->odd_flags & OVERLAY_F_IN_MUX) {
 		mutex_exit(&odd->odd_lock);
 		overlay_hold_rele(odd);
 		return (EBUSY);
@@ -609,22 +696,45 @@ overlay_propinfo_plugin_cb(overlay_plugin_t *opp, void *arg)
 }
 
 static int
+overlay_i_name_to_propid(overlay_dev_t *odd, const char *name, uint_t *id)
+{
+	int i;
+
+	for (i = 0; i < OVERLAY_DEV_NPROPS; i++) {
+		if (strcmp(overlay_dev_props[i], name) == 0) {
+			*id = i;
+			return (0);
+		}
+	}
+
+	for (i = 0; i < odd->odd_plugin->ovp_nprops; i++) {
+		if (strcmp(odd->odd_plugin->ovp_props[i], name) == 0) {
+			*id = i + OVERLAY_DEV_NPROPS;
+			return (0);
+		}
+	}
+
+	return (ENOENT);
+}
+
+static int
 overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
     int *rvalp)
 {
 	overlay_dev_t *odd;
 	const char *pname;
 	int ret;
+	mac_perim_handle_t mph;
 	uint_t propid = UINT_MAX;
 	overlay_ioc_propinfo_t *oip = karg;
 	overlay_prop_handle_t phdl = (overlay_prop_handle_t)oip;
-	mac_propval_range_t *rangep = (mac_propval_range_t *)oip->oipi_poss;
-	oip->oipi_posssize = sizeof (mac_propval_range_t);
 
-	bzero(rangep, sizeof (mac_propval_range_t));
 	odd = overlay_hold_by_dlid(oip->oipi_linkid);
 	if (odd == NULL)
 		return (ENOENT);
+
+	overlay_prop_init(phdl);
+	mac_perim_enter_by_mh(odd->odd_mh, &mph);
 
 	/*
 	 * If the id is -1, then the property that we're looking for is named in
@@ -640,34 +750,37 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 		 * module by checking against the list of known names.
 		 */
 		oip->oipi_name[OVERLAY_PROP_NAMELEN-1] = '\0';
-		for (i = 0; i < OVERLAY_DEV_NPROPS; i++) {
-			if (strcmp(overlay_dev_props[i], oip->oipi_name) == 0) {
-				break;
-			}
+		if ((ret = overlay_i_name_to_propid(odd, oip->oipi_name,
+		    &propid)) != 0) {
+			overlay_hold_rele(odd);
+			mac_perim_exit(mph);
+			return (ret);
+		}
+		oip->oipi_id = propid;
+		if (propid >= OVERLAY_DEV_NPROPS) {
+			ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(
+			    oip->oipi_name, phdl);
+			overlay_hold_rele(odd);
+			mac_perim_exit(mph);
+			return (ret);
 
-			if (i == OVERLAY_DEV_NPROPS) {
-				ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(
-				    oip->oipi_name, (overlay_prop_handle_t)oip);
-				overlay_hold_rele(odd);
-				return (ret);
-			}
-
-			propid = i;
 		}
 	} else if (oip->oipi_id >= OVERLAY_DEV_NPROPS) {
 		uint_t id = oip->oipi_id - OVERLAY_DEV_NPROPS;
 
 		if (id >= odd->odd_plugin->ovp_nprops) {
 			overlay_hold_rele(odd);
+			mac_perim_exit(mph);
 			return (EINVAL);
 		}
 		ret = odd->odd_plugin->ovp_ops->ovpo_propinfo(
-		    odd->odd_plugin->ovp_props[id],
-		    (overlay_prop_handle_t)oip);
+		    odd->odd_plugin->ovp_props[id], phdl);
 		overlay_hold_rele(odd);
+		mac_perim_exit(mph);
 		return (ret);
 	} else if (oip->oipi_id < -1) {
 		overlay_hold_rele(odd);
+		mac_perim_exit(mph);
 		return (EINVAL);
 	} else {
 		ASSERT(oip->oipi_id < OVERLAY_DEV_NPROPS);
@@ -701,10 +814,12 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 		break;
 	default:
 		overlay_hold_rele(odd);
+		mac_perim_exit(mph);
 		return (ENOENT);
 	}
 
 	overlay_hold_rele(odd);
+	mac_perim_exit(mph);
 	return (0);
 }
 
@@ -714,6 +829,7 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 {
 	int ret;
 	overlay_dev_t *odd;
+	mac_perim_handle_t mph;
 	overlay_ioc_prop_t *oip = karg;
 	uint_t propid;
 
@@ -721,6 +837,7 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	if (odd == NULL)
 		return (ENOENT);
 
+	mac_perim_enter_by_mh(odd->odd_mh, &mph);
 	oip->oip_size = OVERLAY_PROP_SIZEMAX;
 	oip->oip_name[OVERLAY_PROP_NAMELEN-1] = '\0';
 	if (oip->oip_id == -1) {
@@ -734,6 +851,7 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 				    odd->odd_pvoid, oip->oip_name,
 				    oip->oip_value, &oip->oip_size);
 				overlay_hold_rele(odd);
+				mac_perim_exit(mph);
 				return (ret);
 			}
 		}
@@ -744,15 +862,18 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 
 		if (id > odd->odd_plugin->ovp_nprops) {
 			overlay_hold_rele(odd);
+			mac_perim_exit(mph);
 			return (EINVAL);
 		}
 		ret = odd->odd_plugin->ovp_ops->ovpo_getprop(odd->odd_pvoid,
 		    odd->odd_plugin->ovp_props[id], oip->oip_value,
 		    &oip->oip_size);
 		overlay_hold_rele(odd);
+		mac_perim_exit(mph);
 		return (ret);
 	} else if (oip->oip_id < -1) {
 		overlay_hold_rele(odd);
+		mac_perim_exit(mph);
 		return (EINVAL);
 	} else {
 		ASSERT(oip->oip_id < OVERLAY_DEV_NPROPS);
@@ -794,6 +915,7 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	}
 
 	overlay_hold_rele(odd);
+	mac_perim_exit(mph);
 	return (ret);
 }
 
@@ -803,7 +925,7 @@ overlay_setprop_vnetid(overlay_dev_t *odd, uint64_t vnetid)
 	mutex_enter(&odd->odd_lock);
 
 	/* Simple case, not active */
-	if (!(odd->odd_flags & OVERLAY_F_ACTIVE)) {
+	if (!(odd->odd_flags & OVERLAY_F_IN_MUX)) {
 		odd->odd_vid = vnetid;
 		mutex_exit(&odd->odd_lock);
 		return;
@@ -824,8 +946,8 @@ overlay_setprop_vnetid(overlay_dev_t *odd, uint64_t vnetid)
 	overlay_mux_add_dev(odd->odd_mux, odd);
 
 	mutex_enter(&odd->odd_lock);
-	ASSERT(odd->odd_flags & OVERLAY_F_ACTIVE);
-	odd->odd_flags &= ~OVERLAY_F_ACTIVE;
+	ASSERT(odd->odd_flags & OVERLAY_F_IN_MUX);
+	odd->odd_flags &= ~OVERLAY_F_IN_MUX;
 	mutex_exit(&odd->odd_lock);
 }
 
@@ -840,15 +962,22 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	mac_perim_handle_t mph;
 	uint64_t maxid, *vidp;
 
+	if (oip->oip_size > OVERLAY_PROP_SIZEMAX)
+		return (EINVAL);
+
 	odd = overlay_hold_by_dlid(oip->oip_linkid);
 	if (odd == NULL)
 		return (ENOENT);
 
-	if (oip->oip_size > OVERLAY_PROP_SIZEMAX)
-		return (EINVAL);
-
-	mac_perim_enter_by_mh(odd->odd_mh, &mph);
 	oip->oip_name[OVERLAY_PROP_NAMELEN-1] = '\0';
+	mac_perim_enter_by_mh(odd->odd_mh, &mph);
+	mutex_enter(&odd->odd_lock);
+	if (odd->odd_flags & OVERLAY_F_ACTIVATED) {
+		mac_perim_exit(mph);
+		mutex_exit(&odd->odd_lock);
+		return (ENOTSUP);
+	}
+	mutex_exit(&odd->odd_lock);
 	if (oip->oip_id == -1) {
 		int i;
 
@@ -928,6 +1057,8 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 static dld_ioc_info_t overlay_ioc_list[] = {
 	{ OVERLAY_IOC_CREATE, DLDCOPYIN, sizeof (overlay_ioc_create_t),
 		overlay_i_create, secpolicy_dl_config },
+	{ OVERLAY_IOC_ACTIVATE, DLDCOPYIN, sizeof (overlay_ioc_activate_t),
+		overlay_i_activate, secpolicy_dl_config },
 	{ OVERLAY_IOC_DELETE, DLDCOPYIN, sizeof (overlay_ioc_delete_t),
 		overlay_i_delete, secpolicy_dl_config },
 	{ OVERLAY_IOC_PROPINFO, DLDCOPYIN | DLDCOPYOUT,

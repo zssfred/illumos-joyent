@@ -20,36 +20,46 @@
 #include <sys/overlay_impl.h>
 
 void
+overlay_prop_init(overlay_prop_handle_t phdl)
+{
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
+	mac_propval_range_t *rangep = (mac_propval_range_t *)infop->oipi_poss;
+
+	infop->oipi_posssize = sizeof (mac_propval_range_t);
+	bzero(rangep, sizeof (mac_propval_range_t));
+}
+
+void
 overlay_prop_set_name(overlay_prop_handle_t phdl, const char *name)
 {
-	overlay_ioc_propinfo_t *oip = (overlay_ioc_propinfo_t *)phdl;
-	(void) strlcpy(oip->oipi_name, name, OVERLAY_PROP_NAMELEN);
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
+	(void) strlcpy(infop->oipi_name, name, OVERLAY_PROP_NAMELEN);
 }
 
 void
 overlay_prop_set_prot(overlay_prop_handle_t phdl, overlay_prop_prot_t prot)
 {
-	overlay_ioc_propinfo_t *oip = (overlay_ioc_propinfo_t *)phdl;
-	oip->oipi_prot = prot;
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
+	infop->oipi_prot = prot;
 }
 
 void
 overlay_prop_set_type(overlay_prop_handle_t phdl, overlay_prop_type_t type)
 {
-	overlay_ioc_propinfo_t *oip = (overlay_ioc_propinfo_t *)phdl;
-	oip->oipi_type = type;
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
+	infop->oipi_type = type;
 }
 
 int
 overlay_prop_set_default(overlay_prop_handle_t phdl, void *def, ssize_t len)
 {
-	overlay_ioc_propinfo_t *oip = (overlay_ioc_propinfo_t *)phdl;
+	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
 
 	if (len > OVERLAY_PROP_SIZEMAX)
 		return (E2BIG);
 
-	bcopy(def, oip->oipi_default, len);
-	oip->oipi_defsize = len;
+	bcopy(def, infop->oipi_default, len);
+	infop->oipi_defsize = len;
 
 	return (0);
 }

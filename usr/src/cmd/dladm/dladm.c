@@ -407,7 +407,8 @@ static cmd_t	cmds[] = {
 	    "    show-bridge      -t [-p] [-o <field>,...] [-s [-i <interval>]]"
 	    " <bridge>\n"						},
 	{ "create-overlay",	do_create_overlay,
-	    "    create-overlay  -e <encap> -v <vnetid> <overlay-name>"	},
+	    "    create-overlay  -e <encap> -v <vnetid>\n"
+	    "\t\t     [ -p <prop>=<value>[,...]] <overlay-name>"	},
 	{ "delete-overlay",	do_delete_overlay,
 	    "    delete-overlay  <overlay-name>"			},
 	{ "show-overlay",	do_show_overlay,
@@ -9799,18 +9800,27 @@ do_up_part(int argc, char *argv[], const char *use)
 static void
 do_create_overlay(int argc, char *argv[], const char *use)
 {
-	int		opt;
-	char		*encap = NULL, *endp;
-	char		name[MAXLINKNAMELEN];
-	dladm_status_t	status;
-	uint32_t	flags = DLADM_OPT_ACTIVE | DLADM_OPT_TRANSIENT;
-	uint64_t	vid;
-	boolean_t	havevid = B_FALSE;
+	int			opt;
+	char			*encap = NULL, *endp;
+	char			name[MAXLINKNAMELEN];
+	dladm_status_t		status;
+	uint32_t		flags = DLADM_OPT_ACTIVE | DLADM_OPT_TRANSIENT;
+	uint64_t		vid;
+	boolean_t		havevid = B_FALSE;
+	char			propstr[DLADM_STRSIZE];
+	dladm_arg_list_t	*proplist = NULL;
 
-	while ((opt = getopt(argc, argv, ":e:v:")) != -1) {
+	bzero(propstr, sizeof (propstr));
+	while ((opt = getopt(argc, argv, ":e:v:p:")) != -1) {
 		switch (opt) {
 		case 'e':
 			encap = optarg;
+			break;
+		case 'p':
+			(void) strlcat(propstr, optarg, DLADM_STRSIZE);
+			if (strlcat(propstr, ",", DLADM_STRSIZE) >=
+			    DLADM_STRSIZE)
+				die("property list too long '%s'", propstr);
 			break;
 		case 'v':
 			vid = strtoul(optarg, &endp, 10);
@@ -9845,7 +9855,14 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	if (strlen(encap) + 1 > MAXLINKNAMELEN)
 		die("encapsulation protocol name too long '%s'", encap);
 
-	status = dladm_overlay_create(handle, name, encap, vid, flags);
+	/* XXX we probably shouldn't use the same thing here... */
+	if (dladm_parse_link_props(propstr, &proplist, B_FALSE)
+	    != DLADM_STATUS_OK)
+		die("invalid overlay property");
+
+	status = dladm_overlay_create(handle, name, encap, vid, proplist,
+	    flags);
+	dladm_free_props(proplist);
 	if (status != DLADM_STATUS_OK) {
 		die_dlerr(status, "overlay creation failed");
 	}
