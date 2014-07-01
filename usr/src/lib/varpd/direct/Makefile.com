@@ -21,7 +21,7 @@ include ../../../Makefile.lib
 include ../../Makefile.plugin
 
 LIBS =		$(DYNLIB) $(LINTLIB)
-LDLIBS +=	-lc -lvarpd
+LDLIBS +=	-lc -lvarpd -lumem
 CPPFLAGS +=	-I../common
 
 SRCDIR =	../common

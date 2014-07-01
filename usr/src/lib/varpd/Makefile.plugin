@@ -15,3 +15,5 @@
 
 ROOTLIBDIR = $(ROOT)/usr/lib/varpd
 ROOTLIBDIR64 = $(ROOT)/usr/lib/varpd/$(MACH64)
+
+MAPFILES += ../../libvarpd/common/mapfile-plugin

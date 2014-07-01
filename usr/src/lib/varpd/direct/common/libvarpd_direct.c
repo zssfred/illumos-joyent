@@ -16,3 +16,265 @@
 /*
  * Point to point plug-in for varpd.
  */
+
+#include <libvarpd_provider.h>
+#include <umem.h>
+#include <errno.h>
+#include <thread.h>
+#include <synch.h>
+#include <strings.h>
+#include <assert.h>
+#include <limits.h>
+#include <netinet/in.h>
+
+typedef struct varpd_direct {
+	overlay_plugin_dest_t	vad_dest;	/* RO */
+	mutex_t			vad_lock;	/* Protects the rest */
+	boolean_t		vad_hip;
+	boolean_t		vad_hport;
+	struct in6_addr 	vad_ip;
+	uint16_t		vad_port;
+} varpd_direct_t;
+
+static const char *varpd_direct_props[] = {
+	"direct/dest_ip",
+	"direct/dest_port"
+};
+
+static int
+varpd_direct_create(void **outp, overlay_plugin_dest_t dest)
+{
+	int ret;
+	varpd_direct_t *vdp;
+
+	if (dest & ~(OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT))
+		return (ENOTSUP);
+
+	if (!(dest & (OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT)))
+		return (ENOTSUP);
+
+	vdp = umem_alloc(sizeof (varpd_direct_t), UMEM_DEFAULT);
+	if (vdp == NULL)
+		return (ENOMEM);
+
+	if ((ret = mutex_init(&vdp->vad_lock, USYNC_THREAD, NULL)) != 0) {
+		umem_free(vdp, sizeof (varpd_direct_t));
+		return (ret);
+	}
+
+	*outp = vdp;
+	return (0);
+}
+
+static int
+varpd_direct_start(void *arg)
+{
+	varpd_direct_t *vdp = arg;
+
+	mutex_lock(&vdp->vad_lock);
+	if (vdp->vad_hip == B_FALSE || vdp->vad_hport == B_FALSE) {
+		mutex_unlock(&vdp->vad_lock);
+		return (EAGAIN);
+	}
+	mutex_unlock(&vdp->vad_lock);
+
+	return (0);
+}
+
+static int
+varpd_direct_stop(void *arg)
+{
+	return (0);
+}
+
+static void
+varpd_direct_destroy(void *arg)
+{
+	varpd_direct_t *vdp = arg;
+
+	mutex_destroy(&vdp->vad_lock);
+	umem_free(vdp, sizeof (varpd_direct_t));
+}
+
+static int
+varpd_direct_lookup(void *arg, message_header_t *hp,
+    overlay_target_point_t *otp)
+{
+	varpd_direct_t *vdp = arg;
+
+	if (hp != NULL)
+		return (ENOTSUP);
+
+	mutex_lock(&vdp->vad_lock);
+	bcopy(&otp->otp_ip, &vdp->vad_ip, sizeof (struct in6_addr));
+	otp->otp_port = vdp->vad_port;
+	mutex_unlock(&vdp->vad_lock);
+
+	return (0);
+}
+
+static int
+varpd_direct_nprops(void *arg, uint_t *nprops)
+{
+	const varpd_direct_t *vdp = arg;
+
+	*nprops = 0;
+	if (vdp->vad_dest & OVERLAY_PLUGIN_D_ETHERNET)
+		*nprops += 1;
+
+	if (vdp->vad_dest & OVERLAY_PLUGIN_D_IP)
+		*nprops += 1;
+
+	if (vdp->vad_dest & OVERLAY_PLUGIN_D_PORT)
+		*nprops += 1;
+
+	assert(*nprops == 1 || *nprops == 2);
+
+	return (0);
+}
+
+static int
+varpd_direct_propinfo(void *arg, uint_t propid, varpd_prop_handle_t vph)
+{
+	varpd_direct_t *vdp = arg;
+
+	/*
+	 * Because we only support IP + port combos right now, prop 0 should
+	 * always be the IP. We don't support a port without an IP.
+	 */
+	assert(vdp->vad_dest & OVERLAY_PLUGIN_D_IP);
+	if (propid == 0) {
+		libvarpd_prop_set_name(vph, varpd_direct_props[0]);
+		libvarpd_prop_set_prot(vph, OVERLAY_PROP_PERM_RRW);
+		libvarpd_prop_set_type(vph, OVERLAY_PROP_T_IP);
+		libvarpd_prop_set_nodefault(vph);
+		return (0);
+	}
+
+	if (propid == 1 && vdp->vad_dest & OVERLAY_PLUGIN_D_PORT) {
+		libvarpd_prop_set_name(vph, varpd_direct_props[1]);
+		libvarpd_prop_set_prot(vph, OVERLAY_PROP_PERM_RRW);
+		libvarpd_prop_set_type(vph, OVERLAY_PROP_T_UINT);
+		libvarpd_prop_set_nodefault(vph);
+		libvarpd_prop_set_range_uint32(vph, 1, UINT16_MAX);
+		return (0);
+	}
+
+	return (EINVAL);
+}
+
+static int
+varpd_direct_getprop(void *arg, const char *pname, void *buf, uint32_t *sizep)
+{
+	varpd_direct_t *vdp = arg;
+
+	/* direct/dest_ip */
+	if (strcmp(pname, varpd_direct_props[0]) == 0) {
+		if (*sizep < sizeof (struct in6_addr))
+			return (EOVERFLOW);
+		mutex_lock(&vdp->vad_lock);
+		if (vdp->vad_hip == B_FALSE) {
+			*sizep = 0;
+		} else {
+			bcopy(&vdp->vad_ip, buf, sizeof (struct in6_addr));
+			*sizep = sizeof (struct in6_addr);
+		}
+		mutex_unlock(&vdp->vad_lock);
+		return (0);
+	}
+
+	/* direct/dest_port */
+	if (strcmp(pname, varpd_direct_props[1]) == 0) {
+		uint64_t val;
+
+		if (*sizep < sizeof (uint64_t))
+			return (EOVERFLOW);
+		mutex_lock(&vdp->vad_lock);
+		if (vdp->vad_hport == B_FALSE) {
+			*sizep = 0;
+		} else {
+			val = vdp->vad_port;
+			bcopy(&val, buf, sizeof (uint64_t));
+			*sizep = sizeof (uint64_t);
+		}
+		mutex_unlock(&vdp->vad_lock);
+		return (0);
+	}
+
+	return (EINVAL);
+}
+
+static int
+varpd_direct_setprop(void *arg, const char *pname, const void *buf,
+    const uint32_t size)
+{
+	varpd_direct_t *vdp = arg;
+
+	/* direct/dest_ip */
+	if (strcmp(pname, varpd_direct_props[0]) == 0) {
+		const struct in6_addr *ipv6 = buf;
+
+		if (size < sizeof (struct in6_addr))
+			return (EOVERFLOW);
+		/*
+		 * XXX What else should be disallowed?
+		 */
+		if (IN6_IS_ADDR_V4COMPAT(ipv6))
+			return (EINVAL);
+
+		mutex_lock(&vdp->vad_lock);
+		bcopy(buf, &vdp->vad_ip, sizeof (struct in6_addr));
+		vdp->vad_hip = B_TRUE;
+		mutex_unlock(&vdp->vad_lock);
+		return (0);
+	}
+
+	/* direct/dest_port */
+	if (strcmp(pname, varpd_direct_props[1]) == 0) {
+		const uint64_t *valp = buf;
+		if (size < sizeof (uint64_t))
+			return (EOVERFLOW);
+
+		if (*valp == 0 || *valp > UINT16_MAX)
+			return (EINVAL);
+
+		mutex_lock(&vdp->vad_lock);
+		vdp->vad_port = *valp;
+		mutex_unlock(&vdp->vad_lock);
+		return (0);
+	}
+
+	return (EINVAL);
+}
+
+static const varpd_plugin_ops_t varpd_direct_ops = {
+	0,
+	varpd_direct_create,
+	varpd_direct_start,
+	varpd_direct_stop,
+	varpd_direct_destroy,
+	varpd_direct_lookup,
+	varpd_direct_nprops,
+	varpd_direct_propinfo,
+	varpd_direct_getprop,
+	varpd_direct_setprop
+};
+
+#pragma init(varpd_direct_init)
+static void
+varpd_direct_init(void)
+{
+	varpd_plugin_register_t *vpr;
+
+	vpr = libvarpd_plugin_alloc(VARPD_VERSION_ONE);
+	/* XXX How should we communicate this failure? */
+	if (vpr == NULL)
+		return;
+
+	vpr->vpr_mode = OVERLAY_TARGET_POINT;
+	vpr->vpr_name = "direct";
+	vpr->vpr_ops = &varpd_direct_ops;
+	/* XXX We care about failure, but what do we do? */
+	(void) libvarpd_plugin_register(vpr);
+	libvarpd_plugin_free(vpr);
+}

@@ -23,7 +23,7 @@
 
 #include <sys/stream.h>
 #include <sys/mac_provider.h>
-#include <sys/overlay_prop.h>
+#include <sys/overlay_common.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,14 +105,6 @@ typedef struct overlay_plugin_ops {
 	overlay_plugin_setprop_t ovpo_setprop;
 	overlay_plugin_propinfo_t ovpo_propinfo;
 } overlay_plugin_ops_t;
-
-typedef enum overlay_plugin_dest {
-	OVERLAY_PLUGIN_D_INVALID	= 0x0,
-	OVERLAY_PLUGIN_D_ETHERNET	= 0x1,
-	OVERLAY_PLUGIN_D_IP		= 0x2,
-	OVERLAY_PLUGIN_D_PORT 		= 0x4,
-	OVERLAY_PLUGIN_D_MASK		= 0x7
-} overlay_plugin_dest_t;
 
 typedef struct overlay_plugin_register {
 	uint_t			ovep_version;

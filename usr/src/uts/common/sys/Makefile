@@ -420,7 +420,8 @@ CHKHDRS=			\
 	open.h			\
 	openpromio.h		\
 	overlay.h		\
-	overlay_prop.h		\
+	overlay_common.h	\
+	overlay_target.h	\
 	panic.h			\
 	param.h			\
 	pathconf.h		\

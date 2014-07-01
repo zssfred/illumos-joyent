@@ -22,20 +22,12 @@
 
 #include <sys/types.h>
 #include <sys/ethernet.h>
+#include <netinet/in.h>
+#include <sys/overlay_common.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/*
- * What type of plugin is this? Is there a single destination or will there be
- * multiple destinations.
- */
-typedef enum overlay_target_mode {
-	OVERLAY_TARGET_NONE = 0x0,
-	OVERLAY_TARGET_POINT,
-	OVERLAY_TARGET_DYNAMIC
-} overlay_target_mode_t;
 
 typedef struct overlay_target_point {
 	uint8_t		otp_mac[ETHERADDRL];

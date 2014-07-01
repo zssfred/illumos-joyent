@@ -10,12 +10,12 @@
 #
 
 #
-# Copyright 2014 Joyent, Inc.  All rights reserved.
+# Copyright (c) 2014 Joyent, Inc.  All rights reserved.
 #
 
 include		../../Makefile.lib
 
-HDRS =		libvarpd.h
+HDRS =		libvarpd.h libvarpd_provider.h
 HDRDIR =	common
 SUBDIRS =	$(MACH)
 $(BUILD64)SUBDIRS +=	$(MACH64)
@@ -28,7 +28,9 @@ lint :=		TARGET = lint
 
 .KEEP_STATE:
 
-all clean clobber install lint: $(SUBDIRS)
+all clean clobber lint: $(SUBDIRS)
+
+install: 	$(SUBDIRS) $(VARPD_MAPFILES)
 
 install_h: 	$(ROOTHDRS)
 

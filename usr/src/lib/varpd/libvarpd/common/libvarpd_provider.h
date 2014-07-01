@@ -23,9 +23,14 @@
  * should register.
  */
 
+#include <sys/overlay_target.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define	VARPD_VERSION_ONE	1
+#define	VARPD_VERSION	VARPD_VERSION_ONE
 
 /*
  * XXX Should this be opaque?
@@ -75,13 +80,13 @@ typedef int (*varpd_plugin_lookup_f)(void *, message_header_t *,
 /*
  * Obtain a total number of properties.
  */
-typedef int (*varpd_plugin_nprops_f)(void *, int *);
+typedef int (*varpd_plugin_nprops_f)(void *, uint_t *);
 
 /*
  * Obtain information about a property.
  */
-typedef int (*varpd_plugin_propinfo_f)(void *, const char *,
-    overlay_prop_handle_t);
+typedef int (*varpd_plugin_propinfo_f)(void *, const uint_t,
+    varpd_prop_handle_t);
 
 /*
  * Get the value for a single property.
@@ -95,7 +100,7 @@ typedef int (*varpd_plugin_setprop_f)(void *, const char *, const void *,
     const uint32_t);
 
 typedef struct varpd_plugin_ops {
-	uint_t	vpo_callbacks;
+	uint_t			vpo_callbacks;
 	varpd_plugin_create_f	vpo_create;
 	varpd_plugin_start_f	vpo_start;
 	varpd_plugin_stop_f	vpo_stop;
@@ -107,11 +112,29 @@ typedef struct varpd_plugin_ops {
 	varpd_plugin_setprop_f	vpo_setprop;
 } varpd_plugin_ops_t;
 
-typedef varpd_plugin_register {
+typedef struct varpd_plugin_register {
 	uint_t		vpr_version;
 	uint_t		vpr_mode;
 	const char	*vpr_name;
+	const varpd_plugin_ops_t *vpr_ops;
 } varpd_plugin_register_t;
+
+extern varpd_plugin_register_t *libvarpd_plugin_alloc(uint_t);
+extern void libvarpd_plugin_free(varpd_plugin_register_t *);
+extern int libvarpd_plugin_register(varpd_plugin_register_t *);
+extern int libvarpd_plugin_unregister(const char *);
+
+/*
+ * Property information callbacks
+ */
+extern void libvarpd_prop_set_name(varpd_prop_handle_t, const char *);
+extern void libvarpd_prop_set_prot(varpd_prop_handle_t, overlay_prop_prot_t);
+extern void libvarpd_prop_set_type(varpd_prop_handle_t, overlay_prop_type_t);
+extern int libvarpd_prop_set_default(varpd_prop_handle_t, void *, ssize_t);
+extern void libvarpd_prop_set_nodefault(varpd_prop_handle_t);
+extern void libvarpd_prop_set_range_uint32(varpd_prop_handle_t, uint32_t,
+    uint32_t);
+extern void libvarpd_prop_set_range_str(varpd_prop_handle_t, const char *);
 
 #ifdef __cplusplus
 }

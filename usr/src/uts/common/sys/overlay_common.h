@@ -13,16 +13,30 @@
  * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
-#ifndef _SYS_OVERLAY_PROP_H
-#define	_SYS_OVERLAY_PROP_H
+#ifndef _SYS_OVERLAY_COMMON_H
+#define	_SYS_OVERLAY_COMMON_H
 
 /*
- * Overlay device sub-system property interfacess
+ * Common overlay definitions
  */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum overlay_target_mode {
+	OVERLAY_TARGET_NONE = 0x0,
+	OVERLAY_TARGET_POINT,
+	OVERLAY_TARGET_DYNAMIC
+} overlay_target_mode_t;
+
+typedef enum overlay_plugin_dest {
+	OVERLAY_PLUGIN_D_INVALID	= 0x0,
+	OVERLAY_PLUGIN_D_ETHERNET	= 0x1,
+	OVERLAY_PLUGIN_D_IP		= 0x2,
+	OVERLAY_PLUGIN_D_PORT 		= 0x4,
+	OVERLAY_PLUGIN_D_MASK		= 0x7
+} overlay_plugin_dest_t;
 
 typedef enum overlay_prop_type {
 	OVERLAY_PROP_T_INT = 0x1,	/* signed int */
@@ -47,4 +61,4 @@ typedef enum overlay_prop_prot {
 }
 #endif
 
-#endif /* _SYS_OVERLAY_PROP_H */
+#endif /* _SYS_OVERLAY_COMMON_H */

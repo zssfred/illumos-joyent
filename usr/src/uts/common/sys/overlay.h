@@ -23,7 +23,7 @@
 #include <sys/param.h>
 #include <sys/dld_ioc.h>
 #include <sys/mac.h>
-#include <sys/overlay_prop.h>
+#include <sys/overlay_common.h>
 
 #ifdef __cplusplus
 extern "C" {
