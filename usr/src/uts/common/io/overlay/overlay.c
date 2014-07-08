@@ -540,9 +540,8 @@ overlay_i_activate(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	overlay_prop_handle_t phdl;
 
 	odd = overlay_hold_by_dlid(oiap->oia_linkid);
-	if (odd == NULL) {
+	if (odd == NULL)
 		return (ENOENT);
-	}
 
 	infop = kmem_alloc(sizeof (overlay_ioc_propinfo_t), KM_SLEEP);
 	oip = kmem_alloc(sizeof (overlay_ioc_prop_t), KM_SLEEP);
@@ -596,13 +595,13 @@ overlay_i_activate(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	}
 
 	mutex_enter(&odd->odd_lock);
-	if (odd->odd_flags & OVERLAY_F_VARPD) {
+	if ((odd->odd_flags & OVERLAY_F_VARPD) == 0) {
 		mutex_exit(&odd->odd_lock);
 		mac_perim_exit(mph);
 		overlay_hold_rele(odd);
 		kmem_free(infop, sizeof (overlay_ioc_propinfo_t));
 		kmem_free(oip, sizeof (overlay_ioc_prop_t));
-		return (EINVAL);
+		return (ENXIO);
 	}
 
 	ASSERT((odd->odd_flags & OVERLAY_F_ACTIVATED) == 0);
@@ -1225,10 +1224,9 @@ _init(void)
 	if ((err = overlay_init()) != DDI_SUCCESS)
 		return (err);
 
-	mac_init_ops(&overlay_dev_ops, "overlay");
+	mac_init_ops(NULL, "overlay");
 	err = mod_install(&overlay_linkage);
 	if (err != DDI_SUCCESS) {
-		mac_fini_ops(&overlay_dev_ops);
 		overlay_fini();
 		return (err);
 	}
@@ -1258,7 +1256,6 @@ _fini(void)
 	if (err != 0)
 		return (err);
 
-	mac_fini_ops(&overlay_dev_ops);
 	overlay_fini();
 	return (0);
 }

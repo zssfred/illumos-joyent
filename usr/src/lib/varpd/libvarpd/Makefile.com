@@ -15,12 +15,18 @@
 
 LIBRARY =	libvarpd.a
 VERS =		.1
-OBJECTS =	libvarpd.o
+OBJECTS =	libvarpd.o \
+		libvarpd_client.o \
+		libvarpd_door.o \
+		libvarpd_overlay.o \
+		libvarpd_prop.o \
+		libvarpd_plugin.o \
+		libvarpd_util.o
 
 include ../../../Makefile.lib
 
 LIBS =		$(DYNLIB) $(LINTLIB)
-LDLIBS +=	-lc -lumem
+LDLIBS +=	-lc -lavl -lumem -lidspace
 CPPFLAGS +=	-I../common
 
 SRCDIR =	../common

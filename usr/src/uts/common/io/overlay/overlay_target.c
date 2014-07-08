@@ -94,7 +94,7 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 		panic("implement me rm...");
 
 	v6 = (struct sockaddr_in6 *)sock;
-	bzero(&v6, sizeof (struct sockaddr_in6));
+	bzero(v6, sizeof (struct sockaddr_in6));
 	v6->sin6_family = AF_INET6;
 
 	/* XXX Can we go lockless here, aka RO when in a mux? */
@@ -109,6 +109,20 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 }
 
 static int
+overlay_target_info(void *arg)
+{
+	overlay_dev_t *odd;
+	overlay_targ_info_t *oti = arg;
+
+	odd = overlay_hold_by_dlid(oti->oti_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	oti->oti_needs = odd->odd_plugin->ovp_dest;
+	return (0);
+}
+
+static int
 overlay_target_associate(void *arg)
 {
 	overlay_dev_t *odd;
@@ -119,27 +133,37 @@ overlay_target_associate(void *arg)
 	if (odd == NULL)
 		return (ENOENT);
 
-	if (ota->ota_id == 0)
+	if (ota->ota_id == 0) {
+		overlay_hold_rele(odd);
 		return (EINVAL);
+	}
 
-	if (ota->ota_mode != OVERLAY_TARGET_POINT)
+	if (ota->ota_mode != OVERLAY_TARGET_POINT) {
+		overlay_hold_rele(odd);
 		return (EINVAL);
+	}
 
-	if (ota->ota_provides != odd->odd_plugin->ovp_dest)
+	if (ota->ota_provides != odd->odd_plugin->ovp_dest) {
+		overlay_hold_rele(odd);
 		return (EINVAL);
+	}
 
 	/* XXX What checks make sense for Ethernet? */
 
 	if (ota->ota_provides & OVERLAY_PLUGIN_D_IP) {
 		if (IN6_IS_ADDR_UNSPECIFIED(&ota->ota_point.otp_ip) ||
 		    IN6_IS_ADDR_V4COMPAT(&ota->ota_point.otp_ip) ||
-		    IN6_IS_ADDR_V4MAPPED_ANY(&ota->ota_point.otp_ip))
+		    IN6_IS_ADDR_V4MAPPED_ANY(&ota->ota_point.otp_ip)) {
+			overlay_hold_rele(odd);
 			return (EINVAL);
+		}
 	}
 
 	if (ota->ota_provides & OVERLAY_PLUGIN_D_PORT) {
-		if (ota->ota_point.otp_port == 0)
+		if (ota->ota_point.otp_port == 0) {
+			overlay_hold_rele(odd);
 			return (EINVAL);
+		}
 	}
 
 	ott = kmem_cache_alloc(overlay_target_cache, KM_SLEEP);
@@ -152,17 +176,22 @@ overlay_target_associate(void *arg)
 	if (odd->odd_flags & OVERLAY_F_VARPD) {
 		mutex_exit(&odd->odd_lock);
 		kmem_cache_free(overlay_target_cache, ott);
+		overlay_hold_rele(odd);
 		return (EEXIST);
 	}
 
 	odd->odd_flags |= OVERLAY_F_VARPD;
 	odd->odd_target = ott;
 	mutex_exit(&odd->odd_lock);
+	overlay_hold_rele(odd);
 
 	return (0);
 }
 
 static overlay_target_ioctl_t overlay_target_ioctab[] = {
+	{ OVERLAY_TARG_INFO, B_TRUE, B_TRUE,
+		overlay_target_info,
+		sizeof (overlay_targ_info_t)		},
 	{ OVERLAY_TARG_ASSOCIATE, B_TRUE, B_FALSE,
 		overlay_target_associate,
 		sizeof (overlay_targ_associate_t)	},

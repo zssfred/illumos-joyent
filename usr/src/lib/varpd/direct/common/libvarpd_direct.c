@@ -62,6 +62,9 @@ varpd_direct_create(void **outp, overlay_plugin_dest_t dest)
 		return (ret);
 	}
 
+	vdp->vad_dest = dest;
+	vdp->vad_hip = B_FALSE;
+	vdp->vad_hport = B_FALSE;
 	*outp = vdp;
 	return (0);
 }
@@ -106,7 +109,7 @@ varpd_direct_lookup(void *arg, message_header_t *hp,
 		return (ENOTSUP);
 
 	mutex_lock(&vdp->vad_lock);
-	bcopy(&otp->otp_ip, &vdp->vad_ip, sizeof (struct in6_addr));
+	bcopy(&vdp->vad_ip, &otp->otp_ip, sizeof (struct in6_addr));
 	otp->otp_port = vdp->vad_port;
 	mutex_unlock(&vdp->vad_lock);
 
@@ -239,7 +242,8 @@ varpd_direct_setprop(void *arg, const char *pname, const void *buf,
 			return (EINVAL);
 
 		mutex_lock(&vdp->vad_lock);
-		vdp->vad_port = *valp;
+		vdp->vad_port = (uint16_t)*valp;
+		vdp->vad_hport = B_TRUE;
 		mutex_unlock(&vdp->vad_lock);
 		return (0);
 	}
@@ -264,9 +268,10 @@ static const varpd_plugin_ops_t varpd_direct_ops = {
 static void
 varpd_direct_init(void)
 {
+	int err;
 	varpd_plugin_register_t *vpr;
 
-	vpr = libvarpd_plugin_alloc(VARPD_VERSION_ONE);
+	vpr = libvarpd_plugin_alloc(VARPD_VERSION_ONE, &err);
 	/* XXX How should we communicate this failure? */
 	if (vpr == NULL)
 		return;

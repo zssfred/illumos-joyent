@@ -159,7 +159,8 @@ SUBDIRS += \
 	libpkg		\
 	libpcidb	\
 	libvnd		\
-	libidspace
+	libidspace	\
+	varpd
 
 SUBDIRS += \
 	passwdutil	\
@@ -574,7 +575,7 @@ libdhcpagent:	libsocket libdhcputil libuuid libdlpi libcontract
 libdhcpsvc:	libinetutil
 libdhcputil:	libnsl libgen libinetutil libdlpi
 libdladm:	libdevinfo libinetutil libsocket libscf librcm libnvpair \
-		libexacct libnsl libkstat libcurses
+		libexacct libnsl libkstat libcurses varpd
 libdll: 	libast
 libdlpi:	libinetutil libdladm
 libds:		libsysevent
@@ -662,6 +663,7 @@ cfgadm_plugins:	libhotplug
 libilb:		libsocket
 libidspace:	libumem
 $(INTEL_BUILD)libdiskmgt:libfdisk
+varpd:		libidspace
 
 #
 # The reason this rule checks for the existence of the

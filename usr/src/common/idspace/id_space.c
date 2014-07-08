@@ -67,9 +67,14 @@ id_space_create(const char *name, id_t low, id_t high)
 {
 	ASSERT(low >= 0);
 	ASSERT(low < high);
+#ifdef _KERNEL
+	int flag = VM_SLEEP;
+#else
+	int flag = VM_NOSLEEP;
+#endif
 
 	return (vmem_create(name, ID_TO_ADDR(low), high - low, 1,
-	    NULL, NULL, NULL, 0, VM_SLEEP | VMC_IDENTIFIER));
+	    NULL, NULL, NULL, 0, flag | VMC_IDENTIFIER));
 }
 
 /*

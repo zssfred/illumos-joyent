@@ -21,14 +21,137 @@
  */
 
 #include <libvarpd.h>
+#include <libvarpd_provider.h>
+#include <sys/avl.h>
+#include <thread.h>
+#include <synch.h>
+#include <limits.h>
+#include <libidspace.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#define	LIBVARPD_ID_MIN	1
+#define	LIBVARPD_ID_MAX	INT32_MAX
+
+typedef struct varpd_plugin {
+	avl_node_t		vpp_node;
+	const char		*vpp_name;
+	overlay_target_mode_t	vpp_mode;
+	const varpd_plugin_ops_t *vpp_ops;
+	mutex_t			vpp_lock;
+	uint_t			vpp_active;
+} varpd_plugin_t;
+
 typedef struct varpd_impl {
-	int	vdi_doorfd;
+	mutex_t		vdi_lock;
+	avl_tree_t	vdi_plugins;
+	avl_tree_t	vdi_instances;
+	id_space_t	*vdi_idspace;
+	int		vdi_overlayfd;
+	int		vdi_doorfd;
 } varpd_impl_t;
+
+typedef enum varpd_instance_flags {
+	VARPD_INSTANCE_F_ACTIVATED = 0x01
+} varpd_instance_flags_t;
+
+typedef struct varpd_instance {
+	avl_node_t	vri_node;
+	uint64_t	vri_id;
+	datalink_id_t	vri_linkid;
+	varpd_instance_flags_t vri_flags;
+	overlay_target_mode_t vri_mode;
+	overlay_plugin_dest_t vri_dest;
+	varpd_impl_t	*vri_impl;
+	varpd_plugin_t	*vri_plugin;
+	void		*vri_private;
+} varpd_instance_t;
+
+typedef struct varpd_client_create_arg {
+	datalink_id_t	vcca_linkid;
+	uint64_t	vcca_id;
+	char		vcca_plugin[LIBVARPD_PROP_NAMELEN];
+} varpd_client_create_arg_t;
+
+typedef struct varpd_client_instance_arg {
+	uint64_t	vcia_id;
+} varpd_client_instance_arg_t;
+
+typedef struct varpd_client_nprops_arg {
+	uint64_t	vcna_id;
+	uint_t		vcna_nprops;
+} varpd_client_nprops_arg_t;
+
+typedef struct varpd_client_propinfo_arg {
+	uint64_t	vcfa_id;
+	uint_t		vcfa_propid;
+	uint_t		vcfa_type;
+	uint_t		vcfa_prot;
+	uint32_t	vcfa_defsize;
+	uint32_t	vcfa_psize;
+	char		vcfa_name[LIBVARPD_PROP_NAMELEN];
+	uint8_t		vcfa_default[LIBVARPD_PROP_SIZEMAX];
+	uint8_t		vcfa_poss[LIBVARPD_PROP_SIZEMAX];
+} varpd_client_propinfo_arg_t;
+
+typedef struct varpd_client_prop_arg {
+	uint64_t	vcpa_id;
+	uint_t		vcpa_propid;
+	uint8_t		vcpa_buf[LIBVARPD_PROP_SIZEMAX];
+	size_t		vcpa_bufsize;
+} varpd_client_prop_arg_t;
+
+typedef enum varpd_client_command {
+	VARPD_CLIENT_INVALID = 0x0,
+	VARPD_CLIENT_CREATE,
+	VARPD_CLIENT_ACTIVATE,
+	VARPD_CLIENT_DESTROY,
+	VARPD_CLIENT_NPROPS,
+	VARPD_CLIENT_PROPINFO,
+	VARPD_CLIENT_GETPROP,
+	VARPD_CLIENT_SETPROP,
+	VARPD_CLIENT_MAX
+} varpd_client_command_t;
+
+typedef struct varpd_client_arg {
+	uint_t	vca_command;
+	uint_t	vca_errno;
+	union {
+		varpd_client_create_arg_t vca_create;
+		varpd_client_instance_arg_t vca_instance;
+		varpd_client_nprops_arg_t vca_nprops;
+		varpd_client_propinfo_arg_t vca_info;
+		varpd_client_prop_arg_t vca_prop;
+	} vca_un;
+} varpd_client_arg_t;
+
+typedef struct varpd_client_eresp {
+	uint_t vce_command;
+	uint_t vce_errno;
+} varpd_client_eresp_t;
+
+extern void libvarpd_plugin_init(void);
+extern void libvarpd_plugin_prefork(void);
+extern void libvarpd_plugin_postfork(void);
+extern void libvarpd_plugin_fini(void);
+extern int libvarpd_plugin_comparator(const void *, const void *);
+extern varpd_plugin_t *libvarpd_plugin_lookup(varpd_impl_t *, const char *);
+
+extern void libvarpd_prop_door_convert(const varpd_prop_handle_t,
+    varpd_client_propinfo_arg_t *);
+
+extern const char *libvarpd_isaext(void);
+typedef int (*libvarpd_dirwalk_f)(varpd_impl_t *, const char *, void *);
+extern int libvarpd_dirwalk(varpd_impl_t *, const char *, const char *,
+    libvarpd_dirwalk_f, void *);
+
+extern int libvarpd_overlay_init(varpd_impl_t *);
+extern void libvarpd_overlay_fini(varpd_impl_t *);
+extern int libvarpd_overlay_info(varpd_impl_t *, datalink_id_t,
+    overlay_plugin_dest_t *);
+extern int libvarpd_overlay_associate(varpd_instance_t *);
 
 #ifdef __cplusplus
 }

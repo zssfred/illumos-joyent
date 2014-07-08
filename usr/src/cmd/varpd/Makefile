@@ -23,7 +23,8 @@ include ../Makefile.ctf
 
 CLEANFILES += $(OBJS)
 CFLAGS += $(CCVERBOSE)
-LDLIBS += -lc
+LDLIBS += -lvarpd -lumem
+$(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 
 .KEEP_STATE:
 

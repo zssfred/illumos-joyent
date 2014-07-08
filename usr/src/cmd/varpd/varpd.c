@@ -21,8 +21,88 @@
  * and a corresponding encapsulation plugin.
  */
 
-int
-main(void)
+#include <libvarpd.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <signal.h>
+
+static varpd_handle_t varpd_handle;
+
+/*
+ * Debug builds are automatically wired up for umem debugging.
+ */
+#ifdef	DEBUG
+const char *
+_umem_debug_init()
 {
+	return ("default,verbose");
+}
+
+const char *
+_umem_logging_init(void)
+{
+	return ("fail,contents");
+}
+#endif	/* DEBUG */
+
+static int
+plugin_walk_cb(varpd_handle_t vph, const char *name, void *unused)
+{
+	printf("loaded %s!\n", name);
+	return (0);
+}
+
+int
+main(int argc, char *argv[])
+{
+	int err, c;
+	const char *doorpath = NULL;
+	sigset_t set;
+
+	if ((err = libvarpd_create(&varpd_handle)) != 0) {
+		/* XXX Proper logging */
+		fprintf(stderr, "failed to create a handle: %d\n", err);
+		return (1);
+	}
+
+	while ((c = getopt(argc, argv, ":i:d:")) != -1) {
+		switch (c) {
+		case 'i':
+			err = libvarpd_plugin_load(varpd_handle, optarg);
+			if (err != 0) {
+				(void) fprintf(stderr,
+				    "failed to load from %s: %s\n",
+				    optarg, strerror(err));
+				return (1);
+			}
+			break;
+		case 'd':
+			doorpath = optarg;
+			break;
+		default:
+			(void) fprintf(stderr, "unknown option: %c\n", c);
+			return (1);
+		}
+	}
+
+	if (doorpath == NULL) {
+		(void) fprintf(stderr, "missing required doorpath\n");
+		return (1);
+	}
+
+	/* XXX Simple comments */
+	libvarpd_plugin_walk(varpd_handle, plugin_walk_cb, NULL);
+	/* XXX open a door server/bind */
+	if ((err = libvarpd_door_server_create(varpd_handle, doorpath)) != 0) {
+		(void) fprintf(stderr, "failed to create door server at %s\n");
+		return (1);
+	}
+
+	(void) sigemptyset(&set);
+	for (;;) {
+		(void) sigsuspend(&set);
+	}
+	/* XXX Daemonize / sigsuspend */
 	return (0);
 }

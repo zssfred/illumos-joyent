@@ -37,10 +37,20 @@ typedef struct overlay_target_point {
 
 #define	OVERLAY_TARG_IOCTL	(('o' << 24) | ('v' << 16) | ('t' << 8))
 
+#define	OVERLAY_TARG_INFO	(OVERLAY_TARG_IOCTL | 0x01)
+
+/*
+ * Get target information about an overlay device
+ */
+typedef struct overlay_targ_info {
+	datalink_id_t		oti_linkid;
+	uint32_t		oti_needs;
+} overlay_targ_info_t;
+
 /*
  * Declare an association between a given varpd instance and a datalink.
  */
-#define	OVERLAY_TARG_ASSOCIATE	(OVERLAY_TARG_IOCTL | 0x01)
+#define	OVERLAY_TARG_ASSOCIATE	(OVERLAY_TARG_IOCTL | 0x02)
 
 typedef struct overlay_targ_associate {
 	datalink_id_t		ota_linkid;

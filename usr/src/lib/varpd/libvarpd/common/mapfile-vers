@@ -31,8 +31,53 @@ $mapfile_version 2
 
 SYMBOL_VERSION SUNWprivate {
     global:
+	libvarpd_c_create;
+	libvarpd_c_destroy;
+	libvarpd_c_instance_activate;
+	libvarpd_c_instance_create;
+	libvarpd_c_instance_destroy;
+	libvarpd_c_prop_nprops;
+	libvarpd_c_prop_handle_alloc;
+	libvarpd_c_prop_handle_free;
+	libvarpd_c_prop_info_fill;
+	libvarpd_c_prop_info_fill_by_name;
+	libvarpd_c_prop_info;
+	libvarpd_c_prop_get;
+	libvarpd_c_prop_set;
+
 	libvarpd_create;
 	libvarpd_destroy;
+
+	libvarpd_door_server_create;
+	libvarpd_door_server_destroy;
+
+	libvarpd_instance_activate;
+	libvarpd_instance_create;
+	libvarpd_instance_destroy;
+	libvarpd_instance_lookup;
+	libvarpd_instance_id;
+
+	libvarpd_plugin_alloc;
+	libvarpd_plugin_load;
+	libvarpd_plugin_free;
+	libvarpd_plugin_register;
+	libvarpd_plugin_walk;
+
+	libvarpd_prop_set_default;
+	libvarpd_prop_set_nodefault;
+	libvarpd_prop_set_name;
+	libvarpd_prop_set_prot;
+	libvarpd_prop_set_range_uint32;
+	libvarpd_prop_set_range_str;
+	libvarpd_prop_set_type;
+
+	libvarpd_prop_handle_alloc;
+	libvarpd_prop_handle_free;
+	libvarpd_prop_nprops;
+	libvarpd_prop_info_fill;
+	libvarpd_prop_info;
+	libvarpd_prop_get;
+	libvarpd_prop_set;	
     local:
 	*;
 };

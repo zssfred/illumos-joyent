@@ -23,6 +23,7 @@
  * should register.
  */
 
+#include <libvarpd.h>
 #include <sys/overlay_target.h>
 
 #ifdef __cplusplus
@@ -36,7 +37,6 @@ extern "C" {
  * XXX Should this be opaque?
  */
 typedef struct message_header message_header_t;
-typedef struct __varpd_prop_handle *varpd_prop_handle_t;
 
 /*
  * Create a new instance of a plugin.
@@ -119,10 +119,9 @@ typedef struct varpd_plugin_register {
 	const varpd_plugin_ops_t *vpr_ops;
 } varpd_plugin_register_t;
 
-extern varpd_plugin_register_t *libvarpd_plugin_alloc(uint_t);
+extern varpd_plugin_register_t *libvarpd_plugin_alloc(uint_t, int *);
 extern void libvarpd_plugin_free(varpd_plugin_register_t *);
 extern int libvarpd_plugin_register(varpd_plugin_register_t *);
-extern int libvarpd_plugin_unregister(const char *);
 
 /*
  * Property information callbacks

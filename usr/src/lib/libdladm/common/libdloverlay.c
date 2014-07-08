@@ -25,10 +25,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <limits.h>
+#include <libvarpd_client.h>
+
+static const char *dladm_overlay_doorpath = "/tmp/overlay.door";
 
 static dladm_status_t
-dladm_overlay_parse_prop(overlay_ioc_propinfo_t *infop,
-    overlay_ioc_prop_t *prop, const char *val)
+dladm_overlay_parse_prop(overlay_prop_type_t type, void *buf, uint32_t *sizep,
+    const char *val)
 {
 	int ret;
 	int64_t ival;
@@ -37,7 +40,7 @@ dladm_overlay_parse_prop(overlay_ioc_propinfo_t *infop,
 	struct in6_addr ipv6;
 	struct in_addr ip;
 
-	switch (infop->oipi_type) {
+	switch (type) {
 	case OVERLAY_PROP_T_INT:
 		errno = 0;
 		ival = strtol(val, &eptr, 10);
@@ -45,8 +48,8 @@ dladm_overlay_parse_prop(overlay_ioc_propinfo_t *infop,
 		    ((ival == LONG_MAX || ival == LONG_MIN) &&
 		    errno == ERANGE))
 			return (DLADM_STATUS_BADARG);
-		bcopy(&ival, prop->oip_value, sizeof (int64_t));
-		prop->oip_size = sizeof (int64_t);
+		bcopy(&ival, buf, sizeof (int64_t));
+		*sizep = sizeof (int64_t);
 		break;
 	case OVERLAY_PROP_T_UINT:
 		errno = 0;
@@ -54,15 +57,14 @@ dladm_overlay_parse_prop(overlay_ioc_propinfo_t *infop,
 		if ((uval == 0 && errno == EINVAL) ||
 		    (uval == ULONG_MAX && errno == ERANGE))
 			return (DLADM_STATUS_BADARG);
-		bcopy(&uval, prop->oip_value, sizeof (uint64_t));
-		prop->oip_size = sizeof (uint64_t);
+		bcopy(&uval, buf, sizeof (uint64_t));
+		*sizep = sizeof (uint64_t);
 		break;
 	case OVERLAY_PROP_T_STRING:
-		ret = strlcpy((char *)prop->oip_value, val,
-		    OVERLAY_PROP_SIZEMAX);
+		ret = strlcpy((char *)buf, val, OVERLAY_PROP_SIZEMAX);
 		if (ret >= OVERLAY_PROP_SIZEMAX)
 			return (DLADM_STATUS_BADARG);
-		prop->oip_size = ret + 1;
+		*sizep = ret + 1;
 		break;
 	case OVERLAY_PROP_T_IP:
 		/*
@@ -76,14 +78,52 @@ dladm_overlay_parse_prop(overlay_ioc_propinfo_t *infop,
 
 			IN6_INADDR_TO_V4MAPPED(&ip, &ipv6);
 		}
-		bcopy(&ipv6, prop->oip_value, sizeof (struct in6_addr));
-		prop->oip_size = sizeof (struct in6_addr);
+		bcopy(&ipv6, buf, sizeof (struct in6_addr));
+		*sizep = sizeof (struct in6_addr);
 		break;
 	default:
 		abort();
 	}
 
 	return (DLADM_STATUS_OK);
+}
+
+dladm_status_t
+dladm_overlay_varpd_setprop(dladm_handle_t handle, varpd_client_handle_t chdl,
+    uint64_t inst, const char *name, char *const *valp, uint_t cnt)
+{
+	int ret;
+	uint32_t size;
+	uint8_t buf[LIBVARPD_PROP_SIZEMAX];
+	varpd_client_prop_handle_t phdl;
+	uint_t type;
+	dladm_status_t status;
+
+	if ((ret = libvarpd_c_prop_handle_alloc(chdl, inst, &phdl)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_prop_info_fill_by_name(phdl, name)) != 0) {
+		libvarpd_c_prop_handle_free(phdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_prop_info(phdl, NULL, &type, NULL, NULL, NULL,
+	    NULL)) != 0) {
+		libvarpd_c_prop_handle_free(phdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((status = dladm_overlay_parse_prop(type, buf, &size, valp[0])) !=
+	    DLADM_STATUS_OK) {
+		libvarpd_c_prop_handle_free(phdl);
+		return (dladm_errno2status(ret));
+	}
+
+	status = DLADM_STATUS_OK;
+	ret = libvarpd_c_prop_set(phdl, buf, size);
+	libvarpd_c_prop_handle_free(phdl);
+
+	return (dladm_errno2status(ret));
 }
 
 dladm_status_t
@@ -117,8 +157,8 @@ dladm_overlay_setprop(dladm_handle_t handle, datalink_id_t linkid,
 	prop.oip_linkid = linkid;
 	prop.oip_id = info.oipi_id;
 	prop.oip_name[0] = '\0';
-	if ((ret = dladm_overlay_parse_prop(&info, &prop, valp[0])) !=
-	    DLADM_STATUS_OK)
+	if ((ret = dladm_overlay_parse_prop(info.oipi_type, prop.oip_value,
+	    &prop.oip_size, valp[0])) != DLADM_STATUS_OK)
 		return (ret);
 
 	status = DLADM_STATUS_OK;
@@ -165,6 +205,9 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 	datalink_id_t linkid;
 	overlay_ioc_create_t oic;
 	overlay_ioc_activate_t oia;
+	size_t slen;
+	varpd_client_handle_t vch;
+	uint64_t id;
 
 	status = dladm_create_datalink_id(handle, name, DATALINK_CLASS_OVERLAY,
 	    DL_ETHER, flags, &linkid);
@@ -188,12 +231,21 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 		return (status);
 	}
 
+	slen = strlen(search);
 	for (i = 0; props != NULL && i < props->al_count; i++) {
 		dladm_arg_info_t	*aip = &props->al_info[i];
 
-		ret = dladm_overlay_setprop(handle, linkid, aip->ai_name,
+		/*
+		 * If it's a property for the search plugin, eg. it has the
+		 * prefix '<search>/', then we don't set the property on the
+		 * overlay device and instead set it on the varpd instance.
+		 */
+		if (strncmp(aip->ai_name, search, slen) == 0 &&
+		    aip->ai_name[slen] == '/')
+			continue;
+		status = dladm_overlay_setprop(handle, linkid, aip->ai_name,
 		    aip->ai_val, aip->ai_count);
-		if (ret != DLADM_STATUS_OK) {
+		if (status != DLADM_STATUS_OK) {
 			/* XXX */
 			fprintf(stderr, "failed to set property %s\n",
 			    aip->ai_name);
@@ -202,16 +254,68 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 		}
 	}
 
+	if ((ret = libvarpd_c_create(&vch, dladm_overlay_doorpath)) != 0) {
+		fprintf(stderr, "failed to create libvarpd handle: %d\n", ret);
+		(void) dladm_overlay_delete(handle, linkid);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_instance_create(vch, linkid, search,
+	    &id)) != 0) {
+		fprintf(stderr, "failed to create varpd instance: %d\n", ret);
+		libvarpd_c_destroy(vch);
+		(void) dladm_overlay_delete(handle, linkid);
+		return (dladm_errno2status(ret));
+	}
+
+	for (i = 0; props != NULL && i < props->al_count; i++) {
+		dladm_arg_info_t	*aip = &props->al_info[i];
+
+		/*
+		 * Skip arguments we've processed already.
+		 */
+		if (strncmp(aip->ai_name, search, slen) != 0)
+			continue;
+
+		if (aip->ai_name[slen] != '/')
+			continue;
+
+		ret = dladm_overlay_varpd_setprop(handle, vch, id, aip->ai_name,
+		    aip->ai_val, aip->ai_count);
+		if (ret != 0) {
+			fprintf(stderr, "failed to set varpd prop: %s\n",
+			    aip->ai_name);
+			/* XXX Need to clean up instance, but... */
+			libvarpd_c_destroy(vch);
+			(void) dladm_overlay_delete(handle, linkid);
+			return (dladm_errno2status(ret));
+		}
+	}
+
+	if ((ret = libvarpd_c_instance_activate(vch, id)) != 0) {
+		fprintf(stderr, "failed to activate varpd instance: %d\n", ret);
+		/* XXX Need to clean up instance, but we don't support that */
+		libvarpd_c_destroy(vch);
+		(void) dladm_overlay_delete(handle, linkid);
+		return (dladm_errno2status(ret));
+
+	}
+
 	bzero(&oia, sizeof (oia));
 	oia.oia_linkid = linkid;
+	status = DLADM_STATUS_OK;
 	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_ACTIVATE, &oia);
 	if (ret != 0) {
 		/* XXX We need to have private errors here */
+		ret = errno;
+		fprintf(stderr, "failed to activate %d\n", ret);
 		dladm_overlay_walk_prop(handle, linkid,
 		    dladm_overlay_activate_cb, NULL);
-		status = dladm_errno2status(errno);
+		status = dladm_errno2status(ret);
+		/* XXX Clean up varpd instance */
 	}
 
+	libvarpd_c_destroy(vch);
 	if (status != DLADM_STATUS_OK)
 		(void) dladm_overlay_delete(handle, linkid);
 

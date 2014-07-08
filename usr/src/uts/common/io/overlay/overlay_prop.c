@@ -58,6 +58,9 @@ overlay_prop_set_default(overlay_prop_handle_t phdl, void *def, ssize_t len)
 	if (len > OVERLAY_PROP_SIZEMAX)
 		return (E2BIG);
 
+	if (len < 0)
+		return (EOVERFLOW);
+
 	bcopy(def, infop->oipi_default, len);
 	infop->oipi_defsize = len;
 

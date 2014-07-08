@@ -34,12 +34,11 @@ SYMBOL_SCOPE {
 	libvarpd_plugin_alloc		{ FLAGS = EXTERN };
 	libvarpd_plugin_free		{ FLAGS = EXTERN };
 	libvarpd_plugin_register	{ FLAGS = EXTERN };
-	libvarpd_plugin_unregister	{ FLAGS = EXTERN };
 	libvarpd_prop_set_name		{ FLAGS = EXTERN };
 	libvarpd_prop_set_prot		{ FLAGS = EXTERN };
 	libvarpd_prop_set_type		{ FLAGS = EXTERN };
 	libvarpd_prop_set_default	{ FLAGS = EXTERN };
 	libvarpd_prop_set_nodefault	{ FLAGS = EXTERN };
 	libvarpd_prop_set_range_uint32	{ FLAGS = EXTERN };
-	libvarpd_prop_set_str		{ FLAGS = EXTERN };
+	libvarpd_prop_set_rangestr	{ FLAGS = EXTERN };
 };
