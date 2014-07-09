@@ -24,6 +24,7 @@
  */
 /* Copyright (c) 2013 by Saso Kiselkov. All rights reserved. */
 /* Copyright (c) 2013, Joyent, Inc. All rights reserved. */
+/* Copyright (c) 2014, Nexenta Systems, Inc. All rights reserved. */
 
 #include <sys/dmu.h>
 #include <sys/dmu_impl.h>
@@ -44,6 +45,7 @@
 #include <sys/zio_checksum.h>
 #include <sys/zio_compress.h>
 #include <sys/sa.h>
+#include <sys/zfeature.h>
 #ifdef _KERNEL
 #include <sys/vmsystm.h>
 #include <sys/zfs_znode.h>
@@ -664,6 +666,12 @@ dmu_free_long_range_impl(objset_t *os, dnode_t *dn, uint64_t offset,
 		dmu_tx_t *tx = dmu_tx_create(os);
 		dmu_tx_hold_free(tx, dn->dn_object,
 		    chunk_begin, chunk_end - chunk_begin);
+
+		/*
+		 * Mark this transaction as typically resulting in a net
+		 * reduction in space used.
+		 */
+		dmu_tx_mark_netfree(tx);
 		err = dmu_tx_assign(tx, TXG_WAIT);
 		if (err) {
 			dmu_tx_abort(tx);
@@ -715,6 +723,7 @@ dmu_free_long_object(objset_t *os, uint64_t object)
 	tx = dmu_tx_create(os);
 	dmu_tx_hold_bonus(tx, object);
 	dmu_tx_hold_free(tx, object, 0, DMU_OBJECT_END);
+	dmu_tx_mark_netfree(tx);
 	err = dmu_tx_assign(tx, TXG_WAIT);
 	if (err == 0) {
 		err = dmu_object_free(os, object, tx);
@@ -1636,8 +1645,16 @@ dmu_write_policy(objset_t *os, dnode_t *dn, int level, int wp, zio_prop_t *zp)
 		 * XXX -- we should design a compression algorithm
 		 * that specializes in arrays of bps.
 		 */
-		compress = zfs_mdcomp_disable ? ZIO_COMPRESS_EMPTY :
-		    ZIO_COMPRESS_LZJB;
+		boolean_t lz4_ac = spa_feature_is_active(os->os_spa,
+		    SPA_FEATURE_LZ4_COMPRESS);
+
+		if (zfs_mdcomp_disable) {
+			compress = ZIO_COMPRESS_EMPTY;
+		} else if (lz4_ac) {
+			compress = ZIO_COMPRESS_LZ4;
+		} else {
+			compress = ZIO_COMPRESS_LZJB;
+		}
 
 		/*
 		 * Metadata always gets checksummed.  If the data

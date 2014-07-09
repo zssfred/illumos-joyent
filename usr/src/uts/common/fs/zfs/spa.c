@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013, 2014, Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -673,7 +673,8 @@ spa_prop_set(spa_t *spa, nvlist_t *nvp)
 			 * feature descriptions object.
 			 */
 			error = dsl_sync_task(spa->spa_name, NULL,
-			    spa_sync_version, &ver, 6);
+			    spa_sync_version, &ver,
+			    6, ZFS_SPACE_CHECK_RESERVED);
 			if (error)
 				return (error);
 			continue;
@@ -685,7 +686,7 @@ spa_prop_set(spa_t *spa, nvlist_t *nvp)
 
 	if (need_sync) {
 		return (dsl_sync_task(spa->spa_name, NULL, spa_sync_props,
-		    nvp, 6));
+		    nvp, 6, ZFS_SPACE_CHECK_RESERVED));
 	}
 
 	return (0);
@@ -766,7 +767,7 @@ spa_change_guid(spa_t *spa)
 	guid = spa_generate_guid(NULL);
 
 	error = dsl_sync_task(spa->spa_name, spa_change_guid_check,
-	    spa_change_guid_sync, &guid, 5);
+	    spa_change_guid_sync, &guid, 5, ZFS_SPACE_CHECK_RESERVED);
 
 	if (error == 0) {
 		spa_config_sync(spa, B_FALSE, B_TRUE);
@@ -6105,6 +6106,22 @@ spa_sync_upgrades(spa_t *spa, dmu_tx_t *tx)
 	if (spa->spa_ubsync.ub_version < SPA_VERSION_FEATURES &&
 	    spa->spa_uberblock.ub_version >= SPA_VERSION_FEATURES) {
 		spa_feature_create_zap_objects(spa, tx);
+	}
+
+	/*
+	 * LZ4_COMPRESS feature's behaviour was changed to activate_on_enable
+	 * when possibility to use lz4 compression for metadata was added
+	 * Old pools that have this feature enabled must be upgraded to have
+	 * this feature active
+	 */
+	if (spa->spa_uberblock.ub_version >= SPA_VERSION_FEATURES) {
+		boolean_t lz4_en = spa_feature_is_enabled(spa,
+		    SPA_FEATURE_LZ4_COMPRESS);
+		boolean_t lz4_ac = spa_feature_is_active(spa,
+		    SPA_FEATURE_LZ4_COMPRESS);
+
+		if (lz4_en && !lz4_ac)
+			spa_feature_incr(spa, SPA_FEATURE_LZ4_COMPRESS, tx);
 	}
 	rrw_exit(&dp->dp_config_rwlock, FTAG);
 }

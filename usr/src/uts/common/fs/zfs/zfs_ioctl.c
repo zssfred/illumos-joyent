@@ -24,9 +24,10 @@
  * Portions Copyright 2011 Martin Matuska
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2014, Joyent, Inc. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
+ * Copyright (c) 2014, Nexenta Systems, Inc. All rights reserved.
  */
 
 /*
@@ -2484,37 +2485,6 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 		}
 		break;
 	}
-	case ZFS_PROP_COMPRESSION:
-	{
-		if (intval == ZIO_COMPRESS_LZ4) {
-			spa_t *spa;
-
-			if ((err = spa_open(dsname, &spa, FTAG)) != 0)
-				return (err);
-
-			/*
-			 * Setting the LZ4 compression algorithm activates
-			 * the feature.
-			 */
-			if (!spa_feature_is_active(spa,
-			    SPA_FEATURE_LZ4_COMPRESS)) {
-				if ((err = zfs_prop_activate_feature(spa,
-				    SPA_FEATURE_LZ4_COMPRESS)) != 0) {
-					spa_close(spa, FTAG);
-					return (err);
-				}
-			}
-
-			spa_close(spa, FTAG);
-		}
-		/*
-		 * We still want the default set action to be performed in the
-		 * caller, we only performed zfeature settings here.
-		 */
-		err = -1;
-		break;
-	}
-
 	default:
 		err = -1;
 	}
@@ -3950,7 +3920,7 @@ zfs_prop_activate_feature(spa_t *spa, spa_feature_t feature)
 	/* EBUSY here indicates that the feature is already active */
 	err = dsl_sync_task(spa_name(spa),
 	    zfs_prop_activate_feature_check, zfs_prop_activate_feature_sync,
-	    &feature, 2);
+	    &feature, 2, ZFS_SPACE_CHECK_RESERVED);
 
 	if (err != 0 && err != EBUSY)
 		return (err);

@@ -1119,8 +1119,8 @@ static struct lx_sysent sysents[] = {
 	{"pwrite64",	lx_pwrite64,	0,		5},	/* 181 */
 	{"chown16",	lx_chown16,	0,		3},	/* 182 */
 	{"getcwd",	lx_getcwd,	0,		2},	/* 183 */
-	{"capget",	NULL,		NOSYS_NO_EQUIV,	0},	/* 184 */
-	{"capset",	NULL,		NOSYS_NO_EQUIV,	0},	/* 185 */
+	{"capget",	lx_capget,	0,		2},	/* 184 */
+	{"capset",	lx_capset,	0,		2},	/* 185 */
 	{"sigaltstack",	lx_sigaltstack,	0,		2},	/* 186 */
 	{"sendfile",	lx_sendfile,	0,		4},	/* 187 */
 	{"getpmsg",	NULL,		NOSYS_OBSOLETE,	0},	/* 188 */
@@ -1185,7 +1185,7 @@ static struct lx_sysent sysents[] = {
 	{"io_getevents", NULL,		NOSYS_NO_EQUIV,	0},	/* 247 */
 	{"io_submit",	NULL,		NOSYS_NO_EQUIV,	0},	/* 248 */
 	{"io_cancel",	NULL,		NOSYS_NO_EQUIV,	0},	/* 249 */
-	{"fadvise64",	NULL,		NOSYS_UNDOC,	0},	/* 250 */
+	{"fadvise64",	lx_fadvise64,	0,		4},	/* 250 */
 	{"nosys",	NULL,		0,		0},	/* 251 */
 	{"group_exit",	lx_group_exit,	0,		1},	/* 252 */
 	{"lookup_dcookie", NULL,	NOSYS_NO_EQUIV,	0},	/* 253 */
@@ -1209,7 +1209,7 @@ static struct lx_sysent sysents[] = {
 
 	/* The following system calls only exist in kernel 2.6 and greater */
 	{"utimes",	utimes,		SYS_PASSTHRU,	2},	/* 271 */
-	{"fadvise64_64", NULL,		NOSYS_NULL,	0},	/* 272 */
+	{"fadvise64_64", lx_fadvise64_64, 0,		4},	/* 272 */
 	{"vserver",	NULL,		NOSYS_NULL,	0},	/* 273 */
 	{"mbind",	NULL,		NOSYS_NULL,	0},	/* 274 */
 	{"get_mempolicy", NULL,		NOSYS_NULL,	0},	/* 275 */
@@ -1257,7 +1257,7 @@ static struct lx_sysent sysents[] = {
 	{"move_pages",	NULL,		NOSYS_NULL,	0},	/* 317 */
 	{"getcpu",	NULL,		NOSYS_NULL,	0},	/* 318 */
 	{"epoll_pwait",	epoll_pwait,	SYS_PASSTHRU,	5},	/* 319 */
-	{"utimensat",	NULL,		NOSYS_NULL,	0},	/* 320 */
+	{"utimensat",	lx_utimensat,	0,		4},	/* 320 */
 	{"signalfd",	NULL,		NOSYS_NULL,	0},	/* 321 */
 	{"timerfd_create", NULL,	NOSYS_NULL,	0},	/* 322 */
 	{"eventfd",	NULL,		NOSYS_NULL,	0},	/* 323 */
@@ -1267,8 +1267,8 @@ static struct lx_sysent sysents[] = {
 	{"signalfd4",	NULL,		NOSYS_NULL,	0},	/* 327 */
 	{"eventfd2",	NULL,		NOSYS_NULL,	0},	/* 328 */
 	{"epoll_create1", epoll_create1, SYS_PASSTHRU,	1},	/* 329 */
-	{"dup3",	NULL,		NOSYS_NULL,	0},	/* 330 */
-	{"pipe2",	NULL,		NOSYS_NULL,	0},	/* 331 */
+	{"dup3",	lx_dup3,	0,		3},	/* 330 */
+	{"pipe2",	lx_pipe2,	0,		2},	/* 331 */
 	{"inotify_init1", NULL,		NOSYS_NULL,	0},	/* 332 */
 	{"preadv",	NULL,		NOSYS_NULL,	0},	/* 333 */
 	{"pwritev",	NULL,		NOSYS_NULL,	0},	/* 334 */
@@ -1277,7 +1277,7 @@ static struct lx_sysent sysents[] = {
 	{"recvmmsg",	NULL,		NOSYS_NULL,	0},	/* 337 */
 	{"fanotify_init", NULL,		NOSYS_NULL,	0},	/* 338 */
 	{"fanotify_mark", NULL,		NOSYS_NULL,	0},	/* 339 */
-	{"prlimit64",	NULL,		NOSYS_NULL,	0},	/* 340 */
+	{"prlimit64",	lx_prlimit64,	0,		4},	/* 340 */
 	{"name_to_handle_at", NULL,	NOSYS_NULL,	0},	/* 341 */
 	{"open_by_handle_at", NULL,	NOSYS_NULL,	0},	/* 342 */
 	{"clock_adjtime", NULL,		NOSYS_NULL,	0},	/* 343 */
