@@ -4791,6 +4791,8 @@ f usr/lib/amd64/libhotplug.so.1 0755 root bin
 s usr/lib/amd64/libhotplug.so=libhotplug.so.1
 f usr/lib/amd64/libidmap.so.1 0755 root bin
 s usr/lib/amd64/libidmap.so=libidmap.so.1
+f usr/lib/amd64/libidspace.so.1 0755 root bin
+s usr/lib/amd64/libidspace.so=libidspace.so.1
 f usr/lib/amd64/libike.so.1 0755 root bin
 s usr/lib/amd64/libike.so=libike.so.1
 f usr/lib/amd64/libilb.so.1 0755 root bin
@@ -4980,6 +4982,7 @@ s usr/lib/amd64/libuuid.so.1=../../../lib/amd64/libuuid.so.1
 s usr/lib/amd64/libuuid.so=../../../lib/amd64/libuuid.so.1
 s usr/lib/amd64/libuutil.so.1=../../../lib/amd64/libuutil.so.1
 s usr/lib/amd64/libuutil.so=../../../lib/amd64/libuutil.so.1
+f usr/lib/amd64/libvarpd.so.1 0755 root bin
 f usr/lib/amd64/libvnd.so.1 0755 root bin
 s usr/lib/amd64/libvnd.so=libvnd.so.1
 f usr/lib/amd64/libvolmgt.so.1 0755 root bin
@@ -6203,6 +6206,8 @@ f usr/lib/libhotplug.so.1 0755 root bin
 s usr/lib/libhotplug.so=libhotplug.so.1
 f usr/lib/libidmap.so.1 0755 root bin
 s usr/lib/libidmap.so=libidmap.so.1
+f usr/lib/libidspace.so.1 0755 root bin
+s usr/lib/libidspace.so=libidspace.so.1
 f usr/lib/libike.so.1 0755 root bin
 s usr/lib/libike.so=libike.so.1
 f usr/lib/libilb.so.1 0755 root bin
@@ -6444,6 +6449,7 @@ s usr/lib/libuutil.so.1=../../lib/libuutil.so.1
 s usr/lib/libuutil.so=../../lib/libuutil.so.1
 f usr/lib/libvnd.so.1 0755 root bin
 s usr/lib/libvnd.so=libvnd.so.1
+f usr/lib/libvarpd.so.1 0755 root bin
 f usr/lib/libvolmgt.so.1 0755 root bin
 s usr/lib/libvolmgt.so=libvolmgt.so.1
 f usr/lib/libvrrpadm.so.1 0755 root bin
@@ -10060,6 +10066,13 @@ f usr/lib/values-Xs.o 0644 root bin
 f usr/lib/values-Xt.o 0644 root bin
 f usr/lib/values-xpg4.o 0644 root bin
 f usr/lib/values-xpg6.o 0644 root bin
+d usr/lib/varpd 0755 root bin
+s usr/lib/varpd/64=amd64
+d usr/lib/varpd/amd64 0755 root bin
+f usr/lib/varpd/amd64/libvarpd_direct.so.1 0555 root bin
+s usr/lib/varpd/amd64/libvarpd_direct.so=libvarpd_direct.so.1
+f usr/lib/varpd/libvarpd_direct.so.1 0555 root bin
+s usr/lib/varpd/libvarpd_direct.so=libvarpd_direct.so.1
 f usr/lib/vfontedpr 0555 root bin
 f usr/lib/vgrindefs 0444 root bin
 d usr/lib/vscan 0755 root bin
@@ -10520,6 +10533,7 @@ h usr/sbin/update_drv=usr/lib/isaexec
 h usr/sbin/useradd=usr/sbin/roleadd
 h usr/sbin/userdel=usr/sbin/roledel
 h usr/sbin/usermod=usr/sbin/rolemod
+f usr/sbin/varpd 0555 root bin
 f usr/sbin/vndadm 0555 root bin
 f usr/sbin/volcopy 0555 root bin
 f usr/sbin/vrrpadm 0555 root bin

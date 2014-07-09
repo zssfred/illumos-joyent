@@ -1326,10 +1326,10 @@ so_queue_msg_impl(struct sonode *so, mblk_t *mp,
 	if (so->so_krecv_cb != NULL) {
 		boolean_t cont;
 		so_krecv_f func = so->so_krecv_cb;
+		void *arg = so->so_krecv_arg;
 
 		mutex_exit(&so->so_lock);
-		cont = so->so_krecv_cb(so, mp, msg_size, flags & MSG_OOB,
-		    so->so_krecv_arg);
+		cont = so->so_krecv_cb(so, mp, msg_size, flags & MSG_OOB, arg);
 		mutex_enter(&so->so_lock);
 		if (cont == B_TRUE) {
 			space_left = so->so_rcvbuf;
