@@ -1139,15 +1139,15 @@ dladm_strs2range(char **prop_val, uint_t val_cnt,
  * Convert a mac_propval_range_t structure into an array of elements.
  */
 dladm_status_t
-dladm_range2list(mac_propval_range_t *rangep, void *elem, uint_t *nelem)
+dladm_range2list(const mac_propval_range_t *rangep, void *elem, uint_t *nelem)
 {
 	int		i, j, k;
 	dladm_status_t	status = DLADM_STATUS_OK;
 
 	switch (rangep->mpr_type) {
 	case MAC_PROPVAL_UINT32: {
-		mac_propval_uint32_range_t	*ur;
-		uint32_t			*elem32 = elem;
+		const mac_propval_uint32_range_t	*ur;
+		uint32_t				*elem32 = elem;
 
 		k = 0;
 		ur = &rangep->mpr_range_uint32[0];
@@ -1175,13 +1175,13 @@ dladm_range2list(mac_propval_range_t *rangep, void *elem, uint_t *nelem)
  * of single elements or ranges.
  */
 int
-dladm_range2strs(mac_propval_range_t *rangep, char **prop_val)
+dladm_range2strs(const mac_propval_range_t *rangep, char **prop_val)
 {
 	int	i;
 
 	switch (rangep->mpr_type) {
 	case MAC_PROPVAL_UINT32: {
-		mac_propval_uint32_range_t	*ur;
+		const mac_propval_uint32_range_t	*ur;
 
 		/* Write ranges and individual elements */
 		ur = &rangep->mpr_range_uint32[0];
@@ -1199,8 +1199,8 @@ dladm_range2strs(mac_propval_range_t *rangep, char **prop_val)
 		return (0);
 	}
 	case MAC_PROPVAL_STR: {
-		mac_propval_str_range_t	*str;
-		size_t			coff, len;
+		const mac_propval_str_range_t	*str;
+		size_t				coff, len;
 
 		coff = 0;
 		str = &rangep->u.mpr_str;

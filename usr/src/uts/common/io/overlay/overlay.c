@@ -918,12 +918,17 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 		oip->oip_size = strlcpy((char *)oip->oip_value,
 		    odd->odd_plugin->ovp_name, oip->oip_size);
 		break;
-	case OVERLAY_DEV_P_VARPDID: {
-		uint64_t varpd = 42;
-		bcopy(&varpd, oip->oip_value, sizeof (uint64_t));
-		oip->oip_size = sizeof (uint64_t);
+	case OVERLAY_DEV_P_VARPDID:
+		mutex_enter(&odd->odd_lock);
+		if (odd->odd_flags & OVERLAY_F_VARPD) {
+			const uint64_t val = odd->odd_target->ott_id;
+			bcopy(&val, oip->oip_value, sizeof (uint64_t));
+			oip->oip_size = sizeof (uint64_t);
+		} else {
+			oip->oip_size = 0;
+		}
+		mutex_exit(&odd->odd_lock);
 		break;
-	}
 	default:
 		ret = ENOENT;
 	}

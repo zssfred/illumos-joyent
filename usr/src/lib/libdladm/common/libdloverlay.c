@@ -27,7 +27,50 @@
 #include <limits.h>
 #include <libvarpd_client.h>
 
+#define	VARPD_PROPERTY_NAME	"varpd/id"
+
 static const char *dladm_overlay_doorpath = "/tmp/overlay.door";
+typedef struct dladm_overlay_propinfo {
+	boolean_t dop_isvarpd;
+	union {
+		overlay_ioc_propinfo_t *dop_overlay;
+		varpd_client_prop_handle_t dop_varpd;
+	} dop_un;
+} dladm_overlay_propinfo_t;
+
+dladm_status_t
+dladm_overlay_prop_info(dladm_overlay_propinfo_handle_t phdl,
+    const char **namep, uint_t *typep, uint_t *protp, const void **defp,
+    uint32_t *sizep, const mac_propval_range_t **possp)
+{
+	dladm_overlay_propinfo_t *infop = (dladm_overlay_propinfo_t *)phdl;
+	overlay_ioc_propinfo_t *oinfop = infop->dop_un.dop_overlay;
+
+	if (infop->dop_isvarpd == B_FALSE) {
+		if (namep != NULL)
+			*namep = oinfop->oipi_name;
+		if (typep != NULL)
+			*typep = oinfop->oipi_type;
+		if (protp != NULL)
+			*protp = oinfop->oipi_prot;
+		if (defp != NULL)
+			*defp = oinfop->oipi_default;
+		if (sizep != NULL)
+			*sizep = oinfop->oipi_defsize;
+		if (possp != NULL)
+			*possp = (const mac_propval_range_t *)oinfop->oipi_poss;
+
+	} else {
+		int ret;
+		ret = libvarpd_c_prop_info(infop->dop_un.dop_varpd, namep,
+		    typep, protp, defp, sizep, possp);
+		if (ret != 0)
+			return (dladm_errno2status(ret));
+
+	}
+
+	return (DLADM_STATUS_OK);
+}
 
 static dladm_status_t
 dladm_overlay_parse_prop(overlay_prop_type_t type, void *buf, uint32_t *sizep,
@@ -176,21 +219,27 @@ dladm_overlay_setprop(dladm_handle_t handle, datalink_id_t linkid,
  */
 static int
 dladm_overlay_activate_cb(dladm_handle_t handle, datalink_id_t linkid,
-    overlay_ioc_propinfo_t *infop, void *arg)
+    dladm_overlay_propinfo_handle_t phdl, void *arg)
 {
-	overlay_ioc_prop_t prop;
+	dladm_status_t status;
+	uint8_t buf[DLADM_OVERLAY_PROP_SIZEMAX];
+	uint_t prot;
+	size_t size;
+	const char *name;
 
-	if ((infop->oipi_prot & OVERLAY_PROP_PERM_REQ) == 0)
+	if ((status = dladm_overlay_prop_info(phdl, &name, NULL, &prot, NULL,
+	    NULL, NULL)) != DLADM_STATUS_OK)
+		return (status);
+
+	if ((prot & OVERLAY_PROP_PERM_REQ) == 0)
 		return (DLADM_WALK_CONTINUE);
 
-	bzero(&prop, sizeof (overlay_ioc_prop_t));
-	if (dladm_overlay_get_prop(handle, linkid, infop, &prop) !=
+	if (dladm_overlay_get_prop(handle, linkid, phdl, buf, &size) !=
 	    DLADM_STATUS_OK)
 		return (DLADM_WALK_CONTINUE);
 
-	if (prop.oip_size == 0)
-		fprintf(stderr, "unset required propety: %s\n",
-		    infop->oipi_name);
+	if (size == 0)
+		fprintf(stderr, "unset required propety: %s\n", name);
 
 	return (DLADM_WALK_CONTINUE);
 }
@@ -353,30 +402,97 @@ dladm_overlay_delete(dladm_handle_t handle, datalink_id_t linkid)
 
 dladm_status_t
 dladm_overlay_get_prop(dladm_handle_t handle, datalink_id_t linkid,
-    overlay_ioc_propinfo_t *infop, overlay_ioc_prop_t *oip)
+    dladm_overlay_propinfo_handle_t infohdl, void *buf, size_t *sizep)
 {
 	int ret;
+	overlay_ioc_prop_t oip;
+	dladm_overlay_propinfo_t *infop = (dladm_overlay_propinfo_t *)infohdl;
 
-	bzero(oip, sizeof (overlay_ioc_prop_t));
-	oip->oip_linkid = linkid;
-	oip->oip_id = infop->oipi_id;
-	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_GETPROP, oip);
-	if (ret != 0) {
-		return (dladm_errno2status(errno));
+	/* XXX Better errno */
+	if (*sizep < DLADM_OVERLAY_PROP_SIZEMAX)
+		return (dladm_errno2status(ERANGE));
+
+	if (infop->dop_isvarpd == B_FALSE) {
+		bzero(&oip, sizeof (overlay_ioc_prop_t));
+		oip.oip_linkid = linkid;
+		oip.oip_id = infop->dop_un.dop_overlay->oipi_id;
+		ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_GETPROP, &oip);
+		if (ret != 0)
+			return (dladm_errno2status(errno));
+		bcopy(oip.oip_value, buf, DLADM_OVERLAY_PROP_SIZEMAX);
+		*sizep = oip.oip_size;
+	} else {
+		uint32_t size = *sizep;
+
+		ret = libvarpd_c_prop_get(infop->dop_un.dop_varpd, buf, &size);
+		if (ret != 0)
+			return (dladm_errno2status(errno));
+		*sizep = size;
 	}
 
 	return (DLADM_STATUS_OK);
 }
 
+static dladm_status_t
+dladm_overlay_walk_varpd_prop(dladm_handle_t handle, datalink_id_t linkid,
+    uint64_t varpdid, dladm_overlay_prop_f func, void *arg)
+{
+	int ret, i;
+	varpd_client_handle_t chdl;
+	varpd_client_prop_handle_t phdl;
+	uint_t nprops;
+	dladm_status_t status;
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_prop_handle_alloc(chdl, varpdid, &phdl)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_prop_nprops(chdl, varpdid, &nprops)) != 0) {
+		libvarpd_c_prop_handle_free(phdl);
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	status = DLADM_STATUS_OK;
+	for (i = 0; i < nprops; i++) {
+		dladm_overlay_propinfo_t dop;
+
+		bzero(&dop, sizeof (dop));
+		dop.dop_isvarpd = B_TRUE;
+		dop.dop_un.dop_varpd = phdl;
+
+		if ((ret = libvarpd_c_prop_info_fill(phdl, i)) != 0) {
+			status = dladm_errno2status(ret);
+			break;
+		}
+
+		ret = func(handle, linkid,
+		    (dladm_overlay_propinfo_handle_t)&dop, arg);
+		if (ret == DLADM_WALK_TERMINATE)
+			break;
+	}
+
+	libvarpd_c_prop_handle_free(phdl);
+	libvarpd_c_destroy(chdl);
+
+	return (status);
+}
+
 dladm_status_t
 dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
-    dladm_prop_f func, void *arg)
+    dladm_overlay_prop_f func, void *arg)
 {
 	int i, ret;
 	dladm_status_t status;
 	datalink_class_t class;
 	overlay_ioc_nprops_t oin;
 	overlay_ioc_propinfo_t oipi;
+	dladm_overlay_propinfo_t dop;
+	uint64_t varpdid = UINT64_MAX;
 
 	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL,
 	    NULL, 0) != DLADM_STATUS_OK)
@@ -389,11 +505,11 @@ dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
 	status = DLADM_STATUS_OK;
 	oin.oipn_linkid = linkid;
 	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_NPROPS, &oin);
-	if (ret != 0) {
+	if (ret != 0)
 		return (dladm_errno2status(errno));
-	}
 
 	for (i = 0; i < oin.oipn_nprops; i++) {
+		bzero(&dop, sizeof (dladm_overlay_propinfo_t));
 		bzero(&oipi, sizeof (overlay_ioc_propinfo_t));
 		oipi.oipi_linkid = linkid;
 		oipi.oipi_id = i;
@@ -402,10 +518,33 @@ dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
 			fprintf(stderr, "failed to get propinfo %d\n", i);
 			return (dladm_errno2status(errno));
 		}
-		ret = func(handle, linkid, &oipi, arg);
+
+		dop.dop_isvarpd = B_FALSE;
+		dop.dop_un.dop_overlay = &oipi;
+		ret = func(handle, linkid,
+		    (dladm_overlay_propinfo_handle_t)&dop, arg);
 		if (ret == DLADM_WALK_TERMINATE)
 			break;
+
+		if (strcmp(oipi.oipi_name, VARPD_PROPERTY_NAME) == 0) {
+			uint8_t buf[DLADM_OVERLAY_PROP_SIZEMAX];
+			size_t bufsize = sizeof (buf);
+			uint64_t *vp;
+
+			if ((status = dladm_overlay_get_prop(handle, linkid,
+			    (dladm_overlay_propinfo_handle_t)&dop, buf,
+			    &bufsize)) != DLADM_STATUS_OK)
+				continue;
+
+			vp = (uint64_t *)buf;
+			varpdid = *vp;
+		}
 	}
 
-	return (DLADM_STATUS_OK);
+	/* Should this really be possible? */
+	if (varpdid == UINT64_MAX)
+		return (DLADM_STATUS_OK);
+
+	return (dladm_overlay_walk_varpd_prop(handle, linkid, varpdid, func,
+	    arg));
 }

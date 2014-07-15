@@ -170,7 +170,7 @@ libvarpd_door_f_getprop(varpd_impl_t *vip, varpd_client_arg_t *vcap,
 	}
 
 	ret = libvarpd_prop_get(phdl, vcpap->vcpa_buf, &size);
-	if (ret != 0)
+	if (ret == 0)
 		vcpap->vcpa_bufsize = size;
 	libvarpd_prop_handle_free(phdl);
 	return (0);

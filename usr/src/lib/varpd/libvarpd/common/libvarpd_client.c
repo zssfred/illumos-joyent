@@ -300,7 +300,7 @@ libvarpd_c_prop_info_fill(varpd_client_prop_handle_t phdl, uint_t propid)
 
 int
 libvarpd_c_prop_info(varpd_client_prop_handle_t phdl, const char **namep,
-    uint_t *typep, uint_t *protp, const void **defp, uint32_t *sizep,
+    uint_t *typep, uint_t *protp, const void **defp, uint32_t *defsizep,
     const mac_propval_range_t **possp)
 {
 	varpd_client_prop_info_t *infop = (varpd_client_prop_info_t *)phdl;
@@ -315,8 +315,8 @@ libvarpd_c_prop_info(varpd_client_prop_handle_t phdl, const char **namep,
 		*protp = infop->vcprop_prot;
 	if (defp != NULL)
 		*defp = infop->vcprop_default;
-	if (sizep != NULL)
-		*sizep = infop->vcprop_psize;
+	if (defsizep != NULL)
+		*defsizep = infop->vcprop_defsize;
 	if (possp != NULL)
 		*possp = (const mac_propval_range_t *)infop->vcprop_poss;
 	return (0);

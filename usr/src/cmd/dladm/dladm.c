@@ -9897,15 +9897,16 @@ do_delete_overlay(int argc, char *argv[], const char *use)
 }
 
 typedef struct showoverlay_state {
-	const char 		*sho_linkname;
 	ofmt_handle_t		sho_ofmt;
-	overlay_ioc_prop_t	sho_value;
-	overlay_ioc_propinfo_t	*sho_info;
+	const char 		*sho_linkname;
+	dladm_overlay_propinfo_handle_t sho_info;
+	uint8_t			sho_value[DLADM_OVERLAY_PROP_SIZEMAX];
+	uint32_t		sho_size;
 } showoverlay_state_t;
 
 static void
-print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, void *pbuf,
-    size_t psize)
+print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, const void *pbuf,
+    const size_t psize)
 {
 	const struct in6_addr *ipv6;
 	struct in_addr ip;
@@ -9942,7 +9943,8 @@ print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, void *pbuf,
 		break;
 	case OVERLAY_PROP_T_IP:
 		if (psize != sizeof (struct in6_addr)) {
-			warn("malformed overlay IP property\n");
+			warn("malformed overlay IP property: %d bytes\n",
+			    psize);
 			(void) snprintf(outbuf, bufsize, "--");
 			break;
 		}
@@ -9979,22 +9981,33 @@ print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, void *pbuf,
 static boolean_t
 print_overlay_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
 {
-	showoverlay_state_t	*sp = ofarg->ofmt_cbarg;
-	overlay_ioc_propinfo_t	*infop = sp->sho_info;
-	overlay_ioc_prop_t	*oip = &sp->sho_value;
+	dladm_status_t 			status;
+	showoverlay_state_t		*sp = ofarg->ofmt_cbarg;
+	dladm_overlay_propinfo_handle_t	infop = sp->sho_info;
+	const char 			*pname;
+	uint_t				type, prot;
+	const void			*def;
+	uint32_t			defsize;
+	const mac_propval_range_t	*rangep;
+
+	if ((status = dladm_overlay_prop_info(infop, &pname, &type, &prot, &def,
+	    &defsize, &rangep)) != DLADM_STATUS_OK) {
+		warn_dlerr(status, "failed to get get property info");
+		/* XXX check whether this makes sense */
+		return (B_TRUE);
+	}
 
 	switch (ofarg->ofmt_id) {
 	case OVERLAY_LINK:
 		snprintf(buf, bufsize, "%s", sp->sho_linkname);
 		break;
 	case OVERLAY_PROPERTY:
-		snprintf(buf, bufsize, "%s", infop->oipi_name);
+		snprintf(buf, bufsize, "%s", pname);
 		break;
 	case OVERLAY_PERM:
-		if ((infop->oipi_prot & OVERLAY_PROP_PERM_RW) ==
-		    OVERLAY_PROP_PERM_RW) {
+		if ((prot & OVERLAY_PROP_PERM_RW) == OVERLAY_PROP_PERM_RW) {
 			snprintf(buf, bufsize, "%s", "rw");
-		} else if ((infop->oipi_prot & OVERLAY_PROP_PERM_RW) ==
+		} else if ((prot & OVERLAY_PROP_PERM_RW) ==
 		    OVERLAY_PROP_PERM_READ) {
 			snprintf(buf, bufsize, "%s", "r-");
 		} else {
@@ -10003,29 +10016,26 @@ print_overlay_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
 		break;
 	case OVERLAY_REQ:
 		snprintf(buf, bufsize, "%s",
-		    infop->oipi_prot & OVERLAY_PROP_PERM_REQ ? "y" : "-");
+		    prot & OVERLAY_PROP_PERM_REQ ? "y" : "-");
 		break;
 	case OVERLAY_VALUE:
-		if (oip->oip_size == 0) {
+		if (sp->sho_size == 0) {
 			snprintf(buf, bufsize, "%s", "--");
 		} else {
-			print_overlay_value(buf, bufsize, infop->oipi_type,
-			    oip->oip_value, oip->oip_size);
+			print_overlay_value(buf, bufsize, type, sp->sho_value,
+			    sp->sho_size);
 		}
 		break;
 	case OVERLAY_DEFAULT:
-		if (infop->oipi_defsize == 0) {
+		if (defsize == 0) {
 			snprintf(buf, bufsize, "%s", "--");
 		} else {
-			print_overlay_value(buf, bufsize, infop->oipi_type,
-			    infop->oipi_default, infop->oipi_defsize);
+			print_overlay_value(buf, bufsize, type, def, defsize);
 		}
 		break;
 	case OVERLAY_POSSIBLE: {
 		int i;
 		char **vals, *ptr, *lim;
-		mac_propval_range_t *rangep =
-		    (mac_propval_range_t *)infop->oipi_poss;
 		if (rangep->mpr_count == 0) {
 			snprintf(buf, bufsize, "%s", "--");
 			break;
@@ -10067,14 +10077,15 @@ print_overlay_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
 /* XXX Exposing ioctl structures */
 static int
 dladm_overlay_show_one(dladm_handle_t handle, datalink_id_t linkid,
-    overlay_ioc_propinfo_t *iop, void *arg)
+    dladm_overlay_propinfo_handle_t phdl, void *arg)
 {
 	showoverlay_state_t *sp = arg;
-	sp->sho_info = iop;
+	sp->sho_info = phdl;
 
 	/* XXX Show error somehow? */
-	if (dladm_overlay_get_prop(handle, linkid, iop, &sp->sho_value) !=
-	    DLADM_STATUS_OK)
+	sp->sho_size = sizeof (sp->sho_value);
+	if (dladm_overlay_get_prop(handle, linkid, phdl, &sp->sho_value,
+	    &sp->sho_size) != DLADM_STATUS_OK)
 		return (DLADM_WALK_CONTINUE);
 
 	ofmt_print(sp->sho_ofmt, sp);

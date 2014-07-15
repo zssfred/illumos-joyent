@@ -289,9 +289,9 @@ extern dladm_status_t	dladm_zone_halt(dladm_handle_t, zoneid_t);
 
 extern dladm_status_t	dladm_strs2range(char **, uint_t, mac_propval_type_t,
 			    mac_propval_range_t **);
-extern dladm_status_t	dladm_range2list(mac_propval_range_t *, void*,
+extern dladm_status_t	dladm_range2list(const mac_propval_range_t *, void *,
 			    uint_t *);
-extern int		dladm_range2strs(mac_propval_range_t *, char **);
+extern int		dladm_range2strs(const mac_propval_range_t *, char **);
 extern dladm_status_t	dladm_list2range(void *, uint_t, mac_propval_type_t,
 			    mac_propval_range_t **);
 

@@ -42,7 +42,6 @@ typedef struct overlay_ioc_create {
 	uint32_t	oic_filler;
 	uint64_t	oic_vnetid;
 	char		oic_encap[MAXLINKNAMELEN];
-	uint_t		oic_nprops;
 } overlay_ioc_create_t;
 
 typedef struct overlay_ioc_activate {
