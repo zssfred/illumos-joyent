@@ -13,8 +13,8 @@
  * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
-#ifndef _PROTOTYPE_H
-#define	_PROTOTYPE_H
+#ifndef _LIBRENAME_H
+#define	_LIBRENAME_H
 
 /*
  * librename(3RENAME) public interfaces
@@ -40,4 +40,4 @@ extern void librename_atomic_fini(librename_atomic_t *);
 }
 #endif
 
-#endif /* _PROTOTYPE_H */
+#endif /* _LIBRENAME_H */
