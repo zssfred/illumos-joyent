@@ -31,6 +31,7 @@
 #include <sys/kmem.h>
 #include <sys/param.h>
 #include <sys/sysmacros.h>
+#include <sys/ddifm.h>
 
 #include <sys/dls.h>
 #include <sys/dld_ioc.h>
@@ -44,13 +45,11 @@
 
 #include <sys/overlay_impl.h>
 
+dev_info_t *overlay_dip;
 static kmutex_t overlay_dev_lock;
 static list_t overlay_dev_list;
-static dev_info_t *overlay_dip;
 static uint8_t overlay_macaddr[ETHERADDRL] =
 	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-char *dest_ip = "::ffff:10.88.88.00";
 
 typedef enum overlay_dev_prop {
 	OVERLAY_DEV_P_MTU = 0,
@@ -1097,11 +1096,16 @@ static dld_ioc_info_t overlay_ioc_list[] = {
 static int
 overlay_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 {
+	int fmcap = DDI_FM_EREPORT_CAPABLE;
 	if (cmd != DDI_ATTACH)
 		return (DDI_FAILURE);
 
 	if (overlay_dip != NULL || ddi_get_instance(dip) != 0)
 		return (DDI_FAILURE);
+
+	ddi_fm_init(dip, &fmcap, NULL);
+	if (fmcap != DDI_FM_EREPORT_CAPABLE)
+		cmn_err(CE_WARN, "XXX didn't get DDI_FM_EREPORT");
 
 	if (ddi_create_minor_node(dip, OVERLAY_CTL, S_IFCHR,
 	    ddi_get_instance(dip), DDI_PSEUDO, 0) == DDI_FAILURE)
@@ -1147,6 +1151,7 @@ overlay_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 
 	dld_ioc_unregister(VNIC_IOC);
 	ddi_remove_minor_node(dip, OVERLAY_CTL);
+	ddi_fm_fini(dip);
 	overlay_dip = NULL;
 	return (DDI_SUCCESS);
 }

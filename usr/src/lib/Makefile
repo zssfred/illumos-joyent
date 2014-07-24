@@ -136,6 +136,7 @@ SUBDIRS += \
 	libpp		\
 	libproc		\
 	libproject	\
+	librename	\
 	libsendfile	\
 	nametoaddr	\
 	ncad_addr	\
@@ -436,6 +437,7 @@ HDRSUBDIRS=		\
 	libraidcfg	\
 	librcm		\
 	librdc		\
+	librename	\
 	libscf		\
 	libsip		\
 	libsmbios	\
@@ -663,7 +665,7 @@ cfgadm_plugins:	libhotplug
 libilb:		libsocket
 libidspace:	libumem
 $(INTEL_BUILD)libdiskmgt:libfdisk
-varpd:		libidspace
+varpd:		libavl libidspace libumem libnsl libnvpair libmd5 librename
 
 #
 # The reason this rule checks for the existence of the

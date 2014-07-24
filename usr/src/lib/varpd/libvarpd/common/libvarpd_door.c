@@ -258,36 +258,47 @@ libvarpd_door_server_create(varpd_handle_t vhp, const char *path)
 	int fd, ret;
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 
-	if (vip->vdi_doorfd >= 0)
+	mutex_lock(&vip->vdi_lock);
+	if (vip->vdi_doorfd >= 0) {
+		mutex_unlock(&vip->vdi_lock);
 		return (EEXIST);
+	}
 
 	vip->vdi_doorfd = door_create(libvarpd_door_server, vip,
 	    DOOR_REFUSE_DESC | DOOR_NO_CANCEL);
-	if (vip->vdi_doorfd == -1)
+	if (vip->vdi_doorfd == -1) {
+		mutex_unlock(&vip->vdi_lock);
 		return (errno);
+	}
 
 	if ((fd = open(path, O_CREAT | O_RDWR)) == -1) {
 		ret = errno;
 		if (door_revoke(vip->vdi_doorfd) != 0)
 			abort();
+		mutex_unlock(&vip->vdi_lock);
 		return (errno);
 	}
 	/* XXX Really? */
-	if (fchown(fd, UID_DLADM, GID_NETADM) != 0) {
+	if (fchown(fd, UID_NETADM, GID_NETADM) != 0) {
 		ret = errno;
 		if (door_revoke(vip->vdi_doorfd) != 0)
 			abort();
+		mutex_unlock(&vip->vdi_lock);
 		return (ret);
 	}
 
+	if (close(fd) != 0)
+		abort();
 	(void) fdetach(path);
 	if (fattach(vip->vdi_doorfd, path) != 0) {
 		ret = errno;
 		if (door_revoke(vip->vdi_doorfd) != 0)
 			abort();
+		mutex_unlock(&vip->vdi_lock);
 		return (ret);
 	}
 
+	mutex_unlock(&vip->vdi_lock);
 	return (0);
 }
 
@@ -295,9 +306,12 @@ void
 libvarpd_door_server_destroy(varpd_handle_t vhp)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
-	if (vip->vdi_doorfd == -1)
-		return;
-	if (door_revoke(vip->vdi_doorfd) != 0)
-		abort();
-	vip->vdi_doorfd = -1;
+
+	mutex_lock(&vip->vdi_lock);
+	if (vip->vdi_doorfd != 0) {
+		if (door_revoke(vip->vdi_doorfd) != 0)
+			abort();
+		vip->vdi_doorfd = -1;
+	}
+	mutex_unlock(&vip->vdi_lock);
 }

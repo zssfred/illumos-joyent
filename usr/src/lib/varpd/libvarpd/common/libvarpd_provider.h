@@ -24,6 +24,7 @@
  */
 
 #include <libvarpd.h>
+#include <libnvpair.h>
 #include <sys/overlay_target.h>
 
 #ifdef __cplusplus
@@ -99,6 +100,17 @@ typedef int (*varpd_plugin_getprop_f)(void *, const char *, void *, uint32_t *);
 typedef int (*varpd_plugin_setprop_f)(void *, const char *, const void *,
     const uint32_t);
 
+/*
+ * Save a plugin's private data into an nvlist.
+ */
+typedef int (*varpd_plugin_save_f)(void *, nvlist_t *);
+
+/*
+ * Restore a plugin's private data to an nvlist.
+ */
+typedef int (*varpd_plugin_restore_f)(nvlist_t *, overlay_plugin_dest_t,
+    void **);
+
 typedef struct varpd_plugin_ops {
 	uint_t			vpo_callbacks;
 	varpd_plugin_create_f	vpo_create;
@@ -110,6 +122,8 @@ typedef struct varpd_plugin_ops {
 	varpd_plugin_propinfo_f	vpo_propinfo;
 	varpd_plugin_getprop_f	vpo_getprop;
 	varpd_plugin_setprop_f	vpo_setprop;
+	varpd_plugin_save_f	vpo_save;
+	varpd_plugin_restore_f	vpo_restore;
 } varpd_plugin_ops_t;
 
 typedef struct varpd_plugin_register {

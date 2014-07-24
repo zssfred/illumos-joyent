@@ -57,6 +57,10 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_instance_lookup;
 	libvarpd_instance_id;
 
+	libvarpd_persist_disable;
+	libvarpd_persist_enable;
+	libvarpd_persist_restore;
+
 	libvarpd_plugin_alloc;
 	libvarpd_plugin_load;
 	libvarpd_plugin_free;
@@ -78,6 +82,8 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_prop_info;
 	libvarpd_prop_get;
 	libvarpd_prop_set;	
+
+	libvarpd_set_logfile;
     local:
 	*;
 };

@@ -118,7 +118,14 @@ overlay_target_info(void *arg)
 	if (odd == NULL)
 		return (ENOENT);
 
+	mutex_enter(&odd->odd_lock);
+	oti->oti_flags = 0;
 	oti->oti_needs = odd->odd_plugin->ovp_dest;
+	if (odd->odd_flags & OVERLAY_F_DEGRADED)
+		oti->oti_flags |= OVERLAY_TARG_INFO_F_DEGRADED;
+	if (odd->odd_flags & OVERLAY_F_ACTIVATED)
+		oti->oti_flags |= OVERLAY_TARG_INFO_F_ACTIVE;
+	mutex_exit(&odd->odd_lock);
 	return (0);
 }
 
@@ -188,6 +195,56 @@ overlay_target_associate(void *arg)
 	return (0);
 }
 
+
+static int
+overlay_target_degrade(void *arg)
+{
+	overlay_dev_t *odd;
+	overlay_targ_id_t *otid = arg;
+
+	odd = overlay_hold_by_dlid(otid->otid_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	overlay_fm_degrade(odd);
+	overlay_hold_rele(odd);
+	return (0);
+}
+
+static int
+overlay_target_restore(void *arg)
+{
+	overlay_dev_t *odd;
+	overlay_targ_id_t *otid = arg;
+
+	odd = overlay_hold_by_dlid(otid->otid_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	overlay_fm_restore(odd);
+	overlay_hold_rele(odd);
+	return (0);
+}
+
+static int
+overlay_target_disassociate(void *arg)
+{
+	overlay_dev_t *odd;
+	overlay_targ_id_t *otid = arg;
+
+	odd = overlay_hold_by_dlid(otid->otid_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	mutex_enter(&odd->odd_lock);
+	odd->odd_flags &= ~OVERLAY_F_VARPD;
+	mutex_exit(&odd->odd_lock);
+
+	overlay_hold_rele(odd);
+	return (0);
+
+}
+
 static overlay_target_ioctl_t overlay_target_ioctab[] = {
 	{ OVERLAY_TARG_INFO, B_TRUE, B_TRUE,
 		overlay_target_info,
@@ -195,6 +252,15 @@ static overlay_target_ioctl_t overlay_target_ioctab[] = {
 	{ OVERLAY_TARG_ASSOCIATE, B_TRUE, B_FALSE,
 		overlay_target_associate,
 		sizeof (overlay_targ_associate_t)	},
+	{ OVERLAY_TARG_DISASSOCIATE, B_TRUE, B_FALSE,
+		overlay_target_disassociate,
+		sizeof (overlay_targ_id_t)		},
+	{ OVERLAY_TARG_DEGRADE, B_TRUE, B_FALSE,
+		overlay_target_degrade,
+		sizeof (overlay_targ_id_t)		},
+	{ OVERLAY_TARG_RESTORE, B_TRUE, B_FALSE,
+		overlay_target_restore,
+		sizeof (overlay_targ_id_t)		},
 	{ 0 }
 };
 

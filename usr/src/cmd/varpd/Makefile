@@ -26,6 +26,9 @@ CFLAGS += $(CCVERBOSE)
 LDLIBS += -lvarpd -lumem
 $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
 
+# XXX Development only
+CFLAGS += -_gcc=-Wno-unused-function
+
 .KEEP_STATE:
 
 $(PROG): $(OBJS)

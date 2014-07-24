@@ -39,12 +39,18 @@ typedef struct overlay_target_point {
 
 #define	OVERLAY_TARG_INFO	(OVERLAY_TARG_IOCTL | 0x01)
 
+typedef enum overlay_targ_info_flags {
+	OVERLAY_TARG_INFO_F_ACTIVE = 0x01,
+	OVERLAY_TARG_INFO_F_DEGRADED = 0x02
+} overlay_targ_info_flags_t;
+
 /*
  * Get target information about an overlay device
  */
 typedef struct overlay_targ_info {
 	datalink_id_t		oti_linkid;
 	uint32_t		oti_needs;
+	uint64_t		oti_flags;
 } overlay_targ_info_t;
 
 /*
@@ -59,6 +65,27 @@ typedef struct overlay_targ_associate {
 	uint32_t		ota_provides;
 	overlay_target_point_t	ota_point;
 } overlay_targ_associate_t;
+
+/*
+ * Remove an association from a device. If the device has already been started,
+ * this implies OVERLAY_TARG_DEGRADE.
+ */
+#define	OVERLAY_TARG_DISASSOCIATE	(OVERLAY_TARG_IOCTL | 0x3)
+
+/*
+ * Tells the kernel that while a varpd instance still exists, it basically isn't
+ * making any forward progress, so the device should consider itself degraded.
+ */
+#define	OVERLAY_TARG_DEGRADE	(OVERLAY_TARG_IOCTL | 0x4)
+
+/*
+ * Tells the kernel to remove the degraded status that it set on a device.
+ */
+#define	OVERLAY_TARG_RESTORE	(OVERLAY_TARG_IOCTL | 0x5)
+
+typedef struct overlay_targ_id {
+	datalink_id_t	otid_linkid;
+} overlay_targ_id_t;
 
 #ifdef __cplusplus
 }

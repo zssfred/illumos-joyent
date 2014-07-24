@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.
+ * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -74,6 +74,8 @@ libvarpd_create(varpd_handle_t *vphp)
 		return (ret);
 	}
 
+	libvarpd_persist_init(vip);
+
 	avl_create(&vip->vdi_plugins, libvarpd_plugin_comparator,
 	    sizeof (varpd_plugin_t), offsetof(varpd_plugin_t, vpp_node));
 
@@ -81,6 +83,9 @@ libvarpd_create(varpd_handle_t *vphp)
 	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_node));
 
 	if (mutex_init(&vip->vdi_lock, USYNC_THREAD, NULL) != 0)
+		abort();
+
+	if (mutex_init(&vip->vdi_loglock, USYNC_THREAD, NULL) != 0)
 		abort();
 
 	vip->vdi_doorfd = -1;
@@ -93,9 +98,28 @@ libvarpd_destroy(varpd_handle_t vhp)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 
+	if (mutex_destroy(&vip->vdi_loglock) != 0)
+		abort();
+	if (mutex_destroy(&vip->vdi_lock) != 0)
+		abort();
+	libvarpd_persist_fini(vip);
 	libvarpd_overlay_fini(vip);
 	id_space_destroy(vip->vdi_idspace);
 	umem_free(vip, sizeof (varpd_impl_t));
+}
+
+FILE *
+libvarpd_set_logfile(varpd_handle_t vhp, FILE *fp)
+{
+	FILE *old;
+	varpd_impl_t *vip = (varpd_impl_t *)vhp;
+
+	mutex_lock(&vip->vdi_loglock);
+	old = vip->vdi_err;
+	vip->vdi_err = fp;
+	mutex_unlock(&vip->vdi_loglock);
+
+	return (old);
 }
 
 int
@@ -108,12 +132,12 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 	varpd_instance_t *inst, lookup;
 	overlay_plugin_dest_t dest;
 
-	/* XXX Rewally want our own errnos */
+	/* XXX Really want our own errnos */
 	plugin = libvarpd_plugin_lookup(vip, pname);
 	if (plugin == NULL)
 		return (ENOENT);
 
-	if ((ret = libvarpd_overlay_info(vip, linkid, &dest)) != 0)
+	if ((ret = libvarpd_overlay_info(vip, linkid, &dest, NULL)) != 0)
 		return (ret);
 
 	inst = umem_alloc(sizeof (varpd_instance_t), UMEM_DEFAULT);
@@ -133,6 +157,9 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 		umem_free(inst, sizeof (varpd_instance_t));
 		return (ret);
 	}
+
+	if (mutex_init(&inst->vri_lock, USYNC_THREAD, NULL) != 0)
+		abort();
 
 	mutex_lock(&vip->vdi_lock);
 	lookup.vri_id = inst->vri_id;
@@ -176,22 +203,34 @@ libvarpd_instance_activate(varpd_instance_handle_t ihp)
 	int ret;
 	varpd_instance_t *inst = (varpd_instance_t *)ihp;
 
-	if (inst->vri_flags & VARPD_INSTANCE_F_ACTIVATED)
-		return (EINVAL);
+	if (mutex_lock(&inst->vri_lock) != 0)
+		abort();
+
+	if (inst->vri_flags & VARPD_INSTANCE_F_ACTIVATED) {
+		ret = EEXIST;
+		goto out;
+	}
 
 	if ((ret = inst->vri_plugin->vpp_ops->vpo_start(inst->vri_private)) !=
 	    0)
-		return (ret);
+		goto out;
 
 	if (inst->vri_mode != OVERLAY_TARGET_POINT)
 		abort();
 
+	if ((ret = libvarpd_persist_instance(inst->vri_impl, inst)) != 0)
+		goto out;
+
+	/* XXX We should call stop if this fails */
 	if ((ret = libvarpd_overlay_associate(inst)) != 0)
-		return (ret);
+		goto out;
 
 	inst->vri_flags |= VARPD_INSTANCE_F_ACTIVATED;
 
-	return (0);
+out:
+	if (mutex_unlock(&inst->vri_lock))
+		abort();
+	return (ret);
 }
 
 static void

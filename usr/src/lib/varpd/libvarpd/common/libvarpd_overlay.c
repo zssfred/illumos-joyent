@@ -51,7 +51,7 @@ libvarpd_overlay_fini(varpd_impl_t *vip)
 
 int
 libvarpd_overlay_info(varpd_impl_t *vip, datalink_id_t linkid,
-    overlay_plugin_dest_t *destp)
+    overlay_plugin_dest_t *destp, uint64_t *flags)
 {
 	overlay_targ_info_t oti;
 
@@ -59,7 +59,10 @@ libvarpd_overlay_info(varpd_impl_t *vip, datalink_id_t linkid,
 	if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_INFO, &oti) != 0)
 		return (errno);
 
-	*destp = oti.oti_needs;
+	if (destp != NULL)
+		*destp = oti.oti_needs;
+	if (flags != NULL)
+		*flags = oti.oti_flags;
 	return (0);
 }
 
@@ -87,5 +90,41 @@ libvarpd_overlay_associate(varpd_instance_t *inst)
 			return (errno);
 	}
 
+	return (0);
+}
+
+int
+libvarpd_overlay_disassociate(varpd_instance_t *inst)
+{
+	overlay_targ_id_t otid;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	otid.otid_linkid = inst->vri_linkid;
+	if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_DISASSOCIATE, &otid) != 0)
+		return (errno);
+	return (0);
+}
+
+int
+libvarpd_overlay_degrade(varpd_instance_t *inst)
+{
+	overlay_targ_id_t otid;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	otid.otid_linkid = inst->vri_linkid;
+	if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_DEGRADE, &otid) != 0)
+		return (errno);
+	return (0);
+}
+
+int
+libvarpd_overlay_restore(varpd_instance_t *inst)
+{
+	overlay_targ_id_t otid;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	otid.otid_linkid = inst->vri_linkid;
+	if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_RESTORE, &otid) != 0)
+		return (errno);
 	return (0);
 }

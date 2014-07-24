@@ -13,29 +13,32 @@
 # Copyright (c) 2014 Joyent, Inc.  All rights reserved.
 #
 
-LIBRARY =	libvarpd.a
-VERS =		.1
-OBJECTS =	libvarpd.o \
-		libvarpd_client.o \
-		libvarpd_door.o \
-		libvarpd_overlay.o \
-		libvarpd_persist.o \
-		libvarpd_prop.o \
-		libvarpd_plugin.o \
-		libvarpd_util.o
+include		../Makefile.lib
 
-include ../../../Makefile.lib
+HDRS =		librename.h
+HDRDIR =	common
+SUBDIRS =	$(MACH)
+$(BUILD64)SUBDIRS +=	$(MACH64)
 
-LIBS =		$(DYNLIB) $(LINTLIB)
-LDLIBS +=	-lc -lavl -lumem -lidspace -lnvpair -lmd5 -lrename
-CPPFLAGS +=	-I../common
-
-SRCDIR =	../common
+all :=		TARGET = all
+clean :=	TARGET = clean
+clobber :=	TARGET = clobber
+install :=	TARGET = install
+lint :=		TARGET = lint
 
 .KEEP_STATE:
 
-all:	$(LIBS)
+all clean clobber lint: $(SUBDIRS)
 
-lint:	lintcheck
+install: 	$(SUBDIRS) $(VARPD_MAPFILES) install_h
 
-include ../../../Makefile.targ
+install_h: 	$(ROOTHDRS)
+
+check:		$(CHECKHDRS)
+
+$(SUBDIRS):  FRC
+	@cd $@; pwd; $(MAKE) $(TARGET)
+
+FRC:
+
+include ../Makefile.targ

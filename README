@@ -20,8 +20,8 @@ to be using this.
 ## Current Status
 
 Basic VXLAN tunnels that interoperate with not only ourselves, but also
-VXLAN, work. Configuration is currently only through mdb -kw (and
-requires changing a sonode flag). That's up next...
+VXLAN, work. Configuration is done through dladm and information is
+persisted in varpd.
 
 ## High-level Design Overview
 

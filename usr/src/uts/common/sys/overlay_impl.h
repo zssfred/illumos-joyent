@@ -83,6 +83,7 @@ typedef enum overlay_dev_flag {
 	OVERLAY_F_IOMASK	= 0x0c,	/* A mask for rx and tx */
 	OVERLAY_F_MDDROP	= 0x10,	/* Drop traffic for metadata update */
 	OVERLAY_F_VARPD		= 0x20,	/* varpd plugin exists */
+	OVERLAY_F_DEGRADED	= 0x40,	/* device is degraded */
 	OVERLAY_F_MASK		= 0x3f	/* mask of everything */
 } overlay_dev_flag_t;
 
@@ -104,6 +105,8 @@ typedef struct overlay_dev {
 } overlay_dev_t;
 
 #define	OVERLAY_CTL	"overlay"
+
+extern dev_info_t *overlay_dip;
 
 extern void overlay_plugin_init(void);
 extern overlay_plugin_t *overlay_plugin_lookup(const char *);
@@ -135,6 +138,11 @@ extern void overlay_target_free(overlay_dev_t *);
 extern int overlay_target_lookup(overlay_dev_t *, mblk_t *, struct sockaddr *,
     socklen_t *);
 extern void overlay_target_fini(void);
+
+extern void overlay_fm_init(void);
+extern void overlay_fm_fini(void);
+extern void overlay_fm_degrade(overlay_dev_t *);
+extern void overlay_fm_restore(overlay_dev_t *);
 
 extern overlay_dev_t *overlay_hold_by_dlid(datalink_id_t);
 extern void overlay_hold_rele(overlay_dev_t *);

@@ -46,11 +46,15 @@ typedef struct varpd_plugin {
 
 typedef struct varpd_impl {
 	mutex_t		vdi_lock;
-	avl_tree_t	vdi_plugins;
-	avl_tree_t	vdi_instances;
-	id_space_t	*vdi_idspace;
-	int		vdi_overlayfd;
-	int		vdi_doorfd;
+	mutex_t		vdi_loglock;
+	rwlock_t	vdi_pfdlock;
+	avl_tree_t	vdi_plugins;	/* vdi_lock */
+	avl_tree_t	vdi_instances;	/* vdi_lock */
+	id_space_t	*vdi_idspace;	/* RO */
+	int		vdi_overlayfd;	/* RO */
+	int		vdi_doorfd;	/* vdi_lock */
+	int		vdi_persistfd;	/* vdi_plock */
+	FILE		*vdi_err;	/* vdi_loglock */
 } varpd_impl_t;
 
 typedef enum varpd_instance_flags {
@@ -59,14 +63,15 @@ typedef enum varpd_instance_flags {
 
 typedef struct varpd_instance {
 	avl_node_t	vri_node;
-	uint64_t	vri_id;
-	datalink_id_t	vri_linkid;
-	varpd_instance_flags_t vri_flags;
-	overlay_target_mode_t vri_mode;
-	overlay_plugin_dest_t vri_dest;
-	varpd_impl_t	*vri_impl;
-	varpd_plugin_t	*vri_plugin;
-	void		*vri_private;
+	uint64_t	vri_id;			/* RO */
+	datalink_id_t	vri_linkid;		/* RO */
+	overlay_target_mode_t vri_mode;		/* RO */
+	overlay_plugin_dest_t vri_dest;		/* RO */
+	varpd_impl_t	*vri_impl;		/* RO */
+	varpd_plugin_t	*vri_plugin;		/* RO */
+	void		*vri_private;		/* RO */
+	mutex_t		vri_lock;
+	varpd_instance_flags_t vri_flags;	/* vri_lock */
 } varpd_instance_t;
 
 typedef struct varpd_client_create_arg {
@@ -150,8 +155,15 @@ extern int libvarpd_dirwalk(varpd_impl_t *, const char *, const char *,
 extern int libvarpd_overlay_init(varpd_impl_t *);
 extern void libvarpd_overlay_fini(varpd_impl_t *);
 extern int libvarpd_overlay_info(varpd_impl_t *, datalink_id_t,
-    overlay_plugin_dest_t *);
+    overlay_plugin_dest_t *, uint64_t *);
 extern int libvarpd_overlay_associate(varpd_instance_t *);
+extern int libvarpd_overlay_disassociate(varpd_instance_t *);
+extern int libvarpd_overlay_degrade(varpd_instance_t *);
+extern int libvarpd_overlay_restore(varpd_instance_t *);
+
+extern void libvarpd_persist_init(varpd_impl_t *);
+extern void libvarpd_persist_fini(varpd_impl_t *);
+extern int libvarpd_persist_instance(varpd_impl_t *, varpd_instance_t *);
 
 #ifdef __cplusplus
 }

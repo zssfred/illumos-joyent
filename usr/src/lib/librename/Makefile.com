@@ -13,21 +13,14 @@
 # Copyright (c) 2014 Joyent, Inc.  All rights reserved.
 #
 
-LIBRARY =	libvarpd.a
+LIBRARY =	librename.a
 VERS =		.1
-OBJECTS =	libvarpd.o \
-		libvarpd_client.o \
-		libvarpd_door.o \
-		libvarpd_overlay.o \
-		libvarpd_persist.o \
-		libvarpd_prop.o \
-		libvarpd_plugin.o \
-		libvarpd_util.o
+OBJECTS =	librename.o \
 
-include ../../../Makefile.lib
+include ../../Makefile.lib
 
 LIBS =		$(DYNLIB) $(LINTLIB)
-LDLIBS +=	-lc -lavl -lumem -lidspace -lnvpair -lmd5 -lrename
+LDLIBS +=	-lc
 CPPFLAGS +=	-I../common
 
 SRCDIR =	../common
@@ -38,4 +31,4 @@ all:	$(LIBS)
 
 lint:	lintcheck
 
-include ../../../Makefile.targ
+include ../../Makefile.targ

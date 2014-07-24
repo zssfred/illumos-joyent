@@ -25,7 +25,11 @@
 #include <strings.h>
 #include <assert.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
+#include <libnvpair.h>
 
 typedef struct varpd_direct {
 	overlay_plugin_dest_t	vad_dest;	/* RO */
@@ -41,16 +45,25 @@ static const char *varpd_direct_props[] = {
 	"direct/dest_port"
 };
 
+static boolean_t
+varpd_direct_valid_dest(overlay_plugin_dest_t dest)
+{
+	if (dest & ~(OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT))
+		return (B_FALSE);
+
+	if (!(dest & (OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT)))
+		return (B_FALSE);
+
+	return (B_TRUE);
+}
+
 static int
 varpd_direct_create(void **outp, overlay_plugin_dest_t dest)
 {
 	int ret;
 	varpd_direct_t *vdp;
 
-	if (dest & ~(OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT))
-		return (ENOTSUP);
-
-	if (!(dest & (OVERLAY_PLUGIN_D_IP | OVERLAY_PLUGIN_D_PORT)))
+	if (varpd_direct_valid_dest(dest) == B_FALSE)
 		return (ENOTSUP);
 
 	vdp = umem_alloc(sizeof (varpd_direct_t), UMEM_DEFAULT);
@@ -75,7 +88,8 @@ varpd_direct_start(void *arg)
 	varpd_direct_t *vdp = arg;
 
 	mutex_lock(&vdp->vad_lock);
-	if (vdp->vad_hip == B_FALSE || vdp->vad_hport == B_FALSE) {
+	if (vdp->vad_hip == B_FALSE ||((vdp->vad_dest & OVERLAY_PLUGIN_D_IP) &&
+	    vdp->vad_hport == B_FALSE)) {
 		mutex_unlock(&vdp->vad_lock);
 		return (EAGAIN);
 	}
@@ -95,7 +109,8 @@ varpd_direct_destroy(void *arg)
 {
 	varpd_direct_t *vdp = arg;
 
-	mutex_destroy(&vdp->vad_lock);
+	if (mutex_destroy(&vdp->vad_lock) != 0)
+		abort();
 	umem_free(vdp, sizeof (varpd_direct_t));
 }
 
@@ -251,6 +266,101 @@ varpd_direct_setprop(void *arg, const char *pname, const void *buf,
 	return (EINVAL);
 }
 
+static int
+varpd_direct_save(void *arg, nvlist_t *nvp)
+{
+	int ret;
+	varpd_direct_t *vdp = arg;
+
+	mutex_lock(&vdp->vad_lock);
+	if (vdp->vad_hport == B_TRUE) {
+		if ((ret = nvlist_add_uint16(nvp, varpd_direct_props[1],
+		    vdp->vad_port)) != 0) {
+			mutex_unlock(&vdp->vad_lock);
+			return (ret);
+		}
+	}
+
+	if (vdp->vad_hip == B_TRUE) {
+		char buf[INET6_ADDRSTRLEN];
+
+		if (inet_ntop(AF_INET6, &vdp->vad_ip, buf, sizeof (buf)) ==
+		    NULL)
+			abort();
+		if ((ret = nvlist_add_string(nvp, varpd_direct_props[0],
+		    buf)) != 0) {
+			mutex_unlock(&vdp->vad_lock);
+			return (ret);
+		}
+	}
+	mutex_unlock(&vdp->vad_lock);
+
+	return (0);
+}
+
+static int
+varpd_direct_restore(nvlist_t *nvp, overlay_plugin_dest_t dest, void **outp)
+{
+	int ret;
+	char *ipstr;
+	varpd_direct_t *vdp;
+
+	if (varpd_direct_valid_dest(dest) == B_FALSE)
+		return (ENOTSUP);
+
+	vdp = umem_alloc(sizeof (varpd_direct_t), UMEM_DEFAULT);
+	if (vdp == NULL)
+		return (ENOMEM);
+
+	if ((ret = mutex_init(&vdp->vad_lock, USYNC_THREAD, NULL)) != 0) {
+		umem_free(vdp, sizeof (varpd_direct_t));
+		return (ret);
+	}
+
+	if ((ret = nvlist_lookup_uint16(nvp, varpd_direct_props[1],
+	    &vdp->vad_port)) != 0) {
+		if (ret != ENOENT) {
+			if (mutex_destroy(&vdp->vad_lock) != 0)
+				abort();
+			umem_free(vdp, sizeof (varpd_direct_t));
+			return (ret);
+		}
+		vdp->vad_hport = B_FALSE;
+	} else {
+		vdp->vad_hport = B_TRUE;
+	}
+
+	if ((ret = nvlist_lookup_string(nvp, varpd_direct_props[0],
+	    &ipstr)) != 0) {
+		if (ret != ENOENT) {
+			if (mutex_destroy(&vdp->vad_lock) != 0)
+				abort();
+			umem_free(vdp, sizeof (varpd_direct_t));
+			return (ret);
+		}
+		vdp->vad_hip = B_FALSE;
+	} else {
+		ret = inet_pton(AF_INET6, ipstr, &vdp->vad_ip);
+		/*
+		 * inet_pton is only defined to return -1 with errno set to
+		 * EAFNOSUPPORT, which really, shouldn't happen.
+		 */
+		if (ret == -1) {
+			assert(errno == EAFNOSUPPORT);
+			abort();
+		}
+		if (ret == 0) {
+			if (mutex_destroy(&vdp->vad_lock) != 0)
+				abort();
+			umem_free(vdp, sizeof (varpd_direct_t));
+			return (EINVAL);
+		}
+	}
+
+	*outp = vdp;
+	return (0);
+}
+
 static const varpd_plugin_ops_t varpd_direct_ops = {
 	0,
 	varpd_direct_create,
@@ -261,7 +371,9 @@ static const varpd_plugin_ops_t varpd_direct_ops = {
 	varpd_direct_nprops,
 	varpd_direct_propinfo,
 	varpd_direct_getprop,
-	varpd_direct_setprop
+	varpd_direct_setprop,
+	varpd_direct_save,
+	varpd_direct_restore
 };
 
 #pragma init(varpd_direct_init)
