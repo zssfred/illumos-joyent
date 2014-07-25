@@ -25,7 +25,7 @@ Copyright (c) 2014, Joyent, Inc.  All rights resreved.
 			grouping="require_all"
 			restart_on="none"
 			type="service">
-			<service_fmri value="svc:/milestone/multi-user:default" />
+			<service_fmri value="svc:/network/physical:default" />
 		</dependency>
 
 		<exec_method
