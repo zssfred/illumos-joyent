@@ -50,6 +50,14 @@ MSGFILES =	common/libdladm.c common/linkprop.c common/secobj.c	\
 
 XGETFLAGS =     -a -x libdladm.xcl
 
+TYPECHECK_LIB =	libdladm.so.1
+TYPELIST =	overlay_ioc_create_t \
+		overlay_ioc_activate_t \
+		overlay_ioc_delete_t \
+		overlay_ioc_nprops_t \
+		overlay_ioc_propinfo_t \
+		overlay_ioc_prop_t
+
 all :=		TARGET = all
 clean :=	TARGET = clean
 clobber :=	TARGET = clobber
@@ -62,7 +70,7 @@ all clean clobber install lint: $(SUBDIRS)
 
 install_h:	$(ROOTHDRS)
 
-check:		$(CHECKHDRS)
+check:		$(CHECKHDRS) $(TYPECHECK)
 
 $(POFILE):	pofile_MSGFILES
 

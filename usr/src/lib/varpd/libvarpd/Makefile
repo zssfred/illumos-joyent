@@ -20,6 +20,13 @@ HDRDIR =	common
 SUBDIRS =	$(MACH)
 $(BUILD64)SUBDIRS +=	$(MACH64)
 
+TYPECHECK_LIB =	libvarpd.so.1
+TYPELIST = \
+	varpd_client_instance_arg_t \
+	varpd_client_nprops_arg_t \
+	varpd_client_propinfo_arg_t \
+	varpd_client_eresp_t	
+
 all :=		TARGET = all
 clean :=	TARGET = clean
 clobber :=	TARGET = clobber
@@ -34,7 +41,7 @@ install: 	$(SUBDIRS) $(VARPD_MAPFILES) install_h
 
 install_h: 	$(ROOTHDRS)
 
-check:		$(CHECKHDRS)
+check:		$(CHECKHDRS) $(TYPECHECK)
 
 $(SUBDIRS):  FRC
 	@cd $@; pwd; $(MAKE) $(TARGET)
