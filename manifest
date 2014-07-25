@@ -1550,6 +1550,7 @@ f lib/svc/manifest/network/smb/server.xml 0444 root sys
 f lib/svc/manifest/network/smtp-sendmail.xml 0444 root sys
 f lib/svc/manifest/network/ssh.xml 0444 root sys
 f lib/svc/manifest/network/time.xml 0444 root sys
+f lib/svc/manifest/network/varpd.xml 0444 root sys
 f lib/svc/manifest/network/vrrp.xml 0444 root sys
 d lib/svc/manifest/platform 0755 root sys
 d lib/svc/manifest/platform/i86pc 0755 root sys
@@ -1704,6 +1705,7 @@ f lib/svc/method/svc-sv 0744 root sys
 f lib/svc/method/svc-syseventd 0555 root sys
 f lib/svc/method/svc-tnd 0555 root sys
 f lib/svc/method/svc-utmpd 0555 root bin
+f lib/svc/method/svc-varpd 0555 root sys
 f lib/svc/method/svc-vrrp 0555 root sys
 f lib/svc/method/svc-wusb 0555 root sys
 f lib/svc/method/svc-zones 0555 root sys

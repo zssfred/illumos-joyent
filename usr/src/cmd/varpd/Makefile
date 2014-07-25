@@ -16,10 +16,14 @@
 PROG= varpd
 OBJS = varpd.o
 SRCS = $(OBJS:%.o=../%.c)
+SVCMETHOD = svc-varpd
+MANIFEST = varpd.xml
 
 
 include ../Makefile.cmd
 include ../Makefile.ctf
+
+ROOTMANIFESTDIR=	$(ROOTSVCNETWORK)
 
 CLEANFILES += $(OBJS)
 CFLAGS += $(CCVERBOSE)
@@ -35,19 +39,21 @@ $(PROG): $(OBJS)
 	$(LINK.c) -o $@ $(OBJS) $(LDLIBS)
 	$(POST_PROCESS)
 
-clean: $(SUBDIRS)
+clean:
 	-$(RM) $(CLEANFILES)
 
-lint: lint_PROG $(SUBDIRS)
+lint: lint_PROG
 
 %.o: ../%.c
 	$(COMPILE.c) $<
 	$(POST_PROCESS_O)
 
-clobber: clean $(SUBDIRS)
+check: $(CHKMANIFEST)
+
+clobber: clean
 	$(RM) $(PROG)
 
-install: $(PROG) $(ROOTUSRSBINPROG) $(SUBDIRS)
+install: $(PROG) $(ROOTUSRSBINPROG) $(ROOTMANIFEST) $(ROOTSVCMETHOD)
 
 FRC:
 

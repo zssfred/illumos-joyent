@@ -37,8 +37,6 @@ typedef struct __varpd_instance_handle *varpd_instance_handle_t;
 extern int libvarpd_create(varpd_handle_t *);
 extern void libvarpd_destroy(varpd_handle_t);
 
-extern FILE *libvarpd_set_logfile(varpd_handle_t, FILE *);
-
 extern int libvarpd_persist_enable(varpd_handle_t, const char *);
 extern int libvarpd_persist_restore(varpd_handle_t);
 extern int libvarpd_persist_disable(varpd_handle_t);

@@ -29,7 +29,8 @@
 
 #define	VARPD_PROPERTY_NAME	"varpd/id"
 
-static const char *dladm_overlay_doorpath = "/tmp/overlay.door";
+static const char *dladm_overlay_doorpath = "/var/run/varpd/varpd.door";
+
 typedef struct dladm_overlay_propinfo {
 	boolean_t dop_isvarpd;
 	union {

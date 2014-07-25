@@ -1103,6 +1103,10 @@ overlay_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	if (overlay_dip != NULL || ddi_get_instance(dip) != 0)
 		return (DDI_FAILURE);
 
+	/*
+	 * XXX The nexus driver doesn't actually support DDI_FM_REPORT, that's
+	 * unfortunate.
+	 */
 	ddi_fm_init(dip, &fmcap, NULL);
 	if (fmcap != DDI_FM_EREPORT_CAPABLE)
 		cmn_err(CE_WARN, "XXX didn't get DDI_FM_EREPORT");

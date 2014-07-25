@@ -33,14 +33,23 @@
 #include <libgen.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <paths.h>
+#include <limits.h>
+#include <sys/corectl.h>
+#include <signal.h>
+#include <strings.h>
+#include <sys/wait.h>
 
+#define	VARPD_EXIT_REQUESTED	0
 #define	VARPD_EXIT_FATAL	1
 #define	VARPD_EXIT_USAGE	2
 
 #define	VARPD_RUNDIR	"/var/run/varpd"
+#define	VARPD_DEFAULT_DOOR	"/var/run/varpd/varpd.door"
 
 static varpd_handle_t varpd_handle;
 static const char *varpd_pname;
+static volatile boolean_t varpd_exit = B_FALSE;
 
 /*
  * Debug builds are automatically wired up for umem debugging.
@@ -60,15 +69,15 @@ _umem_logging_init(void)
 #endif	/* DEBUG */
 
 static void
-varpd_vwarn(const char *fmt, va_list ap)
+varpd_vwarn(FILE *out, const char *fmt, va_list ap)
 {
 	int error = errno;
 
-	(void) fprintf(stderr, "%s: ", varpd_pname);
-	(void) vfprintf(stderr, fmt, ap);
+	(void) fprintf(out, "%s: ", varpd_pname);
+	(void) vfprintf(out, fmt, ap);
 
 	if (fmt[strlen(fmt) - 1] != '\n')
-		(void) fprintf(stderr, ": %s\n", strerror(error));
+		(void) fprintf(out, ": %s\n", strerror(error));
 }
 
 static void
@@ -77,7 +86,7 @@ varpd_warn(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	varpd_vwarn(fmt, ap);
+	varpd_vwarn(stderr, fmt, ap);
 	va_end(ap);
 }
 
@@ -87,14 +96,40 @@ varpd_fatal(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	varpd_vwarn(fmt, ap);
+	varpd_vwarn(stderr, fmt, ap);
 	va_end(ap);
 
 	exit(VARPD_EXIT_FATAL);
 }
 
+static void
+varpd_info(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	varpd_vwarn(stdout, fmt, ap);
+	va_end(ap);
+	(void) fflush(stdout);
+}
+
+static void
+varpd_dfatal(int dfd, const char *fmt, ...)
+{
+	int status = VARPD_EXIT_FATAL;
+	va_list ap;
+
+	va_start(ap, fmt);
+	varpd_vwarn(stdout, fmt, ap);
+	va_end(ap);
+
+	/* Take a single shot at this */
+	(void) write(dfd, &status, sizeof (status));
+	exit(status);
+}
+
 static int
-plugin_walk_cb(varpd_handle_t vph, const char *name, void *unused)
+varpd_plugin_walk_cb(varpd_handle_t vph, const char *name, void *unused)
 {
 	printf("loaded %s!\n", name);
 	return (0);
@@ -116,7 +151,120 @@ varpd_dir_setup(void)
 }
 
 /*
- * XXX There are a bunch of things that we need to do here:
+ * Because varpd is generally run under SMF, we opt to keep its stdout and
+ * stderr to be whatever our parent set them up to be.
+ */
+static void
+varpd_fd_setup(void)
+{
+	int dupfd;
+
+	closefrom(STDERR_FILENO + 1);
+	dupfd = open(_PATH_DEVNULL, O_RDONLY);
+	if (dupfd < 0)
+		varpd_fatal("failed to open %s", _PATH_DEVNULL);
+	if (dup2(dupfd, STDIN_FILENO) == -1)
+		varpd_fatal("failed to dup out stdin");
+}
+
+/*
+ * We borrow fmd's daemonization style. Basically, the parent waits for the
+ * child to successfully set up a door and recover all of the old configurations
+ * before we say that we're good to go.
+ */
+static int
+varpd_daemonize(void)
+{
+	char path[PATH_MAX];
+	struct rlimit rlim;
+	sigset_t set, oset;
+	int estatus, pfds[2];
+	pid_t child;
+
+	/*
+	 * Set a per-process core path to be inside of /var/run/varpd. Make sure
+	 * that we aren't limited in our dump size.
+	 */
+	(void) snprintf(path, sizeof (path),
+	    "/var/run/varpd/core.%s.%%p", varpd_pname);
+	(void) core_set_process_path(path, strlen(path) + 1, getpid());
+
+	rlim.rlim_cur = RLIM_INFINITY;
+	rlim.rlim_max = RLIM_INFINITY;
+	(void) setrlimit(RLIMIT_CORE, &rlim);
+
+	/*
+	 * Claim as many file descriptors as the system will let us.
+	 */
+	if (getrlimit(RLIMIT_NOFILE, &rlim) == 0) {
+		rlim.rlim_cur = rlim.rlim_max;
+		(void) setrlimit(RLIMIT_NOFILE, &rlim);
+	}
+
+	/*
+	 * chdir /var/run/varpd
+	 */
+	if (chdir(VARPD_RUNDIR) != 0)
+		varpd_fatal("failed to chdir to %s", VARPD_RUNDIR);
+
+	/*
+	 * XXX Drop privileges here some day. For the moment, we'll drop a few
+	 * that we know we shouldn't need.
+	 */
+
+
+	/*
+	 * At this point block all signals going in so we don't have the parent
+	 * mistakingly exit when the child is running, but never block SIGABRT.
+	 */
+	if (sigfillset(&set) != 0)
+		abort();
+	if (sigdelset(&set, SIGABRT) != 0)
+		abort();
+	if (sigprocmask(SIG_BLOCK, &set, &oset) != 0)
+		abort();
+
+	/*
+	 * Do the fork+setsid dance.
+	 */
+	if (pipe(pfds) != 0)
+		varpd_fatal("failed to create pipe for daemonizing");
+
+	if ((child = fork()) == -1)
+		varpd_fatal("failed to fork for daemonizing");
+
+	if (child != 0) {
+		/* We'll be exiting shortly, so allow for silent failure */
+		(void) close(pfds[1]);
+		if (read(pfds[0], &estatus, sizeof (estatus)) ==
+		    sizeof (estatus))
+			_exit(estatus);
+
+		if (waitpid(child, &estatus, 0) == child && WIFEXITED(estatus))
+			_exit(WEXITSTATUS(estatus));
+
+		_exit(VARPD_EXIT_FATAL);
+	}
+
+	if (close(pfds[0]) != 0)
+		abort();
+	if (setsid() == -1)
+		abort();
+	if (sigprocmask(SIG_SETMASK, &oset, NULL) != 0)
+		abort();
+	(void) umask(0022);
+
+	return (pfds[1]);
+}
+
+static void
+varpd_cleanup(void)
+{
+	varpd_exit = B_TRUE;
+}
+
+/*
+ * There are a bunch of things we need to do to be a proper daemon here.
  *
  *   o Ensure that /var/run/varpd exists or create it
  *   o make stdin /dev/null (stdout?)
@@ -131,15 +279,21 @@ varpd_dir_setup(void)
 int
 main(int argc, char *argv[])
 {
-	int err, c;
-	const char *doorpath = NULL;
+	int err, c, dfd;
+	const char *doorpath = VARPD_DEFAULT_DOOR;
 	sigset_t set;
+	struct sigaction act;
 
 	varpd_pname = basename(argv[0]);
 
+	/*
+	 * We want to clean up our file descriptors before we do anything else
+	 * as we can't assume that libvarpd won't open file descriptors, etc.
+	 */
+	varpd_fd_setup();
+
 	if ((err = libvarpd_create(&varpd_handle)) != 0) {
-		/* XXX Proper logging */
-		fprintf(stderr, "failed to create a handle: %d\n", err);
+		varpd_fatal("failed to open a libvarpd handle");
 		return (1);
 	}
 
@@ -163,34 +317,73 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (doorpath == NULL) {
-		(void) fprintf(stderr, "missing required doorpath\n");
-		return (1);
-	}
-
 	varpd_dir_setup();
 
-	/* XXX Simple comments */
-	libvarpd_plugin_walk(varpd_handle, plugin_walk_cb, NULL);
+	libvarpd_plugin_walk(varpd_handle, varpd_plugin_walk_cb, NULL);
+
+	dfd = varpd_daemonize();
 
 	if ((err = libvarpd_persist_enable(varpd_handle, VARPD_RUNDIR)) != 0)
-		varpd_fatal("failed to enable varpd persistence: %s",
-		    strerror(errno));
+		varpd_dfatal(dfd, "failed to enable varpd persistence: %s\n",
+		    strerror(err));
 
 	if ((err = libvarpd_persist_restore(varpd_handle)) != 0)
-		varpd_fatal("failed to enable varpd persistence: %s",
-		    strerror(errno));
+		varpd_dfatal(dfd, "failed to enable varpd persistence: %s\n",
+		    strerror(err));
 
-	/* XXX open a door server/bind */
-	if ((err = libvarpd_door_server_create(varpd_handle, doorpath)) != 0) {
-		(void) fprintf(stderr, "failed to create door server at %s\n");
-		return (1);
-	}
+	/*
+	 * The ur-door thread will inherit from this signal mask. So set it to
+	 * what we want before doing anything else.
+	 *
+	 * TODO When we support dynamic lookups, we'll want to create some
+	 * number of threads here while we're still under this special signal
+	 * mask.
+	 */
+	if (sigfillset(&set) != 0)
+		varpd_dfatal(dfd, "failed to fill a signal set...");
 
-	(void) sigemptyset(&set);
+	if (sigdelset(&set, SIGABRT) != 0)
+		varpd_dfatal(dfd, "failed to unmask SIGABRT");
+
+	if (sigprocmask(SIG_BLOCK, &set, NULL) != 0)
+		varpd_dfatal(dfd, "failed to set our door signal mask");
+
+	if ((err = libvarpd_door_server_create(varpd_handle, doorpath)) != 0)
+		varpd_dfatal(dfd, "failed to create door server at %s: %s\n",
+		    doorpath, strerror(err));
+
+	/*
+	 * At this point, finish up signal intialization and finally go ahead,
+	 * notify the parent that we're okay, and enter the sigsuspend loop.
+	 */
+	bzero(&act, sizeof (struct sigaction));
+	act.sa_handler = varpd_cleanup;
+	if (sigfillset(&act.sa_mask) != 0)
+		varpd_dfatal(dfd, "failed to fill sigaction mask");
+	act.sa_flags = 0;
+	if (sigaction(SIGHUP, &act, NULL) != 0)
+		varpd_dfatal(dfd, "failed to register HUP handler");
+	if (sigaction(SIGQUIT, &act, NULL) != 0)
+		varpd_dfatal(dfd, "failed to register QUIT handler");
+	if (sigaction(SIGINT, &act, NULL) != 0)
+		varpd_dfatal(dfd, "failed to register INT handler");
+	if (sigaction(SIGTERM, &act, NULL) != 0)
+		varpd_dfatal(dfd, "failed to register TERM handler");
+
+	err = 0;
+	(void) write(dfd, &err, sizeof (err));
+	(void) close(dfd);
+
 	for (;;) {
-		(void) sigsuspend(&set);
+		if (sigsuspend(&set) == -1)
+			if (errno == EFAULT)
+				abort();
+		if (varpd_exit == B_TRUE)
+			break;
 	}
-	/* XXX Daemonize / sigsuspend */
-	return (0);
+
+	libvarpd_door_server_destroy(varpd_handle);
+	libvarpd_destroy(varpd_handle);
+
+	return (VARPD_EXIT_REQUESTED);
 }
