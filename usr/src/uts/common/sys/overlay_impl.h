@@ -98,6 +98,8 @@ typedef struct overlay_dev {
 	uint_t		odd_ref;		/* protected by odd_lock */
 	uint_t		odd_mtu;		/* protected by odd_lock */
 	overlay_dev_flag_t odd_flags;		/* protected by odd_lock */
+	uint_t		odd_rxcount;		/* protected by odd_lock */
+	uint_t		odd_txcount;		/* protected by odd_lock */
 	overlay_mux_t	*odd_mux;		/* protected by odd_lock */
 	uint64_t	odd_vid;		/* RO if active else odd_lock */
 	avl_node_t	odd_muxnode;		/* managed by mux */

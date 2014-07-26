@@ -101,21 +101,46 @@ overlay_io_start(overlay_dev_t *odd, overlay_dev_flag_t flag)
 {
 	ASSERT(flag == OVERLAY_F_IN_RX || flag == OVERLAY_F_IN_TX);
 	ASSERT(MUTEX_HELD(&odd->odd_lock));
-	ASSERT((odd->odd_flags & flag) == 0);
 
 	/* XXX Stat tracking */
+	if (flag & OVERLAY_F_IN_RX)
+		odd->odd_rxcount++;
+	if (flag & OVERLAY_F_IN_TX)
+		odd->odd_txcount++;
 	odd->odd_flags |= flag;
 }
 
 void
 overlay_io_done(overlay_dev_t *odd, overlay_dev_flag_t flag)
 {
+	boolean_t signal = B_FALSE;
+
 	ASSERT(flag == OVERLAY_F_IN_RX || flag == OVERLAY_F_IN_TX);
 	ASSERT(MUTEX_HELD(&odd->odd_lock));
-	ASSERT((odd->odd_flags & flag) == flag);
 
 	/* XXX Stat tracking */
-	odd->odd_flags &= ~flag;
+	if (flag & OVERLAY_F_IN_RX) {
+		ASSERT(odd->odd_rxcount > 0);
+		odd->odd_rxcount--;
+		if (odd->odd_rxcount == 0) {
+			signal = B_TRUE;
+			odd->odd_flags &= ~OVERLAY_F_IN_RX;
+		}
+	}
+	if (flag & OVERLAY_F_IN_TX) {
+		ASSERT(odd->odd_txcount > 0);
+		odd->odd_txcount--;
+		if (odd->odd_txcount == 0) {
+			signal = B_TRUE;
+			odd->odd_flags &= ~OVERLAY_F_IN_TX;
+		}
+	}
+
+	/*
+	 * XXX Work out semantics here so we don't have to broadcast.
+	 */
+	if (signal == B_TRUE)
+		cv_broadcast(&odd->odd_iowait);
 }
 
 static void
