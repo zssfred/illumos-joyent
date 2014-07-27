@@ -42,3 +42,22 @@ threadp(void)
 	SET_SIZE(threadp)
 
 #endif	/* __lint */
+
+#if defined(__lint)
+
+/*
+ * Subroutine used to spin for a little bit
+ */
+
+void
+arm_smt_pause(void)
+{}
+
+#else	/* __lint */
+
+	ENTRY(arm_smt_pause)
+	yield
+	bx	lr
+	SET_SIZE(arm_smt_pause)
+
+#endif	/* __lint */

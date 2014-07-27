@@ -27,7 +27,8 @@ MATH_OBJS += 			\
 	qdivrem.o
 
 MISC_OBJS +=			\
-	copy.o
+	copy.o			\
+	armv6_subr.o
 
 ML_OBJS +=			\
 	cache.o			\
@@ -37,82 +38,26 @@ ML_OBJS +=			\
 
 OS_OBJS +=			\
 	bsmdep.o		\
+	confunix.o		\
 	cpuid.o			\
 	flush.o			\
 	fakebop.o		\
 	lgrpplat.o		\
+	mach_sysconfig.o	\
+	mem_config_stubs.o	\
 	memnode.o		\
 	mlsetup.o		\
 	mp_startup.o		\
-	startup.o
+	startup.o		\
+	vm_machdep.o
 
-CORE_OBJS =			\
+CORE_OBJS +=			\
 	$(ATOMIC_OBJS)		\
 	$(BOOT_OBJS)		\
 	$(MATH_OBJS)		\
 	$(MISC_OBJS)		\
 	$(ML_OBJS)		\
 	$(OS_OBJS)
-
-#
-# XXX Because of ordering we also need to make sure we manually include
-# uts/arm/Makefile.files CORE_OBJS here.
-#
-CORE_OBJS += \
-	decompress.o \
-	arm_subr.o \
-	lock_prim.o
-
-#
-# XXX this is also specified in uts/arm/Makefile.files, but note the = sign for
-# CORE_OBJS above. Right now we're not quite ready to build everything from
-# uts/common yet, so we instead clobber it with our stuff.
-#
-CORE_NOTYET_OBJS = \
-		page_retire.o	\
-		page_lock.o	\
-		seg_kmem.o	\
-		vm_page.o	\
-		cap_util.o
-
-CORE_OBJS +=	\
-		beep.o		\
-		bitset.o	\
-		bp_map.o	\
-		brand.o		\
-		cpucaps.o	\
-		cmt.o		\
-		cmt_policy.o	\
-		cpu.o		\
-		cpu_event.o	\
-		cpu_intr.o	\
-		cpu_pm.o	\
-		cpupart.o	\
-		disp.o		\
-		group.o		\
-		kstat_fr.o	\
-		iscsiboot_prop.o	\
-		lgrp.o		\
-		lgrp_topo.o	\
-		mmapobj.o	\
-		mutex.o		\
-		panic.o		\
-		param.o		\
-		pg.o		\
-		pghw.o		\
-		putnext.o	\
-		rctl_proc.o	\
-		rwlock.o	\
-		softint.o	\
-		string.o	\
-		strtol.o	\
-		strtoul.o	\
-		strtoll.o	\
-		strtoull.o	\
-		thread_intr.o	\
-		vm_pagelist.o	\
-		zlib_obj.o	\
-		clock_tick.o
 
 ARM_LOADER_OBJS = \
 		atag.o \

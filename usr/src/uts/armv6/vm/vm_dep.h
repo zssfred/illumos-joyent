@@ -25,12 +25,16 @@ extern "C" {
 #endif
 
 #include <sys/param.h>
+#include <sys/memnode.h>
 
 /*
  * Do not use GETTICK. It is only meant to be used when timesource
  * synchronization is unimportant.
  */
 #define	GETTICK()	gethrtime_unscaled()
+
+/* tick value that should be used for random values */
+extern u_longlong_t randtick(void);
 
 #define	PLCNT_SZ(ctrs_sz)	panic("plcnt_sz")
 
@@ -52,7 +56,7 @@ extern "C" {
  * (kphysm_del_cleanup).
  */
 extern void plcnt_modify_max(pfn_t, long);
-#define	PLCNT_MODIFY_MAX(pfn, cnt)	mtype_modify_max(pfn, cnt)
+#define	PLCNT_MODIFY_MAX(pfn, cnt)	plcnt_modify_max(pfn, cnt)
 
 /*
  * These macros are used in dealing with the page counters and its candidate
@@ -65,24 +69,27 @@ extern void plcnt_modify_max(pfn_t, long);
  * Gb for PCI, etc. Like sun4, this may actually just be a single number, since
  * unlike on sun4, we're not going to pretend we have a kcage.
  */
-#define	MAX_MNODE_MRANGES	panic("max_mnodes_mranges")
-#define	MNODE_RANGE_CNT		panic("monde_range_cnt")
-#define	MNODE_MAX_RANGE		panic("mnode_max_range")
-#define	MNODE_2_RANGE		panic("mnode_2_range")
+#define	MAX_MNODE_MRANGES		1
+#define	MNODE_RANGE_CNT(mnode)		1
+#define	MNODE_MAX_MRANGE(mnode)		(MAX_MNODE_MRANGES - 1)
+#define	MTYPE_2_MRANGE(mnode, mtype)	mtype
 
 
 /*
  * XXX These are strawman definitions based on the i86pc versions of the
- * page_freelists and the page_cachelists. We index into the freelist by
- * [mtype][mmu_page_sizes][colors]. We index into the cachelist by
- * [mtype][colors]. However, for the moment we're going to just panic when using
- * the macros to access them.
+ * page_freelists and the page_cachelists; however, unlike i86pc we only have
+ * one mtype, therefore we don't bother keeping around an index for it.
+ *
+ * We index into the freelist by [mmu_page_sizes][colors]. We index into the
+ * cachelist by [colors].
  */
-extern page_t ****page_freelists;
-extern page_t ***page_cachelists;
+extern page_t ***page_freelists;
+extern page_t **page_cachelists;
 
-#define	PAGE_FREELISTS(mnode, szc, color, mtype)	panic("page_freelists")
-#define	PAGE_CACHELISTS(mnode, szc, color, mtype)	panic("page_cachelists")
+#define	PAGE_FREELISTS(mnode, szc, color, mtype)	\
+	(*(page_freelists[szc] + (color)))
+#define	PAGE_CACHELISTS(mnode, color, mtype) \
+	(page_cachelists[color])
 
 /*
  * XXX This set of locks needs to be rethought with respect to mandatory page
@@ -100,6 +107,10 @@ extern page_t ***page_cachelists;
 
 extern kmutex_t	*fpc_mutex[NPC_MUTEX];
 extern kmutex_t	*cpc_mutex[NPC_MUTEX];
+
+#define	PC_BIN_MUTEX(mnode, bin, flags) ((flags & PG_FREE_LIST) ?	\
+	&fpc_mutex[(bin) & (NPC_MUTEX - 1)][mnode] :			\
+	&cpc_mutex[(bin) & (NPC_MUTEX - 1)][mnode])
 
 #define	FPC_MUTEX(mnode, i)	(&fpc_mutex[i][mnode])
 #define	CPC_MUTEX(mnode, i)	(&cpc_mutex[i][mnode])
@@ -123,29 +134,51 @@ extern kmutex_t	*cpc_mutex[NPC_MUTEX];
 #define	PAGE_CTRS_ADJUST(pfn, cnt, rv)	panic("page_cntrs_adjust")
 
 /*
- * Coloring related macros
+ * Coloring related macros. For more on coloring, see uts/armv6/vm/vm_machdep.c.
  */
-#define	PAGE_GET_COLOR_SHIFT(pfn, cnt, rv)	panic("page_get_color_shift")
-#define	PAGE_CONVERT_COLOR(ncolor, szc, nszc)	panic("page_convert_color")
-#define	PFN_2_COLOR(pfn, szc, it)		panic("pfn_2_color")
+#define	PAGE_GET_COLOR_SHIFT(szc, nszc)				\
+	    (hw_page_array[(nszc)].hp_shift - hw_page_array[(szc)].hp_shift)
 
-#define	PNUM_SIZE(szc)	panic("pnum_size")
-#define	PNUM_SHIFT(szc)	panic("pnum_shift")
-#define	PAGE_GET_SHIFT(szc)	panic("page_get_shift")
-#define	PAGE_GET_PAGECOLORS(szc)	panic("page_get_pagecolors")
+#define	PAGE_CONVERT_COLOR(ncolor, szc, nszc)			\
+	    ((ncolor) << PAGE_GET_COLOR_SHIFT((szc), (nszc)))
+
+#define	PFN_2_COLOR(pfn, szc, it)					\
+	(((pfn) & page_colors_mask) >>			                \
+	(hw_page_array[szc].hp_shift - hw_page_array[0].hp_shift))
+
+#define	PNUM_SIZE(szc)							\
+	(hw_page_array[(szc)].hp_pgcnt)
+#define	PNUM_SHIFT(szc)							\
+	(hw_page_array[(szc)].hp_shift - hw_page_array[0].hp_shift)
+#define	PAGE_GET_SIZE(szc)						\
+	(hw_page_array[(szc)].hp_size)
+#define	PAGE_GET_SHIFT(szc)						\
+	(hw_page_array[(szc)].hp_shift)
+#define	PAGE_GET_PAGECOLORS(szc)					\
+	(hw_page_array[(szc)].hp_colors)
 
 #define	PAGE_NEXT_PFN_FOR_COLOR(pfn, szc, color, ceq_mask, color_mask, it) \
 	panic("page_next_pfn_for_color")
 
-#define	PAGE_GET_NSZ_MASK(szc, mask)	panic("page_get_nsz_mask")
-#define	PAGE_GET_NSZ_COLOR(szc, color)	panic("page_get_nsz_mask")
+/* get the color equivalency mask for the next szc */
+#define	PAGE_GET_NSZ_MASK(szc, mask)                                         \
+	((mask) >> (PAGE_GET_SHIFT((szc) + 1) - PAGE_GET_SHIFT(szc)))
 
-#define	PP_2_BIN_SZC(pp, szc)	panic("pp_2_bin_szc")
-#define	PP_2_BIN(pp)		panic("pp_2_bin")	
-#define	PP_2_MEM_NODE(pp)	panic("pp_2_mem_node")	
-#define	PP_2_MTYPE(pp)		panic("pp_2_mtype")	
+/* get the color of the next szc */
+#define	PAGE_GET_NSZ_COLOR(szc, color)                                       \
+	((color) >> (PAGE_GET_SHIFT((szc) + 1) - PAGE_GET_SHIFT(szc)))
 
-#define	PFN_BASE(pfnum, szc)	panic("pfn_base")
+/* Find the bin for the given page if it was of size szc */
+#define	PP_2_BIN_SZC(pp, szc)	(PFN_2_COLOR(pp->p_pagenum, szc, NULL))
+
+#define	PP_2_BIN(pp)		(PP_2_BIN_SZC(pp, pp->p_szc))
+
+#define	PP_2_MEM_NODE(pp)	(0)
+#define	PP_2_MTYPE(pp)		(0)
+#define	PP_2_SZC(pp)		(pp->p_szc)
+
+#define	SZCPAGES(szc)		(1 << PAGE_BSZS_SHIFT(szc))
+#define	PFN_BASE(pfnum, szc)	(pfnum & ~(SZCPAGES(szc) - 1))
 
 /*
  * XXX These are total strawmen based on i86pc and sun4 for walking the page
@@ -170,6 +203,9 @@ typedef struct page_list_walker {
 extern void page_list_walk_init(uchar_t szc, uint_t flags, uint_t bin,
     int can_split, int use_ceq, page_list_walker_t *plw);
 
+extern struct cpu	cpus[];
+#define	CPU0		&cpus[0]
+
 /*
  * XXX memory type initializaiton
  */
@@ -178,7 +214,6 @@ extern void page_list_walk_init(uchar_t szc, uint_t flags, uint_t bin,
 #define	MTYPE_NEXT(mnode, mtype, flags)	panic("mtype_next")
 #define	MTYPE_PGR_INIT(mtype, flags, pp, mnode, pgcnt)	panic("mtype_pgr_init")
 #define	MNODETYPE_2_PFN(mnode, mtype, pfnlo, pfnhi)	panic("mnodetype_2_pfn")
-#define	PC_BIN_MUTEX(mnode, bin, flags) ((flags & PG_FREE_LIST)	panic("pc_bin_mutex")
 
 #ifdef DEBUG
 #define	CHK_LPG(pp, szc)	panic("chk_lpg")
@@ -186,28 +221,73 @@ extern void page_list_walk_init(uchar_t szc, uint_t flags, uint_t bin,
 #define	CHK_LPG(pp, szc)
 #endif
 
-#define	FULL_REGION_CNT(rg_szc)	panic("full_region_cnt")
-#define	PP_GROUPLEADER(pp, szc)	panic("pp_groupleader")
-#define	PP_PAGEROOT(pp)	panic("pp_pageroot")
+#define	FULL_REGION_CNT(rg_szc)	\
+	(PAGE_GET_SIZE(rg_szc) >> PAGE_GET_SHIFT(rg_szc - 1))
 
+/* Return the leader for this mapping size */
+#define	PP_GROUPLEADER(pp, szc) \
+	(&(pp)[-(int)((pp)->p_pagenum & (SZCPAGES(szc)-1))])
 
-#define	PC_BASE_ALIGN	panic("pc_base_align")
-#define	PC_BASE_ALIGN_MASK	panic("pc_base_align_mask")
-#define	USERSZC_2_SZC(userszc)	panic("userszc_2_szc")
-#define	SZC_2_USERSZC(szc)	panic("szc_2_userszc")
+/* Return the root page for this page based on p_szc */
+#define	PP_PAGEROOT(pp) ((pp)->p_szc == 0 ? (pp) : \
+	PP_GROUPLEADER((pp), (pp)->p_szc))
+
+/*
+ * The counter base must be per page_counter element to prevent
+ * races when re-indexing, and the base page size element should
+ * be aligned on a boundary of the given region size.
+ *
+ * We also round up the number of pages spanned by the counters
+ * for a given region to PC_BASE_ALIGN in certain situations to simplify
+ * the coding for some non-performance critical routines.
+ */
+#define	PC_BASE_ALIGN		((pfn_t)1 << PAGE_BSZS_SHIFT(mmu_page_sizes-1))
+#define	PC_BASE_ALIGN_MASK	(PC_BASE_ALIGN - 1)
+
+/*
+ * The following three constants describe the set of page sizes that are
+ * supported by the hardware. Note that there is a notion of legacy page sizes
+ * for certain applications. However, such applications don't exist on ARMv6, so
+ * they'll always get the same data.
+ */
+extern uint_t mmu_page_sizes;
+extern uint_t mmu_exported_page_sizes;
+extern uint_t mmu_legacy_page_sizes;
+
+/*
+ * These macros are used for converting between userland page sizes and kernel
+ * page sizes. However, these are the same on ARMv6 (just like i86pc).
+ */
+#define	USERSZC_2_SZC(userszc)	userszc
+#define	SZC_2_USERSZC(szc)	szc
+
+/*
+ * for hw_page_map_t, sized to hold the ratio of large page to base
+ * pagesize
+ */
+typedef	short	hpmctr_t;
 
 /*
  * On ARMv6 the layer two cache isn't architecturally defined. A given
  * implementation may support it. We always use a platform defined value for the
  * actual alignment required for L2 cache. However, because the cache line for
  * most models we care about current is 8 words, we're setting that to the max.
- * This will not be good for ARMv7
+ * This will not be good for ARMv7.
+ *
+ * The layer one cache is defined to be a 4-way cache; however, the size depends
+ * on synthesis, which ranges from 4k-64k.
  */
-extern int	armv6_l2cache_linesz;
+extern int	armv6_cachesz, armv6_l2cache_linesz;
 #define	L2CACHE_ALIGN		armv6_l2cache_linesz
 #define	L2CACHE_ALIGN_MAX	32
-#define	CPUSETSIZE()		panic("cpusetsize")
-#define	PAGE_BSZS_SHIFT(szc)	panic("page_bszs_shift")
+#define	CACHE_NWAYS		4
+#define	CPUSETSIZE()		(armv6_cachesz / CACHE_NWAYS)
+
+/*
+ * Return the log2(pagesize(szc) / MMU_PAGESIZE) --- or the shift count
+ * for the number of base pages in this pagesize
+ */
+#define	PAGE_BSZS_SHIFT(szc) (PNUM_SHIFT(szc) - MMU_PAGESHIFT)
 
 /*
  * Internal PG_ flags.
@@ -222,7 +302,121 @@ extern int	armv6_l2cache_linesz;
  */
 
 #define	AS_2_BIN(as, seg, vp, addr, bin, szc)	panic("as_2_bin")
-#define	VM_CPU_DATA_PADSIZE	panic("vm_cpu_data_padsize")
+
+/*
+ * XXX For the moment, we'll use the same value for VM_CPU_DATA_PADSIZE that
+ * is used on other platforms. We don't use this at all, but it's required for
+ * stuff like vm_pagelist.c to build. We should figure out what the right answer
+ * looks like here.
+ */
+/*
+ * cpu private vm data - accessed thru CPU->cpu_vm_data
+ *	vc_pnum_memseg: tracks last memseg visited in page_numtopp_nolock()
+ *	vc_pnext_memseg: tracks last memseg visited in page_nextn()
+ *	vc_kmptr: orignal unaligned kmem pointer for this vm_cpu_data_t
+ *	vc_kmsize: orignal kmem size for this vm_cpu_data_t
+ */
+
+typedef struct {
+	struct memseg	*vc_pnum_memseg;
+	struct memseg	*vc_pnext_memseg;
+	void		*vc_kmptr;
+	size_t		vc_kmsize;
+} vm_cpu_data_t;
+
+/* allocation size to ensure vm_cpu_data_t resides in its own cache line */
+#define	VM_CPU_DATA_PADSIZE						\
+	(P2ROUNDUP(sizeof (vm_cpu_data_t), L2CACHE_ALIGN_MAX))
+
+/*
+ * When a bin is empty, and we can't satisfy a color request correctly,
+ * we scan.  If we assume that the programs have reasonable spatial
+ * behavior, then it will not be a good idea to use the adjacent color.
+ * Using the adjacent color would result in virtually adjacent addresses
+ * mapping into the same spot in the cache.  So, if we stumble across
+ * an empty bin, skip a bunch before looking.  After the first skip,
+ * then just look one bin at a time so we don't miss our cache on
+ * every look. Be sure to check every bin.  Page_create() will panic
+ * if we miss a page.
+ *
+ * This also explains the `<=' in the for loops in both page_get_freelist()
+ * and page_get_cachelist().  Since we checked the target bin, skipped
+ * a bunch, then continued one a time, we wind up checking the target bin
+ * twice to make sure we get all of them bins.
+ */
+#define	BIN_STEP	19
+
+/*
+ * TODO We should re-evaluate this at some point. This is a reasonable set of
+ * stats that both i86pc and sun4 have, which likely the common code all
+ * requires. We may find that we want additional stats here.
+ */
+#ifdef VM_STATS
+struct vmm_vmstats_str {
+	ulong_t pgf_alloc[MMU_PAGE_SIZES];	/* page_get_freelist */
+	ulong_t pgf_allocok[MMU_PAGE_SIZES];
+	ulong_t pgf_allocokrem[MMU_PAGE_SIZES];
+	ulong_t pgf_allocfailed[MMU_PAGE_SIZES];
+	ulong_t	pgf_allocdeferred;
+	ulong_t	pgf_allocretry[MMU_PAGE_SIZES];
+	ulong_t pgc_alloc;			/* page_get_cachelist */
+	ulong_t pgc_allocok;
+	ulong_t pgc_allocokrem;
+	ulong_t pgc_allocokdeferred;
+	ulong_t pgc_allocfailed;
+	ulong_t	pgcp_alloc[MMU_PAGE_SIZES];	/* page_get_contig_pages */
+	ulong_t	pgcp_allocfailed[MMU_PAGE_SIZES];
+	ulong_t	pgcp_allocempty[MMU_PAGE_SIZES];
+	ulong_t	pgcp_allocok[MMU_PAGE_SIZES];
+	ulong_t	ptcp[MMU_PAGE_SIZES];		/* page_trylock_contig_pages */
+	ulong_t	ptcpfreethresh[MMU_PAGE_SIZES];
+	ulong_t	ptcpfailexcl[MMU_PAGE_SIZES];
+	ulong_t	ptcpfailszc[MMU_PAGE_SIZES];
+	ulong_t	ptcpfailcage[MMU_PAGE_SIZES];
+	ulong_t	ptcpok[MMU_PAGE_SIZES];
+	ulong_t	pgmf_alloc[MMU_PAGE_SIZES];	/* page_get_mnode_freelist */
+	ulong_t	pgmf_allocfailed[MMU_PAGE_SIZES];
+	ulong_t	pgmf_allocempty[MMU_PAGE_SIZES];
+	ulong_t	pgmf_allocok[MMU_PAGE_SIZES];
+	ulong_t	pgmc_alloc;			/* page_get_mnode_cachelist */
+	ulong_t	pgmc_allocfailed;
+	ulong_t	pgmc_allocempty;
+	ulong_t	pgmc_allocok;
+	ulong_t	pladd_free[MMU_PAGE_SIZES];	/* page_list_add/sub */
+	ulong_t	plsub_free[MMU_PAGE_SIZES];
+	ulong_t	pladd_cache;
+	ulong_t	plsub_cache;
+	ulong_t	plsubpages_szcbig;
+	ulong_t	plsubpages_szc0;
+	ulong_t	pfs_req[MMU_PAGE_SIZES];	/* page_freelist_split */
+	ulong_t	pfs_demote[MMU_PAGE_SIZES];
+	ulong_t	pfc_coalok[MMU_PAGE_SIZES][MAX_MNODE_MRANGES];
+	ulong_t	ppr_reloc[MMU_PAGE_SIZES];	/* page_relocate */
+	ulong_t ppr_relocnoroot[MMU_PAGE_SIZES];
+	ulong_t ppr_reloc_replnoroot[MMU_PAGE_SIZES];
+	ulong_t ppr_relocnolock[MMU_PAGE_SIZES];
+	ulong_t ppr_relocnomem[MMU_PAGE_SIZES];
+	ulong_t ppr_relocok[MMU_PAGE_SIZES];
+	ulong_t ppr_copyfail;
+	/* page coalesce counter */
+	ulong_t page_ctrs_coalesce[MMU_PAGE_SIZES][MAX_MNODE_MRANGES];
+	/* candidates useful */
+	ulong_t page_ctrs_cands_skip[MMU_PAGE_SIZES][MAX_MNODE_MRANGES];
+	/* ctrs changed after locking */
+	ulong_t page_ctrs_changed[MMU_PAGE_SIZES][MAX_MNODE_MRANGES];
+	/* page_freelist_coalesce failed */
+	ulong_t page_ctrs_failed[MMU_PAGE_SIZES][MAX_MNODE_MRANGES];
+	ulong_t page_ctrs_coalesce_all;	/* page coalesce all counter */
+	ulong_t page_ctrs_cands_skip_all; /* candidates useful for all func */
+	ulong_t	restrict4gcnt;
+	ulong_t	unrestrict16mcnt;	/* non-DMA 16m allocs allowed */
+	ulong_t	pgpanicalloc;		/* PG_PANIC allocation */
+	ulong_t	pcf_deny[MMU_PAGE_SIZES];	/* page_chk_freelist */
+	ulong_t	pcf_allow[MMU_PAGE_SIZES];
+};
+extern struct vmm_vmstats_str vmm_vmstats;
+#endif	/* VM_STATS */
+
 
 #ifdef __cplusplus
 }

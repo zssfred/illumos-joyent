@@ -351,7 +351,20 @@ fm_dev_ereport_postv(dev_info_t *dip, dev_info_t *eqdip,
 	char			class[ERPT_CLASS_SZ];
 	char			path[MAXPATHLEN];
 
+	/*
+	 * The ARM AAPCS defines a va_list as:
+	 *
+	 * typedef struct __va_list { void *__ap; } va_list;
+	 *
+	 * Therefore we cannot do this comparison the way that we do on other
+	 * platforms. We should probably factor this out into a general
+	 * macro/check.
+	 */
+#ifdef __arm__
+	ASSERT(ap.__ap != NULL);
+#else
 	ASSERT(ap != NULL);	/* must supply at least ereport version */
+#endif
 	ASSERT(dip && eqdip && error_class);
 
 	/*

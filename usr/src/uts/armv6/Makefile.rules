@@ -41,6 +41,10 @@ $(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/os/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)
 
+$(OBJS_DIR)/%.o:		$(UTSBASE)/armv6/vm/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
+
 $(OBJS_DIR)/%.o:		$(SRC)/common/atomic/arm/%.s
 	$(COMPILE.s) -o $@ $<
 	$(CTFCONVERT_O)

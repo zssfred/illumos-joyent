@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/memlist.h>
 #include <sys/ccompile.h>
+#include <net/if.h>			/* for IFNAMSIZ */
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,12 +56,40 @@ typedef struct bootops {
 #define	BOP_GETPROP(bop, name, buf)	((bop)->bsys_getprop)(bop, name, buf)
 #define	BOP_PUTSARG(bop, msg, arg)	((bop)->bsys_printf)(bop, msg, arg)
 
+/*
+ * Boot configuration information
+ */
+
+#define	BO_MAXFSNAME	16
+#define	BO_MAXOBJNAME	256
+
+struct bootobj {
+	char	bo_fstype[BO_MAXFSNAME];	/* vfs type name (e.g. nfs) */
+	char	bo_name[BO_MAXOBJNAME];		/* name of object */
+	int	bo_flags;			/* flags, see below */
+	int	bo_size;			/* number of blocks */
+	struct vnode *bo_vp;			/* vnode of object */
+	char	bo_devname[BO_MAXOBJNAME];
+	char	bo_ifname[BO_MAXOBJNAME];
+	int	bo_ppa;
+};
+
+/*
+ * flags
+ */
+#define	BO_VALID	0x01	/* all information in object is valid */
+#define	BO_BUSY		0x02	/* object is busy */
+
+extern struct bootobj rootfs;
+extern struct bootobj swapfile;
+
 extern char *default_path;
 extern int modrootloaded;
 extern char kern_bootargs[];
 extern char kern_bootfile[];
 
 extern int strplumb(void);
+extern char *strplumb_get_netdev_path(void);
 extern void consconfig(void);
 extern void release_bootstrap(void);
 
@@ -69,6 +98,13 @@ extern void boot_prop_finish(void);
 extern void bop_printf(struct bootops *, const char *, ...);
 
 extern struct bootops *bootops;
+extern int netboot;
+extern char *dhcack;
+extern int dhcacklen;
+extern char dhcifname[IFNAMSIZ];
+
+extern char *netdev_path;
+
 #ifdef __cplusplus
 }
 #endif

@@ -114,7 +114,8 @@ typedef union mutex_impl {
 #define	MUTEX_BACKOFF_SHIFT	2
 #define	MUTEX_CAP_FACTOR	64
 #define	MUTEX_DELAY()	{ \
-				mutex_delay(); \
+				mutex_delay();	\
+				SMT_PAUSE();	\
 			}
 
 /* low-overhead clock read */

@@ -15,36 +15,38 @@
 
 include ../../../Makefile.master
 
-HDRS = \
-	arm_archext.h \
-	asm_linkage.h \
-	bootconf.h \
-	bootsvcs.h \
-	bootvfs.h \
-	ddi_isa.h \
-	flush.h \
-	kdi_machimpl.h \
-	machlock.h \
-	machsig.h \
-	machtypes.h \
-	mutex_impl.h \
-	obpdefs.h \
-	pcb.h \
-	privregs.h \
-	procfs_isa.h \
-	promif.h \
-	promimpl.h \
-	regset.h \
-	spl.h \
-	stack.h \
-	vmparam.h \
-	ucontext.h \
+HDRS = 				\
+	arm_archext.h 		\
+	asm_linkage.h 		\
+	bootconf.h 		\
+	bootsvcs.h 		\
+	bootvfs.h 		\
+	ddi_isa.h 		\
+	flush.h 		\
+	frame.h			\
+	kdi_machimpl.h 		\
+	machlock.h 		\
+	machsig.h 		\
+	machtypes.h 		\
+	mutex_impl.h 		\
+	obpdefs.h 		\
+	pcb.h 			\
+	privregs.h 		\
+	procfs_isa.h 		\
+	promif.h 		\
+	promimpl.h 		\
+	regset.h 		\
+	synch32.h		\
+	spl.h 			\
+	stack.h 		\
+	vmparam.h		\
+	ucontext.h 		\
 	utrap.h
 
 
 ROOTDIR=	$(ROOT)/usr/include/sys
-ROOTHDRS= $(HDRS:%=$(ROOTDIR)/%)
-CHECKHDR= $(HDRS:%.h=%.check)
+ROOTHDRS=	$(HDRS:%=$(ROOTDIR)/%)
+CHECKHDR=	$(HDRS:%.h=%.check)
 
 $(ROOTDIR):
 	$(INS.dir)

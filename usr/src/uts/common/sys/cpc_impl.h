@@ -204,9 +204,14 @@ enum dcpc_mask_attr {
 #ifdef __sparc
 extern uint64_t ultra_gettick(void);
 #define	KCPC_GET_TICK ultra_gettick
-#else
+#elif __x86
 extern hrtime_t tsc_read(void);
 #define	KCPC_GET_TICK tsc_read
+#elif __arm__
+extern hrtime_t arm_gettick(void);
+#define	KCPC_GET_TICK arm_gettick
+#else
+#error "port me"
 #endif /* __sparc */
 
 #define	PCBE_NAMELEN 30 /* Enough room for "pcbe." plus full PCBE name spec */

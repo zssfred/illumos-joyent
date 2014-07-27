@@ -83,6 +83,23 @@ uintptr_t hole_start, hole_end;
 int prom_debug = 1;
 
 /*
+ * VM related data
+ */
+long page_hashsz;		/* Size of page hash table (power of two) */
+unsigned int page_hashsz_shift;	/* log2(page_hashsz) */
+struct page *pp_base;		/* Base of initial system page struct array */
+struct page **page_hash;	/* Page hash table */
+pad_mutex_t *pse_mutex;		/* Locks protecting pp->p_selock */
+size_t pse_table_size;		/* Number of mutexes in pse_mutex[] */
+int pse_shift;			/* log2(pse_table_size) */
+
+/*
+ * Cache size information filled in via cpuid and startup_cache()
+ */
+int armv6_cachesz;		/* Total size of the l1 cache */
+int armv6_l2cache_linesz;	/* Size of a line in the l2 cache */
+
+/*
  * Do basic set up.
  */
 static void
@@ -92,6 +109,16 @@ startup_init()
 		++prom_debug;
 		prom_printf("prom_debug found in boot enviroment");
 	}
+}
+
+/*
+ * This should walk cpuid information to obtain information about the cache size
+ * on this platform.
+ */
+static void
+startup_cache()
+{
+	bop_panic("startup_cache");
 }
 
 static void

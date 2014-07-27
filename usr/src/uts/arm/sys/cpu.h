@@ -27,4 +27,7 @@
  */
 #include <sys/bustypes.h>
 
+extern void arm_smt_pause(void);
+#define	SMT_PAUSE()	arm_smt_pause()
+
 #endif /* _SYS_CPU_H */

@@ -25,9 +25,13 @@ extern "C" {
 #endif
 
 /*
- * XXXARM Cross calls will be great to have, but for now we're punting before
- * first down.
+ * The ARM general interrupt controller defines a minimum of 16 interrupt
+ * priority levels. While some systems may support more, we'll stick with
+ * assuming the minimum to make our lives simpler.
  */
+
+#define	XC_HI_PIL	15		/* IPI (called SGI on ARM) */
+#define	XCALL_PIL	XC_HI_PIL
 
 #ifdef __cplusplus
 }
