@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 (c) Joyent, Inc.  All rights reserved.
+ * Copyright 2014 (c) Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -38,7 +38,7 @@ extern void _locore_start();
 /*ARGSUSED3*/
 void
 _kobj_boot(struct boot_syscalls *bsysp, void *dvec, struct bootops *bops,
-    caddr_t text, caddr_t data, caddr_t limit)
+    caddr_t stext, caddr_t etext, caddr_t sdata, caddr_t edata, caddr_t limit)
 {
 	val_t auxv[BA_NUM];
 	int i;
@@ -51,8 +51,10 @@ _kobj_boot(struct boot_syscalls *bsysp, void *dvec, struct bootops *bops,
 
 	auxv[BA_PAGESZ].ba_val = MMU_PAGESIZE;
 
-	auxv[BA_ETEXT].ba_ptr = text;
-	auxv[BA_EDATA].ba_ptr = data;
+	auxv[BA_STEXT].ba_ptr = stext;
+	auxv[BA_SDATA].ba_ptr = sdata;
+	auxv[BA_ETEXT].ba_ptr = etext;
+	auxv[BA_EDATA].ba_ptr = edata;
 	auxv[BA_ELIMIT].ba_ptr = limit;
 
 	kobj_init(bsysp, dvec, bops, auxv);

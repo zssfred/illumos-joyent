@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -873,15 +873,15 @@ _fakebop_start(void *zeros, uint32_t machid, void *tagstart)
 	bop_printf(NULL, "booting into _kobj\n");
 
 	/*
-	 * krtld uses _etext and _edata as part of its segment brks. ARM is a
-	 * bit different from other versions of unix because we have our
-	 * exception vector in the binary at the top of our address space. As
-	 * such, we basically pass in values to krtld that represent what our
-	 * _etext and _edata would have looked like if not for the exception
-	 * vector.
+	 * krtld uses _stext, _etext, _sdata, and _edata as part of its segment
+	 * brks. ARM is a bit different from other versions of unix because we
+	 * have our exception vector in the binary at the top of our address
+	 * space. As such, we basically pass in values to krtld that represent
+	 * what our _etext and _edata would have looked like if not for the
+	 * exception vector.
 	 */
-	_kobj_boot(&bop_sysp, NULL, bops, aisp->ais_etext, aisp->ais_edata,
-	    EXCEPTION_ADDRESS);
+	_kobj_boot(&bop_sysp, NULL, bops, aisp->ais_stext, aisp->ais_etext,
+	    aisp->ais_sdata, aisp->ais_edata, EXCEPTION_ADDRESS);
 
 	bop_panic("Returned from kobj_init\n");
 }

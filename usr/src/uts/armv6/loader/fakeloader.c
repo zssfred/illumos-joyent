@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
 #include "fakeloader.h"
@@ -230,6 +230,7 @@ fakeload_archive_mappings(atag_header_t *chain, const void *addr,
 	int nhdrs, i;
 	uintptr_t ret;
 	uintptr_t text = 0, data = 0;
+	size_t textln = 0, dataln = 0;
 
 	hdr = (fakeloader_hdr_t *)addr;
 
@@ -324,15 +325,19 @@ fakeload_archive_mappings(atag_header_t *chain, const void *addr,
 		 */
 		if (aim.aim_vaddr != 0xffff0000) {
 			if ((phdr->p_flags & PF_W) != 0) {
-				data = aim.aim_vaddr + aim.aim_vlen;
+				data = aim.aim_vaddr;
+				dataln = aim.aim_vlen;
 			} else {
-				text = aim.aim_vaddr + aim.aim_vlen;
+				text = aim.aim_vaddr;
+				textln = aim.aim_vlen;
 			}
 		}
 	}
 
-	aisp->ais_etext = text;
-	aisp->ais_edata = data;
+	aisp->ais_stext = text;
+	aisp->ais_etext = text + textln;
+	aisp->ais_sdata = data;
+	aisp->ais_edata = data + dataln;
 
 	/* 1:1 map the boot archive */
 	aim.aim_header.ah_size = ATAG_ILLUMOS_MAPPING_SIZE;

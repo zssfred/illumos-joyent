@@ -25,7 +25,7 @@
 /*
  * Copyright 2011 Bayard G. Bell <buffer.g.overflow@gmail.com>.
  * All rights reserved. Use is subject to license terms.
- * Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014, Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -697,8 +697,14 @@ attr_val(val_t *bootaux)
 		}
 	}
 
+	if (bootaux[BA_STEXT].ba_ptr != NULL)
+		_text = bootaux[BA_STEXT].ba_ptr;
+
 	if (bootaux[BA_ETEXT].ba_ptr != NULL)
 		_etext = bootaux[BA_ETEXT].ba_ptr;
+
+	if (bootaux[BA_SDATA].ba_ptr != NULL)
+		_data = bootaux[BA_SDATA].ba_ptr;
 
 	if (bootaux[BA_EDATA].ba_ptr != NULL)
 		_edata = bootaux[BA_EDATA].ba_ptr;

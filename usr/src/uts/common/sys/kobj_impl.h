@@ -21,7 +21,7 @@
 /*
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- * Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014, Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -61,7 +61,9 @@ extern "C" {
 #define	BA_ETEXT	16
 #define	BA_EDATA	17
 #define	BA_ELIMIT	18
-#define	BA_NUM		19
+#define	BA_STEXT	19
+#define	BA_SDATA	20
+#define	BA_NUM		21
 
 typedef union {
 	unsigned long ba_val;
