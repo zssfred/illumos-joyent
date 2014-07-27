@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
 #include <sys/types.h>
@@ -97,7 +97,9 @@ int pse_shift;			/* log2(pse_table_size) */
  * Cache size information filled in via cpuid and startup_cache()
  */
 int armv6_cachesz;		/* Total size of the l1 cache */
+int armv6_cache_assoc;		/* L1 cache associativity */
 int armv6_l2cache_linesz;	/* Size of a line in the l2 cache */
+int armv6_l2cache_size;		/* Total size of the l2 cache */
 
 /*
  * Do basic set up.
@@ -109,16 +111,6 @@ startup_init()
 		++prom_debug;
 		prom_printf("prom_debug found in boot enviroment");
 	}
-}
-
-/*
- * This should walk cpuid information to obtain information about the cache size
- * on this platform.
- */
-static void
-startup_cache()
-{
-	bop_panic("startup_cache");
 }
 
 static void

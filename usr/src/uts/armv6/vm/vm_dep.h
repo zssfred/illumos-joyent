@@ -269,19 +269,18 @@ typedef	short	hpmctr_t;
 
 /*
  * On ARMv6 the layer two cache isn't architecturally defined. A given
- * implementation may support it. We always use a platform defined value for the
- * actual alignment required for L2 cache. However, because the cache line for
- * most models we care about current is 8 words, we're setting that to the max.
- * This will not be good for ARMv7.
- *
- * The layer one cache is defined to be a 4-way cache; however, the size depends
- * on synthesis, which ranges from 4k-64k.
+ * implementation may or may not support it. The maximum size appears to be
+ * 64-bytes; however, we end up having to defer to the individual platforms for
+ * more information. Because of this, we also get and use the l1 cache
+ * information. This is further complicated by the fact that the I-cache and
+ * D-cache are separate usually; therefore we us the the l1 d-cache for
+ * CPUSETSIZE().
  */
-extern int	armv6_cachesz, armv6_l2cache_linesz;
+extern int	armv6_cachesz, armv6_cache_assoc;
+extern int	armv6_l2cache_size, armv6_l2cache_linesz;
 #define	L2CACHE_ALIGN		armv6_l2cache_linesz
-#define	L2CACHE_ALIGN_MAX	32
-#define	CACHE_NWAYS		4
-#define	CPUSETSIZE()		(armv6_cachesz / CACHE_NWAYS)
+#define	L2CACHE_ALIGN_MAX	64
+#define	CPUSETSIZE()		(armv6_cachesz / armv6_cache_assoc)
 
 /*
  * Return the log2(pagesize(szc) / MMU_PAGESIZE) --- or the shift count

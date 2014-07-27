@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2013 Joyent, Inc.  All rights reserved.
+ * Copyright 2014 Joyent, Inc.  All rights reserved.
  */
 
 	.file	"cpuid.s"
@@ -77,6 +77,22 @@ arm_cpuid_isar4()
 
 uint32_t
 arm_cpuid_isar5()
+{}
+
+uint32_t
+arm_cpuid_vfpidreg()
+{}
+
+uint32_t
+arm_cpuid_mvfr0()
+{}
+
+uint32_t
+arm_cpuid_mvfr1()
+{}
+
+uint32_t
+arm_cpuid_ctr()
 {}
 
 #else	/* __lint */
@@ -165,4 +181,9 @@ arm_cpuid_isar5()
 	vmrs	r0, MVFR1
 	bx	lr
 	SET_SIZE(arm_cpuid_mvfr1)
+
+	ENTRY(arm_cpuid_ctr)
+	mrc	p15, 0, r0, c0, c0, 1
+	bx	lr
+	SET_SIZE(arm_cpuid_ctr)
 #endif /* __lint */

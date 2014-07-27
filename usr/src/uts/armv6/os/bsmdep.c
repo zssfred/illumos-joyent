@@ -10,13 +10,25 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 #include <sys/types.h>
 #include <sys/time.h>
 
 /*
  * Board Specific Module dependencies.
+ */
+
+/*
+ * In addition to the entry points defined below, a board is also required to
+ * implement the following functions:
+ *
+ * void armv6_bsmdep_l2cacheinfo(void);
+ *
+ * 	The board should set the value of 'armv6_l2cache_linesz'
+ *
+ * XXX Some day we should make all of this into modules that can be loaded early
+ * by unix so that way we can have one kernel for all boards...
  */
 
 /*

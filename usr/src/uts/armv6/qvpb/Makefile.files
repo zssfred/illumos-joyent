@@ -10,12 +10,13 @@
 #
 
 #
-# Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+# Copyright (c) 2014, Joyent, Inc.  All rights reserved.
 #
 
 QVPB_OBJS = \
 	locore.o \
-	boot_console.o
+	boot_console.o \
+	qvpb_bsmdep.o
 
 QVPB_LOADER_OBJS = \
 	qvpb_ldep.o	

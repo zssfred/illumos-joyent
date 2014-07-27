@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
 
 #ifndef _SYS_CPUID_IMPL_H
@@ -18,6 +18,7 @@
 
 #include <sys/stdint.h>
 #include <sys/arm_archext.h>
+#include <sys/types.h>
 
 /*
  * Routines to read ARM cpuid co-processors
@@ -27,6 +28,14 @@
 extern "C" {
 #endif
 
+typedef struct arm_cpuid_cache {
+	boolean_t acc_exists;
+	boolean_t acc_rcolor;
+	uint8_t acc_assoc;
+	uint8_t acc_linesz;
+	uint32_t acc_size;
+} arm_cpuid_cache_t;
+
 typedef struct arm_cpuid {
 	uint32_t ac_ident;
 	uint32_t ac_pfr[2];
@@ -35,6 +44,9 @@ typedef struct arm_cpuid {
 	uint32_t ac_isar[6];
 	uint32_t ac_fpident;
 	uint32_t ac_mvfr[2];
+	boolean_t ac_unifiedl1;
+	arm_cpuid_cache_t ac_icache;
+	arm_cpuid_cache_t ac_dcache;
 } arm_cpuid_t;
 
 extern uint32_t arm_cpuid_idreg();
@@ -55,6 +67,8 @@ extern uint32_t arm_cpuid_isar5();
 extern uint32_t arm_cpuid_vfpidreg();
 extern uint32_t arm_cpuid_mvfr0();
 extern uint32_t arm_cpuid_mvfr1();
+
+extern uint32_t arm_cpuid_ctr();
 
 #ifdef __cplusplus
 }
