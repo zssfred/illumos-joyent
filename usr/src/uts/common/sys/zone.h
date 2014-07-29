@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc. All rights reserved.
  */
 
 #ifndef _SYS_ZONE_H
@@ -231,7 +232,7 @@ typedef enum {
  */
 typedef enum zone_cmd {
 	Z_READY, Z_BOOT, Z_FORCEBOOT, Z_REBOOT, Z_HALT, Z_NOTE_UNINSTALLING,
-	Z_MOUNT, Z_FORCEMOUNT, Z_UNMOUNT
+	Z_MOUNT, Z_FORCEMOUNT, Z_UNMOUNT, Z_SHUTDOWN
 } zone_cmd_t;
 
 /*
@@ -320,6 +321,7 @@ typedef struct zone_net_data {
  * libraries which may be defining ther own versions.
  */
 #include <sys/list.h>
+#include <sys/cpuvar.h>
 
 #define	GLOBAL_ZONEUNIQID	0	/* uniqid of the global zone */
 
@@ -376,6 +378,16 @@ typedef struct zone_kstat {
 } zone_kstat_t;
 
 struct cpucap;
+
+typedef struct {
+	kstat_named_t	zm_zonename;	/* full name, kstat truncates name */
+	kstat_named_t	zm_utime;
+	kstat_named_t	zm_stime;
+	kstat_named_t	zm_wtime;
+	kstat_named_t	zm_avenrun1;
+	kstat_named_t	zm_avenrun5;
+	kstat_named_t	zm_avenrun15;
+} zone_misc_kstat_t;
 
 typedef struct zone {
 	/*
@@ -537,6 +549,34 @@ typedef struct zone {
 	rctl_qty_t	zone_nprocs_ctl;	/* current limit protected by */
 						/* zone_rctls->rcs_lock */
 	kstat_t		*zone_nprocs_kstat;
+
+	/*
+	 * Misc. kstats and counters for zone cpu-usage aggregation.
+	 * The zone_Xtime values are the sum of the micro-state accounting
+	 * values for all threads that are running or have run in the zone.
+	 * This is tracked in msacct.c as threads change state.
+	 * The zone_stime is the sum of the LMS_SYSTEM times.
+	 * The zone_utime is the sum of the LMS_USER times.
+	 * The zone_wtime is the sum of the LMS_WAIT_CPU times.
+	 * As with per-thread micro-state accounting values, these values are
+	 * not scaled to nanosecs.  The scaling is done by the
+	 * zone_misc_kstat_update function when kstats are requested.
+	 */
+	kmutex_t	zone_misc_lock;		/* protects misc statistics */
+	kstat_t		*zone_misc_ksp;
+	zone_misc_kstat_t *zone_misc_stats;
+	uint64_t	zone_stime;		/* total system time */
+	uint64_t	zone_utime;		/* total user time */
+	uint64_t	zone_wtime;		/* total time waiting in runq */
+
+	struct loadavg_s zone_loadavg;		/* loadavg for this zone */
+	uint64_t	zone_hp_avenrun[3];	/* high-precision avenrun */
+	int		zone_avenrun[3];	/* FSCALED avg. run queue len */
+
+	/*
+	 * DTrace-private per-zone state
+	 */
+	int		zone_dtrace_getf;	/* # of unprivileged getf()s */
 } zone_t;
 
 /*
@@ -572,6 +612,7 @@ extern zoneid_t getzoneid(void);
 extern zone_t *zone_find_by_id_nolock(zoneid_t);
 extern int zone_datalink_walk(zoneid_t, int (*)(datalink_id_t, void *), void *);
 extern int zone_check_datalink(zoneid_t *, datalink_id_t);
+extern void zone_loadavg_update();
 
 /*
  * Zone-specific data (ZSD) APIs

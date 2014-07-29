@@ -20,7 +20,6 @@ MANSECT= 	4
 
 _MANFILES=	Intro.4				\
 		NISLDAPmapping.4		\
-		TIMEZONE.4			\
 		a.out.4				\
 		admin.4				\
 		alias.4				\
@@ -92,6 +91,7 @@ _MANFILES=	Intro.4				\
 		ike.preshared.4			\
 		inet_type.4			\
 		inetd.conf.4			\
+		init.4				\
 		init.d.4			\
 		inittab.4			\
 		ipaddrsel.conf.4		\
@@ -186,7 +186,7 @@ _MANFILES=	Intro.4				\
 		smbautohome.4			\
 		smhba.conf.4			\
 		sndr.4				\
-		sock2path.4			\
+		sock2path.d.4			\
 		space.4				\
 		ssh_config.4			\
 		sshd_config.4			\

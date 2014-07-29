@@ -21,6 +21,7 @@
 
 #
 # Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2014 Garrett D'Amore <garrett@damore.org>
 #
 
 include ../Makefile.master
@@ -54,7 +55,8 @@ COMMON_SUBDIRS= \
 #  special versions of commands for use only in build
 #
 UNSHIPPED_SUBDIRS = \
-	elfsign
+	elfsign \
+	mandoc
 
 # XXXARM: These should all become cross-capable.
 sparc_SUBDIRS= \
