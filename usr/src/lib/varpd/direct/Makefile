@@ -15,7 +15,6 @@
 
 include		../../Makefile.lib
 
-HDRS =		libvarpd.h
 HDRDIR =	common
 SUBDIRS =	$(MACH)
 $(BUILD64)SUBDIRS +=	$(MACH64)
@@ -30,9 +29,9 @@ lint :=		TARGET = lint
 
 all clean clobber install lint: $(SUBDIRS)
 
-install_h: 	$(ROOTHDRS)
+install_h:
 
-check:		$(CHECKHDRS)
+check:
 
 $(SUBDIRS):  FRC
 	@cd $@; pwd; $(MAKE) $(TARGET)
