@@ -55,6 +55,9 @@ typedef struct varpd_impl {
 	int		vdi_doorfd;	/* vdi_lock */
 	int		vdi_persistfd;	/* vdi_plock */
 	FILE		*vdi_err;	/* vdi_loglock */
+	cond_t		vdi_lthr_cv;	/* vdi_lock */
+	boolean_t	vdi_lthr_quiesce;	/* vdi_lock */
+	uint_t		vdi_lthr_count;	/* vdi_lock */
 } varpd_impl_t;
 
 typedef enum varpd_instance_flags {
@@ -160,6 +163,10 @@ extern int libvarpd_overlay_associate(varpd_instance_t *);
 extern int libvarpd_overlay_disassociate(varpd_instance_t *);
 extern int libvarpd_overlay_degrade(varpd_instance_t *);
 extern int libvarpd_overlay_restore(varpd_instance_t *);
+extern int libvarpd_overlay_packet(varpd_impl_t *, overlay_targ_lookup_t *,
+    void *, size_t *);
+extern int libvarpd_overlay_inject(varpd_impl_t *, overlay_targ_lookup_t *,
+    void *, size_t);
 
 extern void libvarpd_persist_init(varpd_impl_t *);
 extern void libvarpd_persist_fini(varpd_impl_t *);

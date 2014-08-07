@@ -300,7 +300,8 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	inst->vri_plugin = plugin;
 	inst->vri_impl = vip;
 	inst->vri_flags = 0;
-	if (plugin->vpp_ops->vpo_restore(pvl, dest, &inst->vri_private) != 0) {
+	if (plugin->vpp_ops->vpo_restore(pvl, (varpd_provider_handle_t)inst,
+	    dest, &inst->vri_private) != 0) {
 		id_free(vip->vdi_idspace, id);
 		umem_free(inst, sizeof (varpd_instance_t));
 		return (EINVAL);

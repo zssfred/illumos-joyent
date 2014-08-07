@@ -13,21 +13,23 @@
 # Copyright (c) 2014 Joyent, Inc.  All rights reserved.
 #
 
-SUBDIRS = libvarpd .WAIT direct files
+#
+# MAPFILE HEADER START
+#
+# WARNING:  STOP NOW.  DO NOT MODIFY THIS FILE.
+# Object versioning must comply with the rules detailed in
+#
+#	usr/src/lib/README.mapfiles
+#
+# You should not be making modifications here until you've read the most current
+# copy of that file. If you need help, contact a gatekeeper for guidance.
+#
+# MAPFILE HEADER END
+#
 
-all :=		TARGET = all
-clean :=	TARGET = clean
-clobber :=	TARGET = clobber
-check :=	TARGET = check
-install :=	TARGET = install
-install_h :=	TARGET = install_h
-lint :=		TARGET = lint
+$mapfile_version 2
 
-.KEEP_STATE:
-
-all clean clobber install install_h check lint: $(SUBDIRS)
-
-$(SUBDIRS):  FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+SYMBOL_VERSION SUNWprivate {
+    local:
+	*;
+};

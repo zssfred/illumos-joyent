@@ -58,7 +58,8 @@ varpd_direct_valid_dest(overlay_plugin_dest_t dest)
 }
 
 static int
-varpd_direct_create(void **outp, overlay_plugin_dest_t dest)
+varpd_direct_create(varpd_provider_handle_t hdl, void **outp,
+    overlay_plugin_dest_t dest)
 {
 	int ret;
 	varpd_direct_t *vdp;
@@ -115,20 +116,20 @@ varpd_direct_destroy(void *arg)
 }
 
 static int
-varpd_direct_lookup(void *arg, message_header_t *hp,
+varpd_direct_lookup(void *arg, overlay_targ_lookup_t *hp,
     overlay_target_point_t *otp)
 {
 	varpd_direct_t *vdp = arg;
 
 	if (hp != NULL)
-		return (ENOTSUP);
+		return (VARPD_LOOKUP_DROP);
 
 	mutex_lock(&vdp->vad_lock);
 	bcopy(&vdp->vad_ip, &otp->otp_ip, sizeof (struct in6_addr));
 	otp->otp_port = vdp->vad_port;
 	mutex_unlock(&vdp->vad_lock);
 
-	return (0);
+	return (VARPD_LOOKUP_OK);
 }
 
 static int
@@ -299,7 +300,8 @@ varpd_direct_save(void *arg, nvlist_t *nvp)
 }
 
 static int
-varpd_direct_restore(nvlist_t *nvp, overlay_plugin_dest_t dest, void **outp)
+varpd_direct_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
+    overlay_plugin_dest_t dest, void **outp)
 {
 	int ret;
 	char *ipstr;

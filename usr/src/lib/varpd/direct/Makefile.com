@@ -20,7 +20,7 @@ OBJECTS =	libvarpd_direct.o
 include ../../../Makefile.lib
 include ../../Makefile.plugin
 
-LIBS =		$(DYNLIB) $(LINTLIB)
+LIBS =		$(DYNLIB)
 LDLIBS +=	-lc -lvarpd -lumem -lnvpair -lnsl
 CPPFLAGS +=	-I../common
 

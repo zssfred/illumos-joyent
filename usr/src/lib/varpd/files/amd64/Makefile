@@ -13,21 +13,7 @@
 # Copyright (c) 2014 Joyent, Inc.  All rights reserved.
 #
 
-SUBDIRS = libvarpd .WAIT direct files
+include ../Makefile.com
+include ../../../Makefile.lib.64
 
-all :=		TARGET = all
-clean :=	TARGET = clean
-clobber :=	TARGET = clobber
-check :=	TARGET = check
-install :=	TARGET = install
-install_h :=	TARGET = install_h
-lint :=		TARGET = lint
-
-.KEEP_STATE:
-
-all clean clobber install install_h check lint: $(SUBDIRS)
-
-$(SUBDIRS):  FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+install: all $(ROOTLIBS64) $(ROOTLINKS64) $(ROOTLINT64)

@@ -33,6 +33,7 @@
 #include <sys/sunmdi.h>
 #include <sys/list.h>
 #include <sys/scsi/scsi.h>
+#include <sys/refhash.h>
 
 #pragma pack(1)
 #include <sys/scsi/adapters/mpt_sas/mpi/mpi2_type.h>
@@ -46,7 +47,6 @@
 #pragma pack()
 
 #include <sys/scsi/adapters/mpt_sas/mptsas_var.h>
-#include <sys/scsi/adapters/mpt_sas/mptsas_hash.h>
 
 struct {
 	int	value;

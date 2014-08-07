@@ -25,6 +25,7 @@
 
 #include <libvarpd.h>
 #include <libnvpair.h>
+#include <sys/socket.h>
 #include <sys/overlay_target.h>
 
 #ifdef __cplusplus
@@ -32,17 +33,15 @@ extern "C" {
 #endif
 
 #define	VARPD_VERSION_ONE	1
-#define	VARPD_VERSION	VARPD_VERSION_ONE
+#define	VARPD_CURRENT_VERSION	VARPD_VERSION_ONE
 
-/*
- * XXX Should this be opaque?
- */
-typedef struct message_header message_header_t;
+typedef struct __varpd_provier_handle *varpd_provider_handle_t;
 
 /*
  * Create a new instance of a plugin.
  */
-typedef int (*varpd_plugin_create_f)(void **, overlay_plugin_dest_t);
+typedef int (*varpd_plugin_create_f)(varpd_provider_handle_t, void **,
+    overlay_plugin_dest_t);
 
 /*
  * Upon the return of this, the lookup function will be called.
@@ -60,13 +59,16 @@ typedef int (*varpd_plugin_stop_f)(void *);
 typedef void (*varpd_plugin_destroy_f)(void *);
 
 /*
- * Look up the destination specified by the message_header_t and store it in the
- * overlay_target_point_t. If the value of the message_header_t is NULL, then
- * that is our way of asking for a default.
+ * Look up the destination specified by the overlay_targ_lookup_t and store it
+ * in the overlay_target_point_t. If the value of the overlay_targ_t is NULL,
+ * then that is our way of asking for a default. This function should return
+ * either VARPD_LOOKUP_OK or VARPD_LOOKUP_DROP.
  *
  * Multiple threads may call this function in parallel.
  */
-typedef int (*varpd_plugin_lookup_f)(void *, message_header_t *,
+#define	VARPD_LOOKUP_OK		(0)
+#define	VARPD_LOOKUP_DROP	(-1)
+typedef int (*varpd_plugin_lookup_f)(void *, overlay_targ_lookup_t *,
     overlay_target_point_t *);
 
 /*
@@ -108,8 +110,15 @@ typedef int (*varpd_plugin_save_f)(void *, nvlist_t *);
 /*
  * Restore a plugin's private data to an nvlist.
  */
-typedef int (*varpd_plugin_restore_f)(nvlist_t *, overlay_plugin_dest_t,
-    void **);
+typedef int (*varpd_plugin_restore_f)(nvlist_t *, varpd_provider_handle_t,
+    overlay_plugin_dest_t, void **);
+
+/*
+ * Do a proxy ARP/NDP lookup.
+ */
+#define	VARPD_ARP_ETHERNET	0x0
+typedef int (*varpd_plugin_arp_f)(void *, int, const struct sockaddr *,
+    uint8_t *);
 
 typedef struct varpd_plugin_ops {
 	uint_t			vpo_callbacks;
@@ -124,6 +133,7 @@ typedef struct varpd_plugin_ops {
 	varpd_plugin_setprop_f	vpo_setprop;
 	varpd_plugin_save_f	vpo_save;
 	varpd_plugin_restore_f	vpo_restore;
+	varpd_plugin_arp_f	vpo_arp;
 } varpd_plugin_ops_t;
 
 typedef struct varpd_plugin_register {
@@ -148,6 +158,12 @@ extern void libvarpd_prop_set_nodefault(varpd_prop_handle_t);
 extern void libvarpd_prop_set_range_uint32(varpd_prop_handle_t, uint32_t,
     uint32_t);
 extern void libvarpd_prop_set_range_str(varpd_prop_handle_t, const char *);
+
+/*
+ * Routines for proxying certain types of traffic
+ */
+extern int libvarpd_plugin_proxy_arp(varpd_provider_handle_t,
+    overlay_targ_lookup_t *);
 
 #ifdef __cplusplus
 }

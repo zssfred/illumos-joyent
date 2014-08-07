@@ -256,7 +256,7 @@ overlay_m_unicast(void *arg, const uint8_t *macaddr)
 	return (0);
 }
 
-static mblk_t *
+mblk_t *
 overlay_m_tx(void *arg, mblk_t *mp_chain)
 {
 	overlay_dev_t *odd = arg;
@@ -289,9 +289,11 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 		mp->b_next = NULL;
 		ep = NULL;
 
-		if (overlay_target_lookup(odd, mp, (struct sockaddr *)&storage,
-		    &slen) != 0) {
-			freemsg(mp);
+		ret = overlay_target_lookup(odd, mp,
+		    (struct sockaddr *)&storage, &slen);
+		if (ret != OVERLAY_TARGET_OK) {
+			if (ret == OVERLAY_TARGET_DROP)
+				freemsg(mp);
 			mp = mp_chain;
 			continue;
 		}
@@ -1178,6 +1180,14 @@ overlay_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 	if (cmd != DDI_DETACH)
 		return (DDI_FAILURE);
 
+	mutex_enter(&overlay_dev_lock);
+	if (!list_is_empty(&overlay_dev_list) || overlay_target_busy()) {
+		mutex_exit(&overlay_dev_lock);
+		return (EBUSY);
+	}
+	mutex_exit(&overlay_dev_lock);
+
+
 	dld_ioc_unregister(VNIC_IOC);
 	ddi_remove_minor_node(dip, OVERLAY_CTL);
 	ddi_fm_fini(dip);
@@ -1283,13 +1293,6 @@ int
 _fini(void)
 {
 	int err;
-
-	mutex_enter(&overlay_dev_lock);
-	if (!list_is_empty(&overlay_dev_list)) {
-		mutex_exit(&overlay_dev_lock);
-		return (EBUSY);
-	}
-	mutex_exit(&overlay_dev_lock);
 
 	err = mod_remove(&overlay_linkage);
 	if (err != 0)

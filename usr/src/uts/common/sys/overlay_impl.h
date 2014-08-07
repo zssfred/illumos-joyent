@@ -29,6 +29,9 @@
 #include <sys/avl.h>
 #include <sys/ksocket.h>
 #include <sys/socket.h>
+#include <sys/refhash.h>
+#include <sys/ethernet.h>
+#include <sys/list.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,6 +75,7 @@ typedef struct overlay_target {
 	uint64_t		ott_id;		/* RO */
 	union {					/* ott_lock */
 		overlay_target_point_t	ott_point;
+		refhash_t		*ott_dhash;
 	} ott_u;
 } overlay_target_t;
 
@@ -106,9 +110,34 @@ typedef struct overlay_dev {
 	overlay_target_t *odd_target;		/* XXX Write once? */
 } overlay_dev_t;
 
+typedef enum overlay_target_entry_flags {
+	OVERLAY_ENTRY_F_PENDING		= 0x01,	/* lookup in progress */
+	OVERLAY_ENTRY_F_VALID		= 0x02,	/* entry is currently valid */
+	OVERLAY_ENTRY_F_DROP		= 0x04,	/* always drop target */
+	OVERLAY_ENTRY_F_VARPD		= 0x08	/* always send to varpd */
+} overlay_target_entry_flags_t;
+
+typedef struct overlay_target_entry {
+	kmutex_t		ote_lock;
+	refhash_link_t		ote_reflink;	/* hashtable link */
+	list_node_t		ote_qlink;
+	overlay_target_entry_flags_t ote_flags;	/* RW: state flags */
+	uint8_t			ote_addr[ETHERADDRL];	/* RO: mac addr */
+	overlay_target_t	*ote_ott;	/* RO */
+	overlay_dev_t		*ote_odd;	/* RO */
+	overlay_target_point_t	ote_dest;	/* RW: destination */
+	mblk_t			*ote_chead;	/* RW: blocked mb chain head */
+	mblk_t			*ote_ctail;	/* RW: blocked mb chain tail */
+	size_t			ote_mbsize;	/* RW: outstanding mblk size */
+	hrtime_t		ote_vtime;	/* RW: valid timestamp */
+} overlay_target_entry_t;
+
+
 #define	OVERLAY_CTL	"overlay"
 
 extern dev_info_t *overlay_dip;
+
+extern mblk_t *overlay_m_tx(void *, mblk_t *);
 
 extern void overlay_plugin_init(void);
 extern overlay_plugin_t *overlay_plugin_lookup(const char *);
@@ -133,10 +162,15 @@ extern int overlay_mux_tx(overlay_mux_t *, struct msghdr *, mblk_t *);
 extern void overlay_prop_init(overlay_prop_handle_t);
 
 extern void overlay_target_init(void);
+extern int overlay_target_busy(void);
 extern int overlay_target_open(dev_t *, int, int, cred_t *);
 extern int overlay_target_ioctl(dev_t, int, intptr_t, int, cred_t *, int *);
 extern int overlay_target_close(dev_t, int, int, cred_t *);
 extern void overlay_target_free(overlay_dev_t *);
+
+#define	OVERLAY_TARGET_OK	0
+#define	OVERLAY_TARGET_DROP	1
+#define	OVERLAY_TARGET_ASYNC	2
 extern int overlay_target_lookup(overlay_dev_t *, mblk_t *, struct sockaddr *,
     socklen_t *);
 extern void overlay_target_fini(void);

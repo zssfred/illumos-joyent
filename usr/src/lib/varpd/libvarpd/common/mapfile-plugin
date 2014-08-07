@@ -33,6 +33,7 @@ SYMBOL_SCOPE {
     global:
 	libvarpd_plugin_alloc		{ FLAGS = EXTERN };
 	libvarpd_plugin_free		{ FLAGS = EXTERN };
+	libvarpd_plugin_proxy_arp	{ FLAGS = EXTERN };
 	libvarpd_plugin_register	{ FLAGS = EXTERN };
 	libvarpd_prop_set_name		{ FLAGS = EXTERN };
 	libvarpd_prop_set_prot		{ FLAGS = EXTERN };

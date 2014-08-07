@@ -39,6 +39,8 @@
 #include <signal.h>
 #include <strings.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#include <thread.h>
 
 #define	VARPD_EXIT_REQUESTED	0
 #define	VARPD_EXIT_FATAL	1
@@ -257,6 +259,25 @@ varpd_daemonize(void)
 	return (pfds[1]);
 }
 
+static int
+varpd_setup_lookup_threads(void)
+{
+	int ret;
+	long i, ncpus = sysconf(_SC_NPROCESSORS_ONLN) * 2 + 1;
+
+	for (i = 0; i < ncpus; i++) {
+		thread_t thr;
+
+		ret = thr_create(NULL, 0,
+		    (void *(*)(void *))libvarpd_overlay_lookup_run,
+		    (void *)varpd_handle, THR_DETACHED | THR_DAEMON, &thr);
+		if (ret != 0)
+			return (ret);
+	}
+
+	return (0);
+}
+
 static void
 varpd_cleanup(void)
 {
@@ -333,11 +354,8 @@ main(int argc, char *argv[])
 
 	/*
 	 * The ur-door thread will inherit from this signal mask. So set it to
-	 * what we want before doing anything else.
-	 *
-	 * TODO When we support dynamic lookups, we'll want to create some
-	 * number of threads here while we're still under this special signal
-	 * mask.
+	 * what we want before doing anything else. In addition, so will our
+	 * threads that handle varpd lookups.
 	 */
 	if (sigfillset(&set) != 0)
 		varpd_dfatal(dfd, "failed to fill a signal set...");
@@ -347,6 +365,10 @@ main(int argc, char *argv[])
 
 	if (sigprocmask(SIG_BLOCK, &set, NULL) != 0)
 		varpd_dfatal(dfd, "failed to set our door signal mask");
+
+	if ((err = varpd_setup_lookup_threads()) != 0)
+		varpd_dfatal(dfd, "failed to create lookup threads: %s\n",
+		    strerror(err));
 
 	if ((err = libvarpd_door_server_create(varpd_handle, doorpath)) != 0)
 		varpd_dfatal(dfd, "failed to create door server at %s: %s\n",

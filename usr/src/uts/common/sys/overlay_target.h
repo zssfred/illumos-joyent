@@ -87,6 +87,92 @@ typedef struct overlay_targ_id {
 	datalink_id_t	otid_linkid;
 } overlay_targ_id_t;
 
+/*
+ * The following ioctls are all used to support dynamic lookups from userland,
+ * generally serviced by varpd.
+ *
+ * The way this is designed to work is that user land will have threads sitting
+ * in OVERLAY_TARG_LOOKUP ioctls waiting to service requests. A thread will sit
+ * waiting for work for up to approximately one second of time before they will
+ * be sent back out to user land to give user land a chance to clean itself up
+ * or more generally, come back into the kernel for work. Once these threads
+ * return, they will have a request with which more action can be done. The
+ * following ioctls can all be used to answer the request.
+ *
+ *	OVERLAY_TARG_RESPOND - overlay_targ_resp_t
+ *
+ *		The overlay_targ_resp_t has the appropriate information from
+ *		which a reply can be generated. The information is filled into
+ *		an overlay_targ_point_t as appropriate based on the
+ *		overlay_dest_t type.
+ *
+ *
+ *	OVERLAY_TARG_DROP - overlay_targ_resp_t
+ *
+ *		The overlay_targ_resp_t should identify a request for which to
+ *		drop a packet.
+ *
+ *
+ * 	OVERLAY_TARG_INJECT - overlay_targ_pkt_t
+ *
+ * 		The overlay_targ_pkt_t injects a fully formed packet into the
+ * 		virtual network. It may either be identified by its data link id
+ * 		or by the request id. If both are specified, the
+ * 		datalink id will be used. Note, that an injection is not
+ * 		considered a reply and if this corresponds to a requeset, then
+ * 		that individual packet must still be dropped.
+ *
+ *
+ * 	OVERLAY_TARG_PKT - overlay_targ_pkt_t
+ *
+ * 		This ioctl can be used to copy data from a given request into a
+ * 		user buffer. This can be used in combination with
+ * 		OVERLAY_TARG_INJECT to implemnt services such as a proxy-arp.
+ */
+#define	OVERLAY_TARG_LOOKUP	(OVERLAY_TARG_IOCTL | 0x10)
+#define	OVERLAY_TARG_RESPOND	(OVERLAY_TARG_IOCTL | 0x11)
+#define	OVERLAY_TARG_DROP	(OVERLAY_TARG_IOCTL | 0x12)
+#define	OVERLAY_TARG_INJECT	(OVERLAY_TARG_IOCTL | 0x13)
+#define	OVERLAY_TARG_PKT	(OVERLAY_TARG_IOCTL | 0x14)
+
+typedef struct overlay_targ_lookup {
+	uint64_t	otl_dlid;
+	uint64_t	otl_reqid;
+	uint64_t	otl_varpdid;
+	uint64_t	otl_vnetid;
+	uint64_t	otl_hdrsize;
+	uint64_t	otl_pktsize;
+	uint8_t		otl_srcaddr[ETHERADDRL];
+	uint8_t		otl_dstaddr[ETHERADDRL];
+	uint32_t	otl_dsttype;
+	uint32_t	otl_sap;
+	int32_t		otl_vlan;
+} overlay_targ_lookup_t;
+
+typedef struct overlay_targ_resp {
+	uint64_t	otr_reqid;
+	overlay_target_point_t otr_answer;
+} overlay_targ_resp_t;
+
+typedef struct overlay_targ_pkt {
+	uint64_t	otp_linkid;
+	uint64_t	otp_reqid;
+	uint64_t	otp_size;
+	void		*otp_buf;
+} overlay_targ_pkt_t;
+
+#ifdef _KERNEL
+
+typedef struct overlay_targ_pkt32 {
+	uint64_t	otp_linkid;
+	uint64_t	otp_reqid;
+	uint64_t	otp_size;
+	caddr32_t	otp_buf;
+} overlay_targ_pkt32_t;
+
+#endif /* _KERNEL */
+
+
 #ifdef __cplusplus
 }
 #endif

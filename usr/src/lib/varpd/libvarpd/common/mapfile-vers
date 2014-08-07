@@ -64,6 +64,7 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_plugin_alloc;
 	libvarpd_plugin_load;
 	libvarpd_plugin_free;
+	libvarpd_plugin_proxy_arp;
 	libvarpd_plugin_register;
 	libvarpd_plugin_walk;
 
@@ -81,7 +82,10 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_prop_info_fill;
 	libvarpd_prop_info;
 	libvarpd_prop_get;
-	libvarpd_prop_set;	
+	libvarpd_prop_set;
+
+	libvarpd_overlay_lookup_quiesce;
+	libvarpd_overlay_lookup_run;
 
 	libvarpd_set_logfile;
     local:

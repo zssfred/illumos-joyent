@@ -16,6 +16,7 @@
 LIBRARY =	libvarpd.a
 VERS =		.1
 OBJECTS =	libvarpd.o \
+		libvarpd_arp.o \
 		libvarpd_client.o \
 		libvarpd_door.o \
 		libvarpd_overlay.o \

@@ -151,8 +151,8 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 	inst->vri_plugin = plugin;
 	inst->vri_impl = vip;
 	inst->vri_flags = 0;
-	if ((ret = plugin->vpp_ops->vpo_create(&inst->vri_private, dest)) !=
-	    0) {
+	if ((ret = plugin->vpp_ops->vpo_create((varpd_provider_handle_t)inst,
+	    &inst->vri_private, dest)) != 0) {
 		id_free(vip->vdi_idspace, inst->vri_id);
 		umem_free(inst, sizeof (varpd_instance_t));
 		return (ret);
@@ -214,9 +214,6 @@ libvarpd_instance_activate(varpd_instance_handle_t ihp)
 	if ((ret = inst->vri_plugin->vpp_ops->vpo_start(inst->vri_private)) !=
 	    0)
 		goto out;
-
-	if (inst->vri_mode != OVERLAY_TARGET_POINT)
-		abort();
 
 	if ((ret = libvarpd_persist_instance(inst->vri_impl, inst)) != 0)
 		goto out;
