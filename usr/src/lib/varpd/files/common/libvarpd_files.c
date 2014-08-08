@@ -23,7 +23,8 @@
  *
  * 	{
  *		"aa:bb:cc:dd:ee:ff": {
- *			"arp": "10.23.69.1"
+ *			"arp": "10.23.69.1",
+ *			"ndp": "2600:3c00::f03c:91ff:fe96:a264",
  *			"ip": "192.168.1.1",
  *			"port": 8080
  *		}
@@ -229,6 +230,11 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 	if (otl->otl_sap == ETHERTYPE_ARP)
 		return (libvarpd_plugin_proxy_arp(vaf->vaf_hdl, otl));
 
+	if (otl->otl_sap == ETHERTYPE_IPV6 &&
+	    otl->otl_dstaddr[0] == 0x33 &&
+	    otl->otl_dstaddr[1] == 0x33)
+		return (libvarpd_plugin_proxy_ndp(vaf->vaf_hdl, otl));
+
 	if ((macstr = ether_ntoa((struct ether_addr *)otl->otl_dstaddr)) ==
 	    NULL)
 		return (VARPD_LOOKUP_DROP);
@@ -392,20 +398,23 @@ varpd_files_proxy_arp(void *arg, int kind, const struct sockaddr *sock,
 {
 	varpd_files_t *vaf = arg;
 	const struct sockaddr_in *ip;
+	const struct sockaddr_in6 *ip6;
 	nvpair_t *pair;
 
 	if (kind != VARPD_ARP_ETHERNET)
 		return (ENOTSUP);
 
-	if (sock->sa_family != AF_INET)
+	if (sock->sa_family != AF_INET && sock->sa_family != AF_INET6)
 		return (ENOTSUP);
 
 	ip = (const struct sockaddr_in *)sock;
+	ip6 = (const struct sockaddr_in6 *)sock;
 	for (pair = nvlist_next_nvpair(vaf->vaf_nvl, NULL); pair != NULL;
 	    pair = nvlist_next_nvpair(vaf->vaf_nvl, pair)) {
 		char *mac, *ipstr;
 		nvlist_t *data;
 		struct in_addr ia;
+		struct in6_addr ia6;
 		const struct ether_addr *e;
 
 		if (nvpair_type(pair) != DATA_TYPE_NVLIST)
@@ -415,14 +424,28 @@ varpd_files_proxy_arp(void *arg, int kind, const struct sockaddr *sock,
 		if (nvpair_value_nvlist(pair, &data) != 0)
 			continue;
 
-		if (nvlist_lookup_string(data, "arp", &ipstr) != 0)
-			continue;
 
-		if (inet_pton(AF_INET, ipstr, &ia) != 1)
-			continue;
+		if (sock->sa_family == AF_INET) {
+			if (nvlist_lookup_string(data, "arp", &ipstr) != 0)
+				continue;
 
-		if (bcmp(&ia, &ip->sin_addr, sizeof (struct in_addr)) != 0)
-			continue;
+			if (inet_pton(AF_INET, ipstr, &ia) != 1)
+				continue;
+
+			if (bcmp(&ia, &ip->sin_addr,
+			    sizeof (struct in_addr)) != 0)
+				continue;
+		} else {
+			if (nvlist_lookup_string(data, "ndp", &ipstr) != 0)
+				continue;
+
+			if (inet_pton(AF_INET6, ipstr, &ia6) != 1)
+				continue;
+
+			if (bcmp(&ia6, &ip6->sin6_addr,
+			    sizeof (struct in6_addr)) != 0)
+				continue;
+		}
 
 		/* XXX Crappy errno */
 		if ((e = ether_aton(mac)) == NULL)

@@ -164,6 +164,8 @@ extern void libvarpd_prop_set_range_str(varpd_prop_handle_t, const char *);
  */
 extern int libvarpd_plugin_proxy_arp(varpd_provider_handle_t,
     overlay_targ_lookup_t *);
+extern int libvarpd_plugin_proxy_ndp(varpd_provider_handle_t,
+    overlay_targ_lookup_t *);
 
 #ifdef __cplusplus
 }
