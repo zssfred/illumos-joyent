@@ -26,23 +26,20 @@
 extern "C" {
 #endif
 
-#ifdef	_KERNEL
-
 /* Sizes in bytes */
 #define	VXLAN_HDR_LEN	8
 #define	VXLAN_ID_LEN	3
 
 #define	VXLAN_MAGIC	0x08000000
+#define	VXLAN_F_VDI	0x08000000
 #define	VXLAN_ID_SHIFT	8
 
 #pragma pack(1)
 typedef struct vxlan_hdr {
-	uint32_t vxlan_magic;
+	uint32_t vxlan_flags;
 	uint32_t vxlan_id;
 } vxlan_hdr_t;
 #pragma pack()
-
-#endif	/* _KERNEL */
 
 #ifdef __cplusplus
 }

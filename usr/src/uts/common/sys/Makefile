@@ -654,6 +654,7 @@ CHKHDRS=			\
 	vuid_queue.h		\
 	vuid_state.h		\
 	vuid_store.h		\
+	vxlan.h			\
 	wait.h			\
 	waitq.h			\
 	wanboot_impl.h		\

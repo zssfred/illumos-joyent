@@ -41,9 +41,10 @@
 #include <sys/byteorder.h>
 #include <sys/vxlan.h>
 #include <inet/ip.h>
+#include <netinet/in.h>
 
 static const char *vxlan_ident = "vxlan";
-static uint16_t vxlan_defport = 4789;
+static uint16_t vxlan_defport = IPPORT_VXLAN;
 
 static const char *vxlan_props[] = {
 	"vxlan/listen_ip",
@@ -134,7 +135,7 @@ vxlan_o_encap(void *arg, mblk_t *mp, ovep_encap_info_t *einfop,
 
 
 	vxh = (vxlan_hdr_t *)ob->b_rptr;
-	vxh->vxlan_magic = ntohl(VXLAN_MAGIC);
+	vxh->vxlan_flags = ntohl(VXLAN_MAGIC);
 	vxh->vxlan_id = htonl((uint32_t)einfop->ovdi_id << VXLAN_ID_SHIFT);
 	ob->b_wptr += VXLAN_HDR_LEN;
 	*outp = ob;
@@ -150,7 +151,7 @@ vxlan_o_decap(void *arg, mblk_t *mp, ovep_encap_info_t *dinfop)
 
 	/* XXX This assumes that we have a pulled up block, which is false */
 	vxh = (vxlan_hdr_t *)mp->b_rptr;
-	if ((ntohl(vxh->vxlan_magic) & VXLAN_MAGIC) == 0)
+	if ((ntohl(vxh->vxlan_flags) & VXLAN_MAGIC) == 0)
 		return (EINVAL);
 
 	dinfop->ovdi_id = ntohl(vxh->vxlan_id) >> VXLAN_ID_SHIFT;
