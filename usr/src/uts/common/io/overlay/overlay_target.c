@@ -33,6 +33,7 @@
 #include <sys/mac_client.h>
 #include <sys/mac_client_priv.h>
 #include <sys/vlan.h>
+#include <sys/crc32.h>
 
 #include <sys/overlay_impl.h>
 
@@ -121,7 +122,8 @@ overlay_entry_cache_destructor(void *buf, void *arg)
 static uint64_t
 overlay_mac_hash(const void *v)
 {
-	return (0);
+	uint32_t crc;
+	return (CRC32(crc, v, ETHERADDRL, -1U, crc32_table));
 }
 
 static int
