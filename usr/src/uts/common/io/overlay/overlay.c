@@ -154,6 +154,22 @@ overlay_io_wait(overlay_dev_t *odd, overlay_dev_flag_t flag)
 	}
 }
 
+void
+overlay_dev_iter(overlay_dev_iter_f func, void *arg)
+{
+	overlay_dev_t *odd;
+
+	mutex_enter(&overlay_dev_lock);
+	for (odd = list_head(&overlay_dev_list); odd != NULL;
+	    odd = list_next(&overlay_dev_list, odd)) {
+		if (func(odd, arg) != 0) {
+			mutex_exit(&overlay_dev_lock);
+			return;
+		}
+	}
+	mutex_exit(&overlay_dev_lock);
+}
+
 static int
 overlay_m_stat(void *arg, uint_t stat, uint64_t *val)
 {

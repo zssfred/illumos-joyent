@@ -139,6 +139,9 @@ extern dev_info_t *overlay_dip;
 
 extern mblk_t *overlay_m_tx(void *, mblk_t *);
 
+typedef int (*overlay_dev_iter_f)(overlay_dev_t *, void *);
+extern void overlay_dev_iter(overlay_dev_iter_f, void *);
+
 extern void overlay_plugin_init(void);
 extern overlay_plugin_t *overlay_plugin_lookup(const char *);
 extern void overlay_plugin_rele(overlay_plugin_t *);

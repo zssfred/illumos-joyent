@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <stropts.h>
 #include <strings.h>
+#include <umem.h>
 
 #include <libvarpd_impl.h>
 #include <sys/overlay_target.h>
@@ -105,15 +106,22 @@ libvarpd_overlay_disassociate(varpd_instance_t *inst)
 }
 
 int
-libvarpd_overlay_degrade(varpd_instance_t *inst)
+libvarpd_overlay_degrade_datalink(varpd_impl_t *vip, datalink_id_t linkid)
 {
 	overlay_targ_id_t otid;
-	varpd_impl_t *vip = inst->vri_impl;
 
-	otid.otid_linkid = inst->vri_linkid;
+	otid.otid_linkid = linkid;
 	if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_DEGRADE, &otid) != 0)
 		return (errno);
 	return (0);
+
+}
+
+int
+libvarpd_overlay_degrade(varpd_instance_t *inst)
+{
+	return (libvarpd_overlay_degrade_datalink(inst->vri_impl,
+	    inst->vri_linkid));
 }
 
 int
@@ -277,4 +285,44 @@ libvarpd_overlay_lookup_quiesce(varpd_handle_t vhp)
 		(void) cond_wait(&vip->vdi_lthr_cv, &vip->vdi_lock);
 	vip->vdi_lthr_quiesce = B_FALSE;
 	mutex_unlock(&vip->vdi_lock);
+}
+
+int
+libvarpd_overlay_iter(varpd_impl_t *vip, libvarpd_overlay_iter_f func,
+    void *arg)
+{
+	uint32_t curents = 0, i;
+	size_t size;
+	overlay_targ_list_t *otl;
+
+	for (;;) {
+		size = sizeof (overlay_targ_list_t) +
+		    sizeof (uint32_t) * curents;
+		otl = umem_alloc(size, UMEM_DEFAULT);
+		if (otl == NULL)
+			return (ENOMEM);
+
+		otl->otl_nents = curents;
+		if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_LIST, otl) != 0) {
+			if (errno == EFAULT)
+				abort();
+			if (errno == EINTR) {
+				umem_free(otl, size);
+				continue;
+			}
+		}
+
+		if (otl->otl_nents == curents)
+			break;
+
+		curents = otl->otl_nents;
+		umem_free(otl, size);
+	}
+
+	for (i = 0; i < otl->otl_nents; i++) {
+		if (func(vip, otl->otl_ents[i], arg) != 0)
+			break;
+	}
+	umem_free(otl, size);
+	return (0);
 }

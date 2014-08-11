@@ -182,6 +182,21 @@ typedef struct overlay_targ_pkt32 {
 
 #endif /* _KERNEL */
 
+/*
+ * This provides a way to get a list of active overlay devices independently
+ * from dlmgmtd. At the end of the day the kernel always knows what will exist
+ * and this allows varpd which is an implementation of libdladm not to end up
+ * needing to call back into dlmgmtd via libdladm and create an unfortunate
+ * dependency cycle.
+ */
+
+#define	OVERLAY_TARG_LIST	(OVERLAY_TARG_IOCTL | 0x20)
+
+typedef struct overlay_targ_list {
+	uint32_t	otl_nents;
+	uint32_t	otl_ents[];
+} overlay_targ_list_t;
+
 
 #ifdef __cplusplus
 }

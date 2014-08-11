@@ -397,6 +397,35 @@ libvarpd_persist_restore_one(varpd_impl_t *vip, int fd)
 }
 
 /*
+ * XXX ew, O(n^2)
+ */
+static int
+libvarpd_check_degrade_cb(varpd_impl_t *vip, datalink_id_t linkid, void *arg)
+{
+	varpd_instance_t *inst;
+
+	mutex_lock(&vip->vdi_lock);
+	for (inst = avl_first(&vip->vdi_instances); inst != NULL;
+	    inst = AVL_NEXT(&vip->vdi_instances, inst)) {
+		if (inst->vri_linkid == linkid) {
+			mutex_unlock(&vip->vdi_lock);
+			return (0);
+		}
+	}
+
+	mutex_unlock(&vip->vdi_lock);
+
+	(void) libvarpd_overlay_degrade_datalink(vip, linkid);
+	return (0);
+}
+
+static void
+libvarpd_check_degrade(varpd_impl_t *vip)
+{
+	libvarpd_overlay_iter(vip, libvarpd_check_degrade_cb, NULL);
+}
+
+/*
  * XXX We need to go through and mark any kernel devices that we don't know
  * about as degraded.
  */
@@ -484,6 +513,8 @@ libvarpd_persist_restore(varpd_handle_t vhp)
 			}
 		}
 	}
+
+	libvarpd_check_degrade(vip);
 
 out:
 	if (dirp != NULL)

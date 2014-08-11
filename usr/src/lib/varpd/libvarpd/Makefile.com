@@ -27,7 +27,7 @@ OBJECTS =	libvarpd.o \
 
 include ../../../Makefile.lib
 
-LIBS =		$(DYNLIB) $(LINTLIB)
+LIBS =		$(DYNLIB)
 LDLIBS +=	-lc -lavl -lumem -lidspace -lnvpair -lmd5 -lrename
 CPPFLAGS +=	-I../common
 

@@ -793,6 +793,88 @@ overlay_target_resend(overlay_target_hdl_t *thdl, void *arg)
 	return (0);
 }
 
+typedef struct overlay_targ_list_int {
+	boolean_t	otli_count;
+	uint32_t	otli_cur;
+	uint32_t	otli_nents;
+	uint32_t	otli_ents[];
+} overlay_targ_list_int_t;
+
+static int
+overlay_target_list_copyin(void *ubuf, void **outp, size_t *bsize, int flags)
+{
+	overlay_targ_list_t n;
+	overlay_targ_list_int_t *otl;
+
+	if (ddi_copyin(ubuf, &n, sizeof (overlay_targ_list_t),
+	    flags & FKIOCTL) != 0)
+		return (EFAULT);
+
+	/*
+	 * XXX We should do something to limit the number of entries we
+	 * support, or at least more than this...
+	 */
+	if (n.otl_nents >= INT32_MAX)
+		return (EINVAL);
+	*bsize = sizeof (overlay_targ_list_int_t) +
+	    sizeof (uint32_t) * n.otl_nents;
+	otl = kmem_zalloc(*bsize, KM_SLEEP);
+	otl->otli_cur = 0;
+	otl->otli_nents = n.otl_nents;
+	if (otl->otli_nents != 0) {
+		otl->otli_count = B_FALSE;
+		if (ddi_copyin(ubuf + offsetof(overlay_targ_list_t, otl_ents),
+		    otl->otli_ents, n.otl_nents * sizeof (uint32_t),
+		    flags & FKIOCTL) != 0) {
+			kmem_free(otl, *bsize);
+			return (EFAULT);
+		}
+	} else {
+		otl->otli_count = B_TRUE;
+	}
+
+	*outp = otl;
+	return (0);
+}
+
+static int
+overlay_target_ioctl_list_cb(overlay_dev_t *odd, void *arg)
+{
+	overlay_targ_list_int_t *otl = arg;
+
+	if (otl->otli_cur < otl->otli_nents)
+		otl->otli_ents[otl->otli_cur] = odd->odd_linkid;
+	otl->otli_cur++;
+	return (0);
+}
+
+static int
+overlay_target_ioctl_list(overlay_target_hdl_t *thdl, void *arg)
+{
+	overlay_targ_list_int_t *otl = arg;
+	overlay_dev_iter(overlay_target_ioctl_list_cb, arg);
+	return (0);
+}
+
+static int
+overlay_target_list_copyout(void *ubuf, void *buf, size_t bufsize, int flags)
+{
+	overlay_targ_list_int_t *otl = buf;
+
+	if (ddi_copyout(&otl->otli_cur, ubuf, sizeof (uint32_t),
+	    flags & FKIOCTL) != 0)
+		return (EFAULT);
+
+	if (otl->otli_count == B_FALSE) {
+		if (ddi_copyout(otl->otli_ents,
+		    ubuf + offsetof(overlay_targ_list_t, otl_ents),
+		    sizeof (uint32_t *) * otl->otli_nents,
+		    flags & FKIOCTL) != 0)
+			return (EFAULT);
+	}
+	return (0);
+}
+
 static overlay_target_ioctl_t overlay_target_ioctab[] = {
 	{ OVERLAY_TARG_INFO, B_TRUE, B_TRUE,
 		NULL, overlay_target_info,
@@ -831,6 +913,11 @@ static overlay_target_ioctl_t overlay_target_ioctab[] = {
 		overlay_target_pkt_copyin,
 		overlay_target_resend,
 		NULL, sizeof (overlay_targ_pkt_t)	},
+	{ OVERLAY_TARG_LIST, B_FALSE, B_TRUE,
+		overlay_target_list_copyin,
+		overlay_target_ioctl_list,
+		overlay_target_list_copyout,
+		sizeof (overlay_targ_list_t)		},
 	{ 0 }
 };
 
