@@ -167,6 +167,9 @@ extern int libvarpd_overlay_packet(varpd_impl_t *, overlay_targ_lookup_t *,
     void *, size_t *);
 extern int libvarpd_overlay_inject(varpd_impl_t *, overlay_targ_lookup_t *,
     void *, size_t);
+extern int libvarpd_overlay_resend(varpd_impl_t *, overlay_targ_lookup_t *,
+    void *, size_t);
+
 
 extern void libvarpd_persist_init(varpd_impl_t *);
 extern void libvarpd_persist_fini(varpd_impl_t *);

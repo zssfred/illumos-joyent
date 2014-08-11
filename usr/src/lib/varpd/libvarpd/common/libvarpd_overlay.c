@@ -152,9 +152,9 @@ libvarpd_overlay_packet(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 	return (ret);
 }
 
-int
-libvarpd_overlay_inject(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
-    void *buf, size_t buflen)
+static int
+libvarpd_overlay_inject_common(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
+    void *buf, size_t buflen, int cmd)
 {
 	int ret;
 	overlay_targ_pkt_t otp;
@@ -165,12 +165,28 @@ libvarpd_overlay_inject(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 	otp.otp_buf = buf;
 
 	do {
-		ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_INJECT, &otp);
+		ret = ioctl(vip->vdi_overlayfd, cmd, &otp);
 	} while (ret != 0 && errno == EINTR);
 	if (ret != 0 && errno == EFAULT)
 		abort();
 
 	return (ret);
+}
+
+int
+libvarpd_overlay_inject(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
+    void *buf, size_t buflen)
+{
+	return (libvarpd_overlay_inject_common(vip, otl, buf, buflen,
+	    OVERLAY_TARG_INJECT));
+}
+
+int
+libvarpd_overlay_resend(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
+    void *buf, size_t buflen)
+{
+	return (libvarpd_overlay_inject_common(vip, otl, buf, buflen,
+	    OVERLAY_TARG_RESEND));
 }
 
 static void

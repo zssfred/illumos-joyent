@@ -742,6 +742,57 @@ overlay_target_inject(overlay_target_hdl_t *thdl, void *arg)
 	return (0);
 }
 
+static int
+overlay_target_resend(overlay_target_hdl_t *thdl, void *arg)
+{
+	overlay_targ_pkt_t *pkt = arg;
+	overlay_target_entry_t *entry;
+	overlay_dev_t *odd;
+	mblk_t *mp;
+
+	/* XXX No support for injecting jumbo frames */
+	if (pkt->otp_size > ETHERMAX + VLAN_TAGSZ)
+		return (EINVAL);
+
+	mp = allocb(pkt->otp_size, 0);
+	if (mp == NULL)
+		return (ENOMEM);
+
+	if (ddi_copyin(pkt->otp_buf, mp->b_rptr, pkt->otp_size, 0) != 0) {
+		freeb(mp);
+		return (EFAULT);
+	}
+	mp->b_wptr += pkt->otp_size;
+
+	if (pkt->otp_linkid != UINT64_MAX) {
+		odd = overlay_hold_by_dlid(pkt->otp_linkid);
+		if (odd == NULL) {
+			freeb(mp);
+			return (ENOENT);
+		}
+	} else {
+		mutex_enter(&thdl->oth_lock);
+		for (entry = list_head(&thdl->oth_outstanding); entry != NULL;
+		    entry = list_next(&thdl->oth_outstanding, entry)) {
+			if ((uintptr_t)entry == pkt->otp_reqid)
+				break;
+		}
+
+		if (entry == NULL) {
+			mutex_exit(&thdl->oth_lock);
+			freeb(mp);
+			return (ENOENT);
+		}
+		odd = entry->ote_odd;
+		mutex_exit(&thdl->oth_lock);
+	}
+
+	mp = overlay_m_tx(odd, mp);
+	freemsgchain(mp);
+
+	return (0);
+}
+
 static overlay_target_ioctl_t overlay_target_ioctab[] = {
 	{ OVERLAY_TARG_INFO, B_TRUE, B_TRUE,
 		NULL, overlay_target_info,
@@ -775,6 +826,10 @@ static overlay_target_ioctl_t overlay_target_ioctab[] = {
 	{ OVERLAY_TARG_INJECT, B_TRUE, B_FALSE,
 		overlay_target_pkt_copyin,
 		overlay_target_inject,
+		NULL, sizeof (overlay_targ_pkt_t)	},
+	{ OVERLAY_TARG_RESEND, B_TRUE, B_FALSE,
+		overlay_target_pkt_copyin,
+		overlay_target_resend,
 		NULL, sizeof (overlay_targ_pkt_t)	},
 	{ 0 }
 };

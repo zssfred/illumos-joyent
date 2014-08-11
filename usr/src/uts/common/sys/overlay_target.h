@@ -128,12 +128,22 @@ typedef struct overlay_targ_id {
  * 		This ioctl can be used to copy data from a given request into a
  * 		user buffer. This can be used in combination with
  * 		OVERLAY_TARG_INJECT to implemnt services such as a proxy-arp.
+ *
+ *
+ * 	OVERLAY_TARG_RESEND - overlay_targ_pkt_t
+ *
+ * 		This ioctl is similar to the OVERLAY_TARG_INJECT, except instead
+ * 		of receiving it on the local mac handle, it queues it for
+ * 		retransmission again. This is useful if you have a packet that
+ * 		was originally destined for some broadcast or multicast address
+ * 		that you now want to send to a unicast address.
  */
 #define	OVERLAY_TARG_LOOKUP	(OVERLAY_TARG_IOCTL | 0x10)
 #define	OVERLAY_TARG_RESPOND	(OVERLAY_TARG_IOCTL | 0x11)
 #define	OVERLAY_TARG_DROP	(OVERLAY_TARG_IOCTL | 0x12)
 #define	OVERLAY_TARG_INJECT	(OVERLAY_TARG_IOCTL | 0x13)
 #define	OVERLAY_TARG_PKT	(OVERLAY_TARG_IOCTL | 0x14)
+#define	OVERLAY_TARG_RESEND	(OVERLAY_TARG_IOCTL | 0x15)
 
 typedef struct overlay_targ_lookup {
 	uint64_t	otl_dlid;

@@ -166,6 +166,8 @@ extern int libvarpd_plugin_proxy_arp(varpd_provider_handle_t,
     overlay_targ_lookup_t *);
 extern int libvarpd_plugin_proxy_ndp(varpd_provider_handle_t,
     overlay_targ_lookup_t *);
+extern int libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t,
+    overlay_targ_lookup_t *, const uint8_t *);
 
 #ifdef __cplusplus
 }

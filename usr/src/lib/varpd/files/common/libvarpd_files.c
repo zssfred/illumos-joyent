@@ -222,6 +222,7 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 	nvlist_t *nvl;
 	varpd_files_t *vaf = arg;
 	int32_t port;
+	static const uint8_t bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 	/* We don't support a default */
 	if (otl == NULL)
@@ -234,6 +235,27 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 	    otl->otl_dstaddr[0] == 0x33 &&
 	    otl->otl_dstaddr[1] == 0x33)
 		return (libvarpd_plugin_proxy_ndp(vaf->vaf_hdl, otl));
+
+	if (otl->otl_sap == ETHERTYPE_IP &&
+	    bcmp(otl->otl_dstaddr, bcast, ETHERADDRL) == 0) {
+		char *mac;
+		const struct ether_addr *addr;
+		macstr = ether_ntoa((struct ether_addr *)otl->otl_srcaddr);
+		if (macstr == NULL)
+			return (VARPD_LOOKUP_DROP);
+
+		if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0)
+			return (VARPD_LOOKUP_DROP);
+
+		if (nvlist_lookup_string(nvl, "dhcp-proxy", &mac) != 0)
+			return (VARPD_LOOKUP_DROP);
+
+		if ((addr = ether_aton(mac)) == NULL)
+			return (VARPD_LOOKUP_DROP);
+
+		return (libvarpd_plugin_proxy_dhcp(vaf->vaf_hdl, otl,
+		    (const uint8_t *)addr));
+	}
 
 	if ((macstr = ether_ntoa((struct ether_addr *)otl->otl_dstaddr)) ==
 	    NULL)

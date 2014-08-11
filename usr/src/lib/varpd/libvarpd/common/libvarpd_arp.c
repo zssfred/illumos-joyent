@@ -20,8 +20,11 @@
 #include <sys/types.h>
 #include <net/if.h>
 #include <netinet/if_ether.h>
+#include <netinet/ip.h>
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
+#include <netinet/udp.h>
+#include <netinet/dhcp.h>
 #include <libvarpd_impl.h>
 #include <sys/vlan.h>
 #include <strings.h>
@@ -304,6 +307,59 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl,
 	    ntohs(v6hdr->ip6_plen)) & 0xffff;
 
 	(void) libvarpd_overlay_inject(inst->vri_impl, otl, resp, roff);
+
+	return (VARPD_LOOKUP_DROP);
+}
+
+int
+libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
+    overlay_targ_lookup_t *otl, const uint8_t *naddr)
+{
+	char buf[1500];
+	size_t bsize = sizeof (buf);
+	varpd_instance_t *inst = (varpd_instance_t *)hdl;
+	struct ether_header *ether;
+	struct ip *ip;
+	struct udphdr *udp;
+	static const uint8_t bcast_mac[6] = { 0xff, 0xff, 0xff, 0xff, 0xff,
+	    0xff };
+
+	if (otl->otl_sap != ETHERTYPE_IP)
+		return (VARPD_LOOKUP_DROP);
+
+	if (bcmp(otl->otl_dstaddr, bcast_mac, ETHERADDRL) != 0)
+		return (VARPD_LOOKUP_DROP);
+
+	if (otl->otl_hdrsize + otl->otl_pktsize > bsize ||
+	    otl->otl_pktsize < sizeof (struct ip) + sizeof (struct udphdr) +
+	    sizeof (struct dhcp) ||
+	    otl->otl_hdrsize < sizeof (struct ether_header))
+		return (VARPD_LOOKUP_DROP);
+
+	if (libvarpd_overlay_packet(inst->vri_impl, otl, buf, &bsize) != 0)
+		return (VARPD_LOOKUP_DROP);
+
+	if (bsize != otl->otl_hdrsize + otl->otl_pktsize)
+		return (VARPD_LOOKUP_DROP);
+
+	ether = (struct ether_header *)buf;
+	ip = (struct ip *)(buf + otl->otl_hdrsize);
+
+	if (ip->ip_v != IPVERSION && ip->ip_p != IPPROTO_UDP)
+		return (VARPD_LOOKUP_DROP);
+
+	if (otl->otl_hdrsize + ip->ip_hl * 4 + sizeof (struct udphdr) > bsize)
+		return (VARPD_LOOKUP_DROP);
+
+	udp = (struct udphdr *)(buf + otl->otl_hdrsize + ip->ip_hl * 4);
+
+	if (ntohs(udp->uh_sport) != IPPORT_BOOTPC ||
+	    ntohs(udp->uh_dport) != IPPORT_BOOTPS)
+		return (VARPD_LOOKUP_DROP);
+
+	bcopy(naddr, &ether->ether_dhost, ETHERADDRL);
+
+	(void) libvarpd_overlay_resend(inst->vri_impl, otl, buf, bsize);
 
 	return (VARPD_LOOKUP_DROP);
 }
