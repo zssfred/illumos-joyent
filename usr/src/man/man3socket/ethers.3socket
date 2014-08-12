@@ -71,11 +71,11 @@ per-thread buffers, one for each function. A second call to one of these
 functions will overwrite the previous value. The functions
 \fBether_ntoa_r()\fR and \fBether_aton_r()\fR behave identically to
 their non-reentrant versions; however, instead of using a per-thread
-buffer, they use caller supplied buffers. It is the callers
+buffer, they use caller-supplied buffers. It is the caller's
 responsibility to ensure that the character buffer passed to
 \fBether_ntoa_r()\fR is at least \fBETHERADDRSTRL\fR bytes large -- the
 minimum size to hold the ASCII representation of a 48 bit Ethernet
-number and a null terminator.
+number and a \fINULL\fR terminator.
 .sp
 .LP
 The function \fBether_ntohost()\fR maps an Ethernet number (pointed to by
