@@ -111,9 +111,10 @@ varpd_files_normalize_nvlist(varpd_files_t *vaf, nvlist_t *nvl)
 
 	for (pair = nvlist_next_nvpair(nvl, NULL); pair != NULL;
 	    pair = nvlist_next_nvpair(nvl, pair)) {
-		char *name, *fname;
+		char *name, fname[ETHERADDRSTRL];
 		nvlist_t *data;
-		const struct ether_addr *e;
+		struct ether_addr ether, *e;
+		e = &ether;
 
 		if (nvpair_type(pair) != DATA_TYPE_NVLIST) {
 			nvlist_free(out);
@@ -126,12 +127,12 @@ varpd_files_normalize_nvlist(varpd_files_t *vaf, nvlist_t *nvl)
 			return (EINVAL);
 		}
 
-		if ((e = ether_aton(name)) == NULL) {
+		if (ether_aton_r(name, e) == NULL) {
 			nvlist_free(out);
 			return (EINVAL);
 		}
 
-		if ((fname = ether_ntoa(e)) == NULL) {
+		if (ether_ntoa_r(e, fname) == NULL) {
 			nvlist_free(out);
 			return (ENOMEM);
 		}
@@ -218,7 +219,7 @@ static int
 varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
     overlay_target_point_t *otp)
 {
-	char *macstr, *ipstr;
+	char macstr[ETHERADDRSTRL], *ipstr;
 	nvlist_t *nvl;
 	varpd_files_t *vaf = arg;
 	int32_t port;
@@ -239,9 +240,11 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 	if (otl->otl_sap == ETHERTYPE_IP &&
 	    bcmp(otl->otl_dstaddr, bcast, ETHERADDRL) == 0) {
 		char *mac;
-		const struct ether_addr *addr;
-		macstr = ether_ntoa((struct ether_addr *)otl->otl_srcaddr);
-		if (macstr == NULL)
+		struct ether_addr a, *addr;
+
+		addr = &a;
+		if (ether_ntoa_r((struct ether_addr *)otl->otl_srcaddr,
+		    macstr) == NULL)
 			return (VARPD_LOOKUP_DROP);
 
 		if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0)
@@ -250,15 +253,14 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 		if (nvlist_lookup_string(nvl, "dhcp-proxy", &mac) != 0)
 			return (VARPD_LOOKUP_DROP);
 
-		if ((addr = ether_aton(mac)) == NULL)
+		if (ether_aton_r(mac, addr) == NULL)
 			return (VARPD_LOOKUP_DROP);
 
 		return (libvarpd_plugin_proxy_dhcp(vaf->vaf_hdl, otl,
 		    (const uint8_t *)addr));
 	}
 
-	if ((macstr = ether_ntoa((struct ether_addr *)otl->otl_dstaddr)) ==
-	    NULL)
+	if (ether_ntoa_r((struct ether_addr *)otl->otl_dstaddr, macstr) == NULL)
 		return (VARPD_LOOKUP_DROP);
 
 	if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0)
@@ -437,7 +439,8 @@ varpd_files_proxy_arp(void *arg, int kind, const struct sockaddr *sock,
 		nvlist_t *data;
 		struct in_addr ia;
 		struct in6_addr ia6;
-		const struct ether_addr *e;
+		struct ether_addr ether, *e;
+		e = &ether;
 
 		if (nvpair_type(pair) != DATA_TYPE_NVLIST)
 			continue;
@@ -470,7 +473,7 @@ varpd_files_proxy_arp(void *arg, int kind, const struct sockaddr *sock,
 		}
 
 		/* XXX Crappy errno */
-		if ((e = ether_aton(mac)) == NULL)
+		if (ether_aton_r(mac, e) == NULL)
 			return (EIO);
 
 		bcopy(e, out, ETHERADDRL);
