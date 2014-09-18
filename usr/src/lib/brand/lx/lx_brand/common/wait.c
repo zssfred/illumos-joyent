@@ -85,6 +85,7 @@
  */
 #define	LX_WNOHANG	0x00000001
 #define	LX_WUNTRACED	0x00000002
+#define	LX_WSTOPPED	LX_WUNTRACED
 #define	LX_WEXITED	0x00000004
 #define	LX_WCONTINUED	0x00000008
 #define	LX_WNOWAIT	0x01000000
@@ -96,6 +97,8 @@
 #define	LX_P_ALL	0x0
 #define	LX_P_PID	0x1
 #define	LX_P_GID	0x2
+
+extern long max_pid;
 
 static int
 ltos_options(uintptr_t options)
@@ -204,7 +207,7 @@ lx_waitid_helper(idtype_t idtype, id_t id, siginfo_t *info, int options)
 	return (0);
 }
 
-int
+long
 lx_wait4(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
 	siginfo_t info = { 0 };
@@ -217,6 +220,9 @@ lx_wait4(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 
 	if ((options = ltos_options(p3)) == -1)
 		return (-EINVAL);
+
+	if (pid > max_pid)
+		return (-ECHILD);
 
 	/*
 	 * While not listed as a valid return code, Linux's wait4(2) does,
@@ -282,19 +288,23 @@ lx_wait4(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 	return (info.si_pid);
 }
 
-int
+long
 lx_waitpid(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	return (lx_wait4(p1, p2, p3, NULL));
 }
 
-int
+long
 lx_waitid(uintptr_t idtype, uintptr_t id, uintptr_t infop, uintptr_t opt)
 {
 	int rval, options;
 	siginfo_t s_info = {0};
 	if ((options = ltos_options(opt)) == -1)
-		return (-1);
+		return (-EINVAL);
+
+	if (((opt) & (LX_WEXITED | LX_WSTOPPED | LX_WCONTINUED)) == 0)
+		return (-EINVAL);
+
 	switch (idtype) {
 	case LX_P_ALL:
 		idtype = P_ALL;
@@ -303,7 +313,7 @@ lx_waitid(uintptr_t idtype, uintptr_t id, uintptr_t infop, uintptr_t opt)
 		idtype = P_PID;
 		break;
 	case LX_P_GID:
-		idtype = P_GID;
+		idtype = P_PGID;
 		break;
 	default:
 		return (-EINVAL);

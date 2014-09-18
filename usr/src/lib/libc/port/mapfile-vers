@@ -2858,6 +2858,10 @@ $endif
 	__idmap_unreg;
 	__init_daemon_priv;
 	__init_suid_priv;
+	inotify_init;
+	inotify_init1;
+	inotify_add_watch;
+	inotify_rm_watch;
 	_insert;
 	inst_sync;
 	_iswctype;
@@ -3051,6 +3055,7 @@ $endif
 	zone_list;
 	zone_list_datalink;
 	zonept;
+	zone_get_nroot;
 	zone_remove_datalink;
 	zone_setattr;
 	zone_shutdown;

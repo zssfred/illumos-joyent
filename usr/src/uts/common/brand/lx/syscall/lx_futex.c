@@ -371,7 +371,7 @@ futex_wake_op_execute(int32_t *addr, int32_t val3)
 			no_fault();
 			return (set_errno(EINVAL));
 		}
-	} while (cas32((uint32_t *)addr, oldval, newval) != oldval);
+	} while (atomic_cas_32((uint32_t *)addr, oldval, newval) != oldval);
 
 	no_fault();
 
@@ -444,10 +444,9 @@ futex_wake_op(memid_t *memid, caddr_t addr2, memid_t *memid2,
 			continue;
 
 		futex_hashout(fwp);
-		if (ret++ < wake_threads) {
-			fwp->fw_woken = 1;
-			cv_signal(&fwp->fw_cv);
-		} else {
+		fwp->fw_woken = 1;
+		cv_signal(&fwp->fw_cv);
+		if (++ret >= wake_threads) {
 			break;
 		}
 	}
@@ -461,10 +460,9 @@ futex_wake_op(memid_t *memid, caddr_t addr2, memid_t *memid2,
 			continue;
 
 		futex_hashout(fwp);
-		if (ret2++ < wake_threads2) {
-			fwp->fw_woken = 1;
-			cv_signal(&fwp->fw_cv);
-		} else {
+		fwp->fw_woken = 1;
+		cv_signal(&fwp->fw_cv);
+		if (++ret2 >= wake_threads2) {
 			break;
 		}
 	}

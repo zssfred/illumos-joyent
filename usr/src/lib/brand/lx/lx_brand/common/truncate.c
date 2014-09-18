@@ -22,42 +22,97 @@
 /*
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright 2014 Joyent, Inc.  All rights reserved.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/lx_types.h>
 #include <sys/lx_misc.h>
+#include <sys/lx_syscall.h>
 
 /*
- * On Solaris, truncate() and ftruncate() are implemented in libc, so these are
+ * On Illumos, truncate() and ftruncate() are implemented in libc, so these are
  * layered on those interfaces.
  */
 
-int
+long
 lx_truncate(uintptr_t path, uintptr_t length)
 {
+	if ((off_t)length >= 0xffffffffUL)
+		return (-EFBIG);
+
 	return (truncate((const char *)path, (off_t)length) == 0 ? 0 : -errno);
 }
 
-int
+long
 lx_ftruncate(uintptr_t fd, uintptr_t length)
 {
-	return (ftruncate((int)fd, (off_t)length) == 0 ? 0 : -errno);
+	int r;
+
+	if ((off_t)length >= 0xffffffffUL)
+		return (-EFBIG);
+
+	r = ftruncate((int)fd, (off_t)length);
+	/*
+	 * On Linux, truncating a file opened read-only returns EINVAL whereas
+	 * Illumos returns EBADF.
+	 */
+	if (r != 0) {
+		if (errno == EBADF) {
+			int mode;
+
+			if ((mode = fcntl(fd, F_GETFL, 0)) != -1 &&
+			    (mode & O_ACCMODE) == O_RDONLY)
+				r = -EINVAL;
+			else
+				r = -EBADF; /* keep existing errno */
+		} else {
+			r = -errno;
+		}
+	}
+	return (r);
 }
 
-int
+long
 lx_truncate64(uintptr_t path, uintptr_t length_lo, uintptr_t length_hi)
 {
-	return (truncate64((const char *)path,
-	    LX_32TO64(length_lo, length_hi)) == 0 ? 0 : -errno);
+	uint64_t len = LX_32TO64(length_lo, length_hi);
+
+	if (len >= 0x7fffffffffffffffULL)
+		return (-EFBIG);
+
+	return (truncate64((const char *)path, len) == 0 ? 0 : -errno);
 }
 
-int
+long
 lx_ftruncate64(uintptr_t fd, uintptr_t length_lo, uintptr_t length_hi)
 {
-	return (ftruncate64((int)fd,
-	    LX_32TO64(length_lo, length_hi)) == 0 ? 0 : -errno);
+	int r;
+	uint64_t len = LX_32TO64(length_lo, length_hi);
+
+	if (len >= 0x7fffffffffffffffULL)
+		return (-EFBIG);
+
+	r = ftruncate64((int)fd, len);
+	/*
+	 * On Linux, truncating a file opened read-only returns EINVAL whereas
+	 * Illumos returns EBADF.
+	 */
+	if (r != 0) {
+		if (errno == EBADF) {
+			int mode;
+
+			if ((mode = fcntl(fd, F_GETFL, 0)) != -1 &&
+			    (mode & O_ACCMODE) == O_RDONLY)
+				r = -EINVAL;
+			else
+				r = -EBADF; /* keep existing errno */
+		} else {
+			r = -errno;
+		}
+	}
+
+	return (r);
 }

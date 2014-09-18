@@ -642,6 +642,7 @@ f kernel/drv/amd64/mpt 0755 root sys
 f kernel/drv/amd64/mpt_sas 0755 root sys
 f kernel/drv/amd64/mr_sas 0755 root sys
 f kernel/drv/amd64/myri10ge 0755 root sys
+f kernel/drv/amd64/nfp 0755 root sys
 f kernel/drv/amd64/nge 0755 root sys
 f kernel/drv/amd64/ntxn 0755 root sys
 f kernel/drv/amd64/nulldriver 0755 root sys
@@ -1060,6 +1061,7 @@ d kernel/socketmod 0755 root sys
 d kernel/socketmod/amd64 0755 root sys
 h kernel/socketmod/amd64/icmp=kernel/drv/amd64/icmp
 f kernel/socketmod/amd64/ksslf 0755 root sys
+f kernel/socketmod/amd64/lx_netlink 0755 root sys
 f kernel/socketmod/amd64/rts 0755 root sys
 f kernel/socketmod/amd64/sockrds 0755 root sys
 f kernel/socketmod/amd64/socksctp 0755 root sys
@@ -1675,7 +1677,6 @@ f lib/svc/method/svc-dumpadm 0555 root sys
 f lib/svc/method/svc-fcoei 0555 root sys
 f lib/svc/method/svc-fcoet 0555 root sys
 f lib/svc/method/svc-forwarding 0555 root bin
-f lib/svc/method/svc-ftp 0555 root sys
 f lib/svc/method/svc-hostid 0555 root bin
 f lib/svc/method/svc-hotplug 0555 root bin
 f lib/svc/method/svc-ii 0744 root sys
@@ -3048,22 +3049,8 @@ f usr/include/p12aux.h 0644 root bin
 f usr/include/p12err.h 0644 root bin
 f usr/include/panel.h 0644 root bin
 f usr/include/parseURL.h 0644 root bin
-d usr/include/parted 0755 root bin
-f usr/include/parted/constraint.h 0644 root bin
-f usr/include/parted/crc32.h 0644 root bin
-f usr/include/parted/debug.h 0644 root bin
-f usr/include/parted/device.h 0644 root bin
-f usr/include/parted/disk.h 0644 root bin
-f usr/include/parted/endian.h 0644 root bin
-f usr/include/parted/exception.h 0644 root bin
-f usr/include/parted/filesys.h 0644 root bin
-f usr/include/parted/geom.h 0644 root bin
-f usr/include/parted/natmath.h 0644 root bin
-f usr/include/parted/parted.h 0644 root bin
-f usr/include/parted/solaris.h 0644 root bin
-f usr/include/parted/timer.h 0644 root bin
-f usr/include/parted/unit.h 0644 root bin
 f usr/include/passwdutil.h 0644 root bin
+f usr/include/paths.h 0644 root bin
 f usr/include/pcsample.h 0644 root bin
 f usr/include/pfmt.h 0644 root bin
 f usr/include/picl.h 0644 root bin
@@ -3789,6 +3776,7 @@ f usr/include/sys/idm/idm_so.h 0644 root bin
 f usr/include/sys/idm/idm_text.h 0644 root bin
 f usr/include/sys/idm/idm_transport.h 0644 root bin
 f usr/include/sys/idmap.h 0644 root bin
+f usr/include/sys/inotify.h 0644 root bin
 f usr/include/sys/inline.h 0644 root bin
 f usr/include/sys/instance.h 0644 root bin
 f usr/include/sys/int_const.h 0644 root bin
@@ -4538,6 +4526,7 @@ f usr/kernel/drv/amd64/dump 0755 root sys
 f usr/kernel/drv/amd64/fssnap 0755 root sys
 f usr/kernel/drv/amd64/ipf 0755 root sys
 f usr/kernel/drv/amd64/ipmi 0755 root sys
+f usr/kernel/drv/amd64/inotify 0755 root sys
 f usr/kernel/drv/amd64/kstat 0755 root sys
 f usr/kernel/drv/amd64/ksyms 0755 root sys
 f usr/kernel/drv/amd64/logindmux 0755 root sys
@@ -4556,6 +4545,7 @@ f usr/kernel/drv/amd64/zcons 0755 root sys
 f usr/kernel/drv/bpf.conf 0644 root sys
 f usr/kernel/drv/dump.conf 0644 root sys
 f usr/kernel/drv/fssnap.conf 0644 root sys
+f usr/kernel/drv/inotify.conf 0644 root sys
 f usr/kernel/drv/ipf.conf 0644 root sys
 f usr/kernel/drv/ipmi.conf 0644 root sys
 f usr/kernel/drv/kstat.conf 0644 root sys
@@ -5013,6 +5003,7 @@ f usr/lib/amd64/libzonecfg.so.1 0755 root bin
 s usr/lib/amd64/libzonecfg.so=libzonecfg.so.1
 f usr/lib/amd64/libzpool.so.1 0755 root bin
 s usr/lib/amd64/libzpool.so=libzpool.so.1
+f usr/lib/amd64/lx_brand.so.1 0755 root sys
 f usr/lib/amd64/madv.so.1 0755 root bin
 f usr/lib/amd64/mpss.so.1 0755 root bin
 f usr/lib/amd64/ncad_addr.so.1 0755 root bin
@@ -6294,8 +6285,6 @@ f usr/lib/libnsctl.so.1 0755 root bin
 s usr/lib/libnsctl.so=libnsctl.so.1
 s usr/lib/libnsl.so.1=../../lib/libnsl.so.1
 s usr/lib/libnsl.so=../../lib/libnsl.so.1
-f usr/lib/libntfs.so.10 0755 root bin
-s usr/lib/libntfs.so=libntfs.so.10
 f usr/lib/libnvfru.so.1 0755 root bin
 s usr/lib/libnvfru.so=libnvfru.so.1
 s usr/lib/libnvpair.so.1=../../lib/libnvpair.so.1
@@ -6312,8 +6301,6 @@ s usr/lib/libpam.so.1=../../lib/libpam.so.1
 s usr/lib/libpam.so=../../lib/libpam.so.1
 f usr/lib/libpanel.so.1 0755 root bin
 s usr/lib/libpanel.so=libpanel.so.1
-f usr/lib/libparted.so.8 0755 root bin
-s usr/lib/libparted.so=libparted.so.8
 f usr/lib/libpcidb.so.1 0755 root bin
 f usr/lib/libpctx.so.1 0755 root bin
 s usr/lib/libpctx.so=libpctx.so.1
@@ -10336,12 +10323,6 @@ s usr/sbin/fsdb=clri
 s usr/sbin/fsirand=../lib/fs/ufs/fsirand
 s usr/sbin/fssnap=clri
 f usr/sbin/fstyp 0555 root sys
-f usr/sbin/ftpaddhost 0555 root bin
-f usr/sbin/ftpconfig 0555 root bin
-f usr/sbin/ftpcount 0555 root bin
-f usr/sbin/ftprestart 0555 root bin
-f usr/sbin/ftpshut 0555 root bin
-h usr/sbin/ftpwho=usr/sbin/ftpcount
 f usr/sbin/fuser 0555 root bin
 f usr/sbin/fwflash 0555 root bin
 f usr/sbin/getdevpolicy 0555 root sys
@@ -10366,7 +10347,6 @@ f usr/sbin/ikecert 0555 root bin
 f usr/sbin/ilbadm 0555 root bin
 f usr/sbin/in.comsat 0555 root bin
 f usr/sbin/in.fingerd 0555 root bin
-f usr/sbin/in.ftpd 0555 root bin
 f usr/sbin/in.rdisc 0555 root bin
 f usr/sbin/in.rexecd 0555 root bin
 f usr/sbin/in.rlogind 0555 root bin
@@ -10449,7 +10429,6 @@ f usr/sbin/poolcfg 0555 root bin
 h usr/sbin/ports=usr/sbin/devfsadm
 h usr/sbin/poweroff=usr/sbin/halt
 f usr/sbin/praudit 0555 root bin
-f usr/sbin/privatepw 0555 root bin
 f usr/sbin/projadd 0555 root sys
 f usr/sbin/projdel 0555 root sys
 f usr/sbin/projmod 0555 root sys
@@ -10794,23 +10773,23 @@ f usr/share/lib/zoneinfo/Africa/Addis_Ababa 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Algiers 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Asmara 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Asmera 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Bamako 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Bangui 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Banjul 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Bamako=usr/share/lib/zoneinfo/Africa/Abidjan
+h usr/share/lib/zoneinfo/Africa/Bangui=usr/share/lib/zoneinfo/Africa/Lagos
+h usr/share/lib/zoneinfo/Africa/Banjul=usr/share/lib/zoneinfo/Africa/Abidjan
 f usr/share/lib/zoneinfo/Africa/Bissau 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Blantyre 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Brazzaville 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Brazzaville=usr/share/lib/zoneinfo/Africa/Lagos
 f usr/share/lib/zoneinfo/Africa/Bujumbura 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Cairo 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Casablanca 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Ceuta 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Conakry 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Dakar 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Conakry=usr/share/lib/zoneinfo/Africa/Abidjan
+h usr/share/lib/zoneinfo/Africa/Dakar=usr/share/lib/zoneinfo/Africa/Abidjan
 f usr/share/lib/zoneinfo/Africa/Dar_es_Salaam 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Djibouti 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Douala 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Douala=usr/share/lib/zoneinfo/Africa/Lagos
 f usr/share/lib/zoneinfo/Africa/El_Aaiun 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Freetown 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Freetown=usr/share/lib/zoneinfo/Africa/Abidjan
 f usr/share/lib/zoneinfo/Africa/Gaborone 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Harare 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Johannesburg 0644 root bin
@@ -10818,14 +10797,14 @@ f usr/share/lib/zoneinfo/Africa/Juba 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Kampala 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Khartoum 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Kigali 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Kinshasa 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Kinshasa=usr/share/lib/zoneinfo/Africa/Lagos
 f usr/share/lib/zoneinfo/Africa/Lagos 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Libreville 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Lome 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Luanda 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Libreville=usr/share/lib/zoneinfo/Africa/Lagos
+h usr/share/lib/zoneinfo/Africa/Lome=usr/share/lib/zoneinfo/Africa/Abidjan
+h usr/share/lib/zoneinfo/Africa/Luanda=usr/share/lib/zoneinfo/Africa/Lagos
 f usr/share/lib/zoneinfo/Africa/Lubumbashi 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Lusaka 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Malabo 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Malabo=usr/share/lib/zoneinfo/Africa/Lagos
 f usr/share/lib/zoneinfo/Africa/Maputo 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Maseru 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Mbabane 0644 root bin
@@ -10833,12 +10812,12 @@ f usr/share/lib/zoneinfo/Africa/Mogadishu 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Monrovia 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Nairobi 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Ndjamena 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Niamey 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Nouakchott 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Ouagadougou 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Porto-Novo 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Sao_Tome 0644 root bin
-f usr/share/lib/zoneinfo/Africa/Timbuktu 0644 root bin
+h usr/share/lib/zoneinfo/Africa/Niamey=usr/share/lib/zoneinfo/Africa/Lagos
+h usr/share/lib/zoneinfo/Africa/Nouakchott=usr/share/lib/zoneinfo/Africa/Abidjan
+h usr/share/lib/zoneinfo/Africa/Ouagadougou=usr/share/lib/zoneinfo/Africa/Abidjan
+h usr/share/lib/zoneinfo/Africa/Porto-Novo=usr/share/lib/zoneinfo/Africa/Abidjan
+h usr/share/lib/zoneinfo/Africa/Sao_Tome=usr/share/lib/zoneinfo/Africa/Abidjan
+h usr/share/lib/zoneinfo/Africa/Timbuktu=usr/share/lib/zoneinfo/Africa/Abidjan
 f usr/share/lib/zoneinfo/Africa/Tripoli 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Tunis 0644 root bin
 f usr/share/lib/zoneinfo/Africa/Windhoek 0644 root bin
@@ -11021,6 +11000,7 @@ f usr/share/lib/zoneinfo/Antarctica/Palmer 0644 root bin
 f usr/share/lib/zoneinfo/Antarctica/Rothera 0644 root bin
 f usr/share/lib/zoneinfo/Antarctica/South_Pole 0644 root bin
 f usr/share/lib/zoneinfo/Antarctica/Syowa 0644 root bin
+f usr/share/lib/zoneinfo/Antarctica/Troll 0644 root bin
 f usr/share/lib/zoneinfo/Antarctica/Vostok 0644 root bin
 d usr/share/lib/zoneinfo/Arctic 0755 root bin
 h usr/share/lib/zoneinfo/Arctic/Longyearbyen=usr/share/lib/zoneinfo/Europe/Oslo
@@ -11041,9 +11021,10 @@ f usr/share/lib/zoneinfo/Asia/Beirut 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Bishkek 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Brunei 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Calcutta 0644 root bin
+f usr/share/lib/zoneinfo/Asia/Chita 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Choibalsan 0644 root bin
-f usr/share/lib/zoneinfo/Asia/Chongqing 0644 root bin
-f usr/share/lib/zoneinfo/Asia/Chungking 0644 root bin
+h usr/share/lib/zoneinfo/Asia/Chongqing=usr/share/lib/zoneinfo/Asia/Shanghai
+h usr/share/lib/zoneinfo/Asia/Chungking=usr/share/lib/zoneinfo/Asia/Shanghai
 f usr/share/lib/zoneinfo/Asia/Colombo 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Dacca 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Damascus 0644 root bin
@@ -11052,7 +11033,7 @@ f usr/share/lib/zoneinfo/Asia/Dili 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Dubai 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Dushanbe 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Gaza 0644 root bin
-f usr/share/lib/zoneinfo/Asia/Harbin 0644 root bin
+h usr/share/lib/zoneinfo/Asia/Harbin=usr/share/lib/zoneinfo/Asia/Shanghai
 f usr/share/lib/zoneinfo/Asia/Hebron 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Ho_Chi_Minh 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Hong_Kong 0644 root bin
@@ -11065,7 +11046,7 @@ h usr/share/lib/zoneinfo/Asia/Jerusalem=usr/share/lib/zoneinfo/Israel
 f usr/share/lib/zoneinfo/Asia/Kabul 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Kamchatka 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Karachi 0644 root bin
-f usr/share/lib/zoneinfo/Asia/Kashgar 0644 root bin
+h usr/share/lib/zoneinfo/Asia/Kashgar=usr/share/lib/zoneinfo/Asia/Urumqi
 f usr/share/lib/zoneinfo/Asia/Kathmandu 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Katmandu 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Kolkata 0644 root bin
@@ -11100,6 +11081,7 @@ f usr/share/lib/zoneinfo/Asia/Samarkand 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Seoul 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Shanghai 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Singapore 0644 root bin
+f usr/share/lib/zoneinfo/Asia/Srednekolymsk 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Taipei 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Tashkent 0644 root bin
 f usr/share/lib/zoneinfo/Asia/Tbilisi 0644 root bin
@@ -11128,7 +11110,7 @@ h usr/share/lib/zoneinfo/Atlantic/Jan_Mayen=usr/share/lib/zoneinfo/Europe/Oslo
 f usr/share/lib/zoneinfo/Atlantic/Madeira 0644 root bin
 f usr/share/lib/zoneinfo/Atlantic/Reykjavik 0644 root bin
 f usr/share/lib/zoneinfo/Atlantic/South_Georgia 0644 root bin
-f usr/share/lib/zoneinfo/Atlantic/St_Helena 0644 root bin
+h usr/share/lib/zoneinfo/Atlantic/St_Helena=usr/share/lib/zoneinfo/Africa/Abidjan
 f usr/share/lib/zoneinfo/Atlantic/Stanley 0644 root bin
 d usr/share/lib/zoneinfo/Australia 0755 root bin
 f usr/share/lib/zoneinfo/Australia/ACT 0644 root bin
@@ -11537,8 +11519,6 @@ f usr/share/man/man1/fmt.1 0444 root bin
 f usr/share/man/man1/fmtmsg.1 0444 root bin
 f usr/share/man/man1/fold.1 0444 root bin
 f usr/share/man/man1/ftp.1 0444 root bin
-f usr/share/man/man1/ftpcount.1 0444 root bin
-f usr/share/man/man1/ftpwho.1 0444 root bin
 f usr/share/man/man1/gcore.1 0444 root bin
 f usr/share/man/man1/gencat.1 0444 root bin
 f usr/share/man/man1/genmsg.1 0444 root bin
@@ -11938,11 +11918,6 @@ f usr/share/man/man1m/fssnap.1m 0444 root bin
 f usr/share/man/man1m/fssnap_ufs.1m 0444 root bin
 f usr/share/man/man1m/fsstat.1m 0444 root bin
 f usr/share/man/man1m/fstyp.1m 0444 root bin
-f usr/share/man/man1m/ftpaddhost.1m 0444 root bin
-f usr/share/man/man1m/ftpconfig.1m 0444 root bin
-s usr/share/man/man1m/ftpd.1m=in.ftpd.1m
-f usr/share/man/man1m/ftprestart.1m 0444 root bin
-f usr/share/man/man1m/ftpshut.1m 0444 root bin
 f usr/share/man/man1m/fuser.1m 0444 root bin
 f usr/share/man/man1m/fwflash.1m 0444 root bin
 f usr/share/man/man1m/getdev.1m 0444 root bin
@@ -11969,7 +11944,6 @@ f usr/share/man/man1m/ifconfig.1m 0444 root bin
 f usr/share/man/man1m/ifparse.1m 0444 root bin
 f usr/share/man/man1m/ikeadm.1m 0444 root bin
 f usr/share/man/man1m/ikecert.1m 0444 root bin
-f usr/share/man/man1m/in.ftpd.1m 0444 root bin
 f usr/share/man/man1m/in.iked.1m 0444 root bin
 f usr/share/man/man1m/in.mpathd.1m 0444 root bin
 f usr/share/man/man1m/in.ndpd.1m 0444 root bin
@@ -12993,6 +12967,10 @@ f usr/share/man/man3c/imaxdiv.3c 0444 root bin
 f usr/share/man/man3c/index.3c 0444 root bin
 f usr/share/man/man3c/initgroups.3c 0444 root bin
 s usr/share/man/man3c/initstate.3c=random.3c
+f usr/share/man/man3c/inotify_init.3c 0444 root bin
+s usr/share/man/man3c/inotify_init1.3c=inotify_init.3c
+f usr/share/man/man3c/inotify_add_watch.3c 0444 root bin
+f usr/share/man/man3c/inotify_rm_watch.3c 0444 root bin
 s usr/share/man/man3c/innetgr.3c=getnetgrent.3c
 f usr/share/man/man3c/insque.3c 0444 root bin
 f usr/share/man/man3c/is_system_labeled.3c 0444 root bin
@@ -17853,11 +17831,6 @@ s usr/share/man/man4/fs.4=default_fs.4
 f usr/share/man/man4/fspec.4 0444 root bin
 f usr/share/man/man4/fstypes.4 0444 root bin
 f usr/share/man/man4/ftp.4 0444 root bin
-f usr/share/man/man4/ftpaccess.4 0444 root bin
-f usr/share/man/man4/ftpconversions.4 0444 root bin
-f usr/share/man/man4/ftpgroups.4 0444 root bin
-f usr/share/man/man4/ftphosts.4 0444 root bin
-f usr/share/man/man4/ftpservers.4 0444 root bin
 f usr/share/man/man4/ftpusers.4 0444 root bin
 f usr/share/man/man4/fx_dptbl.4 0444 root bin
 f usr/share/man/man4/gateways.4 0444 root bin
@@ -18006,7 +17979,6 @@ f usr/share/man/man4/volume-request.4 0444 root bin
 f usr/share/man/man4/warn.conf.4 0444 root bin
 s usr/share/man/man4/wtmp.4=utmp.4
 s usr/share/man/man4/wtmpx.4=utmpx.4
-f usr/share/man/man4/xferlog.4 0444 root bin
 f usr/share/man/man4/ypfiles.4 0444 root bin
 f usr/share/man/man4/yppasswdd.4 0444 root bin
 f usr/share/man/man4/ypserv.4 0444 root bin
@@ -18073,7 +18045,9 @@ f usr/share/man/man5/grub.5 0444 root bin
 f usr/share/man/man5/gss_auth_rules.5 0444 root bin
 f usr/share/man/man5/iconv.5 0444 root bin
 f usr/share/man/man5/iconv_unicode.5 0444 root bin
+f usr/share/man/man5/ieee802.3.5 0444 root bin
 f usr/share/man/man5/ieee802.11.5 0444 root bin
+f usr/share/man/man5/inotify.5 0444 root bin
 s usr/share/man/man5/intro.5=Intro.5
 f usr/share/man/man5/ipfilter.5 0444 root bin
 f usr/share/man/man5/isalist.5 0444 root bin
@@ -18164,6 +18138,7 @@ f usr/share/man/man7d/atge.7d 0444 root bin
 f usr/share/man/man7d/bcm_sata.7d 0444 root bin
 f usr/share/man/man7d/bfe.7d 0444 root bin
 f usr/share/man/man7d/bge.7d 0444 root bin
+f usr/share/man/man7d/blkdev.7d 0444 root bin
 f usr/share/man/man7d/chxge.7d 0444 root bin
 f usr/share/man/man7d/cmdk.7d 0444 root bin
 f usr/share/man/man7d/cpqary3.7d 0444 root bin
@@ -18193,6 +18168,7 @@ f usr/share/man/man7d/ieee1394.7d 0444 root bin
 f usr/share/man/man7d/igb.7d 0444 root bin
 f usr/share/man/man7d/ipmi.7d 0444 root bin
 f usr/share/man/man7d/ipnet.7d 0444 root bin
+f usr/share/man/man7d/iprb.7d 0444 root bin
 f usr/share/man/man7d/iscsi.7d 0444 root bin
 f usr/share/man/man7d/ixgbe.7d 0444 root bin
 f usr/share/man/man7d/kmdb.7d 0444 root bin
@@ -18232,13 +18208,13 @@ f usr/share/man/man7d/qlc.7d 0444 root bin
 f usr/share/man/man7d/ramdisk.7d 0444 root bin
 f usr/share/man/man7d/random.7d 0444 root bin
 f usr/share/man/man7d/rge.7d 0444 root bin
+f usr/share/man/man7d/rtls.7d 0444 root bin
 f usr/share/man/man7d/sad.7d 0444 root bin
 f usr/share/man/man7d/sata.7d 0444 root bin
 f usr/share/man/man7d/scsa1394.7d 0444 root bin
 f usr/share/man/man7d/scsa2usb.7d 0444 root bin
 f usr/share/man/man7d/sd.7d 0444 root bin
 f usr/share/man/man7d/sda.7d 0444 root bin
-f usr/share/man/man7d/sdcard.7d 0444 root bin
 f usr/share/man/man7d/sdhost.7d 0444 root bin
 f usr/share/man/man7d/sdt.7d 0444 root bin
 f usr/share/man/man7d/ses.7d 0444 root bin

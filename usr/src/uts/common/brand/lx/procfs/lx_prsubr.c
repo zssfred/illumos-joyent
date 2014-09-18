@@ -88,6 +88,14 @@ lxpr_uiobuf_seek(struct lxpr_uiobuf *uiobuf, offset_t offset)
 	uiobuf->uiop->uio_offset = (off_t)offset;
 }
 
+boolean_t
+lxpr_uiobuf_nonblock(struct lxpr_uiobuf *uiobuf)
+{
+	if ((uiobuf->uiop->uio_fmode & FNONBLOCK) != 0)
+		return (B_TRUE);
+	return (B_FALSE);
+}
+
 void
 lxpr_uiobuf_seterr(struct lxpr_uiobuf *uiobuf, int err)
 {
@@ -474,6 +482,10 @@ lxpr_getnode(vnode_t *dp, lxpr_nodetype_t type, proc_t *p, int fd)
 		lxpnp->lxpr_mode = 0511;
 		break;
 
+	case LXPR_SYSDIR:
+	case LXPR_SYS_FSDIR:
+	case LXPR_SYS_FS_INOTIFYDIR:
+	case LXPR_SYS_KERNELDIR:
 	case LXPR_NETDIR:
 		vp->v_type = VDIR;
 		lxpnp->lxpr_mode = 0555;	/* read-search by all */

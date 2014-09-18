@@ -21,6 +21,7 @@
 # Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2012 Nexenta Systems, Inc. All rights reserved.
 # Copyright (c) 2013 Andrew Stormont.  All rights reserved.
+# Copyright (c) 2014, Joyent, Inc. All rights reserved.
 
 #
 #	This makefile contains the common definitions for all intel
@@ -250,6 +251,7 @@ DRV_KMODS	+= i8042
 DRV_KMODS	+= i915
 DRV_KMODS	+= icmp
 DRV_KMODS	+= icmp6
+DRV_KMODS	+= inotify
 DRV_KMODS	+= intel_nb5000
 DRV_KMODS	+= intel_nhm
 DRV_KMODS	+= ip
@@ -284,6 +286,7 @@ DRV_KMODS	+= mpt_sas
 DRV_KMODS	+= mr_sas
 DRV_KMODS	+= mwl 
 DRV_KMODS	+= nca
+DRV_KMODS	+= nfp
 DRV_KMODS	+= nsmb
 DRV_KMODS	+= nulldriver
 DRV_KMODS	+= nv_sata
@@ -516,7 +519,7 @@ MISC_KMODS	+= md_sp
 #	Brand modules
 #
 BRAND_KMODS	+= sn1_brand sngl_brand s10_brand lx_brand
-DRV_KMODS	+= lx_systrace lx_ptm lx_audio
+DRV_KMODS	+= lx_systrace lx_ptm lx_audio lx_netlink
 STRMOD_KMODS	+= ldlinux 
 
 #

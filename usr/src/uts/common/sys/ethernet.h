@@ -19,6 +19,8 @@
  * CDDL HEADER END
  */
 /*
+ * Copyright 2014 Garrett D'Amore <garrett@damore.org>
+ *
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
@@ -142,7 +144,6 @@ extern int localetheraddr(struct ether_addr *, struct ether_addr *);
 extern char *ether_sprintf(struct ether_addr *);
 extern int ether_aton(char *, uchar_t *);
 #else	/* _KERNEL */
-#ifdef  __STDC__
 extern char *ether_ntoa(const struct ether_addr *);
 extern char *ether_ntoa_r(const struct ether_addr *, char *);
 extern struct ether_addr *ether_aton(const char *);
@@ -150,13 +151,6 @@ extern struct ether_addr *ether_aton_r(const char *, struct ether_addr *);
 extern int ether_ntohost(char *, const struct ether_addr *);
 extern int ether_hostton(const char *, struct ether_addr *);
 extern int ether_line(const char *, struct ether_addr *, char *);
-#else	/* __STDC__ */
-extern char *ether_ntoa();
-extern struct ether_addr *ether_aton();
-extern int ether_ntohost();
-extern int ether_hostton();
-extern int ether_line();
-#endif	/* __STDC__ */
 #endif	/* _KERNEL */
 
 #ifdef	__cplusplus

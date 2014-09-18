@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright 2012, Joyent, Inc. All rights reserved.
+ * Copyright 2014, Joyent, Inc. All rights reserved.
  */
 
 #include <sys/errno.h>
@@ -80,9 +80,11 @@ struct brand_ops sngl_brops = {
 	sngl_elfexec,
 	NULL,
 	NULL,
+	NULL,
 	NSIG,
 	NULL,
 	NULL,
+	NULL
 };
 
 #ifdef	__amd64

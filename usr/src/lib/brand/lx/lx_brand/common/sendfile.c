@@ -22,23 +22,25 @@
 /*
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright 2014 Joyent, Inc.  All rights reserved.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
- * lx_sendfile() and lx_sendfile64() are just branded versions of the
+ * lx_sendfile() and lx_sendfile64() are primarily branded versions of the
  * library calls available in the Solaris libsendfile (see sendfile(3EXT)).
  */
 
 #include <sys/types.h>
+#include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/sendfile.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/lx_misc.h>
+#include <sys/lx_syscall.h>
 
-int
+#if defined(_ILP32)
+long
 lx_sendfile(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
 	sysret_t rval;
@@ -49,8 +51,14 @@ lx_sendfile(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 	size_t xferred;
 	size_t sz = (size_t)p4;
 
-	if (sz > 0 && uucopy(offp, &off, sizeof (off)) != 0)
-		return (-errno);
+	if (offp == NULL) {
+		/* If no offp, we must use the current offset */
+		if ((off = lseek((int)p2, 0, SEEK_CUR)) == -1)
+			return (-errno);
+	} else {
+		if (sz > 0 && uucopy(offp, &off, sizeof (off)) != 0)
+			return (-errno);
+	}
 
 	sfv.sfv_fd = p2;
 	sfv.sfv_flag = 0;
@@ -60,14 +68,21 @@ lx_sendfile(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 	    1, &xferred);
 
 	if (error == 0 && xferred > 0) {
-		off += xferred;
-		error = uucopy(&off, offp, sizeof (off));
+		if (offp == NULL) {
+			/* If no offp, we must adjust current offset */
+			if (lseek((int)p2, xferred, SEEK_CUR) == -1)
+				return (-errno);
+		} else {
+			off += xferred;
+			error = uucopy(&off, offp, sizeof (off));
+		}
 	}
 
 	return (error ? -error : (int)rval.sys_rval1);
 }
+#endif
 
-int
+long
 lx_sendfile64(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
 	sysret_t rval;
@@ -78,8 +93,14 @@ lx_sendfile64(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 	struct sendfilevec64 sfv;
 	size_t xferred;
 
-	if (sz > 0 && uucopy(offp, &off, sizeof (off)) != 0)
-		return (-errno);
+	if (offp == NULL) {
+		/* If no offp, we must use the current offset */
+		if ((off = lseek((int)p2, 0, SEEK_CUR)) == -1)
+			return (-errno);
+	} else {
+		if (sz > 0 && uucopy(offp, &off, sizeof (off)) != 0)
+			return (-errno);
+	}
 
 	sfv.sfv_fd = p2;
 	sfv.sfv_flag = 0;
@@ -89,8 +110,14 @@ lx_sendfile64(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 	    1, &xferred);
 
 	if (error == 0 && xferred > 0) {
-		off += xferred;
-		error = uucopy(&off, offp, sizeof (off));
+		if (offp == NULL) {
+			/* If no offp, we must adjust current offset */
+			if (lseek((int)p2, xferred, SEEK_CUR) == -1)
+				return (-errno);
+		} else {
+			off += xferred;
+			error = uucopy(&off, offp, sizeof (off));
+		}
 	}
 
 	return (error ? -error : (int)rval.sys_rval1);

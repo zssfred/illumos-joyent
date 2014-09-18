@@ -42,6 +42,7 @@
 #include <libintl.h>
 #include <sys/bitmap.h>
 #include <sys/lx_autofs.h>
+#include <sys/lx_syscall.h>
 #include <sys/modctl.h>
 #include <sys/filio.h>
 #include <sys/termios.h>
@@ -237,10 +238,11 @@ lx_ioctl_msg(int fd, int cmd, char *lx_cmd_str, struct stat *stat, char *msg)
 
 			/* Try to display the drivers name. */
 			if (modctl(MODGETNAME,
-			    fd_driver, sizeof (fd_driver), &fd_major) == 0)
+			    fd_driver, sizeof (fd_driver), &fd_major) == 0) {
 				i = strlen(buf);
 				(void) snprintf(buf + i, sizeof (buf) - i,
 				    "; driver = %s", fd_driver);
+			}
 		}
 		lx_debug(buf);
 	}
@@ -497,11 +499,10 @@ lx_ioctl_init()
 		    &idt->idt_major);
 
 		if (ret != 0) {
-			lx_err(gettext("%s%s) failed: %s\n"),
-			    "lx_ioctl_init(): modctl(MODGETMAJBIND, ",
-			    idt->idt_driver, strerror(errno));
-			lx_err(gettext("%s: %s translator disabled for: %s\n"),
-			    "lx_ioctl_init()", "ioctl", idt->idt_driver);
+			lx_err("lx_ioctl_init(): modctl(MODGETMAJBIND, %s) "
+			    "failed: %s\n", idt->idt_driver, strerror(errno));
+			lx_err("lx_ioctl_init(): ioctl translator disabled "
+			    "for: %s\n", idt->idt_driver);
 			idt->idt_major = (major_t)-1;
 		}
 	}
@@ -528,7 +529,7 @@ lx_ioctl_find_ict_cmd(ioc_cmd_translator_t *ict, int cmd)
 /*
  * Main entry point for the ioctl translater.
  */
-int
+long
 lx_ioctl(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int			fd = (int)p1;
@@ -602,6 +603,14 @@ lx_ioctl(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 			ict = ioc_translators_dev[i]->idt_cmds;
 			break;
 		}
+
+		/*
+		 * If we didn't find a device translator, fall back on the
+		 * file translators.
+		 */
+		if (ict == NULL)
+			ict = ioc_translators_file;
+
 		break;
 	}
 
@@ -680,6 +689,14 @@ lx_ioctl(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 		return (ret);
 	}
 
+	/*
+	 * errno tweaking which some test cases expect because kernel
+	 * version 2.6.39 changed the returned errno from EINVAL to
+	 * ENOTTY (see LTP sockioctl01 test cases).
+	 */
+	if (cmd == LX_SIOCATMARK && (stat.st_mode & S_IFMT) != S_IFSOCK)
+		return (-ENOTTY);
+
 	lx_ioctl_msg(fd, cmd, NULL, &stat,
 	    "lx_ioctl(): unsupported linux ioctl");
 	lx_unsupported("unsupported linux ioctl 0x%x", cmd);
@@ -743,8 +760,8 @@ ict_sioifoob(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
 	len = sizeof (val);
 
 	/*
-	 * Linux expects a SIOCATMARK of a UDP socket to return EINVAL, while
-	 * Solaris allows it.
+	 * Linux expects a SIOCATMARK of a UDP socket to return ENOTTY, while
+	 * Illumos allows it. Linux prior to 2.6.39 returned EINVAL for this.
 	 */
 	if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &val, &len) < 0) {
 		lx_debug("ict_siofmark: getsockopt failed, errno %d", errno);
@@ -752,7 +769,7 @@ ict_sioifoob(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
 	}
 
 	if ((len != sizeof (val)) || (val != SOCK_STREAM))
-		return (-EINVAL);
+		return (-ENOTTY);
 
 	if (ioctl(fd, cmd, &req) < 0)
 		return (-errno);
@@ -868,8 +885,8 @@ ict_siocifhwaddr(int fd, struct stat *stat, int cmd, char *cmd_str,
 	    req.ifr_name);
 
 	/*
-	 * We're not going to support SIOCSIFHWADDR, but we need to be
-	 * able to check the result of the uucopy first to see if the command
+	 * We're not going to support SIOCSIFHWADDR, but we need to be able to
+	 * check the result of the uucopy first to see if the command
 	 * should have returned EFAULT.
 	 */
 	if (cmd == LX_SIOCSIFHWADDR) {
@@ -2714,7 +2731,7 @@ static ioc_errno_translator_t ioc_translators_errno[] = {
 	IOC_ERRNO_TRANSLATOR_END
 };
 
-int
+long
 lx_vhangup(void)
 {
 	if (geteuid() != 0)

@@ -2256,7 +2256,7 @@ mac_minor_hold(boolean_t sleep)
 	/*
 	 * Grab a value from the arena.
 	 */
-	atomic_add_32(&minor_count, 1);
+	atomic_inc_32(&minor_count);
 
 	if (sleep)
 		minor = (uint_t)id_alloc(minor_ids);
@@ -2264,7 +2264,7 @@ mac_minor_hold(boolean_t sleep)
 		minor = (uint_t)id_alloc_nosleep(minor_ids);
 
 	if (minor == 0) {
-		atomic_add_32(&minor_count, -1);
+		atomic_dec_32(&minor_count);
 		return (0);
 	}
 
@@ -2281,7 +2281,7 @@ mac_minor_rele(minor_t minor)
 	 * Return the value to the arena.
 	 */
 	id_free(minor_ids, minor);
-	atomic_add_32(&minor_count, -1);
+	atomic_dec_32(&minor_count);
 }
 
 uint32_t
@@ -2685,6 +2685,16 @@ mac_margin_update(mac_handle_t mh, uint32_t margin)
 	return (margin_needed <= margin);
 }
 
+/*
+ * MAC clients use this interface to request that a MAC device not change its
+ * MTU below the specified amount. At this time, that amount must be within the
+ * range of the device's current minimum and the device's current maximum. eg. a
+ * client cannot request a 3000 byte MTU when the device's MTU is currently
+ * 2000.
+ *
+ * If "current" is set to B_TRUE, then the request is to simply to reserve the
+ * current underlying mac's maximum for this mac client and return it in mtup.
+ */
 int
 mac_mtu_add(mac_handle_t mh, uint32_t *mtup, boolean_t current)
 {

@@ -41,16 +41,19 @@
 #include <sys/brand.h>
 #include <sys/poll.h>
 #include <sys/syscall.h>
+#include <sys/epoll.h>
 #include <sys/lx_debug.h>
 #include <sys/lx_poll.h>
 #include <sys/lx_syscall.h>
 #include <sys/lx_brand.h>
 #include <sys/lx_misc.h>
 
+#if defined(_ILP32)
 extern int select_large_fdset(int nfds, fd_set *in0, fd_set *out0, fd_set *ex0,
 	struct timeval *tv);
+#endif
 
-int
+long
 lx_select(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 	uintptr_t p5)
 {
@@ -95,10 +98,14 @@ lx_select(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 		start = gethrtime();
 	}
 
+#if defined(_LP64)
+	r = select(nfds, rfdsp, wfdsp, efdsp, tvp);
+#else
 	if (nfds >= FD_SETSIZE)
 		r = select_large_fdset(nfds, rfdsp, wfdsp, efdsp, tvp);
 	else
 		r = select(nfds, rfdsp, wfdsp, efdsp, tvp);
+#endif
 	if (r < 0)
 		return (-errno);
 
@@ -135,12 +142,22 @@ lx_select(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 	return (r);
 }
 
-int
+long
 lx_poll(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	struct pollfd	*lfds, *sfds;
 	nfds_t		nfds = (nfds_t)p2;
 	int		fds_size, i, rval, revents;
+
+	/*
+	 * Deal with the NULL fds[] case.
+	 */
+	if (nfds == 0 && p1 == NULL) {
+		if ((rval = poll(NULL, 0, (int)p3)) < 0)
+			return (-errno);
+
+		return (rval);
+	}
 
 	/*
 	 * Note: we are assuming that the Linux and Solaris pollfd
@@ -213,4 +230,36 @@ lx_poll(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 		return (-errno);
 
 	return (rval);
+}
+
+long
+lx_epoll_ctl(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
+{
+	int epfd = (int)p1;
+	int op = (int)p2;
+	int fd = (int)p3;
+	int rval;
+	struct epoll_event ev;
+
+	/*
+	 * Linux limits the max number of open files to 1m so we can also test
+	 * for this.
+	 */
+	if (epfd < 0 || fd < 0 || epfd > (1024 * 1024) || fd > (1024 * 1024))
+		return (-EBADF);
+
+	if (epfd == fd)
+		return (-EINVAL);
+
+	/*
+	 * Unlike the base epoll_ctl, we need to return a fault if the
+	 * event pointer is invalid.
+	 */
+	if (op != EPOLL_CTL_DEL) {
+		if (uucopy((void *)p4, &ev, sizeof (ev)) != 0)
+			return (-errno);
+	}
+
+	rval = epoll_ctl(epfd, op, fd, (struct epoll_event *)p4);
+	return ((rval < 0) ? -errno : rval);
 }

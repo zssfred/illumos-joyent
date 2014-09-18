@@ -33,6 +33,7 @@
 #include <rctl.h>
 #include <sys/lx_types.h>
 #include <sys/lx_misc.h>
+#include <sys/lx_syscall.h>
 
 #define	LX_RLIMIT_CPU		0
 #define	LX_RLIMIT_FSIZE		1
@@ -206,7 +207,7 @@ getrlimit_common(int resource, uint64_t *rlim_curp, uint64_t *rlim_maxp)
  * RLIM_INFINITY, which is smaller for the older version.  Modern code will
  * use this version by default.
  */
-int
+long
 lx_getrlimit(uintptr_t p1, uintptr_t p2)
 {
 	int resource = (int)p1;
@@ -245,7 +246,7 @@ lx_getrlimit(uintptr_t p1, uintptr_t p2)
  * getrlimit (variously called getrlimit or ugetrlimit) is the value of
  * RLIM_INFINITY, which is smaller for the older version.
  */
-int
+long
 lx_oldgetrlimit(uintptr_t p1, uintptr_t p2)
 {
 	int resource = (int)p1;
@@ -348,6 +349,11 @@ set_rctl(char *rctl, uint64_t value, rctl_priv_t priv)
 		if (rctlblk_get_value(oblk) == value)
 			return (0);
 
+		/* non-root cannot raise privileged limit */
+		if (priv == RCPRIV_PRIVILEGED && geteuid() != 0 &&
+		    value > rctlblk_get_value(oblk))
+			return (-EPERM);
+
 		bcopy(oblk, nblk, rctlblk_size());
 		rctlblk_set_value(nblk, value);
 		if (setrctl(rctl, oblk, nblk, RCTL_REPLACE) == -1)
@@ -412,13 +418,20 @@ setrlimit_common(int resource, uint64_t rlim_cur, uint64_t rlim_max)
 	if (strcmp(rctl, "process.max-sigqueue-size") == 0 && rlim_max > 8192)
 		return (0);
 
+	/*
+	 * Linux limits the max number of open files to 1m and there is a test
+	 * for this.
+	 */
+	if (resource == LX_RLIMIT_NOFILE && rlim_max > (1024 * 1024))
+		return (-EPERM);
+
 	if ((rv = set_rctl(rctl, rlim_max, RCPRIV_PRIVILEGED)) != 0)
 		return (rv);
 
 	return (set_rctl(rctl, rlim_cur, RCPRIV_BASIC));
 }
 
-int
+long
 lx_setrlimit(uintptr_t p1, uintptr_t p2)
 {
 	int resource = (int)p1;
@@ -441,7 +454,7 @@ lx_setrlimit(uintptr_t p1, uintptr_t p2)
 	if (rl.rlim_max == LX_RLIM_INFINITY_N)
 		rlim_max = LX_RLIM64_INFINITY;
 	else
-		rlim_max = rl.rlim_cur;
+		rlim_max = rl.rlim_max;
 
 	return (setrlimit_common(resource, rlim_cur, rlim_max));
 }
@@ -454,7 +467,7 @@ lx_setrlimit(uintptr_t p1, uintptr_t p2)
  *
  * If pid is 0, then the call applies to the calling process.
  */
-int
+long
 lx_prlimit64(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
 	pid_t pid = (pid_t)p1;
@@ -507,7 +520,7 @@ lx_prlimit64(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
  * We lucked out here.  Linux and Solaris have exactly the same
  * rusage structures.
  */
-int
+long
 lx_getrusage(uintptr_t p1, uintptr_t p2)
 {
 	int who = (int)p1;
@@ -515,9 +528,11 @@ lx_getrusage(uintptr_t p1, uintptr_t p2)
 	int rv, swho;
 
 	if (who == LX_RUSAGE_SELF)
-		swho = _RUSAGESYS_GETRUSAGE;
+		swho = RUSAGE_SELF;
 	else if (who == LX_RUSAGE_CHILDREN)
-		swho = _RUSAGESYS_GETRUSAGE_CHLD;
+		swho = RUSAGE_CHILDREN;
+	else if (who == LX_RUSAGE_THREAD)
+		swho = RUSAGE_LWP;
 	else
 		return (-EINVAL);
 

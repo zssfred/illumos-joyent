@@ -3705,12 +3705,7 @@ retry_firstlock:
 		error = 0;
 
 	vnevent_rename_src(ITOV(sip), sdvp, snm, ct);
-	/*
-	 * Notify the target directory of the rename event
-	 * if source and target directories are not the same.
-	 */
-	if (sdvp != tdvp)
-		vnevent_rename_dest_dir(tdvp, ct);
+	vnevent_rename_dest_dir(tdvp, ITOV(sip), tnm, ct);
 
 errout:
 	if (slot.fbp)
@@ -5967,11 +5962,11 @@ ufs_pageio(struct vnode *vp, page_t *pp, u_offset_t io_off, size_t io_len,
 			}
 			return (vmpss ? EIO : EINVAL);
 		}
-		atomic_add_long(&ulp->ul_vnops_cnt, 1);
+		atomic_inc_ulong(&ulp->ul_vnops_cnt);
 		if (pp == NULL)
 			mutex_exit(&ulp->ul_lock);
 		if (ufs_quiesce_pend) {
-			if (!atomic_add_long_nv(&ulp->ul_vnops_cnt, -1))
+			if (!atomic_dec_ulong_nv(&ulp->ul_vnops_cnt))
 				cv_broadcast(&ulp->ul_cv);
 			return (vmpss ? EIO : EINVAL);
 		}
@@ -5990,7 +5985,7 @@ ufs_pageio(struct vnode *vp, page_t *pp, u_offset_t io_off, size_t io_len,
 		if (!vmpss) {
 			rw_enter(&ip->i_contents, RW_READER);
 		} else if (!rw_tryenter(&ip->i_contents, RW_READER)) {
-			if (!atomic_add_long_nv(&ulp->ul_vnops_cnt, -1))
+			if (!atomic_dec_ulong_nv(&ulp->ul_vnops_cnt))
 				cv_broadcast(&ulp->ul_cv);
 			return (EDEADLK);
 		}
@@ -6003,7 +5998,7 @@ ufs_pageio(struct vnode *vp, page_t *pp, u_offset_t io_off, size_t io_len,
 	if (vmpss && btopr(io_off + io_len) > btopr(ip->i_size)) {
 		if (dolock)
 			rw_exit(&ip->i_contents);
-		if (!atomic_add_long_nv(&ulp->ul_vnops_cnt, -1))
+		if (!atomic_dec_ulong_nv(&ulp->ul_vnops_cnt))
 			cv_broadcast(&ulp->ul_cv);
 		return (EFAULT);
 	}
@@ -6016,7 +6011,7 @@ ufs_pageio(struct vnode *vp, page_t *pp, u_offset_t io_off, size_t io_len,
 		}
 		if (dolock)
 			rw_exit(&ip->i_contents);
-		if (!atomic_add_long_nv(&ulp->ul_vnops_cnt, -1))
+		if (!atomic_dec_ulong_nv(&ulp->ul_vnops_cnt))
 			cv_broadcast(&ulp->ul_cv);
 		return (err);
 	}
@@ -6123,7 +6118,7 @@ ufs_pageio(struct vnode *vp, page_t *pp, u_offset_t io_off, size_t io_len,
 
 	if (dolock)
 		rw_exit(&ip->i_contents);
-	if (vmpss && !atomic_add_long_nv(&ulp->ul_vnops_cnt, -1))
+	if (vmpss && !atomic_dec_ulong_nv(&ulp->ul_vnops_cnt))
 		cv_broadcast(&ulp->ul_cv);
 	return (err);
 }

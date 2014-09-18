@@ -65,6 +65,7 @@
 #include <sys/zone.h>
 #include <sys/pghw.h>
 #include <sys/vfs_opreg.h>
+#include <sys/param.h>
 
 /* Dependent on procfs */
 extern kthread_t *prchoose(proc_t *);
@@ -103,12 +104,20 @@ static vnode_t *lxpr_lookup_piddir(vnode_t *, char *);
 static vnode_t *lxpr_lookup_not_a_dir(vnode_t *, char *);
 static vnode_t *lxpr_lookup_fddir(vnode_t *, char *);
 static vnode_t *lxpr_lookup_netdir(vnode_t *, char *);
+static vnode_t *lxpr_lookup_sysdir(vnode_t *, char *);
+static vnode_t *lxpr_lookup_sys_fsdir(vnode_t *, char *);
+static vnode_t *lxpr_lookup_sys_fs_inotifydir(vnode_t *, char *);
+static vnode_t *lxpr_lookup_sys_kerneldir(vnode_t *, char *);
 
 static int lxpr_readdir_procdir(lxpr_node_t *, uio_t *, int *);
 static int lxpr_readdir_piddir(lxpr_node_t *, uio_t *, int *);
 static int lxpr_readdir_not_a_dir(lxpr_node_t *, uio_t *, int *);
 static int lxpr_readdir_fddir(lxpr_node_t *, uio_t *, int *);
 static int lxpr_readdir_netdir(lxpr_node_t *, uio_t *, int *);
+static int lxpr_readdir_sysdir(lxpr_node_t *, uio_t *, int *);
+static int lxpr_readdir_sys_fsdir(lxpr_node_t *, uio_t *, int *);
+static int lxpr_readdir_sys_fs_inotifydir(lxpr_node_t *, uio_t *, int *);
+static int lxpr_readdir_sys_kerneldir(lxpr_node_t *, uio_t *, int *);
 
 static void lxpr_read_invalid(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_empty(lxpr_node_t *, lxpr_uiobuf_t *);
@@ -149,12 +158,27 @@ static void lxpr_read_net_stat(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_tcp(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_udp(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_unix(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_sys_fs_inotify_max_queued_events(lxpr_node_t *,
+    lxpr_uiobuf_t *);
+static void lxpr_read_sys_fs_inotify_max_user_instances(lxpr_node_t *,
+    lxpr_uiobuf_t *);
+static void lxpr_read_sys_fs_inotify_max_user_watches(lxpr_node_t *,
+    lxpr_uiobuf_t *);
+static void lxpr_read_sys_kernel_msgmni(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_sys_kernel_ngroups_max(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_sys_kernel_pid_max(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_sys_kernel_shmmax(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_sys_kernel_threads_max(lxpr_node_t *, lxpr_uiobuf_t *);
 
 /*
  * Simple conversion
  */
 #define	btok(x)	((x) >> 10)			/* bytes to kbytes */
 #define	ptok(x)	((x) << (PAGESHIFT - 10))	/* pages to kbytes */
+
+extern rctl_hndl_t rc_zone_msgmni;
+extern rctl_hndl_t rc_zone_shmmax;
+#define	FOURGB	4294967295
 
 /*
  * The lx /proc vnode operations vector
@@ -197,6 +221,7 @@ static lxpr_dirent_t lx_procdir[] = {
 	{ LXPR_PARTITIONS,	"partitions" },
 	{ LXPR_SELF,		"self" },
 	{ LXPR_STAT,		"stat" },
+	{ LXPR_SYSDIR,		"sys" },
 	{ LXPR_UPTIME,		"uptime" },
 	{ LXPR_VERSION,		"version" }
 };
@@ -251,113 +276,48 @@ static lxpr_dirent_t netdir[] = {
 #define	NETDIRFILES	(sizeof (netdir) / sizeof (netdir[0]))
 
 /*
- * These are the major signal number differences between Linux and native:
- *
- * 	====================================
- * 	| Number | Linux      | Native     |
- * 	| ====== | =========  | ========== |
- *	|    7   | SIGBUS     | SIGEMT     |
- *	|   10   | SIGUSR1    | SIGBUS     |
- *	|   12   | SIGUSR2    | SIGSYS     |
- *	|   16   | SIGSTKFLT  | SIGUSR1    |
- *	|   17   | SIGCHLD    | SIGUSR2    |
- * 	|   18   | SIGCONT    | SIGCHLD    |
- *	|   19   | SIGSTOP    | SIGPWR     |
- * 	|   20   | SIGTSTP    | SIGWINCH   |
- * 	|   21   | SIGTTIN    | SIGURG     |
- * 	|   22   | SIGTTOU    | SIGPOLL    |
- *	|   23   | SIGURG     | SIGSTOP    |
- * 	|   24   | SIGXCPU    | SIGTSTP    |
- *	|   25   | SIGXFSZ    | SIGCONT    |
- *	|   26   | SIGVTALARM | SIGTTIN    |
- *	|   27   | SIGPROF    | SIGTTOU    |
- *	|   28   | SIGWINCH   | SIGVTALARM |
- *	|   29   | SIGPOLL    | SIGPROF    |
- *	|   30   | SIGPWR     | SIGXCPU    |
- *	|   31   | SIGSYS     | SIGXFSZ    |
- * 	====================================
- *
- * Not every Linux signal maps to a native signal, nor does every native
- * signal map to a Linux counterpart. However, when signals do map, the
- * mapping is unique.
+ * contents of /proc/sys directory
  */
-static int
-lxpr_sigmap[NSIG] = {
-	0,
-	LX_SIGHUP,
-	LX_SIGINT,
-	LX_SIGQUIT,
-	LX_SIGILL,
-	LX_SIGTRAP,
-	LX_SIGABRT,
-	LX_SIGSTKFLT,
-	LX_SIGFPE,
-	LX_SIGKILL,
-	LX_SIGBUS,
-	LX_SIGSEGV,
-	LX_SIGSYS,
-	LX_SIGPIPE,
-	LX_SIGALRM,
-	LX_SIGTERM,
-	LX_SIGUSR1,
-	LX_SIGUSR2,
-	LX_SIGCHLD,
-	LX_SIGPWR,
-	LX_SIGWINCH,
-	LX_SIGURG,
-	LX_SIGPOLL,
-	LX_SIGSTOP,
-	LX_SIGTSTP,
-	LX_SIGCONT,
-	LX_SIGTTIN,
-	LX_SIGTTOU,
-	LX_SIGVTALRM,
-	LX_SIGPROF,
-	LX_SIGXCPU,
-	LX_SIGXFSZ,
-	-1,			/* 32:  illumos SIGWAITING */
-	-1,			/* 33:  illumos SIGLWP */
-	-1,			/* 34:  illumos SIGFREEZE */
-	-1,			/* 35:  illumos SIGTHAW */
-	-1,			/* 36:  illumos SIGCANCEL */
-	-1,			/* 37:  illumos SIGLOST */
-	-1,			/* 38:  illumos SIGXRES */
-	-1,			/* 39:  illumos SIGJVM1 */
-	-1,			/* 40:  illumos SIGJVM2 */
-	-1,			/* 41:  illumos SIGINFO */
-	LX_SIGRTMIN,		/* 42:  illumos _SIGRTMIN */
-	LX_SIGRTMIN + 1,
-	LX_SIGRTMIN + 2,
-	LX_SIGRTMIN + 3,
-	LX_SIGRTMIN + 4,
-	LX_SIGRTMIN + 5,
-	LX_SIGRTMIN + 6,
-	LX_SIGRTMIN + 7,
-	LX_SIGRTMIN + 8,
-	LX_SIGRTMIN + 9,
-	LX_SIGRTMIN + 10,
-	LX_SIGRTMIN + 11,
-	LX_SIGRTMIN + 12,
-	LX_SIGRTMIN + 13,
-	LX_SIGRTMIN + 14,
-	LX_SIGRTMIN + 15,
-	LX_SIGRTMIN + 16,
-	LX_SIGRTMIN + 17,
-	LX_SIGRTMIN + 18,
-	LX_SIGRTMIN + 19,
-	LX_SIGRTMIN + 20,
-	LX_SIGRTMIN + 21,
-	LX_SIGRTMIN + 22,
-	LX_SIGRTMIN + 23,
-	LX_SIGRTMIN + 24,
-	LX_SIGRTMIN + 25,
-	LX_SIGRTMIN + 26,
-	LX_SIGRTMIN + 27,
-	LX_SIGRTMIN + 28,
-	LX_SIGRTMIN + 29,
-	LX_SIGRTMIN + 30,
-	LX_SIGRTMAX
+static lxpr_dirent_t sysdir[] = {
+	{ LXPR_SYS_FSDIR,	"fs" },
+	{ LXPR_SYS_KERNELDIR,	"kernel" },
 };
+
+#define	SYSDIRFILES	(sizeof (sysdir) / sizeof (sysdir[0]))
+
+/*
+ * contents of /proc/sys/fs directory
+ */
+static lxpr_dirent_t sys_fsdir[] = {
+	{ LXPR_SYS_FS_INOTIFYDIR,	"inotify" },
+};
+
+#define	SYS_FSDIRFILES (sizeof (sys_fsdir) / sizeof (sys_fsdir[0]))
+
+/*
+ * contents of /proc/sys/fs/inotify directory
+ */
+static lxpr_dirent_t sys_fs_inotifydir[] = {
+	{ LXPR_SYS_FS_INOTIFY_MAX_QUEUED_EVENTS,	"max_queued_events" },
+	{ LXPR_SYS_FS_INOTIFY_MAX_USER_INSTANCES,	"max_user_instances" },
+	{ LXPR_SYS_FS_INOTIFY_MAX_USER_WATCHES,		"max_user_watches" },
+};
+
+#define	SYS_FS_INOTIFYDIRFILES \
+	(sizeof (sys_fs_inotifydir) / sizeof (sys_fs_inotifydir[0]))
+
+/*
+ * contents of /proc/sys/kernel directory
+ */
+static lxpr_dirent_t sys_kerneldir[] = {
+	{ LXPR_SYS_KERNEL_MSGMNI,	"msgmni" },
+	{ LXPR_SYS_KERNEL_NGROUPS_MAX,	"ngroups_max" },
+	{ LXPR_SYS_KERNEL_PID_MAX,	"pid_max" },
+	{ LXPR_SYS_KERNEL_SHMMAX,	"shmmax" },
+	{ LXPR_SYS_KERNEL_THREADS_MAX,	"threads-max" },
+};
+
+#define	SYS_KERNELDIRFILES (sizeof (sys_kerneldir) / sizeof (sys_kerneldir[0]))
 
 /*
  * lxpr_open(): Vnode operation for VOP_OPEN()
@@ -522,6 +482,18 @@ static void (*lxpr_read_function[LXPR_NFILES])() = {
 	lxpr_read_partitions,		/* /proc/partitions	*/
 	lxpr_read_invalid,		/* /proc/self		*/
 	lxpr_read_stat,			/* /proc/stat		*/
+	lxpr_read_invalid,		/* /proc/sys		*/
+	lxpr_read_invalid,		/* /proc/sys/fs		*/
+	lxpr_read_invalid,		/* /proc/sys/fs/inotify	*/
+	lxpr_read_sys_fs_inotify_max_queued_events, /* max_queued_events */
+	lxpr_read_sys_fs_inotify_max_user_instances, /* max_user_instances */
+	lxpr_read_sys_fs_inotify_max_user_watches, /* max_user_watches */
+	lxpr_read_invalid,		/* /proc/sys/kernel	*/
+	lxpr_read_sys_kernel_msgmni,	/* /proc/sys/kernel/msgmni */
+	lxpr_read_sys_kernel_ngroups_max, /* /proc/sys/kernel/ngroups_max */
+	lxpr_read_sys_kernel_pid_max,	/* /proc/sys/kernel/pid_max */
+	lxpr_read_sys_kernel_shmmax,	/* /proc/sys/kernel/shmmax */
+	lxpr_read_sys_kernel_threads_max, /* /proc/sys/kernel/threads-max */
 	lxpr_read_uptime,		/* /proc/uptime		*/
 	lxpr_read_version,		/* /proc/version	*/
 };
@@ -580,6 +552,18 @@ static vnode_t *(*lxpr_lookup_function[LXPR_NFILES])() = {
 	lxpr_lookup_not_a_dir,		/* /proc/partitions	*/
 	lxpr_lookup_not_a_dir,		/* /proc/self		*/
 	lxpr_lookup_not_a_dir,		/* /proc/stat		*/
+	lxpr_lookup_sysdir,		/* /proc/sys		*/
+	lxpr_lookup_sys_fsdir,		/* /proc/sys/fs		*/
+	lxpr_lookup_sys_fs_inotifydir,	/* /proc/sys/fs/inotify	*/
+	lxpr_lookup_not_a_dir,		/* .../inotify/max_queued_events */
+	lxpr_lookup_not_a_dir,		/* .../inotify/max_user_instances */
+	lxpr_lookup_not_a_dir,		/* .../inotify/max_user_watches */
+	lxpr_lookup_sys_kerneldir,	/* /proc/sys/kernel	*/
+	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/msgmni */
+	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/ngroups_max */
+	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/pid_max */
+	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/shmmax */
+	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/threads-max */
 	lxpr_lookup_not_a_dir,		/* /proc/uptime		*/
 	lxpr_lookup_not_a_dir,		/* /proc/version	*/
 };
@@ -638,6 +622,18 @@ static int (*lxpr_readdir_function[LXPR_NFILES])() = {
 	lxpr_readdir_not_a_dir,		/* /proc/partitions	*/
 	lxpr_readdir_not_a_dir,		/* /proc/self		*/
 	lxpr_readdir_not_a_dir,		/* /proc/stat		*/
+	lxpr_readdir_sysdir,		/* /proc/sys		*/
+	lxpr_readdir_sys_fsdir,		/* /proc/sys/fs		*/
+	lxpr_readdir_sys_fs_inotifydir,	/* /proc/sys/fs/inotify	*/
+	lxpr_readdir_not_a_dir,		/* .../inotify/max_queued_events */
+	lxpr_readdir_not_a_dir,		/* .../inotify/max_user_instances */
+	lxpr_readdir_not_a_dir,		/* .../inotify/max_user_watches	*/
+	lxpr_readdir_sys_kerneldir,	/* /proc/sys/kernel	*/
+	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/msgmni */
+	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/ngroups_max */
+	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/pid_max */
+	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/shmmax */
+	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/threads-max */
 	lxpr_readdir_not_a_dir,		/* /proc/uptime		*/
 	lxpr_readdir_not_a_dir,		/* /proc/version	*/
 };
@@ -1062,6 +1058,41 @@ lxpr_read_pid_statm(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 }
 
 /*
+ * Derived from procfs prgetxmap32
+ */
+static size_t
+get_locked(proc_t *p)
+{
+	struct as *as = p->p_as;
+	struct seg *seg;
+	uint_t nlocked = 0;
+
+	ASSERT(as != &kas && AS_READ_HELD(as, &as->a_lock));
+
+	if ((seg = AS_SEGFIRST(as)) == NULL)
+		return (0);
+
+	do {
+		char *parr;
+		uint64_t npages;
+		uint64_t pagenum;
+
+		npages = ((uintptr_t)seg->s_size) >> PAGESHIFT;
+		parr = kmem_zalloc(npages, KM_SLEEP);
+
+		SEGOP_INCORE(seg, seg->s_base, seg->s_size, parr);
+
+		for (pagenum = 0; pagenum < npages; pagenum++) {
+			if (parr[pagenum] & SEG_PAGE_LOCKED)
+				nlocked++;
+		}
+		kmem_free(parr, npages);
+	} while ((seg = AS_SEGNEXT(as, seg)) != NULL);
+
+	return (nlocked);
+}
+
+/*
  * lxpr_read_pid_status(): status file
  */
 static void
@@ -1077,6 +1108,7 @@ lxpr_read_pid_status(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 	char *status;
 	pid_t pid, ppid;
 	size_t vsize;
+	size_t nlocked;
 	size_t rss;
 	k_sigset_t current, ignore, handle;
 	int    i, lx_sig;
@@ -1185,6 +1217,7 @@ lxpr_read_pid_status(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 		AS_LOCK_ENTER(as, &as->a_lock, RW_READER);
 		vsize = as->a_resvsize;
 		rss = rm_asrss(as);
+		nlocked = get_locked(p);
 		AS_LOCK_EXIT(as, &as->a_lock);
 		mutex_enter(&p->p_lock);
 
@@ -1198,7 +1231,7 @@ lxpr_read_pid_status(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 		    "VmExe:\t%8lu kB\n"
 		    "VmLib:\t%8lu kB",
 		    btok(vsize),
-		    0l,
+		    ptok(nlocked),
 		    ptok(rss),
 		    0l,
 		    btok(p->p_stksize),
@@ -1211,9 +1244,9 @@ lxpr_read_pid_status(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 	sigemptyset(&handle);
 
 	for (i = 1; i < NSIG; i++) {
-		lx_sig = lxpr_sigmap[i];
+		lx_sig = stol_signo[i];
 
-		if ((lx_sig > 0) && (lx_sig < LX_NSIG)) {
+		if ((lx_sig > 0) && (lx_sig <= LX_NSIG)) {
 			if (sigismember(&p->p_sig, i))
 				sigaddset(&current, lx_sig);
 
@@ -1510,7 +1543,8 @@ lxpr_read_net_unix(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
  * lxpr_read_kmsg(): read the contents of the kernel message queue. We
  * translate this into the reception of console messages for this zone; each
  * read copies out a single zone console message, or blocks until the next one
- * is produced.
+ * is produced, unless we're open non-blocking, in which case we return after
+ * 1ms.
  */
 
 #define	LX_KMSG_PRI	"<0>"
@@ -1520,8 +1554,16 @@ lxpr_read_kmsg(lxpr_node_t *lxpnp, struct lxpr_uiobuf *uiobuf)
 {
 	ldi_handle_t	lh = lxpnp->lxpr_cons_ldih;
 	mblk_t		*mp;
+	timestruc_t	to;
+	timestruc_t	*tp = NULL;
 
-	if (ldi_getmsg(lh, &mp, NULL) == 0) {
+	if (lxpr_uiobuf_nonblock(uiobuf)) {
+		to.tv_sec = 0;
+		to.tv_nsec = 1000000; /* 1msec */
+		tp = &to;
+	}
+
+	if (ldi_getmsg(lh, &mp, tp) == 0) {
 		/*
 		 * lx procfs doesn't like successive reads to the same file
 		 * descriptor unless we do an explicit rewind each time.
@@ -1877,8 +1919,8 @@ lxpr_read_stat(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 	ulong_t sys_cum  = 0;
 	ulong_t user_cum = 0;
 	ulong_t irq_cum = 0;
-	uint_t cpu_nrunnable_cum = 0;
-	uint_t w_io_cum = 0;
+	ulong_t cpu_nrunnable_cum = 0;
+	ulong_t w_io_cum = 0;
 
 	ulong_t pgpgin_cum    = 0;
 	ulong_t pgpgout_cum   = 0;
@@ -1946,12 +1988,12 @@ lxpr_read_stat(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 
 	if (strncmp(lx_kern_version, "2.4", 3) != 0) {
 		lxpr_uiobuf_printf(uiobuf,
-		    "cpu %ld %ld %ld %ld %ld %ld %ld\n",
-		    user_cum, 0, sys_cum, idle_cum, 0, irq_cum, 0);
+		    "cpu %lu %lu %lu %lu %lu %lu %lu\n",
+		    user_cum, 0L, sys_cum, idle_cum, 0L, irq_cum, 0L);
 	} else {
 		lxpr_uiobuf_printf(uiobuf,
-		    "cpu %ld %ld %ld %ld\n",
-		    user_cum, 0, sys_cum, idle_cum);
+		    "cpu %lu %lu %lu %lu\n",
+		    user_cum, 0L, sys_cum, idle_cum);
 	}
 
 	/* Do per processor stats */
@@ -1985,14 +2027,14 @@ lxpr_read_stat(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 
 		if (strncmp(lx_kern_version, "2.4", 3) != 0) {
 			lxpr_uiobuf_printf(uiobuf,
-			    "cpu%d %ld %ld %ld %ld %ld %ld %ld\n",
-			    cp->cpu_id, user_ticks, 0, sys_ticks, idle_ticks,
-			    0, irq_ticks, 0);
+			    "cpu%d %lu %lu %lu %lu %lu %lu %lu\n",
+			    cp->cpu_id, user_ticks, 0L, sys_ticks, idle_ticks,
+			    0L, irq_ticks, 0L);
 		} else {
 			lxpr_uiobuf_printf(uiobuf,
-			    "cpu%d %ld %ld %ld %ld\n",
+			    "cpu%d %lu %lu %lu %lu\n",
 			    cp->cpu_id,
-			    user_ticks, 0, sys_ticks, idle_ticks);
+			    user_ticks, 0L, sys_ticks, idle_ticks);
 		}
 
 		if (pools_enabled)
@@ -2036,6 +2078,91 @@ lxpr_read_stat(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 		    boot_time,
 		    forks_cum);
 	}
+}
+
+/*
+ * inotify tunables exported via /proc.
+ */
+extern int inotify_maxevents;
+extern int inotify_maxinstances;
+extern int inotify_maxwatches;
+
+static void
+lxpr_read_sys_fs_inotify_max_queued_events(lxpr_node_t *lxpnp,
+    lxpr_uiobuf_t *uiobuf)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_FS_INOTIFY_MAX_QUEUED_EVENTS);
+	lxpr_uiobuf_printf(uiobuf, "%d\n", inotify_maxevents);
+}
+
+static void
+lxpr_read_sys_fs_inotify_max_user_instances(lxpr_node_t *lxpnp,
+    lxpr_uiobuf_t *uiobuf)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_FS_INOTIFY_MAX_USER_INSTANCES);
+	lxpr_uiobuf_printf(uiobuf, "%d\n", inotify_maxinstances);
+}
+
+static void
+lxpr_read_sys_fs_inotify_max_user_watches(lxpr_node_t *lxpnp,
+    lxpr_uiobuf_t *uiobuf)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_FS_INOTIFY_MAX_USER_WATCHES);
+	lxpr_uiobuf_printf(uiobuf, "%d\n", inotify_maxwatches);
+}
+
+static void
+lxpr_read_sys_kernel_msgmni(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	rctl_qty_t val;
+
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_MSGMNI);
+
+	mutex_enter(&curproc->p_lock);
+	val = rctl_enforced_value(rc_zone_msgmni,
+	    curproc->p_zone->zone_rctls, curproc);
+	mutex_exit(&curproc->p_lock);
+
+	lxpr_uiobuf_printf(uiobuf, "%u\n", (uint_t)val);
+}
+
+static void
+lxpr_read_sys_kernel_ngroups_max(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_NGROUPS_MAX);
+	lxpr_uiobuf_printf(uiobuf, "%d\n", ngroups_max);
+}
+
+static void
+lxpr_read_sys_kernel_pid_max(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_PID_MAX);
+	lxpr_uiobuf_printf(uiobuf, "%d\n", maxpid);
+}
+
+static void
+lxpr_read_sys_kernel_shmmax(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	rctl_qty_t val;
+
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_SHMMAX);
+
+	mutex_enter(&curproc->p_lock);
+	val = rctl_enforced_value(rc_zone_shmmax,
+	    curproc->p_zone->zone_rctls, curproc);
+	mutex_exit(&curproc->p_lock);
+
+	if (val > FOURGB)
+		val = FOURGB;
+
+	lxpr_uiobuf_printf(uiobuf, "%u\n", (uint_t)val);
+}
+
+static void
+lxpr_read_sys_kernel_threads_max(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_THREADS_MAX);
+	lxpr_uiobuf_printf(uiobuf, "%d\n", curproc->p_zone->zone_nlwps_ctl);
 }
 
 /*
@@ -2761,6 +2888,37 @@ lxpr_lookup_procdir(vnode_t *dp, char *comp)
 	return (lxpr_lookup_common(dp, comp, NULL, lx_procdir, PROCDIRFILES));
 }
 
+static vnode_t *
+lxpr_lookup_sysdir(vnode_t *dp, char *comp)
+{
+	ASSERT(VTOLXP(dp)->lxpr_type == LXPR_SYSDIR);
+	return (lxpr_lookup_common(dp, comp, NULL, sysdir, SYSDIRFILES));
+}
+
+static vnode_t *
+lxpr_lookup_sys_kerneldir(vnode_t *dp, char *comp)
+{
+	ASSERT(VTOLXP(dp)->lxpr_type == LXPR_SYS_KERNELDIR);
+	return (lxpr_lookup_common(dp, comp, NULL, sys_kerneldir,
+	    SYS_KERNELDIRFILES));
+}
+
+static vnode_t *
+lxpr_lookup_sys_fsdir(vnode_t *dp, char *comp)
+{
+	ASSERT(VTOLXP(dp)->lxpr_type == LXPR_SYS_FSDIR);
+	return (lxpr_lookup_common(dp, comp, NULL, sys_fsdir,
+	    SYS_FSDIRFILES));
+}
+
+static vnode_t *
+lxpr_lookup_sys_fs_inotifydir(vnode_t *dp, char *comp)
+{
+	ASSERT(VTOLXP(dp)->lxpr_type == LXPR_SYS_FS_INOTIFYDIR);
+	return (lxpr_lookup_common(dp, comp, NULL, sys_fs_inotifydir,
+	    SYS_FS_INOTIFYDIRFILES));
+}
+
 /*
  * lxpr_readdir(): Vnode operation for VOP_READDIR()
  */
@@ -3192,6 +3350,36 @@ out:
 	return (error);
 }
 
+static int
+lxpr_readdir_sysdir(lxpr_node_t *lxpnp, uio_t *uiop, int *eofp)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYSDIR);
+	return (lxpr_readdir_common(lxpnp, uiop, eofp, sysdir, SYSDIRFILES));
+}
+
+static int
+lxpr_readdir_sys_fsdir(lxpr_node_t *lxpnp, uio_t *uiop, int *eofp)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_FSDIR);
+	return (lxpr_readdir_common(lxpnp, uiop, eofp, sys_fsdir,
+	    SYS_FSDIRFILES));
+}
+
+static int
+lxpr_readdir_sys_fs_inotifydir(lxpr_node_t *lxpnp, uio_t *uiop, int *eofp)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_FS_INOTIFYDIR);
+	return (lxpr_readdir_common(lxpnp, uiop, eofp, sys_fs_inotifydir,
+	    SYS_FS_INOTIFYDIRFILES));
+}
+
+static int
+lxpr_readdir_sys_kerneldir(lxpr_node_t *lxpnp, uio_t *uiop, int *eofp)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNELDIR);
+	return (lxpr_readdir_common(lxpnp, uiop, eofp, sys_kerneldir,
+	    SYS_KERNELDIRFILES));
+}
 
 /*
  * lxpr_readlink(): Vnode operation for VOP_READLINK()

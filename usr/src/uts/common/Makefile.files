@@ -498,6 +498,8 @@ LX_PTM_OBJS +=	lx_ptm.o
 
 LX_AUDIO_OBJS += lx_audio.o
 
+LX_NETLINK_OBJS +=	lx_netlink.o
+
 MII_OBJS +=	mii.o mii_cicada.o mii_natsemi.o mii_intel.o mii_qualsemi.o \
 		mii_marvell.o mii_realtek.o mii_other.o
 
@@ -1014,6 +1016,8 @@ DEVPOLL_OBJS += devpoll.o
 DEVPOOL_OBJS += devpool.o
 
 I8042_OBJS +=	i8042.o
+
+INOTIFY_OBJS +=	inotify.o
 
 KB8042_OBJS +=	\
 		at_keyprocess.o	\
@@ -2115,3 +2119,8 @@ AXF_OBJS = axf_usbgem.o
 UDMF_OBJS = udmf_usbgem.o
 URF_OBJS = urf_usbgem.o
 UPF_OBJS = upf_usbgem.o
+
+#
+#	NFP objects
+#
+NFP_OBJS = hostif.o osif.o drvlist.o i21555.o i21285.o i21555d.o

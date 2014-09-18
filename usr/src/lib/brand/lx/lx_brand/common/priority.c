@@ -22,9 +22,8 @@
 /*
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright 2014 Joyent, Inc.  All rights reserved.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <errno.h>
 #include <sys/types.h>
@@ -35,10 +34,10 @@
 #include <sys/resource.h>
 #include <sys/lx_misc.h>
 
-int
+long
 lx_getpriority(uintptr_t p1, uintptr_t p2)
 {
-	uint_t	which = (int)p1;
+	int	which = (int)p1;
 	id_t	who  = (id_t)p2;
 	int	ret;
 
@@ -46,7 +45,7 @@ lx_getpriority(uintptr_t p1, uintptr_t p2)
 	 * The only valid values for 'which' are positive integers, and unlike
 	 * Solaris, linux doesn't support anything past PRIO_USER.
 	 */
-	if (which > PRIO_USER)
+	if (which < 0 || which > PRIO_USER)
 		return (-EINVAL);
 
 	lx_debug("\tgetpriority(%d, %d)", which, who);
@@ -57,8 +56,15 @@ lx_getpriority(uintptr_t p1, uintptr_t p2)
 		who = zoneinit_pid;
 
 	ret = getpriority(which, who);
-	if (ret == -1 && errno != 0)
+	if (ret == -1 && errno != 0) {
+		/*
+		 * Linux does not return EINVAL for invalid 'who' values, it
+		 * returns ESRCH instead. We already validated 'which' above.
+		 */
+		if (errno == EINVAL)
+			errno = ESRCH;
 		return (-errno);
+	}
 
 	/*
 	 * The return value of the getpriority syscall is biased by 20 to avoid
@@ -67,7 +73,7 @@ lx_getpriority(uintptr_t p1, uintptr_t p2)
 	return (20 - ret);
 }
 
-int
+long
 lx_setpriority(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int which = (int)p1;

@@ -60,38 +60,33 @@
 #define	ABST_PRFX "/tmp/.ABSK_"
 #define	ABST_PRFX_LEN 11
 
-/*
- * This string is used as the name of our emulated netlink socket which is
- * really a unix socket in /tmp.
- */
-#define	NETLINK_NAME "/tmp/.LX_Netlink_Sock"
-
 typedef enum {
 	lxa_none,
-	lxa_abstract,
-	lxa_netlink
+	lxa_abstract
 } lx_addr_type_t;
 
-static int lx_socket(ulong_t *);
-static int lx_bind(ulong_t *);
-static int lx_connect(ulong_t *);
-static int lx_listen(ulong_t *);
-static int lx_accept(ulong_t *);
-static int lx_getsockname(ulong_t *);
-static int lx_getpeername(ulong_t *);
-static int lx_socketpair(ulong_t *);
+#ifdef __i386
+
+static int lx_socket32(ulong_t *);
+static int lx_bind32(ulong_t *);
+static int lx_connect32(ulong_t *);
+static int lx_listen32(ulong_t *);
+static int lx_accept32(ulong_t *);
+static int lx_getsockname32(ulong_t *);
+static int lx_getpeername32(ulong_t *);
+static int lx_socketpair32(ulong_t *);
 static int lx_send(ulong_t *);
 static int lx_recv(ulong_t *);
-static int lx_sendto(ulong_t *);
-static int lx_recvfrom(ulong_t *);
-static int lx_shutdown(ulong_t *);
-static int lx_setsockopt(ulong_t *);
-static int lx_getsockopt(ulong_t *);
-static int lx_sendmsg(ulong_t *);
-static int lx_recvmsg(ulong_t *);
-static int lx_accept4(ulong_t *);
-static int lx_recvmmsg(ulong_t *);
-static int lx_sendmmsg(ulong_t *);
+static int lx_sendto32(ulong_t *);
+static int lx_recvfrom32(ulong_t *);
+static int lx_shutdown32(ulong_t *);
+static int lx_setsockopt32(ulong_t *);
+static int lx_getsockopt32(ulong_t *);
+static int lx_sendmsg32(ulong_t *);
+static int lx_recvmsg32(ulong_t *);
+static int lx_accept4_32(ulong_t *);
+static int lx_recvmmsg32(ulong_t *);
+static int lx_sendmmsg32(ulong_t *);
 
 typedef int (*sockfn_t)(ulong_t *);
 
@@ -99,27 +94,28 @@ static struct {
 	sockfn_t s_fn;	/* Function implementing the subcommand */
 	int s_nargs;	/* Number of arguments the function takes */
 } sockfns[] = {
-	lx_socket, 3,
-	lx_bind, 3,
-	lx_connect, 3,
-	lx_listen, 2,
-	lx_accept, 3,
-	lx_getsockname, 3,
-	lx_getpeername, 3,
-	lx_socketpair, 4,
+	lx_socket32, 3,
+	lx_bind32, 3,
+	lx_connect32, 3,
+	lx_listen32, 2,
+	lx_accept32, 3,
+	lx_getsockname32, 3,
+	lx_getpeername32, 3,
+	lx_socketpair32, 4,
 	lx_send, 4,
 	lx_recv, 4,
-	lx_sendto, 6,
-	lx_recvfrom, 6,
-	lx_shutdown, 2,
-	lx_setsockopt, 5,
-	lx_getsockopt, 5,
-	lx_sendmsg, 3,
-	lx_recvmsg, 3,
-	lx_accept4, 4,
-	lx_recvmmsg, 5,
-	lx_sendmmsg, 4
+	lx_sendto32, 6,
+	lx_recvfrom32, 6,
+	lx_shutdown32, 2,
+	lx_setsockopt32, 5,
+	lx_getsockopt32, 5,
+	lx_sendmsg32, 3,
+	lx_recvmsg32, 3,
+	lx_accept4_32, 4,
+	lx_recvmmsg32, 5,
+	lx_sendmmsg32, 4
 };
+#endif /* __i386 */
 
 /*
  * What follows are a series of tables we use to translate Linux constants
@@ -131,7 +127,7 @@ static const int ltos_family[LX_AF_MAX + 1] =  {
 	AF_UNSPEC, AF_UNIX, AF_INET, AF_CCITT, AF_IPX,
 	AF_APPLETALK, AF_NOTSUPPORTED, AF_OSI, AF_NOTSUPPORTED,
 	AF_X25, AF_INET6, AF_CCITT, AF_DECnet,
-	AF_802, AF_POLICY, AF_KEY, AF_ROUTE,
+	AF_802, AF_POLICY, AF_KEY, AF_LX_NETLINK,
 	AF_NOTSUPPORTED, AF_NOTSUPPORTED, AF_NOTSUPPORTED, AF_NOTSUPPORTED,
 	AF_NOTSUPPORTED, AF_SNA, AF_NOTSUPPORTED, AF_NOTSUPPORTED,
 	AF_NOTSUPPORTED, AF_NOTSUPPORTED, AF_NOTSUPPORTED, AF_NOTSUPPORTED,
@@ -378,6 +374,7 @@ static lx_proto_opts_t raw_sockopts_tbl = PROTO_SOCKOPTS(ltos_raw_sockopts);
 
 #define	LX_AF_NETLINK			16
 #define	LX_NETLINK_KOBJECT_UEVENT	15
+#define	LX_NETLINK_ROUTE		0
 
 typedef struct {
 	sa_family_t	nl_family;
@@ -447,7 +444,6 @@ calc_addr_size(struct sockaddr *a, int in_len, lx_addr_type_t *type)
 {
 	struct sockaddr name;
 	boolean_t abst_sock;
-	boolean_t netlink_sock;
 	int nlen;
 
 	if (uucopy(a, &name, sizeof (struct sockaddr)) != 0)
@@ -460,23 +456,14 @@ calc_addr_size(struct sockaddr *a, int in_len, lx_addr_type_t *type)
 	abst_sock = (name.sa_family == AF_UNIX) && (name.sa_data[0] == '\0');
 
 	/*
-	 * Handle Linux netlink sockets which we emulate using UNIX sockets.
-	 */
-	netlink_sock = (name.sa_family == LX_AF_NETLINK);
-
-	/*
 	 * Convert_sockaddr will expand the socket path if it is abstract, so
-	 * we need to allocate extra memory for it. It will also generate
-	 * a UNIX socket address for netlinks.
+	 * we need to allocate extra memory for it.
 	 */
 
 	nlen = in_len;
 	if (abst_sock) {
 		nlen += ABST_PRFX_LEN;
 		*type = lxa_abstract;
-	} else if (netlink_sock) {
-		nlen = sizeof (struct sockaddr_un);
-		*type = lxa_netlink;
 	} else {
 		*type = lxa_none;
 	}
@@ -508,7 +495,7 @@ convert_sockaddr(struct sockaddr *addr, socklen_t *len,
 	 * This isn't an issue at present because all callers to this routine
 	 * do meet that constraint.
 	 */
-	if ((ssize_t)inlen < 0)
+	if ((int)inlen < 0)
 		return (-EINVAL);
 	if (uucopy(inaddr, addr, inlen) != 0)
 		return (-errno);
@@ -611,19 +598,6 @@ convert_sockaddr(struct sockaddr *addr, socklen_t *len,
 			}
 			break;
 
-		case AF_ROUTE:
-			/*
-			 * We got a Linux netlink sockaddr_nl struct as input
-			 * but we're really going to setup a unix sockaddr_un
-			 * address for emulation. We depend on the caller to
-			 * have pre-allocated enough space for this ahead of
-			 * time.
-			 */
-			*len = sizeof (struct sockaddr_un);
-			bcopy(NETLINK_NAME, addr->sa_data,
-			    sizeof (NETLINK_NAME));
-			family = AF_UNIX;
-			break;
 		default:
 			*len = inlen;
 	}
@@ -657,7 +631,7 @@ convert_sock_args(int in_dom, int in_type, int in_protocol, int *out_dom,
 	 * Linux does not allow the app to specify IP Protocol for raw
 	 * sockets.  Solaris does, so bail out here.
 	 */
-	if (type == SOCK_RAW && in_protocol == IPPROTO_IP)
+	if (domain == AF_INET && type == SOCK_RAW && in_protocol == IPPROTO_IP)
 		return (-ESOCKTNOSUPPORT);
 
 	options = 0;
@@ -780,23 +754,20 @@ convert_sockflags(int lx_flags, char *call)
 	}
 
 	if (lx_flags != 0)
-		lx_unsupported("%s: unknown socket flag(s) 0x%x", lx_flags,
-		    call);
+		lx_unsupported("%s: unknown socket flag(s) 0x%x", call,
+		    lx_flags);
 
 	return (solaris_flags);
 }
 
-static int
-lx_socket(ulong_t *args)
+long
+lx_socket(int domain, int type, int protocol)
 {
-	int domain;
-	int type;
 	int options;
-	int protocol = (int)args[2];
 	int fd;
 	int err;
 
-	err = convert_sock_args((int)args[0], (int)args[1], protocol,
+	err = convert_sock_args(domain, type, protocol,
 	    &domain, &type, &options);
 	if (err != 0)
 		return (err);
@@ -807,33 +778,8 @@ lx_socket(ulong_t *args)
 	if (domain == AF_INET6)
 		return (-EAFNOSUPPORT);
 
-	/*
-	 * AF_NETLINK Handling
-	 *
-	 * The AF_NETLINK address family gets mapped to AF_ROUTE.
-	 *
-	 * Clients of the auditing subsystem used by CentOS 4 and 5 expect to
-	 * be able to create AF_ROUTE SOCK_RAW sockets to communicate with the
-	 * auditing daemons. Failure to create these sockets will cause login,
-	 * ssh and useradd, amoung other programs to fail. To trick these
-	 * programs into working, we convert the socket domain and type to
-	 * something that we do support. Then when sendto is called on these
-	 * sockets, we return an error code. See lx_sendto.
-	 *
-	 * We have a similar issue with the newer startup code (e.g. mountall)
-	 * which wants to setup a netlink socket to receive from udev (protocol
-	 * NETLINK_KOBJECT_UEVENT). These apps basically poll on the socket
-	 * looking for udev events, which will never happen in our case, so we
-	 * let this go through and fail if the app tries to write.
-	 */
-	if (domain == AF_ROUTE &&
-	    (type == SOCK_RAW || protocol == LX_NETLINK_KOBJECT_UEVENT)) {
-		domain = AF_UNIX;
-		type = SOCK_STREAM;
-		protocol = 0;
-	}
-
 	fd = socket(domain, type | options, protocol);
+
 	if (fd >= 0)
 		return (fd);
 
@@ -843,10 +789,9 @@ lx_socket(ulong_t *args)
 	return (-errno);
 }
 
-static int
-lx_bind(ulong_t *args)
+long
+lx_bind(int sockfd, void *np, int nl)
 {
-	int sockfd = (int)args[0];
 	struct stat64 statbuf;
 	struct sockaddr *name;
 	socklen_t len;
@@ -855,15 +800,13 @@ lx_bind(ulong_t *args)
 	lx_addr_type_t type;
 	struct stat sb;
 
-	if ((nlen = calc_addr_size((struct sockaddr *)args[1], (int)args[2],
-	    &type)) < 0)
+	if ((nlen = calc_addr_size((struct sockaddr *)np, nl, &type)) < 0)
 		return (nlen);
 
 	if ((name = SAFE_ALLOCA(nlen)) == NULL)
 		return (-EINVAL);
 
-	if ((r = convert_sockaddr(name, &len, (struct sockaddr *)args[1],
-	    (socklen_t)args[2])) < 0)
+	if ((r = convert_sockaddr(name, &len, (struct sockaddr *)np, nl)) < 0)
 		return (r);
 
 	/*
@@ -918,35 +861,25 @@ lx_bind(ulong_t *args)
 	    (!S_ISSOCK(statbuf.st_mode))))
 		return (-EADDRINUSE);
 
-	/*
-	 * Now that the dummy netlink socket is setup, remove it to prevent
-	 * future name collisions.
-	 */
-	if (type == lxa_netlink && r >= 0)
-		(void) unlink(name->sa_data);
-
 	return ((r < 0) ? -errno : r);
 }
 
-static int
-lx_connect(ulong_t *args)
+long
+lx_connect(int sockfd, void *np, int nl)
 {
-	int sockfd = (int)args[0];
 	struct sockaddr *name;
 	socklen_t len;
 	int r;
 	int nlen;
 	lx_addr_type_t type;
 
-	if ((nlen = calc_addr_size((struct sockaddr *)args[1], (int)args[2],
-	    &type)) < 0)
+	if ((nlen = calc_addr_size((struct sockaddr *)np, nl, &type)) < 0)
 		return (nlen);
 
 	if ((name = SAFE_ALLOCA(nlen)) == NULL)
 		return (-EINVAL);
 
-	if ((r = convert_sockaddr(name, &len, (struct sockaddr *)args[1],
-	    (socklen_t)args[2])) < 0)
+	if ((r = convert_sockaddr(name, &len, (struct sockaddr *)np, nl)) < 0)
 		return (r);
 
 	lx_debug("\tconnect(%d, 0x%p, %d)", sockfd, name, len);
@@ -959,11 +892,9 @@ lx_connect(ulong_t *args)
 	return ((r < 0) ? -errno : r);
 }
 
-static int
-lx_listen(ulong_t *args)
+long
+lx_listen(int sockfd, int backlog)
 {
-	int sockfd = (int)args[0];
-	int backlog = (int)args[1];
 	int r;
 
 	lx_debug("\tlisten(%d, %d)", sockfd, backlog);
@@ -972,15 +903,14 @@ lx_listen(ulong_t *args)
 	return ((r < 0) ? -errno : r);
 }
 
-static int
-lx_accept(ulong_t *args)
+long
+lx_accept(int sockfd, void *name, int *nlp)
 {
-	int sockfd = (int)args[0];
-	struct sockaddr *name = (struct sockaddr *)args[1];
 	socklen_t namelen = 0;
 	int r;
 
-	lx_debug("\taccept(%d, 0x%p, 0x%p", sockfd, args[1], args[2]);
+	lx_debug("\taccept(%d, 0x%p, 0x%p", sockfd, (struct sockaddr *)name,
+	    nlp);
 
 	/*
 	 * The Linux man page says that -1 is returned and errno is set to
@@ -998,12 +928,12 @@ lx_accept(ulong_t *args)
 	 * zero namelens the same way.
 	 */
 	if ((name != NULL) &&
-	    (uucopy((void *)args[2], &namelen, sizeof (socklen_t)) != 0))
+	    (uucopy((void *)nlp, &namelen, sizeof (socklen_t)) != 0))
 		return ((errno == EFAULT) ? -EINVAL : -errno);
 
 	lx_debug("\taccept namelen = %d", namelen);
 
-	if ((r = accept(sockfd, name, &namelen)) < 0)
+	if ((r = accept(sockfd, (struct sockaddr *)name, &namelen)) < 0)
 		return ((errno == EFAULT) ? -EINVAL : -errno);
 
 	lx_debug("\taccept namelen returned %d bytes", namelen);
@@ -1027,25 +957,24 @@ lx_accept(ulong_t *args)
 	 * accepting the connection so we must behave in a compatible manner.
 	 */
 	if ((name != NULL) && (namelen != 0) &&
-	    (uucopy(&namelen, (void *)args[2], sizeof (socklen_t)) != 0))
+	    (uucopy(&namelen, (void *)nlp, sizeof (socklen_t)) != 0))
 		return ((errno == EFAULT) ? -EINVAL : -errno);
 
 	return (r);
 }
 
-static int
-lx_getsockname(ulong_t *args)
+long
+lx_getsockname(int sockfd, void *np, int *nlp)
 {
-	int sockfd = (int)args[0];
 	struct sockaddr *name = NULL;
 	socklen_t namelen, namelen_orig;
 
-	if (uucopy((void *)args[2], &namelen, sizeof (socklen_t)) != 0)
+	if (uucopy((void *)nlp, &namelen, sizeof (socklen_t)) != 0)
 		return (-errno);
 	namelen_orig = namelen;
 
-	lx_debug("\tgetsockname(%d, 0x%p, 0x%p (=%d))",
-	    sockfd, args[1], args[2], namelen);
+	lx_debug("\tgetsockname(%d, 0x%p, 0x%p (=%d))", sockfd,
+	    (struct sockaddr *)np, nlp, namelen);
 
 	if (namelen > 0) {
 		if ((name = SAFE_ALLOCA(namelen)) == NULL)
@@ -1057,68 +986,39 @@ lx_getsockname(ulong_t *args)
 		return (-errno);
 
 	/*
-	 * The caller might be asking for the name for an AF_NETLINK socket
-	 * which we're emulating as a unix socket. Check if that is the case
-	 * and if so, construct a made up name for this socket.
-	 */
-	if (namelen_orig < namelen && name->sa_family == AF_UNIX &&
-	    namelen_orig == sizeof (lx_sockaddr_nl_t)) {
-		struct sockaddr *tname;
-		socklen_t tlen = sizeof (struct sockaddr_un);
-
-		if ((tname = SAFE_ALLOCA(tlen)) != NULL) {
-			bzero(tname, tlen);
-			if (getsockname(sockfd, tname, &tlen) >= 0 &&
-			    strcmp(tname->sa_data, NETLINK_NAME) == 0) {
-				/*
-				 * This is indeed our netlink socket, make the
-				 * name look correct.
-				 */
-				lx_sockaddr_nl_t *p =
-				    (lx_sockaddr_nl_t *)(void *)name;
-
-				bzero(name, namelen_orig);
-				p->nl_family = LX_AF_NETLINK;
-				p->nl_pid = getpid();
-				namelen = namelen_orig;
-			}
-		}
-	}
-
-	/*
-	 * If the name that getsockname() want's to return is larger
+	 * If the name that getsockname() wants to return is larger
 	 * than namelen, getsockname() will copy out the maximum amount
 	 * of data possible and then update namelen to indicate the
 	 * actually size of all the data that it wanted to copy out.
 	 */
-	if (uucopy(name, (void *)args[1], namelen_orig) != 0)
+	if (uucopy(name, np, namelen_orig) != 0)
 		return (-errno);
-	if (uucopy(&namelen, (void *)args[2], sizeof (socklen_t)) != 0)
+	if (uucopy(&namelen, (void *)nlp, sizeof (socklen_t)) != 0)
 		return (-errno);
 
 	return (0);
 }
 
-static int
-lx_getpeername(ulong_t *args)
+long
+lx_getpeername(int sockfd, void *np, int *nlp)
 {
-	int sockfd = (int)args[0];
 	struct sockaddr *name;
 	socklen_t namelen;
 
-	if (uucopy((void *)args[2], &namelen, sizeof (socklen_t)) != 0)
+	if (uucopy((void *)nlp, &namelen, sizeof (socklen_t)) != 0)
 		return (-errno);
 
-	lx_debug("\tgetpeername(%d, 0x%p, 0x%p (=%d))",
-	    sockfd, args[1], args[2], namelen);
+	lx_debug("\tgetpeername(%d, 0x%p, 0x%p (=%d))", sockfd,
+	    (struct sockaddr *)np, nlp, namelen);
 
 	/*
 	 * Linux returns EFAULT in this case, even if the namelen parameter
-	 * is 0.  This check will not catch other illegal addresses, but
-	 * the benefit catching a non-null illegal address here is not
-	 * worth the cost of another system call.
+	 * is 0 (some test cases use -1, so we check for that too).  This check
+	 * will not catch other illegal addresses, but the benefit catching a
+	 * non-null illegal address here is not worth the cost of another
+	 * system call.
 	 */
-	if ((void *)args[1] == NULL)
+	if (np == NULL || np == (void *)-1)
 		return (-EFAULT);
 
 	if ((name = SAFE_ALLOCA(namelen)) == NULL)
@@ -1126,28 +1026,23 @@ lx_getpeername(ulong_t *args)
 	if ((getpeername(sockfd, name, &namelen)) < 0)
 		return (-errno);
 
-	if (uucopy(name, (void *)args[1], namelen) != 0)
+	if (uucopy(name, np, namelen) != 0)
 		return (-errno);
 
-	if (uucopy(&namelen, (void *)args[2], sizeof (socklen_t)) != 0)
+	if (uucopy(&namelen, (void *)nlp, sizeof (socklen_t)) != 0)
 		return (-errno);
 
 	return (0);
 }
 
-static int
-lx_socketpair(ulong_t *args)
+long
+lx_socketpair(int domain, int type, int protocol, int *sv)
 {
-	int domain;
-	int type;
 	int options;
-	int protocol = (int)args[2];
-	int *sv = (int *)args[3];
 	int fds[2];
 	int r;
 
-	r = convert_sock_args((int)args[0], (int)args[1], protocol,
-	    &domain, &type, &options);
+	r = convert_sock_args(domain, type, protocol, &domain, &type, &options);
 	if (r != 0)
 		return (r);
 
@@ -1171,142 +1066,39 @@ lx_socketpair(ulong_t *args)
 	return (-errno);
 }
 
-static ssize_t
-lx_send(ulong_t *args)
+long
+lx_sendto(int sockfd, void *buf, size_t len, int flags, void *lto, int tolen)
 {
-	int sockfd = (int)args[0];
-	void *buf = (void *)args[1];
-	size_t len = (size_t)args[2];
-	int flags = (int)args[3];
-	ssize_t r;
-
-	int nosigpipe = flags & LX_MSG_NOSIGNAL;
-	struct sigaction newact, oact;
-
-	lx_debug("\tsend(%d, 0x%p, 0x%d, 0x%x)", sockfd, buf, len, flags);
-
-	flags = convert_sockflags(flags, "send");
-
-	/*
-	 * If nosigpipe is set, we want to emulate the Linux action of
-	 * not sending a SIGPIPE to the caller if the remote socket has
-	 * already been closed.
-	 *
-	 * As SIGPIPE is a directed signal sent only to the thread that
-	 * performed the action, we can emulate this behavior by momentarily
-	 * resetting the action for SIGPIPE to SIG_IGN, performing the socket
-	 * call, and resetting the action back to its previous value.
-	 */
-	if (nosigpipe) {
-		newact.sa_handler = SIG_IGN;
-		newact.sa_flags = 0;
-		(void) sigemptyset(&newact.sa_mask);
-
-		if (sigaction(SIGPIPE, &newact, &oact) < 0)
-			lx_err_fatal(gettext(
-			    "%s: could not ignore SIGPIPE to emulate "
-			    "LX_MSG_NOSIGNAL"), "send()");
-	}
-
-	r = send(sockfd, buf, len, flags);
-
-	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
-		lx_err_fatal(
-		    gettext("%s: could not reset SIGPIPE handler to "
-		    "emulate LX_MSG_NOSIGNAL"), "send()");
-
-	return ((r < 0) ? -errno : r);
-}
-
-static ssize_t
-lx_recv(ulong_t *args)
-{
-	int sockfd = (int)args[0];
-	void *buf = (void *)args[1];
-	size_t len = (size_t)args[2];
-	int flags = (int)args[3];
-	ssize_t r;
-
-	int nosigpipe = flags & LX_MSG_NOSIGNAL;
-	struct sigaction newact, oact;
-
-	lx_debug("\trecv(%d, 0x%p, 0x%d, 0x%x)", sockfd, buf, len, flags);
-
-	flags = convert_sockflags(flags, "recv");
-
-	/*
-	 * If nosigpipe is set, we want to emulate the Linux action of
-	 * not sending a SIGPIPE to the caller if the remote socket has
-	 * already been closed.
-	 *
-	 * As SIGPIPE is a directed signal sent only to the thread that
-	 * performed the action, we can emulate this behavior by momentarily
-	 * resetting the action for SIGPIPE to SIG_IGN, performing the socket
-	 * call, and resetting the action back to its previous value.
-	 */
-	if (nosigpipe) {
-		newact.sa_handler = SIG_IGN;
-		newact.sa_flags = 0;
-		(void) sigemptyset(&newact.sa_mask);
-
-		if (sigaction(SIGPIPE, &newact, &oact) < 0)
-			lx_err_fatal(gettext(
-			    "%s: could not ignore SIGPIPE to emulate "
-			    "LX_MSG_NOSIGNAL"), "recv()");
-	}
-
-	r = recv(sockfd, buf, len, flags);
-
-	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
-		lx_err_fatal(
-		    gettext("%s: could not reset SIGPIPE handler to "
-		    "emulate LX_MSG_NOSIGNAL"), "recv()");
-
-	return ((r < 0) ? -errno : r);
-}
-
-static ssize_t
-lx_sendto(ulong_t *args)
-{
-	int sockfd = (int)args[0];
-	void *buf = (void *)args[1];
-	size_t len = (size_t)args[2];
-	int flags = (int)args[3];
 	struct sockaddr *to = NULL;
-	socklen_t tolen = 0;
 	ssize_t r;
+	socklen_t tlen = (socklen_t)tolen;
 	int nlen;
 	lx_addr_type_t type;
 
 	int nosigpipe = flags & LX_MSG_NOSIGNAL;
 	struct sigaction newact, oact;
 
-	if ((args[4] != NULL) && (args[5] > 0)) {
-		if ((nlen = calc_addr_size((struct sockaddr *)args[4],
-		    (int)args[5], &type)) < 0)
+	if (lto != NULL) {
+		if (tolen < 0)
+			return (-EINVAL);
+
+		if ((nlen = calc_addr_size((struct sockaddr *)lto, tolen,
+		    &type)) < 0)
 			return (nlen);
 
 		if ((to = SAFE_ALLOCA(nlen)) == NULL)
 			return (-EINVAL);
 
-		if ((r = convert_sockaddr(to, &tolen,
-		    (struct sockaddr *)args[4], (socklen_t)args[5])) < 0)
+		if ((r = convert_sockaddr(to, &tlen, (struct sockaddr *)lto,
+		    tlen)) < 0)
 			return (r);
 	}
 
 
 	lx_debug("\tsendto(%d, 0x%p, 0x%d, 0x%x, 0x%x, %d)", sockfd, buf, len,
-	    flags, to, tolen);
+	    flags, to, tlen);
 
 	flags = convert_sockflags(flags, "sendto");
-
-	/*
-	 * Return this error if we try to write to our emulated netlink
-	 * socket. This makes the auditing subsystem happy.
-	 */
-	if (to && type == lxa_netlink) {
-		return (-ECONNREFUSED);
-	}
 
 	/*
 	 * If nosigpipe is set, we want to emulate the Linux action of
@@ -1324,17 +1116,15 @@ lx_sendto(ulong_t *args)
 		(void) sigemptyset(&newact.sa_mask);
 
 		if (sigaction(SIGPIPE, &newact, &oact) < 0)
-			lx_err_fatal(gettext(
-			    "%s: could not ignore SIGPIPE to emulate "
-			    "LX_MSG_NOSIGNAL"), "sendto()");
+			lx_err_fatal("sendto(): could not ignore SIGPIPE to "
+			    "emulate LX_MSG_NOSIGNAL");
 	}
 
 	r = sendto(sockfd, buf, len, flags, to, tolen);
 
 	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
-		lx_err_fatal(
-		    gettext("%s: could not reset SIGPIPE handler to "
-		    "emulate LX_MSG_NOSIGNAL"), "sendto()");
+		lx_err_fatal("sendto(): could not reset SIGPIPE handler to "
+		    "emulate LX_MSG_NOSIGNAL");
 
 	if (r < 0) {
 		/*
@@ -1349,21 +1139,16 @@ lx_sendto(ulong_t *args)
 	return (r);
 }
 
-static ssize_t
-lx_recvfrom(ulong_t *args)
+long
+lx_recvfrom(int sockfd, void *buf, size_t len, int flags, void *from,
+    int *from_lenp)
 {
-	int sockfd = (int)args[0];
-	void *buf = (void *)args[1];
-	size_t len = (size_t)args[2];
-	int flags = (int)args[3];
-	struct sockaddr *from = (struct sockaddr *)args[4];
-	socklen_t *from_lenp = (socklen_t *)args[5];
 	ssize_t r;
 
 	int nosigpipe = flags & LX_MSG_NOSIGNAL;
 	struct sigaction newact, oact;
 
-	lx_debug("\trecvfrom(%d, 0x%p, 0x%d, 0x%x, 0x%x, 0x%p)", sockfd, buf,
+	lx_debug("\trecvfrom(%d, 0x%p, 0x%d, 0x%x, 0x%p, 0x%p)", sockfd, buf,
 	    len, flags, from, from_lenp);
 
 	flags = convert_sockflags(flags, "recvfrom");
@@ -1384,26 +1169,23 @@ lx_recvfrom(ulong_t *args)
 		(void) sigemptyset(&newact.sa_mask);
 
 		if (sigaction(SIGPIPE, &newact, &oact) < 0)
-			lx_err_fatal(gettext(
-			    "%s: could not ignore SIGPIPE to emulate "
-			    "LX_MSG_NOSIGNAL"), "recvfrom()");
+			lx_err_fatal("recvfrom(): could not ignore SIGPIPE "
+			    "to emulate LX_MSG_NOSIGNAL");
 	}
 
-	r = recvfrom(sockfd, buf, len, flags, from, from_lenp);
+	r = recvfrom(sockfd, buf, len, flags, (struct sockaddr *)from,
+	    from_lenp);
 
 	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
-		lx_err_fatal(
-		    gettext("%s: could not reset SIGPIPE handler to "
-		    "emulate LX_MSG_NOSIGNAL"), "recvfrom()");
+		lx_err_fatal("recvfrom(): could not reset SIGPIPE handler to "
+		    "emulate LX_MSG_NOSIGNAL");
 
 	return ((r < 0) ? -errno : r);
 }
 
-static int
-lx_shutdown(ulong_t *args)
+long
+lx_shutdown(int sockfd, int how)
 {
-	int sockfd = (int)args[0];
-	int how = (int)args[1];
 	int r;
 
 	lx_debug("\tshutdown(%d, %d)", sockfd, how);
@@ -1427,14 +1209,9 @@ get_proto_opt_tbl(int level)
 	}
 }
 
-static int
-lx_setsockopt(ulong_t *args)
+long
+lx_setsockopt(int sockfd, int level, int optname, void *optval, int optlen)
 {
-	int sockfd = (int)args[0];
-	int level = (int)args[1];
-	int optname = (int)args[2];
-	void *optval = (void *)args[3];
-	int optlen = (int)args[4];
 	int internal_opt;
 	int r;
 	lx_proto_opts_t *proto_opts;
@@ -1449,6 +1226,9 @@ lx_setsockopt(ulong_t *args)
 	 */
 	if (optval == NULL)
 		return (-EFAULT);
+
+	if (level > LX_IPPROTO_RAW || level == LX_IPPROTO_UDP)
+		return (-ENOPROTOOPT);
 
 	if ((proto_opts = get_proto_opt_tbl(level)) == NULL)
 		return (-ENOPROTOOPT);
@@ -1506,7 +1286,8 @@ lx_setsockopt(ulong_t *args)
 			optname = TCP_NODELAY;
 			if (optlen != sizeof (int))
 				return (-EINVAL);
-			if (uucopy(optval, &internal_opt, sizeof (int)) != 0)
+			if (uucopy(optval, &internal_opt,
+			    sizeof (int)) != 0)
 				return (-errno);
 			if (internal_opt == 0)
 				return (0);
@@ -1546,14 +1327,9 @@ lx_setsockopt(ulong_t *args)
 	return ((r < 0) ? -errno : r);
 }
 
-static int
-lx_getsockopt(ulong_t *args)
+long
+lx_getsockopt(int sockfd, int level, int optname, void *optval, int *optlenp)
 {
-	int sockfd = (int)args[0];
-	int level = (int)args[1];
-	int optname = (int)args[2];
-	void *optval = (void *)args[3];
-	int *optlenp = (int *)args[4];
 	int r;
 	int orig_optname;
 	lx_proto_opts_t *proto_opts;
@@ -1568,6 +1344,9 @@ lx_getsockopt(ulong_t *args)
 	 */
 	if (optval == NULL)
 		return (-EFAULT);
+
+	if (level > LX_IPPROTO_RAW || level == LX_IPPROTO_UDP)
+		return (-EOPNOTSUPP);
 
 	if ((proto_opts = get_proto_opt_tbl(level)) == NULL)
 		return (-ENOPROTOOPT);
@@ -1665,24 +1444,25 @@ lx_getsockopt(ulong_t *args)
 extern int _so_sendmsg();
 extern int _so_recvmsg();
 
-static int
-lx_sendmsg(ulong_t *args)
+long
+lx_sendmsg(int sockfd, void *lmp, int flags)
 {
-	int sockfd = (int)args[0];
 	struct lx_msghdr msg;
 	struct cmsghdr *cmsg;
-	int flags = (int)args[2];
 	int r;
 
 	int nosigpipe = flags & LX_MSG_NOSIGNAL;
 	struct sigaction newact, oact;
 
-	lx_debug("\tsendmsg(%d, 0x%p, 0x%x)", sockfd, (void *)args[1], flags);
+	lx_debug("\tsendmsg(%d, 0x%p, 0x%x)", sockfd, lmp, flags);
 
 	flags = convert_sockflags(flags, "sendmsg");
 
-	if ((uucopy((void *)args[1], &msg, sizeof (msg))) != 0)
+	if ((uucopy(lmp, &msg, sizeof (msg))) != 0)
 		return (-errno);
+
+	if (msg.msg_name != NULL && msg.msg_namelen < sizeof (struct sockaddr))
+		return (-EINVAL);
 
 	/*
 	 * If there are control messages bundled in this message, we need
@@ -1696,7 +1476,8 @@ lx_sendmsg(ulong_t *args)
 			if (cmsg == NULL)
 				return (-EINVAL);
 		}
-		if ((uucopy(msg.msg_control, cmsg, msg.msg_controllen)) != 0)
+		if ((uucopy(msg.msg_control, cmsg,
+		    msg.msg_controllen)) != 0)
 			return (-errno);
 		msg.msg_control = cmsg;
 		if ((r = convert_cmsgs(LX_TO_SOL, &msg, "sendmsg()")) != 0)
@@ -1719,17 +1500,15 @@ lx_sendmsg(ulong_t *args)
 		(void) sigemptyset(&newact.sa_mask);
 
 		if (sigaction(SIGPIPE, &newact, &oact) < 0)
-			lx_err_fatal(gettext(
-			    "%s: could not ignore SIGPIPE to emulate "
-			    "LX_MSG_NOSIGNAL"), "sendmsg()");
+			lx_err_fatal("sendmsg(): could not ignore SIGPIPE to "
+			    "emulate LX_MSG_NOSIGNAL");
 	}
 
 	r = _so_sendmsg(sockfd, (struct msghdr *)&msg, flags | MSG_XPG4_2);
 
 	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
-		lx_err_fatal(
-		    gettext("%s: could not reset SIGPIPE handler to "
-		    "emulate LX_MSG_NOSIGNAL"), "sendmsg()");
+		lx_err_fatal("sendmsg(): could not reset SIGPIPE handler to "
+		    "emulate LX_MSG_NOSIGNAL");
 
 	if (r < 0) {
 		/*
@@ -1745,24 +1524,21 @@ lx_sendmsg(ulong_t *args)
 	return (r);
 }
 
-static int
-lx_recvmsg(ulong_t *args)
+long
+lx_recvmsg(int sockfd, void *lmp, int flags)
 {
-	int sockfd = (int)args[0];
 	struct lx_msghdr msg;
-	struct lx_msghdr *msgp = (struct lx_msghdr *)args[1];
 	struct cmsghdr *cmsg = NULL;
-	int flags = (int)args[2];
 	int r, err;
 
 	int nosigpipe = flags & LX_MSG_NOSIGNAL;
 	struct sigaction newact, oact;
 
-	lx_debug("\trecvmsg(%d, 0x%p, 0x%x)", sockfd, msgp, flags);
+	lx_debug("\trecvmsg(%d, 0x%p, 0x%x)", sockfd, lmp, flags);
 
 	flags = convert_sockflags(flags, "recvmsg");
 
-	if ((uucopy(msgp, &msg, sizeof (msg))) != 0)
+	if ((uucopy(lmp, &msg, sizeof (msg))) != 0)
 		return (-errno);
 
 	/*
@@ -1797,17 +1573,15 @@ lx_recvmsg(ulong_t *args)
 		(void) sigemptyset(&newact.sa_mask);
 
 		if (sigaction(SIGPIPE, &newact, &oact) < 0)
-			lx_err_fatal(gettext(
-			    "%s: could not ignore SIGPIPE to emulate "
-			    "LX_MSG_NOSIGNAL"), "recvmsg()");
+			lx_err_fatal("recvmsg(): could not ignore SIGPIPE to "
+			    "emulate LX_MSG_NOSIGNAL");
 	}
 
 	r = _so_recvmsg(sockfd, (struct msghdr *)&msg, flags | MSG_XPG4_2);
 
 	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
-		lx_err_fatal(
-		    gettext("%s: could not reset SIGPIPE handler to "
-		    "emulate LX_MSG_NOSIGNAL"), "recvmsg()");
+		lx_err_fatal("recvmsg(): could not reset SIGPIPE handler to "
+		    "emulate LX_MSG_NOSIGNAL");
 
 	if (r >= 0 && msg.msg_controllen >= sizeof (struct cmsghdr)) {
 		/*
@@ -1817,7 +1591,8 @@ lx_recvmsg(ulong_t *args)
 		if ((err = convert_cmsgs(SOL_TO_LX, &msg, "recvmsg()")) != 0)
 			return (-err);
 
-		if ((uucopy(msg.msg_control, cmsg, msg.msg_controllen)) != 0)
+		if ((uucopy(msg.msg_control, cmsg,
+		    msg.msg_controllen)) != 0)
 			return (-errno);
 	}
 
@@ -1828,7 +1603,7 @@ lx_recvmsg(ulong_t *args)
 	 * call, so copy their values back to the caller.  Rather than iterate,
 	 * just copy the whole structure back.
 	 */
-	if (uucopy(&msg, msgp, sizeof (msg)) != 0)
+	if (uucopy(&msg, lmp, sizeof (msg)) != 0)
 		return (-errno);
 
 	return ((r < 0) ? -errno : r);
@@ -1838,21 +1613,17 @@ lx_recvmsg(ulong_t *args)
  * Based on the lx_accept code with the addition of the flags handling.
  * See internal comments in that function for more explanation.
  */
-static int
-lx_accept4(ulong_t *args)
+long
+lx_accept4(int sockfd, void *name, int *nlp, int lx_flags)
 {
-	int sockfd = (int)args[0];
-	struct sockaddr *name = (struct sockaddr *)args[1];
 	socklen_t namelen = 0;
-	int lx_flags, flags = 0;
+	int flags = 0;
 	int r;
 
-	lx_flags = (int)args[3];
-	lx_debug("\taccept4(%d, 0x%p, 0x%p 0x%x", sockfd, args[1], args[2],
-	    lx_flags);
+	lx_debug("\taccept4(%d, 0x%p, 0x%p 0x%x", sockfd, name, nlp, lx_flags);
 
 	if ((name != NULL) &&
-	    (uucopy((void *)args[2], &namelen, sizeof (socklen_t)) != 0))
+	    (uucopy((void *)nlp, &namelen, sizeof (socklen_t)) != 0))
 		return ((errno == EFAULT) ? -EINVAL : -errno);
 
 	lx_debug("\taccept4 namelen = %d", namelen);
@@ -1863,33 +1634,249 @@ lx_accept4(ulong_t *args)
 	if (lx_flags & LX_SOCK_CLOEXEC)
 		flags |= SOCK_CLOEXEC;
 
-	if ((r = accept4(sockfd, name, &namelen, flags)) < 0)
+	if ((r = accept4(sockfd, (struct sockaddr *)name, &namelen, flags)) < 0)
 		return ((errno == EFAULT) ? -EINVAL : -errno);
 
 	lx_debug("\taccept4 namelen returned %d bytes", namelen);
 
 	if ((name != NULL) && (namelen != 0) &&
-	    (uucopy(&namelen, (void *)args[2], sizeof (socklen_t)) != 0))
+	    (uucopy(&namelen, (void *)nlp, sizeof (socklen_t)) != 0))
 		return ((errno == EFAULT) ? -EINVAL : -errno);
 
 	return (r);
 }
 
+/*ARGSUSED*/
+long
+lx_recvmmsg(int sockfd, void *msgvec, uint_t vlen, uint_t flags,
+    struct timespec *timeout)
+{
+	lx_unsupported("Unsupported socketcall: recvmmsg\n.");
+	return (-EINVAL);
+}
+
+/*ARGSUSED*/
+long
+lx_sendmmsg(int sockfd, void *msgvec, uint_t vlen, uint_t flags)
+{
+	lx_unsupported("Unsupported socketcall: sendmmsg\n.");
+	return (-EINVAL);
+}
+
+#ifdef __i386
+
 static int
-lx_recvmmsg(ulong_t *args)
+lx_socket32(ulong_t *args)
+{
+	return (lx_socket((int)args[0], (int)args[1], (int)args[2]));
+}
+
+static int
+lx_bind32(ulong_t *args)
+{
+	return (lx_bind((int)args[0], (struct sockaddr *)args[1],
+	    (int)args[2]));
+}
+
+static int
+lx_connect32(ulong_t *args)
+{
+	return (lx_connect((int)args[0], (struct sockaddr *)args[1],
+	    (int)args[2]));
+}
+
+static int
+lx_listen32(ulong_t *args)
+{
+	return (lx_listen((int)args[0], (int)args[1]));
+}
+
+static int
+lx_accept32(ulong_t *args)
+{
+	return (lx_accept((int)args[0], (struct sockaddr *)args[1],
+	    (int *)args[2]));
+}
+
+static int
+lx_getsockname32(ulong_t *args)
+{
+	return (lx_getsockname((int)args[0], (struct sockaddr *)args[1],
+	    (int *)args[2]));
+}
+
+static int
+lx_getpeername32(ulong_t *args)
+{
+	return (lx_getpeername((int)args[0], (struct sockaddr *)args[1],
+	    (int *)args[2]));
+}
+
+static int
+lx_socketpair32(ulong_t *args)
+{
+	return (lx_socketpair((int)args[0], (int)args[1], (int)args[2],
+	    (int *)args[3]));
+}
+
+static ssize_t
+lx_send(ulong_t *args)
+{
+	int sockfd = (int)args[0];
+	void *buf = (void *)args[1];
+	size_t len = (size_t)args[2];
+	int flags = (int)args[3];
+	ssize_t r;
+
+	int nosigpipe = flags & LX_MSG_NOSIGNAL;
+	struct sigaction newact, oact;
+
+	lx_debug("\tsend(%d, 0x%p, 0x%d, 0x%x)", sockfd, buf, len, flags);
+
+	flags = convert_sockflags(flags, "send");
+
+	/*
+	 * If nosigpipe is set, we want to emulate the Linux action of
+	 * not sending a SIGPIPE to the caller if the remote socket has
+	 * already been closed.
+	 *
+	 * As SIGPIPE is a directed signal sent only to the thread that
+	 * performed the action, we can emulate this behavior by momentarily
+	 * resetting the action for SIGPIPE to SIG_IGN, performing the socket
+	 * call, and resetting the action back to its previous value.
+	 */
+	if (nosigpipe) {
+		newact.sa_handler = SIG_IGN;
+		newact.sa_flags = 0;
+		(void) sigemptyset(&newact.sa_mask);
+
+		if (sigaction(SIGPIPE, &newact, &oact) < 0)
+			lx_err_fatal("send(): could not ignore SIGPIPE to "
+			    "emulate LX_MSG_NOSIGNAL");
+	}
+
+	r = send(sockfd, buf, len, flags);
+
+	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
+		lx_err_fatal("send(): could not reset SIGPIPE handler to "
+		    "emulate LX_MSG_NOSIGNAL");
+
+	return ((r < 0) ? -errno : r);
+}
+
+static ssize_t
+lx_recv(ulong_t *args)
+{
+	int sockfd = (int)args[0];
+	void *buf = (void *)args[1];
+	size_t len = (size_t)args[2];
+	int flags = (int)args[3];
+	ssize_t r;
+
+	int nosigpipe = flags & LX_MSG_NOSIGNAL;
+	struct sigaction newact, oact;
+
+	lx_debug("\trecv(%d, 0x%p, 0x%d, 0x%x)", sockfd, buf, len, flags);
+
+	flags = convert_sockflags(flags, "recv");
+
+	/*
+	 * If nosigpipe is set, we want to emulate the Linux action of
+	 * not sending a SIGPIPE to the caller if the remote socket has
+	 * already been closed.
+	 *
+	 * As SIGPIPE is a directed signal sent only to the thread that
+	 * performed the action, we can emulate this behavior by momentarily
+	 * resetting the action for SIGPIPE to SIG_IGN, performing the socket
+	 * call, and resetting the action back to its previous value.
+	 */
+	if (nosigpipe) {
+		newact.sa_handler = SIG_IGN;
+		newact.sa_flags = 0;
+		(void) sigemptyset(&newact.sa_mask);
+
+		if (sigaction(SIGPIPE, &newact, &oact) < 0)
+			lx_err_fatal("recv(): could not ignore SIGPIPE to "
+			    "emulate LX_MSG_NOSIGNAL");
+	}
+
+	r = recv(sockfd, buf, len, flags);
+
+	if ((nosigpipe) && (sigaction(SIGPIPE, &oact, NULL) < 0))
+		lx_err_fatal("recv(): could not reset SIGPIPE handler to "
+		    "emulate LX_MSG_NOSIGNAL");
+
+	return ((r < 0) ? -errno : r);
+}
+
+static ssize_t
+lx_sendto32(ulong_t *args)
+{
+	return (lx_sendto((int)args[0], (void *)args[1], (size_t)args[2],
+	    (int)args[3], (struct sockaddr *)args[4], (int)args[5]));
+}
+
+static ssize_t
+lx_recvfrom32(ulong_t *args)
+{
+	return (lx_recvfrom((int)args[0], (void *)args[1], (size_t)args[2],
+	    (int)args[3], (struct sockaddr *)args[4], (int *)args[5]));
+}
+
+static int
+lx_shutdown32(ulong_t *args)
+{
+	return (lx_shutdown((int)args[0], (int)args[1]));
+}
+
+static int
+lx_setsockopt32(ulong_t *args)
+{
+	return (lx_setsockopt((int)args[0], (int)args[1], (int)args[2],
+	    (void *)args[3], (int)args[4]));
+}
+
+static int
+lx_getsockopt32(ulong_t *args)
+{
+	return (lx_getsockopt((int)args[0], (int)args[1], (int)args[2],
+	    (void *)args[3], (int *)args[4]));
+}
+
+static int
+lx_sendmsg32(ulong_t *args)
+{
+	return (lx_sendmsg((int)args[0], (void *)args[1], (int)args[2]));
+}
+
+static int
+lx_recvmsg32(ulong_t *args)
+{
+	return (lx_recvmsg((int)args[0], (void *)args[1], (int)args[2]));
+}
+
+static int
+lx_accept4_32(ulong_t *args)
+{
+	return (lx_accept4((int)args[0], (struct sockaddr *)args[1],
+	    (int *)args[2], (int)args[3]));
+}
+
+static int
+lx_recvmmsg32(ulong_t *args)
 {
 	lx_unsupported("Unsupported socketcall: recvmmsg\n.");
 	return (-EINVAL);
 }
 
 static int
-lx_sendmmsg(ulong_t *args)
+lx_sendmmsg32(ulong_t *args)
 {
 	lx_unsupported("Unsupported socketcall: sendmmsg\n.");
 	return (-EINVAL);
 }
 
-int
+long
 lx_socketcall(uintptr_t p1, uintptr_t p2)
 {
 	int subcmd = (int)p1 - 1; /* subcommands start at 1 - not 0 */
@@ -1911,3 +1898,5 @@ lx_socketcall(uintptr_t p1, uintptr_t p2)
 
 	return (r);
 }
+
+#endif /* __i386 */

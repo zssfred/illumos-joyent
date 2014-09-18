@@ -46,6 +46,9 @@
 #include <sys/lx_misc.h>
 #include <sys/lx_fcntl.h>
 
+#define	LX_UTIME_NOW	((1l << 30) - 1l)
+#define	LX_UTIME_OMIT	((1l << 30) - 2l)
+
 static int
 install_checkpath(uintptr_t p1)
 {
@@ -73,9 +76,13 @@ install_checkpath(uintptr_t p1)
  * Convert linux LX_AT_* flags to solaris AT_* flags but skip verifying allowed
  * flags have been passed. This also allows EACCESS/REMOVEDIR to be translated
  * correctly since on linux they have the same value.
+ *
+ * Some code can actually pass in other bits in the flag. We may have to simply
+ * ignore these, as indicated by the enforce parameter. See lx_fchmodat for
+ * another example of this type of behavior.
  */
 int
-ltos_at_flag(int lflag, int allow)
+ltos_at_flag(int lflag, int allow, boolean_t enforce)
 {
 	int sflag = 0;
 
@@ -100,14 +107,9 @@ ltos_at_flag(int lflag, int allow)
 		sflag |= LX_AT_SYMLINK_FOLLOW;
 	}
 
-	/*
-	 * If lflag is not zero than some flags did not hit the above code.
-	 * We used to check for this, like so:
-	 * if (lflag)
-	 *  return (-EINVAL);
-	 * but some code can actually pass in other bits in the flag. We have
-	 * to simply ignore these. See lx_fchmodat for another example.
-	 */
+	/* If lflag is not zero than some flags did not hit the above code. */
+	if (enforce && lflag)
+		return (-EINVAL);
 
 	return (sflag);
 }
@@ -119,20 +121,11 @@ ltos_at_flag(int lflag, int allow)
 
 /*
  * Linux creates half-duplex pipes and Illumos creates full-duplex pipes.
- * Thus, to get the correct semantics, we need to do this in the kernel's
+ * Thus, to get the correct semantics, we need to setup pipes in the kernel's
  * lx brand module.
  */
-int
-lx_pipe(uintptr_t p1)
-{
-	int r;
 
-	r = syscall(SYS_brand, B_EMULATE_SYSCALL + LX_SYS_pipe, p1);
-
-	return ((r == -1) ? -errno : r);
-}
-
-int
+long
 lx_pipe2(uintptr_t p1, uintptr_t p2)
 {
 	int flags = 0;
@@ -149,7 +142,7 @@ lx_pipe2(uintptr_t p1, uintptr_t p2)
 	if (p2 != 0)
 		return (-EINVAL);
 
-	r = syscall(SYS_brand, B_EMULATE_SYSCALL + LX_SYS_pipe2, p1, flags);
+	r = syscall(SYS_brand, B_IKE_SYSCALL + LX_EMUL_pipe2, p1, flags);
 
 	return ((r == -1) ? -errno : r);
 }
@@ -158,7 +151,7 @@ lx_pipe2(uintptr_t p1, uintptr_t p2)
  * On Linux, even root cannot create a link to a directory, so we have to
  * add an explicit check.
  */
-int
+long
 lx_link(uintptr_t p1, uintptr_t p2)
 {
 	char *from = (char *)p1;
@@ -174,7 +167,7 @@ lx_link(uintptr_t p1, uintptr_t p2)
 /*
  * On Linux, an unlink of a directory returns EISDIR, not EPERM.
  */
-int
+long
 lx_unlink(uintptr_t p)
 {
 	char *pathname = (char *)p;
@@ -186,7 +179,7 @@ lx_unlink(uintptr_t p)
 	return (unlink(pathname) ? -errno : 0);
 }
 
-int
+long
 lx_unlinkat(uintptr_t ext1, uintptr_t p1, uintptr_t p2)
 {
 	int atfd = (int)ext1;
@@ -197,7 +190,7 @@ lx_unlinkat(uintptr_t ext1, uintptr_t p1, uintptr_t p2)
 	if (atfd == LX_AT_FDCWD)
 		atfd = AT_FDCWD;
 
-	flag = ltos_at_flag(flag, AT_REMOVEDIR);
+	flag = ltos_at_flag(flag, AT_REMOVEDIR, B_TRUE);
 	if (flag < 0)
 		return (-EINVAL);
 
@@ -212,11 +205,11 @@ lx_unlinkat(uintptr_t ext1, uintptr_t p1, uintptr_t p2)
 }
 
 /*
- * fsync() and fdatasync() - On Solaris, these calls translate into a common
- * fsync() syscall with a different parameter, so we layer on top of the librt
- * functions instead.
+ * fsync() and fdatasync() - On Illumos, these calls translate into a common
+ * fdsync() syscall with a different parameter. fsync is handled in the
+ * fsync wrapper.
  */
-int
+long
 lx_fsync(uintptr_t fd)
 {
 	int fildes = (int)fd;
@@ -229,7 +222,7 @@ lx_fsync(uintptr_t fd)
 	return (fsync((int)fd) ? -errno : 0);
 }
 
-int
+long
 lx_fdatasync(uintptr_t fd)
 {
 	int fildes = (int)fd;
@@ -252,7 +245,7 @@ lx_fdatasync(uintptr_t fd)
 /*
  * [lf]chown16() - Translate the uid/gid and pass onto the real functions.
  */
-int
+long
 lx_chown16(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	char *filename = (char *)p1;
@@ -272,7 +265,7 @@ lx_chown16(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	return (0);
 }
 
-int
+long
 lx_fchown16(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int fd = (int)p1;
@@ -292,14 +285,14 @@ lx_fchown16(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	return (0);
 }
 
-int
+long
 lx_lchown16(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	return (lchown((char *)p1, LX_UID16_TO_UID32((lx_gid16_t)p2),
 	    LX_GID16_TO_GID32((lx_gid16_t)p3)) ? -errno : 0);
 }
 
-int
+long
 lx_chown(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	char *filename = (char *)p1;
@@ -331,7 +324,7 @@ lx_chown(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	return (0);
 }
 
-int
+long
 lx_fchown(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int fd = (int)p1;
@@ -350,7 +343,7 @@ lx_fchown(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	return (0);
 }
 
-int
+long
 lx_chmod(uintptr_t p1, uintptr_t p2)
 {
 	int ret;
@@ -373,7 +366,7 @@ lx_chmod(uintptr_t p1, uintptr_t p2)
 	return (0);
 }
 
-int
+long
 lx_utime(uintptr_t p1, uintptr_t p2)
 {
 	int ret;
@@ -396,11 +389,12 @@ lx_utime(uintptr_t p1, uintptr_t p2)
 	return (0);
 }
 
+#if defined(_ILP32)
 /*
  * llseek() - The Linux implementation takes an additional parameter, which is
  * the resulting position in the file.
  */
-int
+long
 lx_llseek(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
     uintptr_t p5)
 {
@@ -417,45 +411,53 @@ lx_llseek(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 	*res = ret;
 	return (0);
 }
+#endif
 
 /*
- * seek() - When the resultant file offset cannot be represented in 32 bits,
- * Linux performs the seek but Solaris doesn't, though both set EOVERFLOW.  We
- * call llseek() and then check to see if we need to return EOVERFLOW.
+ * seek() - For 32-bit lx, when the resultant file offset cannot be represented
+ * in 32 bits, Linux performs the seek but Illumos doesn't, though both set
+ * EOVERFLOW.  We call llseek() and then check to see if we need to return
+ * EOVERFLOW.
  */
-int
+long
 lx_lseek(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	offset_t offset = (offset_t)(off_t)(p2);	/* sign extend */
 	offset_t ret;
+#if defined(_ILP32)
 	off_t ret32;
+#endif
 
-	/* SEEK_DATA and SEEK_HOLE are only valid in Solaris */
+	/* SEEK_DATA and SEEK_HOLE are only valid in Illumos */
 	if ((int)p3 > SEEK_END)
 		return (-EINVAL);
 
 	if ((ret = llseek((int)p1, offset, p3)) < 0)
 		return (-errno);
 
+#if defined(_LP64)
+	return (ret);
+#else
 	ret32 = (off_t)ret;
 	if ((offset_t)ret32 == ret)
 		return (ret32);
 	else
 		return (-EOVERFLOW);
+#endif
 }
 
 /*
- * Neither Solaris nor Linux actually returns anything to the caller, but glibc
+ * Neither Illumos nor Linux actually returns anything to the caller, but glibc
  * expects to see SOME value returned, so placate it and return 0.
  */
-int
+long
 lx_sync(void)
 {
 	sync();
 	return (0);
 }
 
-int
+long
 lx_rmdir(uintptr_t p1)
 {
 	int r;
@@ -467,10 +469,10 @@ lx_rmdir(uintptr_t p1)
 }
 
 /*
- * Exactly the same as Solaris' sysfs(2), except Linux numbers their fs indices
- * starting at 0, and Solaris starts at 1.
+ * Exactly the same as Illumos' sysfs(2), except Linux numbers their fs indices
+ * starting at 0, and Illumos starts at 1.
  */
-int
+long
 lx_sysfs(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int option = (int)p1;
@@ -533,7 +535,7 @@ lx_sysfs(uintptr_t p1, uintptr_t p2, uintptr_t p3)
  * 2.4 behavior for 2.4 emulation but use the new behavior for any other
  * kernel rev. (since 2.6.3 is uninteresting, no relevant distros use that).
  */
-int
+long
 lx_access(uintptr_t p1, uintptr_t p2)
 {
 	char *path = (char *)p1;
@@ -561,7 +563,7 @@ lx_access(uintptr_t p1, uintptr_t p2)
 
 }
 
-int
+long
 lx_faccessat(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
 	int atfd = (int)p1;
@@ -572,14 +574,14 @@ lx_faccessat(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 	if (atfd == LX_AT_FDCWD)
 		atfd = AT_FDCWD;
 
-	flag = ltos_at_flag(flag, AT_EACCESS);
+	flag = ltos_at_flag(flag, AT_EACCESS, B_FALSE);
 	if (flag < 0)
 		return (-EINVAL);
 
 	return (faccessat(atfd, path, mode, flag) ? -errno : 0);
 }
 
-int
+long
 lx_futimesat(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int atfd = (int)p1;
@@ -602,14 +604,51 @@ lx_futimesat(uintptr_t p1, uintptr_t p2, uintptr_t p3)
  * feature, the call futimens(fd, times) is implemented as:
  *
  *     utimensat(fd, NULL, times, 0);
+ *
+ * Some of the returns fail here. Linux allows the time to be modified if:
+ *
+ *   the caller must have write access to the file
+ * or
+ *   the caller's effective user ID must match the owner of the file
+ * or
+ *   the caller must have appropriate privileges
+ *
+ * We behave differently. We fail with EPERM if:
+ *
+ *   the calling process's euid has write access to the file but does not match
+ *   the owner of the file and the calling process does not have the
+ *   appropriate privileges
+ *
+ * This causes some of the LTP utimensat tests to fail because they expect an
+ * unprivileged process can update the time on a file it can write but does not
+ * own. There are also other LTP failures when the test uses attributes
+ * (e.g. chattr a+) and expects a failure, but we succeed.
  */
-int
+long
 lx_utimensat(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
 	int fd = (int)p1;
 	const char *path = (const char *)p2;
 	const timespec_t *times = (const timespec_t *)p3;
+	timespec_t ts[2];
 	int flag = (int)p4;
+
+	if (times != NULL) {
+		if (uucopy((void *)p3, ts, sizeof (ts)) == -1)
+			return (-errno);
+
+		if (ts[0].tv_nsec == LX_UTIME_NOW)
+			ts[0].tv_nsec = UTIME_NOW;
+		if (ts[1].tv_nsec == LX_UTIME_NOW)
+			ts[1].tv_nsec = UTIME_NOW;
+
+		if (ts[0].tv_nsec == LX_UTIME_OMIT)
+			ts[0].tv_nsec = UTIME_OMIT;
+		if (ts[1].tv_nsec == LX_UTIME_OMIT)
+			ts[1].tv_nsec = UTIME_OMIT;
+
+		times = (const timespec_t *)ts;
+	}
 
 	if (flag == LX_AT_SYMLINK_NOFOLLOW)
 		flag = AT_SYMLINK_NOFOLLOW;
@@ -667,7 +706,7 @@ getpathat(int fd, uintptr_t p1, char *outbuf, size_t outbuf_size)
 	return (0);
 }
 
-int
+long
 lx_mkdirat(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int atfd = (int)p1;
@@ -682,7 +721,7 @@ lx_mkdirat(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	return (mkdir(pathbuf, mode) ? -errno : 0);
 }
 
-int
+long
 lx_mknodat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int atfd = (int)ext1;
@@ -696,7 +735,7 @@ lx_mknodat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	return (lx_mknod((uintptr_t)pathbuf, p2, p3));
 }
 
-int
+long
 lx_symlinkat(uintptr_t p1, uintptr_t ext1, uintptr_t p2)
 {
 	int atfd = (int)ext1;
@@ -704,13 +743,24 @@ lx_symlinkat(uintptr_t p1, uintptr_t ext1, uintptr_t p2)
 	int ret;
 
 	ret = getpathat(atfd, p2, pathbuf, sizeof (pathbuf));
-	if (ret < 0)
+	if (ret < 0) {
+		if (ret == -EBADF) {
+			/*
+			 * Try to figure out correct Linux errno. We know path
+			 * is relative. Check if we have a fd for a dir which
+			 * has been removed.
+			 */
+			if (atfd != -1 && lx_fd_to_path(atfd, pathbuf,
+			    sizeof (pathbuf)) == NULL)
+				ret = -ENOENT;
+		}
 		return (ret);
+	}
 
 	return (symlink((char *)p1, pathbuf) ? -errno : 0);
 }
 
-int
+long
 lx_linkat(uintptr_t ext1, uintptr_t p1, uintptr_t ext2, uintptr_t p2,
     uintptr_t p3)
 {
@@ -726,29 +776,69 @@ lx_linkat(uintptr_t ext1, uintptr_t p1, uintptr_t ext2, uintptr_t p2,
 	 * symlink and there is no obvious way to trigger the other behaviour.
 	 * So for now we just ignore this flag and act like link().
 	 */
-	/* LINTED [set but not used in function] */
 	int flag = p3;
 
-	if (flag != p3)
-		return (flag); /* workaround */
+	/* return proper error for invalid flags */
+	if ((flag & ~(LX_AT_SYMLINK_FOLLOW | LX_AT_EMPTY_PATH)) != 0)
+		return (-EINVAL);
 
 	ret = getpathat(atfd1, p1, pathbuf1, sizeof (pathbuf1));
-	if (ret < 0)
+	if (ret < 0) {
+		if (ret == -EBADF) {
+			/*
+			 * Try to figure out correct Linux errno. We know path
+			 * is relative. Check if we have a fd for a dir which
+			 * has been removed.
+			 */
+			if (atfd1 != -1 && lx_fd_to_path(atfd1, pathbuf1,
+			    sizeof (pathbuf1)) == NULL)
+				ret = -ENOENT;
+		}
 		return (ret);
+	}
 
 	ret = getpathat(atfd2, p2, pathbuf2, sizeof (pathbuf2));
-	if (ret < 0)
+	if (ret < 0) {
+		if (ret == -EBADF) {
+			/*
+			 * Try to figure out correct Linux errno. We know path
+			 * is relative. Check if we have a fd for a dir which
+			 * has been removed.
+			 */
+			if (atfd2 != -1 && lx_fd_to_path(atfd2, pathbuf2,
+			    sizeof (pathbuf2)) == NULL)
+				ret = -ENOENT;
+		}
 		return (ret);
+	}
 
 	return (lx_link((uintptr_t)pathbuf1, (uintptr_t)pathbuf2));
 }
 
-int
+long
+lx_readlink(uintptr_t p1, uintptr_t p2, uintptr_t p3)
+{
+	int ret;
+
+	if ((size_t)p3 <= 0)
+		return (-EINVAL);
+
+	ret = readlink((char *)p1, (char *)p2, (size_t)p3);
+	if (ret < 0)
+		return (-errno);
+
+	return (ret);
+}
+
+long
 lx_readlinkat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int atfd = (int)ext1;
 	char pathbuf[MAXPATHLEN];
 	int ret;
+
+	if ((size_t)p3 <= 0)
+		return (-EINVAL);
 
 	ret = getpathat(atfd, p1, pathbuf, sizeof (pathbuf));
 	if (ret < 0)
@@ -761,7 +851,7 @@ lx_readlinkat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	return (ret);
 }
 
-int
+long
 lx_fchownat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3,
     uintptr_t p4)
 {
@@ -770,7 +860,7 @@ lx_fchownat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3,
 	char pathbuf[MAXPATHLEN];
 	int ret;
 
-	flag = ltos_at_flag(p4, AT_SYMLINK_NOFOLLOW);
+	flag = ltos_at_flag(p4, AT_SYMLINK_NOFOLLOW, B_TRUE);
 	if (flag < 0)
 		return (-EINVAL);
 
@@ -784,7 +874,7 @@ lx_fchownat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3,
 		return (lx_chown((uintptr_t)pathbuf, p2, p3));
 }
 
-int
+long
 lx_fchmodat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int atfd = (int)ext1;

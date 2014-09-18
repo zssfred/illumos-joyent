@@ -102,6 +102,8 @@ extern boolean_t lx_is_rpm;
  */
 #define	LX_RUSAGE_SELF		0
 #define	LX_RUSAGE_CHILDREN	(-1)
+#define	LX_RUSAGE_BOTH		(-2)
+#define	LX_RUSAGE_THREAD	1
 
 /*
  * Constants for prctl().  We only include the ones here that we actually
@@ -171,7 +173,7 @@ extern void lx_ptrace_stop_if_option(int);
 extern int lx_check_alloca(size_t);
 #define	SAFE_ALLOCA(sz)	(lx_check_alloca(sz) ? alloca(sz) : NULL)
 
-extern int ltos_at_flag(int lflag, int allow);
+extern int ltos_at_flag(int lflag, int allow, boolean_t enforce);
 
 /*
  * NO_UUCOPY disables calls to the uucopy* system calls to help with
