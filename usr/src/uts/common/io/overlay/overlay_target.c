@@ -34,6 +34,11 @@
 #include <sys/mac_client_priv.h>
 #include <sys/vlan.h>
 #include <sys/crc32.h>
+#include <sys/cred.h>
+#include <sys/file.h>
+#include <sys/errno.h>
+#include <sys/ddi.h>
+#include <sys/sunddi.h>
 
 #include <sys/overlay_impl.h>
 
