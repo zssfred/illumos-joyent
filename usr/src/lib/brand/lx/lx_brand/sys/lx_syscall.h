@@ -31,6 +31,8 @@
 #ifndef _SYS_LX_SYSCALL_H
 #define	_SYS_LX_SYSCALL_H
 
+#include <sys/lx_brand.h>
+
 #if !defined(_ASM)
 
 #include <sys/types.h>
@@ -84,6 +86,8 @@ extern long lx_fadvise64_64(uintptr_t, off64_t, off64_t, uintptr_t);
 extern long lx_read(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_readv(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_writev(uintptr_t, uintptr_t, uintptr_t);
+extern long lx_pread(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+extern long lx_pwrite(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_pread64(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
     uintptr_t);
 extern long lx_pwrite64(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
@@ -218,6 +222,7 @@ extern long lx_mmap(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
     uintptr_t, uintptr_t);
 extern long lx_mmap2(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
     uintptr_t, uintptr_t);
+extern long lx_remap(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 
 extern long lx_mount(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_umount(uintptr_t);
@@ -252,7 +257,8 @@ extern long lx_futex(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
 
 extern long lx_tkill(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
     uintptr_t);
-extern long lx_tgkill(uintptr_t, uintptr_t, uintptr_t);
+extern long lx_tgkill(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+    uintptr_t);
 
 extern long lx_sethostname(uintptr_t, uintptr_t);
 extern long lx_setdomainname(uintptr_t, uintptr_t);
@@ -288,7 +294,7 @@ extern long lx_keyctl(void);
 extern long lx_ipc(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_msgget(key_t, int);
 extern long lx_msgsnd(int, void *, size_t, int);
-extern long lx_msgrcv(int, void *, size_t, int);
+extern long lx_msgrcv(int, void *, size_t, long, int);
 extern long lx_msgctl(int, int, void *);
 extern long lx_semget(key_t, int, int);
 extern long lx_semop(int, void *, size_t);
@@ -334,6 +340,7 @@ extern long lx_setreuid(uid_t, uid_t);
 extern long lx_shmdt(char *);
 extern long lx_stime(const time_t *);
 extern long lx_symlink(const char *, const char *);
+extern long lx_syslog(int, char *, int);
 extern long lx_umask(mode_t);
 extern long lx_utimes(const char *, const struct timeval *);
 extern long lx_write(int, const void *, size_t);
@@ -369,8 +376,10 @@ extern long lx_yield(void);
 #define	LX_EMUL_set_tid_address		23
 #define	LX_EMUL_pipe2			24
 #define	LX_EMUL_rt_tgsigqueueinfo	25
+#define	LX_EMUL_arch_prctl		26
+#define	LX_EMUL_tgkill			LX_N_IKE_FUNCS
 
-/* XXX adjust LX_N_IKE_FUNCS when adding new in-kernel functions */
+/* Note: adjust LX_N_IKE_FUNCS when adding new in-kernel functions */
 
 #ifdef	__cplusplus
 }

@@ -229,6 +229,10 @@ static struct lx_sysent sysents[LX_NSYSCALLS + 1];
 
 static uintptr_t stack_bottom;
 
+#if defined(_LP64)
+long lx_fsb;
+long lx_fs;
+#endif
 int lx_install = 0;		/* install mode enabled if non-zero */
 boolean_t lx_is_rpm = B_FALSE;
 int lx_rpm_delay = 1;
@@ -240,6 +244,17 @@ pid_t zoneinit_pid;		/* zone init PID */
 long max_pid;			/* native maximum PID */
 
 thread_key_t lx_tsd_key;
+
+int
+lx_errno(int err)
+{
+	if (err >= sizeof (stol_errno) / sizeof (stol_errno[0])) {
+		lx_debug("invalid errno %d\n", err);
+		assert(0);
+	}
+
+	return (stol_errno[err]);
+}
 
 int
 uucopy_unsafe(const void *src, void *dst, size_t n)
@@ -437,6 +452,16 @@ static int
 lx_emulate_args(lx_regs_t *rp, struct lx_sysent *s, uintptr_t *args)
 {
 #if defined(_LP64)
+	/*
+	 * Note: Syscall argument passing is different from function call
+	 * argument passing on amd64.  For function calls, the fourth arg is
+	 * passed via %rcx, but for system calls the 4th arg is passed via %r10.
+	 * This is because in amd64, the syscall instruction puts the lower
+	 * 32 bits of %rflags in %r11 and puts the %rip value to %rcx.
+	 *
+	 * Appendix A of the amd64 ABI (Linux conventions) states that syscalls
+	 * are limited to 6 args and no arg is passed on the stack.
+	 */
 	args[0] = rp->lxr_rdi;
 	args[1] = rp->lxr_rsi;
 	args[2] = rp->lxr_rdx;
@@ -693,6 +718,29 @@ lx_close_fh(FILE *file)
 
 extern int set_l10n_alternate_root(char *path);
 
+#if defined(_LP64)
+static void *
+map_vdso()
+{
+	int fd;
+	mmapobj_result_t	mpp[10]; /* we know the size of our lib */
+	mmapobj_result_t	*smpp = mpp;
+	uint_t			mapnum = 10;
+
+	if ((fd = open("/native/usr/lib/brand/lx/amd64/lx_vdso.so.1",
+	    O_RDONLY)) == -1)
+		lx_err_fatal("couldn't open lx_vdso.so.1");
+
+	if (mmapobj(fd, MMOBJ_INTERPRET, smpp, &mapnum, NULL) == -1)
+		lx_err_fatal("couldn't mmapobj lx_vdso.so.1");
+
+	(void) close(fd);
+
+	/* assume first segment is the base of the mapping */
+	return (smpp->mr_addr);
+}
+#endif
+
 /*ARGSUSED*/
 int
 lx_init(int argc, char *argv[], char *envp[])
@@ -704,6 +752,9 @@ lx_init(int argc, char *argv[], char *envp[])
 	lx_elf_data_t	edp;
 	lx_brand_registration_t reg;
 	static lx_tsd_t lx_tsd;
+#if defined(_LP64)
+	void		*vdso_hdr;
+#endif
 
 	stack_bottom = 2 * sysconf(_SC_PAGESIZE);
 
@@ -826,6 +877,10 @@ lx_init(int argc, char *argv[], char *envp[])
 	if (lx_statfs_init() != 0)
 		lx_err_fatal("failed to setup the statfs translator");
 
+#if defined(_LP64)
+	vdso_hdr = map_vdso();
+#endif
+
 	/*
 	 * Find the aux vector on the stack.
 	 */
@@ -854,6 +909,12 @@ lx_init(int argc, char *argv[], char *envp[])
 			case AT_PHNUM:
 				ap->a_un.a_val = edp.ed_phnum;
 				break;
+#if defined(_LP64)
+			case AT_SUN_BRAND_LX_SYSINFO_EHDR:
+				ap->a_type = AT_SYSINFO_EHDR;
+				ap->a_un.a_val = (long)vdso_hdr;
+				break;
+#endif
 			default:
 				break;
 		}
@@ -876,10 +937,7 @@ lx_init(int argc, char *argv[], char *envp[])
 
 	/* Initialize the thread specific data for this thread. */
 	bzero(&lx_tsd, sizeof (lx_tsd));
-#if defined(_LP64)
-	/* start the syscall mode stack in native mode */
-	lx_tsd.lxtsd_scms = 1;
-#else
+#if defined(_ILP32)
 	/* start with %gs having the native libc value */
 	lx_tsd.lxtsd_gs = LWPGS_SEL;
 #endif
@@ -937,7 +995,16 @@ lx_syscall_regs(void)
 		assert(fr->fr_savpc != NULL);
 	}
 
+#if defined(_LP64)
+	/*
+	 * This is %rbp, update to be at the end of the frame for correct
+	 * struct offsets. lx_emulate only takes one parameter, a pointer to
+	 * lx_regs_t.
+	 */
+	return ((lx_regs_t *)(fr->fr_savfp - sizeof (lx_regs_t)));
+#else
 	return ((lx_regs_t *)((uintptr_t *)fr)[2]);
+#endif
 }
 
 int
@@ -1037,6 +1104,8 @@ IN_KERNEL_EMULATION(futex, LX_EMUL_futex)
 IN_KERNEL_EMULATION(set_thread_area, LX_EMUL_set_thread_area)
 IN_KERNEL_EMULATION(get_thread_area, LX_EMUL_get_thread_area)
 IN_KERNEL_EMULATION(set_tid_address, LX_EMUL_set_tid_address)
+IN_KERNEL_EMULATION(arch_prctl, LX_EMUL_arch_prctl)
+IN_KERNEL_EMULATION(tgkill, LX_EMUL_tgkill)
 
 #if defined(_LP64)
 /* The following is the 64-bit syscall table */
@@ -1059,15 +1128,15 @@ static struct lx_sysent sysents[] = {
 	{"rt_sigprocmask", lx_rt_sigprocmask,	0,		4}, /* 14 */
 	{"rt_sigreturn", lx_rt_sigreturn,	0,		0}, /* 15 */
 	{"ioctl",	lx_ioctl,		0,		3}, /* 16 */
-	{"pread64",	lx_pread64,		0,		5}, /* 17 */
-	{"pwrite64",	lx_pwrite64,		0,		5}, /* 18 */
+	{"pread64",	lx_pread,		0,		4}, /* 17 */
+	{"pwrite64",	lx_pwrite,		0,		4}, /* 18 */
 	{"readv",	lx_readv,		0,		3}, /* 19 */
 	{"writev",	lx_writev,		0,		3}, /* 20 */
 	{"access",	lx_access,		0,		2}, /* 21 */
 	{"pipe",	lx_pipe,		0,		1}, /* 22 */
 	{"select",	lx_select,		0,		5}, /* 23 */
 	{"sched_yield",	lx_yield,		0,		0}, /* 24 */
-	{"mremap",	NULL,			NOSYS_NO_EQUIV,	0}, /* 25 */
+	{"mremap",	lx_remap,		0,		5}, /* 25 */
 	{"msync",	lx_msync,		0,		3}, /* 26 */
 	{"mincore",	lx_mincore,		0,		3}, /* 27 */
 	{"madvise",	lx_madvise,		0,		3}, /* 28 */
@@ -1112,14 +1181,14 @@ static struct lx_sysent sysents[] = {
 	{"shmdt",	lx_shmdt,		0,		1}, /* 67 */
 	{"msgget",	lx_msgget,		0,		2}, /* 68 */
 	{"msgsnd",	lx_msgsnd,		0,		4}, /* 69 */
-	{"msgrcv",	lx_msgrcv,		0,		4}, /* 70 */
+	{"msgrcv",	lx_msgrcv,		0,		5}, /* 70 */
 	{"msgctl",	lx_msgctl,		0,		3}, /* 71 */
 	{"fcntl",	lx_fcntl64,		0,		3}, /* 72 */
 	{"flock",	lx_flock,		0,		2}, /* 73 */
 	{"fsync",	lx_fsync,		0,		1}, /* 74 */
 	{"fdatasync",	lx_fdatasync,		0,		1}, /* 75 */
-	{"truncate",	lx_truncate64,		0,		2}, /* 76 */
-	{"ftruncate",	lx_ftruncate64,		0,		2}, /* 77 */
+	{"truncate",	lx_truncate,		0,		2}, /* 76 */
+	{"ftruncate",	lx_ftruncate,		0,		2}, /* 77 */
 	{"getdents",	lx_getdents,		0,		3}, /* 78 */
 	{"getcwd",	lx_getcwd,		0,		2}, /* 79 */
 	{"chdir",	lx_chdir,		0,		1}, /* 80 */
@@ -1145,7 +1214,7 @@ static struct lx_sysent sysents[] = {
 	{"times",	lx_times,		0,		1}, /* 100 */
 	{"ptrace",	lx_ptrace,		0,		4}, /* 101 */
 	{"getuid",	lx_getuid,		0,		0}, /* 102 */
-	{"syslog",	NULL,			NOSYS_KERNEL,	0}, /* 103 */
+	{"syslog",	lx_syslog,		0,		3}, /* 103 */
 	{"getgid",	lx_getgid,		0,		0}, /* 104 */
 	{"setuid",	lx_setuid,		0,		1}, /* 105 */
 	{"setgid",	lx_setgid,		0,		1}, /* 106 */
@@ -1179,8 +1248,8 @@ static struct lx_sysent sysents[] = {
 	{"uselib",	NULL,			NOSYS_KERNEL,	0}, /* 134 */
 	{"personality",	lx_personality,		0,		1}, /* 135 */
 	{"ustat",	NULL,			NOSYS_OBSOLETE,	2}, /* 136 */
-	{"statfs",	lx_statfs64,		0,		2}, /* 137 */
-	{"fstatfs",	lx_fstatfs64,		0,		2}, /* 138 */
+	{"statfs",	lx_statfs,		0,		2}, /* 137 */
+	{"fstatfs",	lx_fstatfs,		0,		2}, /* 138 */
 	{"sysfs",	lx_sysfs, 		0,		3}, /* 139 */
 	{"getpriority",	lx_getpriority,		0,		2}, /* 140 */
 	{"setpriority",	lx_setpriority,		0,		3}, /* 141 */
@@ -1200,7 +1269,7 @@ static struct lx_sysent sysents[] = {
 	{"pivot_root",	NULL,			NOSYS_KERNEL,	0}, /* 155 */
 	{"sysctl",	lx_sysctl,		0,		1}, /* 156 */
 	{"prctl",	lx_prctl,		0,		5}, /* 157 */
-	{"arch_prctl",	NULL,			NOSYS_NULL,	0}, /* 158 */
+	{"arch_prctl",	lx_arch_prctl,		0,		2}, /* 158 */
 	{"adjtimex",	lx_adjtimex,		0,		1}, /* 159 */
 	{"setrlimit",	lx_setrlimit,		0,		2}, /* 160 */
 	{"chroot",	lx_chroot,		0,		1}, /* 161 */
@@ -1470,7 +1539,7 @@ static struct lx_sysent sysents[] = {
 	{"fstatfs",	lx_fstatfs,	0,		2},	/* 100 */
 	{"ioperm",	NULL,		NOSYS_NO_EQUIV,	0},	/* 101 */
 	{"socketcall",	lx_socketcall,	0,		2},	/* 102 */
-	{"syslog",	NULL,		NOSYS_KERNEL,	0},	/* 103 */
+	{"syslog",	lx_syslog,	0,		3},	/* 103 */
 	{"setitimer",	lx_setitimer,	0,		3},	/* 104 */
 	{"getitimer",	lx_getitimer,	0,		2},	/* 105 */
 	{"stat",	lx_stat,	0,		2},	/* 106 */
@@ -1530,7 +1599,7 @@ static struct lx_sysent sysents[] = {
 	{"sched_get_priority_min", lx_sched_get_priority_min, 0, 1}, /* 160 */
 	{"sched_rr_get_interval", lx_sched_rr_get_interval, 0,	2},  /* 161 */
 	{"nanosleep",	lx_nanosleep,	0,		2},	/* 162 */
-	{"mremap",	NULL,		NOSYS_NO_EQUIV,	0},	/* 163 */
+	{"mremap",	lx_remap,	0,		5},	/* 163 */
 	{"setresuid16",	lx_setresuid16, 0,		3},	/* 164 */
 	{"getresuid16",	lx_getresuid16,	0,		3},	/* 165 */
 	{"vm86",	NULL,		NOSYS_NO_EQUIV,	0},	/* 166 */

@@ -35,6 +35,7 @@
 #include <strings.h>
 #include <alloca.h>
 #include <ucred.h>
+#include <limits.h>
 
 #include <sys/param.h>
 #include <sys/brand.h>
@@ -53,16 +54,21 @@
 #include <sys/lx_misc.h>
 
 /*
- * This string is used to prefix all abstract namespace unix sockets, ie all
+ * This string is used to prefix all abstract namespace Unix sockets, ie all
  * abstract namespace sockets are converted to regular sockets in the /tmp
  * directory with .ABSK_ prefixed to their names.
  */
 #define	ABST_PRFX "/tmp/.ABSK_"
 #define	ABST_PRFX_LEN 11
 
+#define	LX_DEV_LOG			"/dev/log"
+#define	LX_DEV_LOG_REDIRECT		"/var/run/.dev_log_redirect"
+#define	LX_DEV_LOG_REDIRECT_LEN		18
+
 typedef enum {
 	lxa_none,
-	lxa_abstract
+	lxa_abstract,
+	lxa_devlog
 } lx_addr_type_t;
 
 #ifdef __i386
@@ -237,11 +243,46 @@ static const int ltos_ip_sockopts[LX_IP_UNICAST_IF + 1] = {
 	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP				/* 50 */
 };
 
-static const int ltos_tcp_sockopts[LX_TCP_QUICKACK + 1] = {
-	OPTNOTSUP, TCP_NODELAY, TCP_MAXSEG, OPTNOTSUP,
-	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	TCP_KEEPALIVE, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,
-	OPTNOTSUP
+/*
+ *
+ * TCP socket option mapping:
+ *
+ * Linux					Illumos
+ * -----					-------
+ * TCP_NODELAY                1                 TCP_NODELAY      1
+ * TCP_MAXSEG                 2                 TCP_MAXSEG       2
+ * TCP_CORK                   3                 TCP_CORK         24
+ * TCP_KEEPIDLE               4                 TCP_KEEPIDLE     34
+ * TCP_KEEPINTVL              5                 TCP_KEEPINTVL    36
+ * TCP_KEEPCNT                6                 TCP_KEEPCNT      35
+ * TCP_SYNCNT                 7
+ * TCP_LINGER2                8                 TCP_LINGER2      28
+ * TCP_DEFER_ACCEPT           9
+ * TCP_WINDOW_CLAMP           10
+ * TCP_INFO                   11
+ * TCP_QUICKACK               12
+ * TCP_CONGESTION             13
+ * TCP_MD5SIG                 14
+ * TCP_THIN_LINEAR_TIMEOUTS   16
+ * TCP_THIN_DUPACK            17
+ * TCP_USER_TIMEOUT           18
+ * TCP_REPAIR                 19
+ * TCP_REPAIR_QUEUE           20
+ * TCP_QUEUE_SEQ              21
+ * TCP_REPAIR_OPTIONS         22
+ * TCP_FASTOPEN               23
+ * TCP_TIMESTAMP              24
+ * TCP_NOTSENT_LOWAT          25
+ */
+
+static const int ltos_tcp_sockopts[LX_TCP_NOTSENT_LOWAT + 1] = {
+	OPTNOTSUP, TCP_NODELAY, TCP_MAXSEG, TCP_CORK,		/* 0-3 */
+	TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT, OPTNOTSUP,	/* 4-7 */
+	TCP_LINGER2, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 8-11 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 12-15 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 16-19 */
+	OPTNOTSUP, OPTNOTSUP, OPTNOTSUP, OPTNOTSUP,		/* 20-23 */
+	OPTNOTSUP, OPTNOTSUP					/* 24-25 */
 };
 
 static const int ltos_igmp_sockopts[IGMP_MTRACE + 1] = {
@@ -355,6 +396,9 @@ static lx_proto_opts_t raw_sockopts_tbl = PROTO_SOCKOPTS(ltos_raw_sockopts);
 #define	_CMSG_HDR_ALIGNMENT	4
 #define	_CMSG_HDR_ALIGN(x)	(((uintptr_t)(x) + _CMSG_HDR_ALIGNMENT - 1) & \
 				    ~(_CMSG_HDR_ALIGNMENT - 1))
+#define	_CMSG_DATA_ALIGN(x)						\
+	(((uintptr_t)(x) + sizeof (int) - 1) & ~(sizeof (int) - 1))
+
 #define	CMSG_FIRSTHDR(m)						\
 	(((m)->msg_controllen < sizeof (struct cmsghdr)) ?		\
 	    (struct cmsghdr *)0 : (struct cmsghdr *)((m)->msg_control))
@@ -368,6 +412,12 @@ static lx_proto_opts_t raw_sockopts_tbl = PROTO_SOCKOPTS(ltos_raw_sockopts);
 	((struct cmsghdr *)0) :						\
 	((struct cmsghdr *)_CMSG_HDR_ALIGN((char *)(c) +		\
 	    ((struct cmsghdr *)(c))->cmsg_len))))
+
+#define	CMSG_LEN(l)							\
+	((unsigned int)_CMSG_DATA_ALIGN(sizeof (struct cmsghdr)) + (l))
+
+#define	CMSG_DATA(c)							\
+	((unsigned char *)_CMSG_DATA_ALIGN((struct cmsghdr *)(c) + 1))
 
 #define	LX_TO_SOL	1
 #define	SOL_TO_LX	2
@@ -383,13 +433,140 @@ typedef struct {
 	uint32_t	nl_groups;
 } lx_sockaddr_nl_t;
 
+#if defined(_LP64)
+/*
+ * For 32-bit code the Illumos and Linux cmsghdr structure definition is the
+ * same, but for 64-bit Linux code the cmsg_len value is a long instead of an
+ * int. As a result, we need to go through a bunch of work to transform the
+ * csmgs back and forth.
+ */
+typedef struct {
+	long	cmsg_len;
+	int	cmsg_level;
+	int	cmsg_type;
+} lx_cmsghdr64_t;
+
+/*
+ * When converting from Illumos to Linux we don't know in advance how many
+ * control msgs we recv, but we do know that the Linux header is 4 bytes
+ * bigger, plus any additional alignment bytes. We'll take a guess and assume
+ * there is not 64 msgs (1 is common) and alloc an extra 256 bytes.
+ */
+#define	LX_CMSG_EXTRA	256
+
+#define	LX_CMSG_HDR_ALIGN(x)						\
+	(((uintptr_t)(x) + sizeof (long) - 1) & ~(sizeof (long) - 1))
+
+#define	LX_CMSG_DATA_ALIGN(x)						\
+	(((uintptr_t)(x) + sizeof (int) - 1) & ~(sizeof (int)  - 1))
+
+#define	LX_CMSG_DATA(c)							\
+	((unsigned char *)LX_CMSG_DATA_ALIGN((lx_cmsghdr64_t *)(c) + 1))
+
+#define	LX_CMSG_FIRSTHDR(m) 						\
+	(((m)->msg_controllen < sizeof (lx_cmsghdr64_t)) ?		\
+	(lx_cmsghdr64_t *)NULL : (lx_cmsghdr64_t *)((m)->msg_control))
+
+#define	LX_CMSG_LEN(l) (LX_CMSG_HDR_ALIGN(sizeof (lx_cmsghdr64_t)) + (l))
+
+#define	LX_CMSG_NXTHDR(m, c)						\
+	(((c) == 0) ? LX_CMSG_FIRSTHDR(m) :				\
+	((((uintptr_t)LX_CMSG_HDR_ALIGN((char *)(c) +			\
+	((lx_cmsghdr64_t *)(c))->cmsg_len) + sizeof (lx_cmsghdr64_t)) >	\
+	(((uintptr_t)((struct lx_msghdr *)(m))->msg_control) +		\
+	((uintptr_t)((struct lx_msghdr *)(m))->msg_controllen))) ?	\
+	((lx_cmsghdr64_t *)0) :						\
+	((lx_cmsghdr64_t *)LX_CMSG_HDR_ALIGN((char *)(c) +		\
+	((lx_cmsghdr64_t *)(c))->cmsg_len))))
+
+
+static void
+ltos_xform_cmsgs(struct lx_msghdr *msg, struct cmsghdr *ntv_cmsg)
+{
+	lx_cmsghdr64_t *lcmsg, *last;
+	struct cmsghdr *cmsg, *lp;
+	int nlen = 0;
+
+	cmsg = ntv_cmsg;
+	lcmsg = LX_CMSG_FIRSTHDR(msg);
+	while (lcmsg != NULL) {
+		cmsg->cmsg_len =
+		    CMSG_LEN(lcmsg->cmsg_len - sizeof (lx_cmsghdr64_t));
+		cmsg->cmsg_level = lcmsg->cmsg_level;
+		cmsg->cmsg_type = lcmsg->cmsg_type;
+
+		bcopy((void *)LX_CMSG_DATA(lcmsg), (void *)CMSG_DATA(cmsg),
+		    lcmsg->cmsg_len - sizeof (lx_cmsghdr64_t));
+
+		last = lcmsg;
+		lcmsg = LX_CMSG_NXTHDR(msg, last);
+
+		lp = cmsg;
+		cmsg = CMSG_NXTHDR(msg, lp);
+
+		nlen += (int)((uint64_t)cmsg - (uint64_t)lp);
+	}
+
+	msg->msg_control = ntv_cmsg;
+	msg->msg_controllen = nlen;
+}
+
 static int
-convert_cmsgs(int direction, struct lx_msghdr *msg, char *caller)
+stol_xform_cmsgs(struct lx_msghdr *msg, lx_cmsghdr64_t *lx_cmsg)
+{
+	lx_cmsghdr64_t *lcmsg, *last;
+	struct cmsghdr *cmsg, *lp;
+	int nlen = 0;
+	int err = 0;
+
+	lcmsg = lx_cmsg;
+	cmsg = CMSG_FIRSTHDR(msg);
+	while (cmsg != NULL && err == 0) {
+		lcmsg->cmsg_len =
+		    LX_CMSG_LEN(cmsg->cmsg_len - sizeof (struct cmsghdr));
+		lcmsg->cmsg_level = cmsg->cmsg_level;
+		lcmsg->cmsg_type = cmsg->cmsg_type;
+
+		bcopy((void *)CMSG_DATA(cmsg), (void *)LX_CMSG_DATA(lcmsg),
+		    cmsg->cmsg_len - sizeof (struct cmsghdr));
+
+		lp = cmsg;
+		cmsg = CMSG_NXTHDR(msg, lp);
+
+		last = lcmsg;
+		lcmsg = LX_CMSG_NXTHDR(msg, last);
+
+		nlen += (int)((uint64_t)lcmsg - (uint64_t)last);
+
+		if (nlen > (msg->msg_controllen + LX_CMSG_EXTRA))
+			err = ENOTSUP;
+	}
+
+	if (err) {
+		lx_unsupported("stol_xform_cmsgs exceeded the allocation "
+		    "%d %d\n", nlen, (msg->msg_controllen + LX_CMSG_EXTRA));
+	} else {
+		msg->msg_control = lx_cmsg;
+		msg->msg_controllen = nlen;
+	}
+	return (err);
+}
+#endif
+
+static int
+convert_cmsgs(int direction, struct lx_msghdr *msg, void *new_cmsg,
+    char *caller)
 {
 	struct cmsghdr *cmsg, *last;
 	int err = 0;
 	int level = 0;
 	int type = 0;
+
+#if defined(_LP64)
+	if (direction == LX_TO_SOL) {
+		ltos_xform_cmsgs(msg, (struct cmsghdr *)new_cmsg);
+	}
+#endif
 
 	cmsg = CMSG_FIRSTHDR(msg);
 	while (cmsg != NULL && err == 0) {
@@ -433,6 +610,12 @@ convert_cmsgs(int direction, struct lx_msghdr *msg, char *caller)
 		lx_unsupported("Unsupported socket control message %d "
 		    "(%d) in %s\n.", type, level, caller);
 
+#if defined(_LP64)
+	if (direction == SOL_TO_LX && err == 0) {
+		err = stol_xform_cmsgs(msg, (lx_cmsghdr64_t *)new_cmsg);
+	}
+#endif
+
 	return (err);
 }
 
@@ -440,46 +623,50 @@ convert_cmsgs(int direction, struct lx_msghdr *msg, char *caller)
  * We may need a different size socket address vs. the one passed in.
  */
 static int
-calc_addr_size(struct sockaddr *a, int in_len, lx_addr_type_t *type)
+calc_addr_size(struct sockaddr *a, int nlen, lx_addr_type_t *type)
 {
 	struct sockaddr name;
-	boolean_t abst_sock;
-	int nlen;
+	size_t fsize = sizeof (name.sa_family);
 
 	if (uucopy(a, &name, sizeof (struct sockaddr)) != 0)
 		return (-errno);
 
-	/*
-	 * Handle Linux abstract sockets, which are UNIX sockets whose path
-	 * begins with a NULL character.
-	 */
-	abst_sock = (name.sa_family == AF_UNIX) && (name.sa_data[0] == '\0');
-
-	/*
-	 * Convert_sockaddr will expand the socket path if it is abstract, so
-	 * we need to allocate extra memory for it.
-	 */
-
-	nlen = in_len;
-	if (abst_sock) {
-		nlen += ABST_PRFX_LEN;
-		*type = lxa_abstract;
-	} else {
+	if (name.sa_family != AF_UNIX) {
 		*type = lxa_none;
+		return (nlen);
 	}
 
+	/*
+	 * Handle Linux abstract sockets, which are Unix sockets whose path
+	 * begins with a NULL character.
+	 */
+	if (name.sa_data[0] == '\0') {
+		*type = lxa_abstract;
+		return (nlen + ABST_PRFX_LEN);
+	}
+
+	/*
+	 * For /dev/log, we need to create the Unix domain socket away from
+	 * the (unwritable) /dev.
+	 */
+	if (strncmp(name.sa_data, LX_DEV_LOG, nlen - fsize) == 0) {
+		*type = lxa_devlog;
+		return (nlen + LX_DEV_LOG_REDIRECT_LEN);
+	}
+
+	*type = lxa_none;
 	return (nlen);
 }
 
 /*
- * If inaddr is an abstract namespace unix socket, this function expects addr
+ * If inaddr is an abstract namespace Unix socket, this function expects addr
  * to have enough memory to hold the expanded socket name, ie it must be of
  * size *len + ABST_PRFX_LEN. If inaddr is a netlink socket then we expect
- * addr to have enough memory to hold an UNIX socket address.
+ * addr to have enough memory to hold an Unix socket address.
  */
 static int
 convert_sockaddr(struct sockaddr *addr, socklen_t *len,
-	struct sockaddr *inaddr, socklen_t inlen)
+	struct sockaddr *inaddr, socklen_t inlen, lx_addr_type_t type)
 {
 	sa_family_t family;
 	int lx_in6_len;
@@ -538,7 +725,20 @@ convert_sockaddr(struct sockaddr *addr, socklen_t *len,
 			*len = inlen;
 
 			/*
-			 * Linux supports abstract unix sockets, which are
+			 * In order to support /dev/log -- a Unix domain socket
+			 * used for logging that has had its path hard-coded
+			 * far and wide -- we need to relocate the socket
+			 * into a writable filesystem.  This also necessitates
+			 * some cleanup in bind(); see lx_bind() for details.
+			 */
+			if (type == lxa_devlog) {
+				*len = inlen + LX_DEV_LOG_REDIRECT_LEN;
+				strcpy(addr->sa_data, LX_DEV_LOG_REDIRECT);
+				break;
+			}
+
+			/*
+			 * Linux supports abstract Unix sockets, which are
 			 * simply sockets that do not exist on the file system.
 			 * These sockets are denoted by beginning the path with
 			 * a NULL character. To support these, we strip out the
@@ -547,8 +747,7 @@ convert_sockaddr(struct sockaddr *addr, socklen_t *len,
 			 * ABST_PRFX and replacing all illegal characters with
 			 * '_'.
 			 */
-			if (addr->sa_data[0] == '\0') {
-
+			if (type == lxa_abstract) {
 				/*
 				 * inlen is the entire size of the sockaddr_un
 				 * data structure, including the sun_family, so
@@ -774,10 +973,6 @@ lx_socket(int domain, int type, int protocol)
 
 	lx_debug("\tsocket(%d, %d, %d)", domain, type, protocol);
 
-	/* Right now IPv6 sockets don't work */
-	if (domain == AF_INET6)
-		return (-EAFNOSUPPORT);
-
 	fd = socket(domain, type | options, protocol);
 
 	if (fd >= 0)
@@ -800,30 +995,37 @@ lx_bind(int sockfd, void *np, int nl)
 	lx_addr_type_t type;
 	struct stat sb;
 
-	if ((nlen = calc_addr_size((struct sockaddr *)np, nl, &type)) < 0)
+	if ((nlen = calc_addr_size(np, nl, &type)) < 0)
 		return (nlen);
 
 	if ((name = SAFE_ALLOCA(nlen)) == NULL)
 		return (-EINVAL);
 
-	if ((r = convert_sockaddr(name, &len, (struct sockaddr *)np, nl)) < 0)
+	if ((r = convert_sockaddr(name, &len, np, nl, type)) < 0)
 		return (r);
 
 	/*
-	 * Linux abstract namespace unix sockets are simply socket that do not
-	 * exist on the filesystem. We emulate them by changing their paths
-	 * in convert_sockaddr so that they point real files names on the
-	 * filesystem. Because in Linux they do not exist on the filesystem
-	 * applications do not have to worry about deleting files, however in
-	 * our filesystem based emulation we do. To solve this problem, we first
-	 * check to see if the socket already exists before we create one. If it
-	 * does we attempt to connect to it to see if it is in use, or just
-	 * left over from a previous lx_bind call. If we are unable to connect,
-	 * we assume it is not in use and remove the file, then continue on
-	 * as if the file never existed.
+	 * There are two types of Unix domain sockets for which we need to
+	 * do some special handling with respect to bind:  abstract namespace
+	 * sockets and /dev/log.  Abstract namespace sockets are simply Unix
+	 * domain sockets that do not exist on the filesystem; we emulate them
+	 * by changing their paths in convert_sockaddr() to point to real
+	 * file names in the  filesystem.  /dev/log is a special Unix domain
+	 * socket that is used for system logging.  On us, /dev isn't writable,
+	 * so we rewrite these sockets in convert_sockaddr() to point to a
+	 * writable file (defined by LX_DEV_LOG_REDIRECT).  In both cases, we
+	 * introduce a new problem with respect to cleanup:  abstract namespace
+	 * sockets don't need to be cleaned up (when they are closed they are
+	 * removed) and /dev/log can't be cleaned up because it's in the
+	 * non-writable /dev.  We solve these problems by cleaning up here in
+	 * lx_bind():  before we create the socket, we check to see if it
+	 * exists.  If it does, we attempt to connect to it to see if it is in
+	 * use, or just left over from a previous lx_bind() call. If we are
+	 * unable to connect, we assume it is not in use and remove the file,
+	 * then continue on as if the file never existed.
 	 */
-	if (type == lxa_abstract && stat(name->sa_data, &sb) == 0 &&
-	    S_ISSOCK(sb.st_mode)) {
+	if ((type == lxa_abstract || type == lxa_devlog) &&
+	    stat(name->sa_data, &sb) == 0 && S_ISSOCK(sb.st_mode)) {
 		if ((r2 = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
 			return (-ENOSR);
 		ret = connect(r2, name, len);
@@ -853,7 +1055,7 @@ lx_bind(int sockfd, void *np, int nl)
 	r = bind(sockfd, name, len);
 
 	/*
-	 * Linux returns EADDRINUSE for attempts to bind to UNIX domain
+	 * Linux returns EADDRINUSE for attempts to bind to Unix domain
 	 * sockets that aren't sockets.
 	 */
 	if ((r < 0) && (errno == EINVAL) && (name->sa_family == AF_UNIX) &&
@@ -873,13 +1075,13 @@ lx_connect(int sockfd, void *np, int nl)
 	int nlen;
 	lx_addr_type_t type;
 
-	if ((nlen = calc_addr_size((struct sockaddr *)np, nl, &type)) < 0)
+	if ((nlen = calc_addr_size(np, nl, &type)) < 0)
 		return (nlen);
 
 	if ((name = SAFE_ALLOCA(nlen)) == NULL)
 		return (-EINVAL);
 
-	if ((r = convert_sockaddr(name, &len, (struct sockaddr *)np, nl)) < 0)
+	if ((r = convert_sockaddr(name, &len, np, nl, type)) < 0)
 		return (r);
 
 	lx_debug("\tconnect(%d, 0x%p, %d)", sockfd, name, len);
@@ -1011,6 +1213,10 @@ lx_getpeername(int sockfd, void *np, int *nlp)
 	lx_debug("\tgetpeername(%d, 0x%p, 0x%p (=%d))", sockfd,
 	    (struct sockaddr *)np, nlp, namelen);
 
+	/* LTP can pass -1 but we'll limit the allocation to a page */
+	if ((uint32_t)namelen > 4096)
+		return (-EINVAL);
+
 	/*
 	 * Linux returns EFAULT in this case, even if the namelen parameter
 	 * is 0 (some test cases use -1, so we check for that too).  This check
@@ -1082,15 +1288,13 @@ lx_sendto(int sockfd, void *buf, size_t len, int flags, void *lto, int tolen)
 		if (tolen < 0)
 			return (-EINVAL);
 
-		if ((nlen = calc_addr_size((struct sockaddr *)lto, tolen,
-		    &type)) < 0)
+		if ((nlen = calc_addr_size(lto, tolen, &type)) < 0)
 			return (nlen);
 
 		if ((to = SAFE_ALLOCA(nlen)) == NULL)
 			return (-EINVAL);
 
-		if ((r = convert_sockaddr(to, &tlen, (struct sockaddr *)lto,
-		    tlen)) < 0)
+		if ((r = convert_sockaddr(to, &tlen, lto, tlen, type)) < 0)
 			return (r);
 	}
 
@@ -1150,6 +1354,16 @@ lx_recvfrom(int sockfd, void *buf, size_t len, int flags, void *from,
 
 	lx_debug("\trecvfrom(%d, 0x%p, 0x%d, 0x%x, 0x%p, 0x%p)", sockfd, buf,
 	    len, flags, from, from_lenp);
+
+	/* LTP expects EINVAL when from_len == -1 */
+	if (from_lenp != NULL) {
+		int flen;
+
+		if (uucopy(from_lenp, &flen, sizeof (int)) != 0)
+			return (-errno);
+		if (flen == -1)
+			return (-EINVAL);
+	}
 
 	flags = convert_sockflags(flags, "recvfrom");
 
@@ -1213,6 +1427,7 @@ long
 lx_setsockopt(int sockfd, int level, int optname, void *optval, int optlen)
 {
 	int internal_opt;
+	uchar_t internal_uchar;
 	int r;
 	lx_proto_opts_t *proto_opts;
 	boolean_t converted = B_FALSE;
@@ -1265,38 +1480,34 @@ lx_setsockopt(int sockfd, int level, int optname, void *optval, int optlen)
 			converted = B_TRUE;
 		}
 
+		/*
+		 * For IP_MULTICAST_TTL and IP_MULTICAST_LOOP, Linux defines
+		 * the option value to be an integer while we define it to be
+		 * an unsigned character.  To prevent the kernel from spitting
+		 * back an error on an illegal length, verify that the option
+		 * value is less than UCHAR_MAX and then swizzle it.
+		 */
+		if (optname == LX_IP_MULTICAST_TTL ||
+		    optname == LX_IP_MULTICAST_LOOP) {
+			if (optlen != sizeof (int))
+				return (-EINVAL);
+
+			if (uucopy(optval, &internal_opt, sizeof (int)) != 0)
+				return (-errno);
+
+			if (internal_opt > UCHAR_MAX)
+				return (-EINVAL);
+
+			internal_uchar = (uchar_t)internal_opt;
+			optval = &internal_uchar;
+			optlen = sizeof (uchar_t);
+		}
 	} else if (level == LX_SOL_SOCKET) {
 		/* Linux ignores this option. */
 		if (optname == LX_SO_BSDCOMPAT)
 			return (0);
 
 		level = SOL_SOCKET;
-
-	} else if (level == LX_IPPROTO_TCP) {
-		if (optname == LX_TCP_CORK) {
-			/*
-			 * TCP_CORK is a Linux-only option that instructs the
-			 * TCP stack not to send out partial frames. Illumos
-			 * doesn't include this option but some apps require
-			 * it. So, we do our best to emulate the option by
-			 * disabling TCP_NODELAY. If the app requests that we
-			 * disable TCP_CORK, we just ignore it since enabling
-			 * TCP_NODELAY may be overcompensating.
-			 */
-			optname = TCP_NODELAY;
-			if (optlen != sizeof (int))
-				return (-EINVAL);
-			if (uucopy(optval, &internal_opt,
-			    sizeof (int)) != 0)
-				return (-errno);
-			if (internal_opt == 0)
-				return (0);
-			internal_opt = 1;
-			optval = &internal_opt;
-
-			converted = B_TRUE;
-		}
-
 	} else if (level == LX_IPPROTO_RAW) {
 		/*
 		 * Ping sets this option. Currently we just ignore it to make
@@ -1428,9 +1639,17 @@ lx_getsockopt(int sockfd, int level, int optname, void *optval, int *optlenp)
 
 	r = getsockopt(sockfd, level, optname, optval, optlenp);
 
-	if (r == 0 && level == SOL_SOCKET && optname == SO_TYPE) {
-		/* translate our type back to Linux */
-		*(int *)optval = stol_socktype[(*(int *)optval)];
+	if (r == 0 && level == SOL_SOCKET) {
+		switch (optname) {
+		case SO_TYPE:
+			/* translate our type back to Linux */
+			*(int *)optval = stol_socktype[(*(int *)optval)];
+			break;
+
+		case SO_ERROR:
+			*(int *)optval = lx_errno(*(int *)optval);
+			break;
+		}
 	}
 
 	return ((r < 0) ? -errno : r);
@@ -1449,6 +1668,7 @@ lx_sendmsg(int sockfd, void *lmp, int flags)
 {
 	struct lx_msghdr msg;
 	struct cmsghdr *cmsg;
+	void *new_cmsg = NULL;
 	int r;
 
 	int nosigpipe = flags & LX_MSG_NOSIGNAL;
@@ -1475,12 +1695,25 @@ lx_sendmsg(int sockfd, void *lmp, int flags)
 			cmsg = SAFE_ALLOCA(msg.msg_controllen);
 			if (cmsg == NULL)
 				return (-EINVAL);
+#if defined(_LP64)
+			/*
+			 * We don't know in advance how many control msgs
+			 * there are, but we do know that the native header is
+			 * 4 bytes smaller than the Linux header, so allocating
+			 * the same size will over-estimate what we actually
+			 * need.
+			 */
+			new_cmsg = SAFE_ALLOCA(msg.msg_controllen);
+			if (new_cmsg == NULL)
+				return (-EINVAL);
+#endif
 		}
 		if ((uucopy(msg.msg_control, cmsg,
 		    msg.msg_controllen)) != 0)
 			return (-errno);
 		msg.msg_control = cmsg;
-		if ((r = convert_cmsgs(LX_TO_SOL, &msg, "sendmsg()")) != 0)
+		if ((r = convert_cmsgs(LX_TO_SOL, &msg, new_cmsg,
+		    "sendmsg()")) != 0)
 			return (-r);
 	}
 
@@ -1529,6 +1762,7 @@ lx_recvmsg(int sockfd, void *lmp, int flags)
 {
 	struct lx_msghdr msg;
 	struct cmsghdr *cmsg = NULL;
+	void *new_cmsg = NULL;
 	int r, err;
 
 	int nosigpipe = flags & LX_MSG_NOSIGNAL;
@@ -1554,6 +1788,12 @@ lx_recvmsg(int sockfd, void *lmp, int flags)
 			msg.msg_control = SAFE_ALLOCA(msg.msg_controllen);
 			if (msg.msg_control == NULL)
 				return (-EINVAL);
+#if defined(_LP64)
+			new_cmsg = SAFE_ALLOCA(msg.msg_controllen +
+			    LX_CMSG_EXTRA);
+			if (new_cmsg == NULL)
+				return (-EINVAL);
+#endif
 		}
 	}
 
@@ -1588,7 +1828,8 @@ lx_recvmsg(int sockfd, void *lmp, int flags)
 		 * If there are control messages bundled in this message,
 		 * we need to convert them from Linux to Solaris.
 		 */
-		if ((err = convert_cmsgs(SOL_TO_LX, &msg, "recvmsg()")) != 0)
+		if ((err = convert_cmsgs(SOL_TO_LX, &msg, new_cmsg,
+		    "recvmsg()")) != 0)
 			return (-err);
 
 		if ((uucopy(msg.msg_control, cmsg,

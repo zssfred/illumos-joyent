@@ -234,6 +234,7 @@ i386_MANFILES=	ahci.7d		\
 		sda.7d		\
 		sdhost.7d	\
 		si3124.7d	\
+ 	 	skd.7d		\
 		smbios.7d	\
 		uath.7d		\
 		ural.7d		\

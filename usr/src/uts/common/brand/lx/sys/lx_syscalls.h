@@ -34,12 +34,14 @@ extern "C" {
 
 #ifdef	_KERNEL
 
+extern long lx_arch_prctl();
 extern long lx_brk();
 extern long lx_getpid();
 extern long lx_getppid();
 extern long lx_clone();
 extern long lx_kill();
 extern long lx_tkill();
+extern long lx_tgkill();
 extern long lx_modify_ldt();
 extern long lx_pipe();
 extern long lx_pipe2();

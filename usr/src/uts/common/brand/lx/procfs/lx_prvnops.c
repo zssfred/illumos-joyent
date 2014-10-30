@@ -66,6 +66,7 @@
 #include <sys/pghw.h>
 #include <sys/vfs_opreg.h>
 #include <sys/param.h>
+#include <sys/utsname.h>
 
 /* Dependent on procfs */
 extern kthread_t *prchoose(proc_t *);
@@ -164,6 +165,7 @@ static void lxpr_read_sys_fs_inotify_max_user_instances(lxpr_node_t *,
     lxpr_uiobuf_t *);
 static void lxpr_read_sys_fs_inotify_max_user_watches(lxpr_node_t *,
     lxpr_uiobuf_t *);
+static void lxpr_read_sys_kernel_hostname(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_msgmni(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_ngroups_max(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_pid_max(lxpr_node_t *, lxpr_uiobuf_t *);
@@ -216,6 +218,7 @@ static lxpr_dirent_t lx_procdir[] = {
 	{ LXPR_KMSG,		"kmsg" },
 	{ LXPR_LOADAVG,		"loadavg" },
 	{ LXPR_MEMINFO,		"meminfo" },
+	{ LXPR_MODULES,		"modules" },
 	{ LXPR_MOUNTS,		"mounts" },
 	{ LXPR_NETDIR,		"net" },
 	{ LXPR_PARTITIONS,	"partitions" },
@@ -310,6 +313,7 @@ static lxpr_dirent_t sys_fs_inotifydir[] = {
  * contents of /proc/sys/kernel directory
  */
 static lxpr_dirent_t sys_kerneldir[] = {
+	{ LXPR_SYS_KERNEL_HOSTNAME,	"hostname" },
 	{ LXPR_SYS_KERNEL_MSGMNI,	"msgmni" },
 	{ LXPR_SYS_KERNEL_NGROUPS_MAX,	"ngroups_max" },
 	{ LXPR_SYS_KERNEL_PID_MAX,	"pid_max" },
@@ -372,32 +376,6 @@ lxpr_open(vnode_t **vpp, int flag, cred_t *cr, caller_context_t *ct)
 		}
 	}
 
-	if (type == LXPR_KMSG) {
-		ldi_ident_t	li = VTOLXPM(vp)->lxprm_li;
-		struct strioctl	str;
-		int		rv;
-
-		/*
-		 * Open the zone's console device using the layered driver
-		 * interface.
-		 */
-		if ((error = ldi_open_by_name("/dev/log", FREAD, cr,
-		    &lxpnp->lxpr_cons_ldih, li)) != 0)
-			return (error);
-
-		/*
-		 * Send an ioctl to the underlying console device, letting it
-		 * know we're interested in getting console messages.
-		 */
-		str.ic_cmd = I_CONSLOG;
-		str.ic_timout = 0;
-		str.ic_len = 0;
-		str.ic_dp = NULL;
-		if ((error = ldi_ioctl(lxpnp->lxpr_cons_ldih, I_STR,
-		    (intptr_t)&str, FKIOCTL, cr, &rv)) != 0)
-			return (error);
-	}
-
 	return (error);
 }
 
@@ -412,7 +390,6 @@ lxpr_close(vnode_t *vp, int flag, int count, offset_t offset, cred_t *cr,
 {
 	lxpr_node_t	*lxpr = VTOLXP(vp);
 	lxpr_nodetype_t	type = lxpr->lxpr_type;
-	int		err;
 
 	/*
 	 * we should never get here because the close is done on the realvp
@@ -422,11 +399,6 @@ lxpr_close(vnode_t *vp, int flag, int count, offset_t offset, cred_t *cr,
 	    type != LXPR_PID_CURDIR &&
 	    type != LXPR_PID_ROOTDIR &&
 	    type != LXPR_PID_EXE);
-
-	if (type == LXPR_KMSG) {
-		if ((err = ldi_close(lxpr->lxpr_cons_ldih, 0, cr)) != 0)
-			return (err);
-	}
 
 	return (0);
 }
@@ -459,6 +431,7 @@ static void (*lxpr_read_function[LXPR_NFILES])() = {
 	lxpr_read_kmsg,			/* /proc/kmsg		*/
 	lxpr_read_loadavg,		/* /proc/loadavg	*/
 	lxpr_read_meminfo,		/* /proc/meminfo	*/
+	lxpr_read_empty,		/* /proc/modules	*/
 	lxpr_read_mounts,		/* /proc/mounts		*/
 	lxpr_read_isdir,		/* /proc/net		*/
 	lxpr_read_net_arp,		/* /proc/net/arp	*/
@@ -489,6 +462,7 @@ static void (*lxpr_read_function[LXPR_NFILES])() = {
 	lxpr_read_sys_fs_inotify_max_user_instances, /* max_user_instances */
 	lxpr_read_sys_fs_inotify_max_user_watches, /* max_user_watches */
 	lxpr_read_invalid,		/* /proc/sys/kernel	*/
+	lxpr_read_sys_kernel_hostname,	/* /proc/sys/kernel/hostname */
 	lxpr_read_sys_kernel_msgmni,	/* /proc/sys/kernel/msgmni */
 	lxpr_read_sys_kernel_ngroups_max, /* /proc/sys/kernel/ngroups_max */
 	lxpr_read_sys_kernel_pid_max,	/* /proc/sys/kernel/pid_max */
@@ -529,6 +503,7 @@ static vnode_t *(*lxpr_lookup_function[LXPR_NFILES])() = {
 	lxpr_lookup_not_a_dir,		/* /proc/kmsg		*/
 	lxpr_lookup_not_a_dir,		/* /proc/loadavg	*/
 	lxpr_lookup_not_a_dir,		/* /proc/meminfo	*/
+	lxpr_lookup_not_a_dir,		/* /proc/modules	*/
 	lxpr_lookup_not_a_dir,		/* /proc/mounts		*/
 	lxpr_lookup_netdir,		/* /proc/net		*/
 	lxpr_lookup_not_a_dir,		/* /proc/net/arp	*/
@@ -559,6 +534,7 @@ static vnode_t *(*lxpr_lookup_function[LXPR_NFILES])() = {
 	lxpr_lookup_not_a_dir,		/* .../inotify/max_user_instances */
 	lxpr_lookup_not_a_dir,		/* .../inotify/max_user_watches */
 	lxpr_lookup_sys_kerneldir,	/* /proc/sys/kernel	*/
+	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/hostname */
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/msgmni */
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/ngroups_max */
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/pid_max */
@@ -599,6 +575,7 @@ static int (*lxpr_readdir_function[LXPR_NFILES])() = {
 	lxpr_readdir_not_a_dir,		/* /proc/kmsg		*/
 	lxpr_readdir_not_a_dir,		/* /proc/loadavg	*/
 	lxpr_readdir_not_a_dir,		/* /proc/meminfo	*/
+	lxpr_readdir_not_a_dir,		/* /proc/modules	*/
 	lxpr_readdir_not_a_dir,		/* /proc/mounts		*/
 	lxpr_readdir_netdir,		/* /proc/net		*/
 	lxpr_readdir_not_a_dir,		/* /proc/net/arp	*/
@@ -629,6 +606,7 @@ static int (*lxpr_readdir_function[LXPR_NFILES])() = {
 	lxpr_readdir_not_a_dir,		/* .../inotify/max_user_instances */
 	lxpr_readdir_not_a_dir,		/* .../inotify/max_user_watches	*/
 	lxpr_readdir_sys_kerneldir,	/* /proc/sys/kernel	*/
+	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/hostname */
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/msgmni */
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/ngroups_max */
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/pid_max */
@@ -660,7 +638,38 @@ lxpr_read(vnode_t *vp, uio_t *uiop, int ioflag, cred_t *cr,
 
 	ASSERT(type < LXPR_NFILES);
 
+	if (type == LXPR_KMSG) {
+		ldi_ident_t	li = VTOLXPM(vp)->lxprm_li;
+		struct strioctl	str;
+		int		rv;
+
+		/*
+		 * Open the zone's console device using the layered driver
+		 * interface.
+		 */
+		if ((error = ldi_open_by_name("/dev/log", FREAD, cr,
+		    &lxpnp->lxpr_cons_ldih, li)) != 0)
+			return (error);
+
+		/*
+		 * Send an ioctl to the underlying console device, letting it
+		 * know we're interested in getting console messages.
+		 */
+		str.ic_cmd = I_CONSLOG;
+		str.ic_timout = 0;
+		str.ic_len = 0;
+		str.ic_dp = NULL;
+		if ((error = ldi_ioctl(lxpnp->lxpr_cons_ldih, I_STR,
+		    (intptr_t)&str, FKIOCTL, cr, &rv)) != 0)
+			return (error);
+	}
+
 	lxpr_read_function[type](lxpnp, uiobuf);
+
+	if (type == LXPR_KMSG) {
+		if ((error = ldi_close(lxpnp->lxpr_cons_ldih, FREAD, cr)) != 0)
+			return (error);
+	}
 
 	error = lxpr_uiobuf_flush(uiobuf);
 	lxpr_uiobuf_free(uiobuf);
@@ -1557,6 +1566,8 @@ lxpr_read_kmsg(lxpr_node_t *lxpnp, struct lxpr_uiobuf *uiobuf)
 	timestruc_t	to;
 	timestruc_t	*tp = NULL;
 
+	ASSERT(lxpnp->lxpr_type == LXPR_KMSG);
+
 	if (lxpr_uiobuf_nonblock(uiobuf)) {
 		to.tv_sec = 0;
 		to.tv_nsec = 1000000; /* 1msec */
@@ -2109,6 +2120,13 @@ lxpr_read_sys_fs_inotify_max_user_watches(lxpr_node_t *lxpnp,
 {
 	ASSERT(lxpnp->lxpr_type == LXPR_SYS_FS_INOTIFY_MAX_USER_WATCHES);
 	lxpr_uiobuf_printf(uiobuf, "%d\n", inotify_maxwatches);
+}
+
+static void
+lxpr_read_sys_kernel_hostname(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_HOSTNAME);
+	lxpr_uiobuf_printf(uiobuf, "%s\n", uts_nodename());
 }
 
 static void

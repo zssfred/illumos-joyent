@@ -461,10 +461,33 @@ long
 lx_rmdir(uintptr_t p1)
 {
 	int r;
+	char *nm = (char *)p1;
 
-	r = rmdir((char *)p1);
-	if (r < 0)
-		return ((errno == EEXIST) ? -ENOTEMPTY : -errno);
+	r = rmdir(nm);
+	if (r < 0) {
+		int terr = errno;
+
+		/*
+		 * On both Illumos and Linux rmdir returns EINVAL if the last
+		 * component of the path is '.', but on Illumos we also return
+		 * this errno if we're trying to remove the CWD. Unfortunately,
+		 * at least the LTP test suite assumes that it can rmdir the
+		 * CWD, so we need handle this. We try to get out of the
+		 * directory we're trying to remove.
+		 */
+		if (terr == EINVAL) {
+			int l;
+
+			l = strlen(nm);
+			if (l >= 2 && !(nm[l - 2] == '/' && nm[l - 1] == '.')) {
+				if (chdir("..") == 0 && rmdir(nm) == 0) {
+					return (0);
+				}
+			}
+		}
+
+		return ((terr == EEXIST) ? -ENOTEMPTY : -terr);
+	}
 	return (0);
 }
 
@@ -874,6 +897,7 @@ lx_fchownat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3,
 		return (lx_chown((uintptr_t)pathbuf, p2, p3));
 }
 
+/*ARGSUSED*/
 long
 lx_fchmodat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
@@ -885,11 +909,6 @@ lx_fchmodat(uintptr_t ext1, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	 * It seems that at least some versions of glibc do not set or clear
 	 * the flags arg, so checking them will result in random behaviour.
 	 */
-	/* LINTED [set but not used in function] */
-	int flag = p3;
-
-	if (flag != p3)
-		return (flag); /* workaround */
 
 	ret = getpathat(atfd, p1, pathbuf, sizeof (pathbuf));
 	if (ret < 0)

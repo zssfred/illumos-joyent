@@ -37,12 +37,12 @@
 #define	JMP	\
 	pushq	$_CONST(. - lx_handler_table); \
 	jmp	lx_handler;	\
-	.align	16;	
+	.align	16;
 
 #define	JMP4	JMP; JMP; JMP; JMP
-#define JMP16	JMP4; JMP4; JMP4; JMP4
-#define JMP64	JMP16; JMP16; JMP16; JMP16
-#define JMP256	JMP64; JMP64; JMP64; JMP64
+#define	JMP16	JMP4; JMP4; JMP4; JMP4
+#define	JMP64	JMP16; JMP16; JMP16; JMP16
+#define	JMP256	JMP64; JMP64; JMP64; JMP64
 
 /*
  * Alternate jump table that turns on lx_traceflag before proceeding with
@@ -51,14 +51,14 @@
 #define	TJMP	\
 	pushq	$_CONST(. - lx_handler_trace_table); \
 	jmp	lx_handler_trace;	\
-	.align	16;	
+	.align	16;
 
 #define	TJMP4	TJMP; TJMP; TJMP; TJMP
-#define TJMP16	TJMP4; TJMP4; TJMP4; TJMP4
-#define TJMP64	TJMP16; TJMP16; TJMP16; TJMP16
-#define TJMP256	TJMP64; TJMP64; TJMP64; TJMP64
+#define	TJMP16	TJMP4; TJMP4; TJMP4; TJMP4
+#define	TJMP64	TJMP16; TJMP16; TJMP16; TJMP16
+#define	TJMP256	TJMP64; TJMP64; TJMP64; TJMP64
 
-	
+
 #if defined(lint)
 
 #include <sys/types.h>
@@ -126,10 +126,12 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	SET_SIZE(lx_handler_table)
 
 	ENTRY_NP(lx_handler_trace)
+	subq	$128, %rsp		/* skip red zone */
 	pushq	%rsi
-	movq    lx_traceflag@GOTPCREL(%rip), %rsi 
+	movq    lx_traceflag@GOTPCREL(%rip), %rsi
 	movq	$1, (%rsi)
 	popq	%rsi
+	addq	$128, %rsp
 	/*
 	 * While we could just fall through to lx_handler(), we "tail-call" it
 	 * instead to make ourselves a little more comprehensible to trace
@@ -139,6 +141,13 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	SET_SIZE(lx_handler_trace)
 
 	ALTENTRY(lx_handler)
+	/*
+	 * We are running on the Linux process's stack here so we have to
+	 * account for the AMD64 ABI red zone of 128 bytes past the %rsp which
+	 * the process can use as scratch space.
+	 */
+	subq	$128, %rsp
+
 	/*
 	 * %rbp isn't always going to be a frame pointer on Linux, but when
 	 * it is, saving it here lets us have a coherent stack backtrace.
@@ -154,16 +163,16 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * Save %rbp and then fill it with what would be its usual value as
 	 * the frame pointer. The value we save for %rsp needs to be the
 	 * stack pointer at the time of the syscall so we need to skip the
-	 * saved %rbp and (what will be) the return address.
+	 * red zone, saved %rbp and (what will be) the return address.
 	 */
 	movq	%rbp, LXR_RBP(%rsp)
 	movq	%rsp, %rbp
-	addq	$_CONST(SIZEOF_LX_REGS_T), %rbp
+	addq	$SIZEOF_LX_REGS_T, %rbp
 	movq	%rbp, LXR_RSP(%rsp)
-	addq	$_CONST(_MUL(CPTRSIZE, 2)), LXR_RSP(%rsp)
+	addq	$144, LXR_RSP(%rsp)	/* 128 byte red zone + 2 pointers */
 
-	movq	$0, LXR_GS(%rsp)
-	movw	%gs, LXR_GS(%rsp)
+	movq	$0, LXR_FS(%rsp)
+	movw	%fs, LXR_FS(%rsp)
 	movq	%rdi, LXR_RDI(%rsp)
 	movq	%rsi, LXR_RSI(%rsp)
 	movq	%rbx, LXR_RBX(%rsp)
@@ -187,7 +196,7 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * value on the stack with the return address, and use the value to
 	 * compute the system call number by dividing by the table entry size.
 	 */
-	xchgq	CPTRSIZE(%rbp), %rax
+	xchgq	136(%rbp), %rax		/* 128 byte red zone + rbp we pushed */
 	shrq	$4, %rax
 	movq	%rax, LXR_RAX(%rsp)
 
@@ -223,12 +232,14 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	movq	LXR_R13(%rsp), %r13
 	movq	LXR_R14(%rsp), %r14
 	movq	LXR_R15(%rsp), %r15
-	movw	LXR_GS(%rsp), %gs
+	/* XXX movw	LXR_FS(%rsp), %fs */
 
-	addq	$SIZEOF_LX_REGS_T, %rsp
+	/* addq	$SIZEOF_LX_REGS_T, %rsp	not needed due to next instr. */
 
 	movq	%rbp, %rsp
 	popq	%rbp
+
+	addq	$128, %rsp		/* red zone */
 	ret
 	SET_SIZE(lx_handler)
 
@@ -236,7 +247,7 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * lx_setup_clone(uintptr_t %gs, void *retaddr, void *stack)
 	 * ignore arg0 (%rdi) on 64-bit
 	 * Return to Linux app using arg1 (%rsi) with the Linux stack we got
-	 * in arg2 (%rdx). 
+	 * in arg2 (%rdx).
 	 */
 	ENTRY_NP(lx_setup_clone)
 	xorq	%rbp, %rbp	/* terminating stack */
@@ -274,6 +285,8 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * |	| stuff we saved in our prologue		|
 	 * |	=================================================
 	 * |	| LX_SIGRT_MAGIC				|
+	 * |	=================================================
+	 * |	| {unused word to maintain ABI stack alignment} |
 	 * V	=================================================
 	 *	| Linux local data built by lx stk_builder()	|
 	 * 	=================================================
@@ -281,12 +294,12 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * Unlike the 32-bit case, we don't reset %rbp before jumping into the
 	 * Linux handler, since that would mean the handler would clobber our
 	 * data in the stack frame it builds.
-	 * 
+	 *
 	 */
 	ENTRY_NP(lx_sigdeliver)
 	pushq   %rbp
 	movq    %rsp, %rbp
-	subq	$0x30, %rsp
+	subq	$0x40, %rsp		/* an extra word to maintain alignmnt */
 	movq	%rdi,  -8(%rbp)		/* sig */
 	movq	%rsi, -16(%rbp)		/* siginfo* */
 	movq	%rdx, -24(%rbp)		/* ucontext* */
@@ -294,16 +307,12 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	movq	%r8,  -40(%rbp)		/* stack builder */
 	movq	%r9,  -48(%rbp)		/* Linux signal handler */
 
-					/*
-					 * create stack_size stack buffer as a
-					 * local varible
-					 */
-	subq    %rcx, %rsp
+	subq    %rcx, %rsp		/* create stack_size stack buffer */
 
-	movq	$LX_SIGRT_MAGIC, %rcx	/* load and "push" marker value onto */
-	movq	%rcx, -56(%rbp)		/*         stack for lx_rt_sigreturn */
+	movq	$LX_SIGRT_MAGIC, %rcx	/* load and place marker value onto */
+	movq	%rcx, -56(%rbp)		/*        stack for lx_rt_sigreturn */
 
-	movq	%rsp, %rcx		/* arg3 - %rcx stack pointer */
+	movq	%rsp, %rcx		/* arg3 - %rcx is stack pointer */
 					/* arg2 - %rdx is ucontext ptr */
 					/* arg1 - %rsi is siginfo ptr */
 					/* arg0 - %rdi is sig num */
@@ -320,24 +329,23 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * arg1 %rsi is ptr to converted siginfo on stack or NULL
 	 */
 	movq	-16(%rbp), %rsi
-	cmp     $0, %rsi 
+	cmp	$0, %rsi
 	je	1f
-	movq	8(%rsp), %rsi
+	movq	%rsp, %rsi
+	addq	$SI, %rsi
 1:
 	/*
-	 * arg2 %rdx is ptr to converted ucontext on stk
-	 * LX_SI_MAX_SIZE + sizeof (void *)
+	 * arg2 %rdx is ptr to converted ucontext on stk (uc member of
+	 * lx_sigstack).
 	 */
-	movq    136(%rsp), %rdx
+	movq	%rsp, %rdx
+	addq	$UC, %rdx
 
 	movq	-48(%rbp), %r9		/* fetch signal handler ptr */
 	jmp	*%r9			/* jmp to the Linux signal handler */
 	SET_SIZE(lx_sigdeliver)
 
 	/*
-	 * For the 64-bit case, since %gs is 0 for both Illumos and Linux, we
-	 * overload %gs to pass the current syscall mode flag out of the kernel.
-	 *
 	 * The libc routine that calls user signal handlers ends with a
 	 * setcontext, so we would never return here even if we used a call
 	 * rather than a jmp. However, we'll let the emulation unwind the stack
@@ -355,31 +363,7 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * lx_sigacthandler(int sig, siginfo_t *s, void *p)
 	 */
 	ENTRY_NP(lx_sigacthandler)
-	pushq	%rbp
-	movq	%rsp, %rbp
-	subq	$0x20,%rsp
-
-	movq	%rdi,-0x8(%rbp)			/* save parameters */
-	movq	%rsi,-0x10(%rbp)
-	movq	%rdx,-0x18(%rbp)
-
-	movq	$0, %rdi			/* setup to pass %gs */
-	movw	%gs, %di			/* value as parameter */
-
-	movq    lx_sigsavegs@GOTPCREL(%rip), %rax
-        call    *%rax                           /* save mode flag from %gs */
-
-	movq	$0, %rdi
-	movw	%di, %gs			/* now clear %gs */
-
-	movq	-0x18(%rbp),%rdx		/* restore parameters */
-	movq	-0x10(%rbp),%rsi
-	movq	-0x8(%rbp),%rdi
-
-	movq    libc_sigacthandler@GOTPCREL(%rip), %rax 
-	addq	$0x20,%rsp
-	popq	%rbp				/* restore %rbp */
-
+	movq    libc_sigacthandler@GOTPCREL(%rip), %rax
 	jmp     *(%rax)				/* jmp to libc's interposer */
 	SET_SIZE(lx_sigacthandler)
 
@@ -387,10 +371,6 @@ lx_sigreturn_tolibc(uintptr_t sp)
 	 * Trampoline code is called by the return at the end of a Linux
 	 * signal handler to return control to the interrupted application
 	 * via the lx_rt_sigreturn() syscall.
-	 *
-	 * This routine must consist of the EXACT code sequence below
-	 * as gdb looks at the sequence of instructions a routine will return
-	 * to determine whether it is in a signal handler or not.
 	 */
 	ENTRY_NP(lx_rt_sigreturn_tramp)
 	movq	$LX_SYS_rt_sigreturn, %rax

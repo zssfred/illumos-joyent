@@ -49,7 +49,8 @@ extern "C" {
 #define	LX_UNAME_RELEASE_2_6	"2.6.18"
 #define	LX_UNAME_RELEASE_2_4	"2.4.21"
 #define	LX_UNAME_VERSION	"BrandZ virtual linux"
-#define	LX_UNAME_MACHINE	"i686"
+#define	LX_UNAME_MACHINE32	"i686"
+#define	LX_UNAME_MACHINE64	"x86_64"
 
 #define	LX_LINKER32	"/lib/ld-linux.so.2"
 #define	LX_LINKER64	"/lib64/ld-linux-x86-64.so.2"
@@ -58,11 +59,13 @@ extern "C" {
 #define	LX_LIB_PATH64	"/native/usr/lib/amd64/lx_brand.so.1"
 
 #if defined(_LP64)
-#define	LX_LIB_PATH	LX_LIB_PATH64
-#define	LX_LINKER	LX_LINKER64
+#define	LX_LIB_PATH		LX_LIB_PATH64
+#define	LX_LINKER		LX_LINKER64
+#define	LX_UNAME_MACHINE	LX_UNAME_MACHINE64
 #else
-#define	LX_LIB_PATH	LX_LIB_PATH32
-#define	LX_LINKER	LX_LINKER32
+#define	LX_LIB_PATH		LX_LIB_PATH32
+#define	LX_LINKER		LX_LINKER32
+#define	LX_UNAME_MACHINE	LX_UNAME_MACHINE32
 #endif
 
 /*
@@ -71,7 +74,7 @@ extern "C" {
 #define	LX_NSYSCALLS		352
 
 /* The number of In-Kernel Emulation functions */
-#define	LX_N_IKE_FUNCS		25
+#define	LX_N_IKE_FUNCS		27
 
 /*
  * brand(2) subcommands
@@ -91,6 +94,7 @@ extern "C" {
 #define	B_STORE_ARGS		137
 #define	B_CLR_NTV_SYSC_FLAG	138
 #define	B_SIGNAL_RETURN		139
+#define	B_UNWIND_NTV_SYSC_FLAG	140
 
 #define	B_IKE_SYSCALL		192
 
@@ -129,12 +133,17 @@ extern "C" {
 /*
  * Aux vector containing phdr of Linux executable and ehdr of interpreter
  * (if any), both of which are used by lx_librtld_db to ascertain r_debug.
+ * We repurpose the 3rd brand-specific aux vector slot for the Linux
+ * AT_SYSINFO_EHDR entry (we modify the a_type in the brand library).
  */
 #define	AT_SUN_BRAND_LX_PHDR	AT_SUN_BRAND_AUX1
 #define	AT_SUN_BRAND_LX_INTERP	AT_SUN_BRAND_AUX2
+#define	AT_SUN_BRAND_LX_SYSINFO_EHDR	AT_SUN_BRAND_AUX3
 
 /* Aux vector containing hz value */
 #define	AT_CLKTCK	17
+/* Aux vector containing vDSO addr */
+#define	AT_SYSINFO_EHDR	33
 
 #ifndef	_ASM
 
@@ -154,7 +163,7 @@ typedef struct lx_brand_registration32 {
 
 #ifdef __amd64
 typedef struct lx_regs {
-	long lxr_gs;
+	long lxr_fs;
 	long lxr_rdi;
 	long lxr_rsi;
 	long lxr_rbp;
@@ -266,8 +275,7 @@ typedef ulong_t lx_affmask_t[LX_AFF_ULONGS];
  * lx-specific data in the klwp_t
  */
 typedef struct lx_lwp_data {
-	/* lx_brand_asm.s requires br_libc_syscall to be the first member */
-	uint_t	br_libc_syscall;	/* 1 = syscall from native libc */
+	uint_t	br_ntv_syscall;		/* 1 = syscall from native libc */
 	uint_t	br_lwp_flags;		/* misc. flags */
 	klwp_t	*br_lwp;		/* back pointer to container lwp */
 	int	br_signal;		/* signal to send to parent when */
@@ -277,6 +285,14 @@ typedef struct lx_lwp_data {
 	lx_affmask_t br_affinitymask;	/* bitmask of CPU sched affinities */
 	struct user_desc br_tls[LX_TLSNUM];
 			/* descriptors used by libc for TLS */
+	ulong_t	br_lx_fsbase;		/* lx fsbase for 64-bit thread ptr */
+	ulong_t	br_ntv_fsbase;		/* native fsbase 64-bit thread ptr */
+	/*
+	 * 64-bit thread-specific syscall mode state "stack". Bits tracking the
+	 * syscall mode are shifted on/off this int like a stack as we take
+	 * signals and return.
+	 */
+	uint_t	br_scms;
 	pid_t	br_pid;			/* converted pid for this thread */
 	pid_t	br_tgid;		/* thread group ID for this thread */
 	pid_t	br_ppid;		/* parent pid for this thread */

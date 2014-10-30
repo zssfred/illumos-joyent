@@ -108,7 +108,9 @@ struct clone_state {
 	void 		*c_ptidp;
 	struct lx_desc	*c_ldtinfo;	/* thread-specific segment */
 	void		*c_ctidp;
+#if defined(_ILP32)
 	uintptr_t	c_gs;		/* Linux's %gs */
+#endif
 	sigset_t	c_sigmask;	/* signal mask */
 	lx_affmask_t	c_affmask;	/* CPU affinity mask */
 	volatile int	*c_clone_res;	/* pid/error returned to cloner */
@@ -157,7 +159,12 @@ lx_exit(uintptr_t p1)
 	/*
 	 * This thread is exiting.  Restore the state of the thread to
 	 * what it was before we started running linux code.
+	 * For 64-bit code, since we know we are unwinding the stack back to
+	 * lx_init, we need to unwind the syscall mode flag "stack" as well.
 	 */
+#if defined(_LP64)
+	(void) syscall(SYS_brand, B_UNWIND_NTV_SYSC_FLAG);
+#endif
 	(void) setcontext(&lx_tsd->lxtsd_exit_context);
 
 	/*
@@ -202,7 +209,12 @@ lx_group_exit(uintptr_t p1)
 	/*
 	 * This thread is exiting.  Restore the state of the thread to
 	 * what it was before we started running linux code.
+	 * For 64-bit code, since we know we are unwinding the stack back to
+	 * lx_init, we need to unwind the syscall mode flag "stack" as well.
 	 */
+#if defined(_LP64)
+	(void) syscall(SYS_brand, B_UNWIND_NTV_SYSC_FLAG);
+#endif
 	(void) setcontext(&lx_tsd->lxtsd_exit_context);
 
 	/*
@@ -263,9 +275,7 @@ clone_start(void *arg)
 
 	/* Initialize the thread specific data for this thread. */
 	bzero(&lx_tsd, sizeof (lx_tsd));
-#if defined(_LP64)
-	lx_tsd.lxtsd_scms = 0x1;
-#else
+#if defined(_ILP32)
 	lx_tsd.lxtsd_gs = cs->c_gs;
 #endif
 
@@ -314,7 +324,12 @@ clone_start(void *arg)
 		 */
 		*(cs->c_clone_res) = rval;
 
+#if defined(_LP64)
+		(void) syscall(SYS_brand, B_CLR_NTV_SYSC_FLAG);
+		lx_setup_clone(0, cs->c_retaddr, cs->c_stk);
+#else
 		lx_setup_clone(cs->c_gs, cs->c_retaddr, cs->c_stk);
+#endif
 
 		/* lx_setup_clone() should never return. */
 		assert(0);
@@ -335,6 +350,11 @@ clone_start(void *arg)
 	/*NOTREACHED*/
 }
 
+/*
+ * See glibc sysdeps/unix/sysv/linux/x86_64/clone.S code for x64 argument order
+ * and the Linux kernel/fork.c code for the various ways arguments can be passed
+ * to the clone syscall (CONFIG_CLONE_BACKWARDS, et al).
+ */
 long
 lx_clone(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 	uintptr_t p5)
@@ -343,8 +363,13 @@ lx_clone(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 	int flags = (int)p1;
 	void *cldstk = (void *)p2;
 	void *ptidp = (void *)p3;
+#if defined(_LP64)
+	void *ctidp = (void *)p4;
+	struct lx_desc *ldtinfo = (void *)p5;
+#else /* is 32bit */
 	struct lx_desc *ldtinfo = (void *)p4;
 	void *ctidp = (void *)p5;
+#endif
 	thread_t tid;
 	volatile int clone_res;
 	int sig;
@@ -473,10 +498,13 @@ lx_clone(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 		 */
 		if (cldstk) {
 #if defined(_LP64)
-			lx_setup_clone(rp->lxr_gs, (void *)rp->lxr_rip, cldstk);
+			(void) syscall(SYS_brand, B_CLR_NTV_SYSC_FLAG);
+			lx_setup_clone(0, (void *)rp->lxr_rip, cldstk);
 #else
 			lx_setup_clone(rp->lxr_gs, (void *)rp->lxr_eip, cldstk);
 #endif
+			/* lx_setup_clone() should never return. */
+			assert(0);
 		}
 
 		return (0);
@@ -522,7 +550,9 @@ lx_clone(uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4,
 	cs->c_ldtinfo = ldtinfo;
 	cs->c_ctidp = ctidp;
 	cs->c_clone_res = &clone_res;
+#if defined(_ILP32)
 	cs->c_gs = rp->lxr_gs;
+#endif
 
 	if (lx_sched_getaffinity(0, sizeof (cs->c_affmask),
 	    (uintptr_t)&cs->c_affmask) == -1)

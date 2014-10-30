@@ -396,7 +396,8 @@ lx_ldb_init32(rd_agent_t *rap, struct ps_prochandle *php)
 	for (i = 0, ph = phdrs; i < ehdr.e_phnum; i++,
 	    /*LINTED */
 	    ph = (Elf32_Phdr *)((char *)ph + ehdr.e_phentsize)) {
-		ps_plog("lx_ldb_init: ph[%d] 0x%p type %d", i, ph, ph->p_type);
+		ps_plog("lx_ldb_init: ph[%d] 0x%p type %d", i,
+		    (phdr_addr + ((char *)ph - (char *)phdrs)), ph->p_type);
 		if (ph->p_type == PT_DYNAMIC)
 			break;
 	}
@@ -419,24 +420,30 @@ lx_ldb_init32(rd_agent_t *rap, struct ps_prochandle *php)
 	}
 
 	/*
-	 * For core dumps from 64-bit code we must use the p_vaddr.
+	 * Unclear why the dyn_addr works sometimes with one value and
+	 * sometimes for the other, so we handle both cases.
 	 */
-	if (sizeof (Elf32_Dyn) == 8)
-		dyn_addr = ph->p_vaddr;
-	else
-		dyn_addr = addr + ph->p_vaddr;
 
 	dyn_count = ph->p_filesz / sizeof (Elf32_Dyn);
+	ps_plog("lx_ldb_init: dyn_count %d %d", dyn_count, sizeof (Elf32_Dyn));
+	dyn_addr = addr + ph->p_vaddr;
 	ps_plog("lx_ldb_init: dyn_addr 0x%p 0x%x = 0x%p",
 	    addr, ph->p_offset, dyn_addr);
-	ps_plog("lx_ldb_init: dyn_count %d %d", dyn_count, sizeof (Elf32_Dyn));
 	if (ps_pread(php, dyn_addr, dyn, ph->p_filesz) != PS_OK) {
-		ps_plog("lx_ldb_init: couldn't read dynamic at 0x%p",
-		    dyn_addr);
-		free(lx_rd);
-		free(phdrs);
-		free(dyn);
-		return (NULL);
+		ps_plog("lx_ldb_init: couldn't read dynamic at 0x%p, "
+		    "trying dyn_addr 0x%p",
+		    dyn_addr, ph->p_vaddr);
+
+		dyn_addr = ph->p_vaddr;
+		if (ps_pread(php, dyn_addr, dyn, ph->p_filesz) != PS_OK) {
+			ps_plog("lx_ldb_init: couldn't read dynamic at 0x%p",
+			    dyn_addr);
+
+			free(lx_rd);
+			free(phdrs);
+			free(dyn);
+			return (NULL);
+		}
 	}
 	ps_plog("lx_ldb_init: read %d dynamic headers at: 0x%p",
 	    dyn_count, dyn_addr);
@@ -597,7 +604,7 @@ lx_ldb_init32(rd_agent_t *rap, struct ps_prochandle *php)
 		return (NULL);
 	}
 
-	ps_plog("lx_ldb_init: strtab is 0x%x, symtab is 0x%x",
+	ps_plog("lx_ldb_init: strtab is 0x%p, symtab is 0x%p",
 	    addr + strtab, addr + symtab);
 
 	if ((mem = malloc(memsz)) == NULL) {
@@ -619,17 +626,37 @@ lx_ldb_init32(rd_agent_t *rap, struct ps_prochandle *php)
 	 * that the DT_SYMTAB immediately precedes the DT_STRTAB.
 	 */
 	for (offs = symtab; offs < strtab; offs += sizeof (Elf32_Sym)) {
+		uint32_t p;
+
 		sym = (Elf32_Sym *)&mem[offs];
 
 		if (sym->st_name > memsz) {
 			ps_plog("lx_ldb_init: invalid st_name at sym 0x%p",
 			    addr + offs);
+			continue;
 		}
 
-		ps_plog("lx_ldb_init: found interp symbol %s",
-		    &mem[strtab + sym->st_name]);
+		p = sym->st_name;
 
-		if (strcmp(&mem[strtab + sym->st_name], "_r_debug") == 0)
+		if (strtab + p > memsz) {
+			ps_plog("lx_ldb_init: invalid symbol address 0x%p, "
+			    "memsz 0x%p", strtab + p, memsz);
+			continue;
+		}
+
+		if (mem[strtab + p] == '\0')
+			continue;
+
+		/* Sometimes we're pointing into the middle of a symbol? */
+		while ((strtab + p) > 0 && (strtab + p) < memsz &&
+		    mem[strtab + p] != '\0')
+			p--;
+		p++;
+
+		ps_plog("lx_ldb_init: interp symbol (0x%p) %s",
+		    strtab + p, &mem[strtab + p]);
+
+		if (strcmp(&mem[strtab + p], "_r_debug") == 0)
 			break;
 	}
 
