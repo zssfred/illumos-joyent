@@ -666,9 +666,7 @@ libreparse:	libnvpair
 libhotplug:	libnvpair
 cfgadm_plugins:	libhotplug
 libilb:		libsocket
-<<<<<<< HEAD
 libidspace:	libumem
-=======
 libipmi:	libm
 libprtdiag:	libm
 libsqlite:	libm
@@ -676,7 +674,6 @@ libstmf:	libm
 libvscan: 	libm
 
 
->>>>>>> FETCH_HEAD
 $(INTEL_BUILD)libdiskmgt:libfdisk
 varpd:		libavl libidspace libumem libnsl libnvpair libmd5 librename
 
