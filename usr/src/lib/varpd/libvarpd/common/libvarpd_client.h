@@ -23,6 +23,8 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <sys/mac.h>
+/* XXX Should we have our own, but compatible types? */
+#include <sys/overlay_target.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,6 +32,13 @@ extern "C" {
 
 typedef struct __varpd_client_handle *varpd_client_handle_t;
 typedef struct __varpd_client_prop_handle *varpd_client_prop_handle_t;
+
+typedef struct varpd_client_cache_entry {
+	struct ether_addr	vcp_mac;
+	uint16_t		vcp_flags;
+	struct in6_addr		vcp_ip;
+	uint16_t		vcp_port;
+} varpd_client_cache_entry_t;
 
 /*
  * This should stay in sync with OVERLAY_PROP_*
@@ -57,6 +66,25 @@ extern int libvarpd_c_prop_info(varpd_client_prop_handle_t, const char **,
 extern int libvarpd_c_prop_get(varpd_client_prop_handle_t, void *, uint32_t *);
 extern int libvarpd_c_prop_set(varpd_client_prop_handle_t, const void *,
     uint32_t);
+
+/* XXX Strawman */
+extern int libvarpd_c_instance_lookup(varpd_client_handle_t, datalink_id_t,
+    uint64_t *);
+extern int libvarpd_c_instance_target_mode(varpd_client_handle_t, uint64_t,
+    uint_t *);
+extern int libvarpd_c_instance_cache_flush(varpd_client_handle_t, uint64_t);
+extern int libvarpd_c_instance_cache_delete(varpd_client_handle_t, uint64_t,
+    const struct ether_addr *);
+extern int libvarpd_c_instance_cache_get(varpd_client_handle_t, uint64_t,
+    const struct ether_addr *, varpd_client_cache_entry_t *);
+extern int libvarpd_c_instance_cache_set(varpd_client_handle_t, uint64_t,
+    const struct ether_addr *, const varpd_client_cache_entry_t *);
+
+typedef int (*varpd_client_cache_f)(varpd_client_handle_t, uint64_t,
+    const struct ether_addr *, const varpd_client_cache_entry_t *, void *);
+extern int libvarpd_c_instance_cache_walk(varpd_client_handle_t, uint64_t,
+    varpd_client_cache_f, void *);
+
 
 #ifdef __cplusplus
 }

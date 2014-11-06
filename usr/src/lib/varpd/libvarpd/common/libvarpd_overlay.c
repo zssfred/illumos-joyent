@@ -153,6 +153,8 @@ libvarpd_overlay_packet(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 	} while (ret != 0 && errno == EINTR);
 	if (ret != 0 && errno == EFAULT)
 		abort();
+	else if (ret != 0)
+		ret = errno;
 
 	if (ret == 0)
 		*buflen = otp.otp_size;
@@ -177,6 +179,8 @@ libvarpd_overlay_inject_common(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 	} while (ret != 0 && errno == EINTR);
 	if (ret != 0 && errno == EFAULT)
 		abort();
+	else if (ret != 0)
+		ret = errno;
 
 	return (ret);
 }
@@ -306,10 +310,11 @@ libvarpd_overlay_iter(varpd_impl_t *vip, libvarpd_overlay_iter_f func,
 		if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_LIST, otl) != 0) {
 			if (errno == EFAULT)
 				abort();
-			if (errno == EINTR) {
-				umem_free(otl, size);
+			umem_free(otl, size);
+			if (errno == EINTR)
 				continue;
-			}
+			else
+				return (errno);
 		}
 
 		if (otl->otl_nents == curents)
@@ -325,4 +330,133 @@ libvarpd_overlay_iter(varpd_impl_t *vip, libvarpd_overlay_iter_f func,
 	}
 	umem_free(otl, size);
 	return (0);
+}
+
+int
+libvarpd_overlay_cache_flush(varpd_instance_t *inst)
+{
+	int ret;
+	overlay_targ_cache_t cache;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	bzero(&cache, sizeof (overlay_targ_cache_t));
+	cache.otc_linkid = inst->vri_linkid;
+
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_FLUSH, &cache);
+	if (ret != 0 && errno == EFAULT)
+		abort();
+	else if (ret != 0)
+		ret = errno;
+
+	return (ret);
+}
+
+int
+libvarpd_overlay_cache_delete(varpd_instance_t *inst, const uint8_t *key)
+{
+	int ret;
+	overlay_targ_cache_t cache;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	bzero(&cache, sizeof (overlay_targ_cache_t));
+	cache.otc_linkid = inst->vri_linkid;
+	bcopy(key, cache.otc_entry.otce_mac, ETHERADDRL);
+
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_REMOVE, &cache);
+	if (ret != 0 && errno == EFAULT)
+		abort();
+	else if (ret != 0)
+		ret = errno;
+
+	return (ret);
+
+}
+
+int
+libvarpd_overlay_cache_get(varpd_instance_t *inst, const uint8_t *key,
+    varpd_client_cache_entry_t *entry)
+{
+	int ret;
+	overlay_targ_cache_t cache;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	bzero(&cache, sizeof (overlay_targ_cache_t));
+	cache.otc_linkid = inst->vri_linkid;
+	bcopy(key, cache.otc_entry.otce_mac, ETHERADDRL);
+
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_GET, &cache);
+	if (ret != 0 && errno == EFAULT)
+		abort();
+	else if (ret != 0)
+		return (errno);
+
+	bcopy(cache.otc_entry.otce_dest.otp_mac, &entry->vcp_mac, ETHERADDRL);
+	entry->vcp_flags = cache.otc_entry.otce_flags;
+	entry->vcp_ip = cache.otc_entry.otce_dest.otp_ip;
+	entry->vcp_port = cache.otc_entry.otce_dest.otp_port;
+
+	return (0);
+}
+
+int
+libvarpd_overlay_cache_set(varpd_instance_t *inst, const uint8_t *key,
+    const varpd_client_cache_entry_t *entry)
+{
+	int ret;
+	overlay_targ_cache_t cache;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	bzero(&cache, sizeof (overlay_targ_cache_t));
+	cache.otc_linkid = inst->vri_linkid;
+	bcopy(key, cache.otc_entry.otce_mac, ETHERADDRL);
+	bcopy(&entry->vcp_mac, cache.otc_entry.otce_dest.otp_mac, ETHERADDRL);
+	cache.otc_entry.otce_flags = entry->vcp_flags;
+	cache.otc_entry.otce_dest.otp_ip = entry->vcp_ip;
+	cache.otc_entry.otce_dest.otp_port = entry->vcp_port;
+
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_SET, &cache);
+	if (ret != 0 && errno == EFAULT)
+		abort();
+	else if (ret != 0)
+		return (errno);
+
+	return (0);
+}
+
+int
+libvarpd_overlay_cache_walk_fill(varpd_instance_t *inst, uint64_t *markerp,
+    uint64_t *countp, overlay_targ_cache_entry_t *ents)
+{
+	int ret;
+	size_t asize;
+	overlay_targ_cache_iter_t *iter;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	if (*countp > 200)
+		return (E2BIG);
+
+	asize = sizeof (overlay_targ_cache_iter_t) +
+	    *countp * sizeof (overlay_targ_cache_entry_t);
+	iter = umem_alloc(asize, UMEM_DEFAULT);
+	if (iter == NULL)
+		return (ENOMEM);
+
+	iter->otci_linkid = inst->vri_linkid;
+	iter->otci_marker = *markerp;
+	iter->otci_count = *countp;
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_ITER, iter);
+	if (ret != 0 && errno == EFAULT)
+		abort();
+	else if (ret != 0) {
+		ret = errno;
+		goto out;
+	}
+
+	*markerp = iter->otci_marker;
+	*countp = iter->otci_count;
+	bcopy(iter->otci_ents, ents,
+	    *countp * sizeof (overlay_targ_cache_entry_t));
+out:
+	umem_free(iter, asize);
+	return (ret);
 }

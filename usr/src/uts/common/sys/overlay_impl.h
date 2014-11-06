@@ -75,7 +75,10 @@ typedef struct overlay_target {
 	uint64_t		ott_id;		/* RO */
 	union {					/* ott_lock */
 		overlay_target_point_t	ott_point;
-		refhash_t		*ott_dhash;
+		struct overlay_target_dyn {
+			refhash_t	*ott_dhash;
+			avl_tree_t	ott_tree;
+		} ott_dyn;
 	} ott_u;
 } overlay_target_t;
 
@@ -114,12 +117,13 @@ typedef enum overlay_target_entry_flags {
 	OVERLAY_ENTRY_F_PENDING		= 0x01,	/* lookup in progress */
 	OVERLAY_ENTRY_F_VALID		= 0x02,	/* entry is currently valid */
 	OVERLAY_ENTRY_F_DROP		= 0x04,	/* always drop target */
-	OVERLAY_ENTRY_F_VARPD		= 0x08	/* always send to varpd */
+	OVERLAY_ENTRY_F_VALID_MASK	= 0x06
 } overlay_target_entry_flags_t;
 
 typedef struct overlay_target_entry {
 	kmutex_t		ote_lock;
 	refhash_link_t		ote_reflink;	/* hashtable link */
+	avl_node_t		ote_avllink;	/* iteration link */
 	list_node_t		ote_qlink;
 	overlay_target_entry_flags_t ote_flags;	/* RW: state flags */
 	uint8_t			ote_addr[ETHERADDRL];	/* RO: mac addr */

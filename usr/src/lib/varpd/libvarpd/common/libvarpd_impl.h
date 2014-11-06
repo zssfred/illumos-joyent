@@ -50,6 +50,7 @@ typedef struct varpd_impl {
 	rwlock_t	vdi_pfdlock;
 	avl_tree_t	vdi_plugins;	/* vdi_lock */
 	avl_tree_t	vdi_instances;	/* vdi_lock */
+	avl_tree_t	vdi_linstances;	/* vdi_lock */
 	id_space_t	*vdi_idspace;	/* RO */
 	int		vdi_overlayfd;	/* RO */
 	int		vdi_doorfd;	/* vdi_lock */
@@ -65,7 +66,8 @@ typedef enum varpd_instance_flags {
 } varpd_instance_flags_t;
 
 typedef struct varpd_instance {
-	avl_node_t	vri_node;
+	avl_node_t	vri_inode;
+	avl_node_t	vri_lnode;
 	uint64_t	vri_id;			/* RO */
 	datalink_id_t	vri_linkid;		/* RO */
 	overlay_target_mode_t vri_mode;		/* RO */
@@ -111,6 +113,32 @@ typedef struct varpd_client_prop_arg {
 	size_t		vcpa_bufsize;
 } varpd_client_prop_arg_t;
 
+typedef struct varpd_client_lookup_arg {
+	datalink_id_t	vcla_linkid;
+	uint32_t	vcla_pad;
+	uint64_t	vcla_id;
+} varpd_client_lookup_arg_t;
+
+typedef struct varpd_client_target_mode_arg {
+	uint64_t	vtma_id;
+	uint32_t	vtma_mode;
+	uint32_t	vtma_pad;
+} varpd_client_target_mode_arg_t;
+
+typedef struct varpd_client_target_cache_arg {
+	uint64_t	vtca_id;
+	uint8_t		vtca_key[ETHERADDRL];
+	uint8_t		vtca_pad[2];
+	varpd_client_cache_entry_t vtca_entry;
+} varpd_client_target_cache_arg_t;
+
+typedef struct varpd_client_target_walk_arg {
+	uint64_t	vtcw_id;
+	uint64_t	vtcw_marker;
+	uint64_t	vtcw_count;
+	overlay_targ_cache_entry_t vtcw_ents[];
+} varpd_client_target_walk_arg_t;
+
 typedef enum varpd_client_command {
 	VARPD_CLIENT_INVALID = 0x0,
 	VARPD_CLIENT_CREATE,
@@ -120,6 +148,13 @@ typedef enum varpd_client_command {
 	VARPD_CLIENT_PROPINFO,
 	VARPD_CLIENT_GETPROP,
 	VARPD_CLIENT_SETPROP,
+	VARPD_CLIENT_LOOKUP,
+	VARPD_CLIENT_TARGET_MODE,
+	VARPD_CLIENT_CACHE_FLUSH,
+	VARPD_CLIENT_CACHE_DELETE,
+	VARPD_CLIENT_CACHE_GET,
+	VARPD_CLIENT_CACHE_SET,
+	VARPD_CLIENT_CACHE_WALK,
 	VARPD_CLIENT_MAX
 } varpd_client_command_t;
 
@@ -132,6 +167,10 @@ typedef struct varpd_client_arg {
 		varpd_client_nprops_arg_t vca_nprops;
 		varpd_client_propinfo_arg_t vca_info;
 		varpd_client_prop_arg_t vca_prop;
+		varpd_client_lookup_arg_t vca_lookup;
+		varpd_client_target_mode_arg_t vca_mode;
+		varpd_client_target_cache_arg_t vca_cache;
+		varpd_client_target_walk_arg_t vca_walk;
 	} vca_un;
 } varpd_client_arg_t;
 
@@ -146,6 +185,8 @@ extern void libvarpd_plugin_postfork(void);
 extern void libvarpd_plugin_fini(void);
 extern int libvarpd_plugin_comparator(const void *, const void *);
 extern varpd_plugin_t *libvarpd_plugin_lookup(varpd_impl_t *, const char *);
+extern varpd_instance_t *libvarpd_instance_lookup_by_dlid(varpd_impl_t *,
+    datalink_id_t);
 
 extern void libvarpd_prop_door_convert(const varpd_prop_handle_t,
     varpd_client_propinfo_arg_t *);
@@ -173,6 +214,15 @@ extern int libvarpd_overlay_resend(varpd_impl_t *, overlay_targ_lookup_t *,
 typedef int (*libvarpd_overlay_iter_f)(varpd_impl_t *, datalink_id_t, void *);
 extern int libvarpd_overlay_iter(varpd_impl_t *, libvarpd_overlay_iter_f,
     void *);
+extern int libvarpd_overlay_cache_flush(varpd_instance_t *);
+extern int libvarpd_overlay_cache_delete(varpd_instance_t *, const uint8_t *);
+extern int libvarpd_overlay_cache_delete(varpd_instance_t *, const uint8_t *);
+extern int libvarpd_overlay_cache_get(varpd_instance_t *, const uint8_t *,
+    varpd_client_cache_entry_t *);
+extern int libvarpd_overlay_cache_set(varpd_instance_t *, const uint8_t *,
+    const varpd_client_cache_entry_t *);
+extern int libvarpd_overlay_cache_walk_fill(varpd_instance_t *, uint64_t *,
+    uint64_t *, overlay_targ_cache_entry_t *);
 
 
 extern void libvarpd_persist_init(varpd_impl_t *);

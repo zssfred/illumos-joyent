@@ -25,7 +25,10 @@ TYPELIST = \
 	varpd_client_instance_arg_t \
 	varpd_client_nprops_arg_t \
 	varpd_client_propinfo_arg_t \
-	varpd_client_eresp_t	
+	varpd_client_eresp_t \
+	overlay_targ_cache_entry_t \
+	overlay_targ_cache_t \
+	overlay_targ_cache_iter_t
 
 all :=		TARGET = all
 clean :=	TARGET = clean

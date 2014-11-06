@@ -23,14 +23,31 @@
 #include <libdladm.h>
 #include <libdladm_impl.h>
 #include <sys/overlay.h>
+#include <sys/overlay_target.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+typedef struct dladm_overlay_point {
+	uint_t			dop_mode;
+	struct ether_addr	dop_mac;
+	uint16_t		dop_flags;
+	struct in6_addr		dop_ip;
+	uint16_t		dop_port;
+} dladm_overlay_point_t;
+
 extern dladm_status_t dladm_overlay_create(dladm_handle_t, const char *,
     const char *, const char *, uint64_t, dladm_arg_list_t *, uint32_t);
 extern dladm_status_t dladm_overlay_delete(dladm_handle_t, datalink_id_t);
+
+extern dladm_status_t dladm_overlay_cache_flush(dladm_handle_t, datalink_id_t);
+extern dladm_status_t dladm_overlay_cache_delete(dladm_handle_t, datalink_id_t,
+    const struct ether_addr *);
+extern dladm_status_t dladm_overlay_cache_set(dladm_handle_t, datalink_id_t,
+    const struct ether_addr *, char *);
+extern dladm_status_t dladm_overlay_cache_get(dladm_handle_t, datalink_id_t,
+    const struct ether_addr *, dladm_overlay_point_t *);
 
 #define	DLADM_OVERLAY_PROP_SIZEMAX	256
 #define	DLADM_OVERLAY_PROP_NAMELEN	32
@@ -47,6 +64,11 @@ typedef int (*dladm_overlay_prop_f)(dladm_handle_t, datalink_id_t,
     dladm_overlay_propinfo_handle_t, void *);
 extern dladm_status_t dladm_overlay_walk_prop(dladm_handle_t, datalink_id_t,
     dladm_overlay_prop_f, void *arg);
+
+typedef int (*dladm_overlay_cache_f)(dladm_handle_t, datalink_id_t,
+    const struct ether_addr *, const dladm_overlay_point_t *, void *);
+extern dladm_status_t dladm_overlay_walk_cache(dladm_handle_t, datalink_id_t,
+    dladm_overlay_cache_f, void *);
 
 /*
  * The following is the likely API for setting a property.

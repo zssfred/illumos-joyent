@@ -43,6 +43,21 @@ libvarpd_instance_comparator(const void *lp, const void *rp)
 	return (0);
 }
 
+static int
+libvarpd_instance_lcomparator(const void *lp, const void *rp)
+{
+	const varpd_instance_t *lpp, *rpp;
+	lpp = lp;
+	rpp = rp;
+
+	if (lpp->vri_linkid > rpp->vri_linkid)
+		return (1);
+	if (lpp->vri_linkid < rpp->vri_linkid)
+		return (-1);
+	return (0);
+}
+
+
 int
 libvarpd_create(varpd_handle_t *vphp)
 {
@@ -80,7 +95,9 @@ libvarpd_create(varpd_handle_t *vphp)
 	    sizeof (varpd_plugin_t), offsetof(varpd_plugin_t, vpp_node));
 
 	avl_create(&vip->vdi_instances, libvarpd_instance_comparator,
-	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_node));
+	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_inode));
+	avl_create(&vip->vdi_linstances, libvarpd_instance_lcomparator,
+	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_inode));
 
 	if (mutex_init(&vip->vdi_lock, USYNC_THREAD, NULL) != 0)
 		abort();
@@ -166,6 +183,10 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 	if (avl_find(&vip->vdi_instances, &lookup, NULL) != NULL)
 		abort();
 	avl_add(&vip->vdi_instances, inst);
+	lookup.vri_linkid = inst->vri_linkid;
+	if (avl_find(&vip->vdi_linstances, &lookup, NULL) != NULL)
+		abort();
+	avl_add(&vip->vdi_linstances, inst);
 	mutex_unlock(&vip->vdi_lock);
 	*outp = (varpd_instance_handle_t)inst;
 	return (0);
@@ -189,6 +210,22 @@ libvarpd_instance_lookup(varpd_handle_t vhp, uint64_t id)
 	retp = avl_find(&vip->vdi_instances, &lookup, NULL);
 	mutex_unlock(&vip->vdi_lock);
 	return ((varpd_instance_handle_t)retp);
+}
+
+/*
+ * If this function becomes external to varpd, we need to change it to return a
+ * varpd_instance_handle_t.
+ */
+varpd_instance_t *
+libvarpd_instance_lookup_by_dlid(varpd_impl_t *vip, datalink_id_t linkid)
+{
+	varpd_instance_t lookup, *retp;
+
+	lookup.vri_linkid = linkid;
+	mutex_lock(&vip->vdi_lock);
+	retp = avl_find(&vip->vdi_linstances, &lookup, NULL);
+	mutex_unlock(&vip->vdi_lock);
+	return (retp);
 }
 
 void

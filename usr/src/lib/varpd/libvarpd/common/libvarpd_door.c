@@ -25,9 +25,22 @@
 #include <stropts.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <priv.h>
 #include <libvarpd_impl.h>
 
 typedef int (libvarpd_door_f)(varpd_impl_t *, varpd_client_arg_t *, ucred_t *);
+
+static boolean_t
+libvarpd_door_privileged(ucred_t *credp)
+{
+	const priv_set_t *ps;
+
+	ps = ucred_getprivset(credp, PRIV_EFFECTIVE);
+	if (ps == NULL)
+		return (B_FALSE);
+
+	return (priv_ismember(ps, PRIV_SYS_NET_CONFIG));
+}
 
 static int
 libvarpd_door_f_create(varpd_impl_t *vip, varpd_client_arg_t *vcap,
@@ -202,6 +215,119 @@ libvarpd_door_f_setprop(varpd_impl_t *vip, varpd_client_arg_t *vcap,
 	libvarpd_prop_handle_free(phdl);
 	return (ret);
 }
+
+static int
+libvarpd_door_f_lookup(varpd_impl_t *vip, varpd_client_arg_t *vcap,
+    ucred_t *credp)
+{
+	varpd_instance_t *inst;
+	varpd_client_lookup_arg_t *vclap = &vcap->vca_un.vca_lookup;
+
+	inst = libvarpd_instance_lookup_by_dlid(vip, vclap->vcla_linkid);
+	if (inst == NULL)
+		return (ENOENT);
+
+	vclap->vcla_id = inst->vri_id;
+	return (0);
+}
+
+static int
+libvarpd_door_f_target(varpd_impl_t *vip, varpd_client_arg_t *vcap,
+    ucred_t *credp)
+{
+	varpd_instance_handle_t ihp;
+	varpd_instance_t *inst;
+	varpd_client_target_mode_arg_t *vtmap = &vcap->vca_un.vca_mode;
+
+	ihp = libvarpd_instance_lookup((varpd_handle_t)vip, vtmap->vtma_id);
+	if (ihp == NULL)
+		return (ENOENT);
+	inst = (varpd_instance_t *)ihp;
+	vtmap->vtma_mode = inst->vri_dest;
+	return (0);
+}
+
+static int
+libvarpd_door_f_flush(varpd_impl_t *vip, varpd_client_arg_t *vcap,
+    ucred_t *credp)
+{
+	varpd_instance_handle_t ihp;
+	varpd_client_target_cache_arg_t *vtcap = &vcap->vca_un.vca_cache;
+
+	if (libvarpd_door_privileged(credp) == B_FALSE)
+		return (EPERM);
+
+	ihp = libvarpd_instance_lookup((varpd_handle_t)vip, vtcap->vtca_id);
+	if (ihp == NULL)
+		return (ENOENT);
+	return (libvarpd_overlay_cache_flush((varpd_instance_t *)ihp));
+}
+
+static int
+libvarpd_door_f_delete(varpd_impl_t *vip, varpd_client_arg_t *vcap,
+    ucred_t *credp)
+{
+	varpd_instance_handle_t ihp;
+	varpd_client_target_cache_arg_t *vtcap = &vcap->vca_un.vca_cache;
+
+	if (libvarpd_door_privileged(credp) == B_FALSE)
+		return (EPERM);
+
+	ihp = libvarpd_instance_lookup((varpd_handle_t)vip, vtcap->vtca_id);
+	if (ihp == NULL)
+		return (ENOENT);
+	return (libvarpd_overlay_cache_delete((varpd_instance_t *)ihp,
+	    vtcap->vtca_key));
+}
+
+static int
+libvarpd_door_f_get(varpd_impl_t *vip, varpd_client_arg_t *vcap,
+    ucred_t *credp)
+{
+	varpd_instance_handle_t ihp;
+	varpd_client_target_cache_arg_t *vtcap = &vcap->vca_un.vca_cache;
+
+	/* XXX Should this be privileged? */
+	ihp = libvarpd_instance_lookup((varpd_handle_t)vip, vtcap->vtca_id);
+	if (ihp == NULL)
+		return (ENOENT);
+	return (libvarpd_overlay_cache_get((varpd_instance_t *)ihp,
+	    vtcap->vtca_key, &vtcap->vtca_entry));
+}
+
+static int
+libvarpd_door_f_set(varpd_impl_t *vip, varpd_client_arg_t *vcap,
+    ucred_t *credp)
+{
+	varpd_instance_handle_t ihp;
+	varpd_client_target_cache_arg_t *vtcap = &vcap->vca_un.vca_cache;
+
+	if (libvarpd_door_privileged(credp) == B_FALSE)
+		return (EPERM);
+
+	ihp = libvarpd_instance_lookup((varpd_handle_t)vip, vtcap->vtca_id);
+	if (ihp == NULL)
+		return (ENOENT);
+
+	return (libvarpd_overlay_cache_set((varpd_instance_t *)ihp,
+	    vtcap->vtca_key, &vtcap->vtca_entry));
+}
+
+static int
+libvarpd_door_f_walk(varpd_impl_t *vip, varpd_client_arg_t *vcap,
+    ucred_t *credp)
+{
+	varpd_instance_handle_t ihp;
+	varpd_client_target_walk_arg_t *vctwp = &vcap->vca_un.vca_walk;
+
+	ihp = libvarpd_instance_lookup((varpd_handle_t)vip, vctwp->vtcw_id);
+	if (ihp == NULL)
+		return (ENOENT);
+
+	return (libvarpd_overlay_cache_walk_fill((varpd_instance_t *)ihp,
+	    &vctwp->vtcw_marker, &vctwp->vtcw_count, vctwp->vtcw_ents));
+}
+
 static libvarpd_door_f *libvarpd_door_table[] = {
 	libvarpd_door_f_create,
 	libvarpd_door_f_activate,
@@ -209,7 +335,14 @@ static libvarpd_door_f *libvarpd_door_table[] = {
 	libvarpd_door_f_nprops,
 	libvarpd_door_f_propinfo,
 	libvarpd_door_f_getprop,
-	libvarpd_door_f_setprop
+	libvarpd_door_f_setprop,
+	libvarpd_door_f_lookup,
+	libvarpd_door_f_target,
+	libvarpd_door_f_flush,
+	libvarpd_door_f_delete,
+	libvarpd_door_f_get,
+	libvarpd_door_f_set,
+	libvarpd_door_f_walk
 };
 
 static void
@@ -223,7 +356,8 @@ libvarpd_door_server(void *cookie, char *argp, size_t argsz, door_desc_t *dp,
 	varpd_client_arg_t *vcap = (varpd_client_arg_t *)argp;
 
 	err.vce_command = VARPD_CLIENT_INVALID;
-	if (argsz != sizeof (varpd_client_arg_t)) {
+	/* XXX Get a check for max size */
+	if (argsz < sizeof (varpd_client_arg_t)) {
 		err.vce_errno = EINVAL;
 		goto errout;
 	}

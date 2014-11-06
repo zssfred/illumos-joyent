@@ -223,7 +223,8 @@ static cmdfunc_t do_create_bridge, do_modify_bridge, do_delete_bridge;
 static cmdfunc_t do_add_bridge, do_remove_bridge, do_show_bridge;
 static cmdfunc_t do_create_iptun, do_modify_iptun, do_delete_iptun;
 static cmdfunc_t do_show_iptun, do_up_iptun, do_down_iptun;
-static cmdfunc_t do_create_overlay, do_delete_overlay, do_show_overlay;
+static cmdfunc_t do_create_overlay, do_delete_overlay, do_modify_overlay;
+static cmdfunc_t do_show_overlay;
 
 static void 	do_up_vnic_common(int, char **, const char *, boolean_t);
 
@@ -407,12 +408,15 @@ static cmd_t	cmds[] = {
 	    "    show-bridge      -t [-p] [-o <field>,...] [-s [-i <interval>]]"
 	    " <bridge>\n"						},
 	{ "create-overlay",	do_create_overlay,
-	    "    create-overlay  -e <encap> -v <vnetid>\n"
+	    "    create-overlay   -e <encap> -v <vnetid>\n"
 	    "\t\t     [ -p <prop>=<value>[,...]] <overlay-name>"	},
 	{ "delete-overlay",	do_delete_overlay,
-	    "    delete-overlay  <overlay-name>"			},
+	    "    delete-overlay   <overlay-name>"			},
+	{ "modify-overlay",	do_modify_overlay,
+	    "    modify-overlay   [-d mac] [-f] [-s mac=ip:port] "
+	    "<overlay-name>"						},
 	{ "show-overlay",	do_show_overlay,
-	    "    show-overlay     <overlay> "				},
+	    "    show-overlay     [-t] <overlay> \n"			},
 	{ "show-usage",		do_show_usage,
 	    "    show-usage       [-a] [-d | -F <format>] "
 	    "[-s <DD/MM/YYYY,HH:MM:SS>]\n"
@@ -10115,16 +10119,116 @@ show_one_overlay(dladm_handle_t hdl, datalink_id_t linkid, void *arg)
 	return (DLADM_WALK_CONTINUE);
 }
 
+/*
+ * XXX May want to rewrite this in terms of ofmt to deal with parseable, etc.
+ */
+static int
+show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
+    const struct ether_addr *key, const dladm_overlay_point_t *point, void *arg)
+{
+	char			linkbuf[MAXLINKNAMELEN];
+	char			keybuf[ETHERADDRSTRL];
+	char			macbuf[ETHERADDRSTRL];
+	char			ipbuf[INET6_ADDRSTRLEN];
+	datalink_class_t	class;
+
+	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL, linkbuf,
+	    MAXLINKNAMELEN) != DLADM_STATUS_OK ||
+	    class != DATALINK_CLASS_OVERLAY)
+		return (DLADM_WALK_CONTINUE);
+
+
+	if (ether_ntoa_r(key, keybuf) == NULL) {
+		warn("encountered malformed mac address key\n");
+		return (DLADM_WALK_CONTINUE);
+	}
+
+	printf("%-14s %-18s ", linkbuf, keybuf);
+
+	if (point->dop_flags & OVERLAY_TARGET_CACHE_DROP) {
+		printf("DROP\n");
+		return (DLADM_WALK_CONTINUE);
+	}
+
+	if (point->dop_mode & OVERLAY_PLUGIN_D_ETHERNET) {
+		if (ether_ntoa_r(&point->dop_mac, macbuf) == NULL) {
+			warn("encountered malformed mac address target "
+			    "for key %s\n", keybuf);
+			return (DLADM_WALK_CONTINUE);
+		}
+		printf("%s", macbuf);
+	}
+
+	if (point->dop_mode & OVERLAY_PLUGIN_D_IP) {
+		if (IN6_IS_ADDR_V4MAPPED(&point->dop_ip)) {
+			struct in_addr v4;
+			IN6_V4MAPPED_TO_INADDR(&point->dop_ip, &v4);
+			if (inet_ntop(AF_INET, &v4, ipbuf,
+			    sizeof (ipbuf)) == NULL)
+				abort();
+		} else if (inet_ntop(AF_INET6, &point->dop_ip, ipbuf,
+		    sizeof (ipbuf)) == NULL) {
+			/*
+			 * The only failrues we should get are EAFNOSUPPORT and
+			 * ENOSPC because of buffer exhaustion. In either of
+			 * these cases, that means something has gone horribly
+			 * wrong.
+			 */
+			abort();
+		}
+
+		if (point->dop_mode & OVERLAY_PLUGIN_D_ETHERNET)
+			putc(',', stdout);
+		printf("%s", ipbuf);
+	}
+
+	if (point->dop_mode & OVERLAY_PLUGIN_D_PORT) {
+		if (point->dop_mode & OVERLAY_PLUGIN_D_IP)
+			putc(':', stdout);
+		else if (point->dop_mode & OVERLAY_PLUGIN_D_ETHERNET)
+			putc(',', stdout);
+		printf("%u", point->dop_port);
+	}
+
+	putc('\n', stdout);
+
+	return (DLADM_WALK_CONTINUE);
+}
+
+static int
+show_one_overlay_table(dladm_handle_t handle, datalink_id_t linkid, void *arg)
+{
+	int ret;
+	(void) printf("%-14s %-18s %s\n", "LINK", "TARGET", "DESTINATION");
+	ret = dladm_overlay_walk_cache(handle, linkid,
+	    show_one_overlay_table_entry, arg);
+	(void) fflush(stdout);
+	return (ret);
+}
+
 /* XXX Needs all the parseable, selectable options, etc. */
 static void
 do_show_overlay(int argc, char *argv[], const char *use)
 {
-	int			i;
+	int			i, opt;
 	datalink_id_t		linkid = DATALINK_ALL_LINKID;
 	dladm_status_t		status;
+	int 			(*funcp)(dladm_handle_t, datalink_id_t, void *);
 
-	if (argc > 1) {
-		for (i = 1; i < argc; i++) {
+
+	funcp = show_one_overlay;
+	while ((opt = getopt(argc, argv, ":t")) != -1) {
+		switch (opt) {
+		case 't':
+			funcp = show_one_overlay_table;
+			break;
+		default:
+			die_opterr(optopt, opt, use);
+		}
+	}
+
+	if (argc > optind) {
+		for (i = optind; i < argc; i++) {
 			status = dladm_name2info(handle, argv[i], &linkid,
 			    NULL, NULL, NULL);
 			if (status != DLADM_STATUS_OK) {
@@ -10132,11 +10236,96 @@ do_show_overlay(int argc, char *argv[], const char *use)
 				    argv[i]);
 				continue;
 			}
-			show_one_overlay(handle, linkid, NULL);
+			funcp(handle, linkid, NULL);
 		}
 	} else {
-		(void) dladm_walk_datalink_id(show_one_overlay, handle, NULL,
+		(void) dladm_walk_datalink_id(funcp, handle, NULL,
 		    DATALINK_CLASS_OVERLAY, DATALINK_ANY_MEDIATYPE,
 		    DLADM_OPT_ACTIVE);
 	}
+}
+
+static void
+do_modify_overlay(int argc, char *argv[], const char *use)
+{
+	int			opt, ocnt = 0;
+	boolean_t		flush, set, delete;
+	struct ether_addr	e;
+	char			*dest;
+	datalink_id_t		linkid = DATALINK_ALL_LINKID;
+	dladm_status_t		status;
+
+	flush = set = delete = B_FALSE;
+	while ((opt = getopt(argc, argv, ":fd:s:")) != -1) {
+		switch (opt) {
+		case 'd':
+			if (delete == B_TRUE)
+				die_optdup('d');
+			delete = B_TRUE;
+			ocnt++;
+			if (ether_aton_r(optarg, &e) == NULL)
+				die("invalid mac address: %s\n", optarg);
+			break;
+		case 'f':
+			if (flush == B_TRUE)
+				die_optdup('f');
+			flush = B_TRUE;
+			ocnt++;
+			break;
+		case 's':
+			if (set == B_TRUE)
+				die_optdup('s');
+			set = B_TRUE;
+			ocnt++;
+			dest = strchr(optarg, '=');
+			*dest = '\0';
+			dest++;
+			if (dest == NULL)
+				die("malformed value, expected mac=dest, "
+				    "got: %s\n", optarg);
+			if (ether_aton_r(optarg, &e) == NULL)
+				die("invalid mac address: %s\n", optarg);
+			break;
+		default:
+			die_opterr(optopt, opt, use);
+		}
+	}
+
+	if (ocnt == 0)
+		die("need to specify one of -d, -f, or -s");
+	if (ocnt > 1)
+		die("only one of -d, -f, or -s may be used");
+
+	if (argv[optind] == NULL)
+		die("missing required overlay device\n");
+	if (argc > optind + 1)
+		die("only one overlay device may be specified\n");
+
+	status = dladm_name2info(handle, argv[optind], &linkid, NULL, NULL,
+	    NULL);
+	if (status != DLADM_STATUS_OK) {
+		die_dlerr(status, "failed to find overlay %s", argv[optind]);
+	}
+
+	if (flush == B_TRUE) {
+		status = dladm_overlay_cache_flush(handle, linkid);
+		if (status != DLADM_STATUS_OK)
+			die_dlerr(status, "failed to flush target cache for "
+			    "overlay %s", argv[optind]);
+	}
+
+	if (delete == B_TRUE) {
+		status = dladm_overlay_cache_delete(handle, linkid, &e);
+		if (status != DLADM_STATUS_OK)
+			die_dlerr(status, "failed to flush target %s from "
+			    "overlay target cache %s", optarg, argv[optind]);
+	}
+
+	if (set == B_TRUE) {
+		status = dladm_overlay_cache_set(handle, linkid, &e, dest);
+		if (status != DLADM_STATUS_OK)
+			die_dlerr(status, "failed to set target %s for overlay "
+			    "target cache %s", optarg, argv[optind]);
+	}
+
 }

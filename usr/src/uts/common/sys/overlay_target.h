@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc.
  */
 
 #ifndef _OVERLAY_TARGET_H
@@ -104,7 +104,7 @@ typedef struct overlay_targ_id {
  *		The overlay_targ_resp_t has the appropriate information from
  *		which a reply can be generated. The information is filled into
  *		an overlay_targ_point_t as appropriate based on the
- *		overlay_dest_t type.
+ *		overlay_plugin_dest_t type.
  *
  *
  *	OVERLAY_TARG_DROP - overlay_targ_resp_t
@@ -197,6 +197,86 @@ typedef struct overlay_targ_list {
 	uint32_t	otl_ents[];
 } overlay_targ_list_t;
 
+/*
+ * The following family of ioctls all manipulate the target cache of a given
+ * device.
+ *
+ * 	OVERLAY_TARG_CACHE_GET - overlay_targ_cache_t
+ *
+ * 		The overlay_targ_cache_t should be have its link identifier and
+ * 		the desired mac address filled in. On return, it will fill in
+ * 		the otc_dest member, if the entry exists in the table.
+ *
+ *
+ * 	OVERLAY_TARG_CACHE_SET - overlay_targ_cache_t
+ *
+ * 		The cache table entry of the mac address referred to by otc_mac
+ * 		and otd_linkid will be filled in with the details provided by in
+ * 		the otc_dest member.
+ *
+ * 	OVERLAY_TARG_CACHE_REMOVE - overlay_targ_cache_t
+ *
+ * 		Removes the cache entry identified by otc_mac from the table.
+ * 		Note that this does not stop any in-flight lookups or deal with
+ * 		any data that is awaiting a lookup.
+ *
+ *
+ * 	OVERLAY_TARG_CACHE_FLUSH - overlay_targ_cache_t
+ *
+ * 		Similar to OVERLAY_TARG_CACHE_REMOVE, but functions on the
+ * 		entire table identified by otc_linkid. All other parameters are
+ * 		ignored.
+ *
+ *
+ * 	OVERLAY_TARG_CACHE_ITER - overlay_targ_cache_iter_t
+ *
+ * 		Iterates over the contents of a target cache identified by
+ * 		otci_linkid. Iteration is guaranteed to be exactly once for
+ * 		items which are in the hashtable at the beginning and end of
+ * 		iteration. For items which are added or removed after iteration
+ * 		has begun, only at most once semantics are guaranteed. Consumers
+ * 		should ensure that otci_marker is zeroed before starting
+ * 		iteration and should preserve its contents across calls.
+ *
+ * 		Before calling in, otci_count should be set to the number of
+ * 		entries that space has been allocated for in otci_ents. The
+ * 		value will be updated to indicate the total number written out.
+ */
+
+#define	OVERLAY_TARG_CACHE_GET		(OVERLAY_TARG_IOCTL | 0x30)
+#define	OVERLAY_TARG_CACHE_SET		(OVERLAY_TARG_IOCTL | 0x31)
+#define	OVERLAY_TARG_CACHE_REMOVE	(OVERLAY_TARG_IOCTL | 0x32)
+#define	OVERLAY_TARG_CACHE_FLUSH	(OVERLAY_TARG_IOCTL | 0x33)
+#define	OVERLAY_TARG_CACHE_ITER		(OVERLAY_TARG_IOCTL | 0x34)
+
+/*
+ * XXX This is a pretty arbitrary number that we're constraining ourselves to
+ * for iteration. Basically the goal is to make sure that we can't have a user
+ * ask us to allocate too much memory on their behalf. We should revisit this
+ * and think through what a good number here is.
+ */
+#define	OVERLAY_TARGET_ITER_MAX	500
+
+#define	OVERLAY_TARGET_CACHE_DROP	0x01
+
+typedef struct overlay_targ_cache_entry {
+	uint8_t			otce_mac[ETHERADDRL];
+	uint16_t		otce_flags;
+	overlay_target_point_t	otce_dest;
+} overlay_targ_cache_entry_t;
+
+typedef struct overlay_targ_cache {
+	datalink_id_t			otc_linkid;
+	overlay_targ_cache_entry_t	otc_entry;
+} overlay_targ_cache_t;
+
+typedef struct overlay_targ_cache_iter {
+	datalink_id_t			otci_linkid;
+	uint32_t			otci_pad;
+	uint64_t			otci_marker;
+	uint16_t			otci_count;
+	overlay_targ_cache_entry_t	otci_ents[];
+} overlay_targ_cache_iter_t;
 
 #ifdef __cplusplus
 }

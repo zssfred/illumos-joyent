@@ -64,7 +64,7 @@ typedef struct overlay_target_hdl {
 	list_t	oth_outstanding;	/* oth_lock */
 } overlay_target_hdl_t;
 
-typedef int (*overlay_target_copyin_f)(void *, void **, size_t *, int);
+typedef int (*overlay_target_copyin_f)(const void *, void **, size_t *, int);
 typedef int (*overlay_target_ioctl_f)(overlay_target_hdl_t *, void *);
 typedef int (*overlay_target_copyout_f)(void *, void *, size_t, int);
 
@@ -140,6 +140,24 @@ overlay_mac_cmp(const void *a, const void *b)
 static void
 overlay_target_entry_dtor(void *arg)
 {
+}
+
+static int
+overlay_mac_avl(const void *a, const void *b)
+{
+	int i;
+	const overlay_target_entry_t *l, *r;
+	l = a;
+	r = b;
+
+	for (i = 0; i < ETHERADDRL; i++) {
+		if (l->ote_addr[i] > r->ote_addr[i])
+			return (1);
+		else if (l->ote_addr[i] < r->ote_addr[i])
+			return (-1);
+	}
+
+	return (0);
 }
 
 void
@@ -246,7 +264,8 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 		if (mac_header_info(odd->odd_mh, mp, &mhi) != 0)
 			return (OVERLAY_TARGET_DROP);
 		mutex_enter(&ott->ott_lock);
-		entry = refhash_lookup(ott->ott_u.ott_dhash, mhi.mhi_daddr);
+		entry = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+		    mhi.mhi_daddr);
 		if (entry == NULL) {
 			/*
 			 * XXX Create a new entry here and send it off to lookup
@@ -263,12 +282,13 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 			entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
 			entry->ote_ott = ott;
 			entry->ote_odd = odd;
-			refhash_insert(ott->ott_u.ott_dhash, entry);
+			refhash_insert(ott->ott_u.ott_dyn.ott_dhash, entry);
+			avl_add(&ott->ott_u.ott_dyn.ott_tree, entry);
 			mutex_exit(&ott->ott_lock);
 			overlay_target_queue(entry);
 			return (OVERLAY_TARGET_ASYNC);
 		}
-		refhash_hold(ott->ott_u.ott_dhash, entry);
+		refhash_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
 		mutex_exit(&ott->ott_lock);
 
 		mutex_enter(&entry->ote_lock);
@@ -281,9 +301,6 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 			v6->sin6_port = htons(entry->ote_dest.otp_port);
 			*slenp = sizeof (struct sockaddr_in6);
 			ret = OVERLAY_TARGET_OK;
-		} else if (entry->ote_flags & OVERLAY_ENTRY_F_VARPD) {
-			/* XXX actually implement this */
-			ret = OVERLAY_TARGET_DROP;
 		} else {
 			size_t mlen = msgsize(mp);
 
@@ -308,7 +325,7 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 		mutex_exit(&entry->ote_lock);
 
 		mutex_enter(&ott->ott_lock);
-		refhash_rele(ott->ott_u.ott_dhash, entry);
+		refhash_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
 		mutex_exit(&ott->ott_lock);
 	}
 
@@ -392,12 +409,14 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 		bcopy(&ota->ota_point, &ott->ott_u.ott_point,
 		    sizeof (overlay_target_point_t));
 	} else {
-		ott->ott_u.ott_dhash = refhash_create(OVERLAY_HSIZE,
+		ott->ott_u.ott_dyn.ott_dhash = refhash_create(OVERLAY_HSIZE,
 		    overlay_mac_hash, overlay_mac_cmp,
 		    overlay_target_entry_dtor, sizeof (overlay_target_entry_t),
 		    offsetof(overlay_target_entry_t, ote_reflink),
 		    offsetof(overlay_target_entry_t, ote_addr), KM_SLEEP);
-
+		avl_create(&ott->ott_u.ott_dyn.ott_tree, overlay_mac_avl,
+		    sizeof (overlay_target_entry_t),
+		    offsetof(overlay_target_entry_t, ote_avllink));
 	}
 	mutex_enter(&odd->odd_lock);
 	if (odd->odd_flags & OVERLAY_F_VARPD) {
@@ -600,7 +619,8 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 }
 
 static int
-overlay_target_pkt_copyin(void *ubuf, void **outp, size_t *bsize, int flags)
+overlay_target_pkt_copyin(const void *ubuf, void **outp, size_t *bsize,
+    int flags)
 {
 	int ret;
 	overlay_targ_pkt_t *pkt;
@@ -630,7 +650,8 @@ overlay_target_pkt_copyin(void *ubuf, void **outp, size_t *bsize, int flags)
 }
 
 static int
-overlay_target_pkt_copyout(void *ubuf, void *buf, size_t bufsize, int flags)
+overlay_target_pkt_copyout(void *ubuf, void *buf, size_t bufsize,
+    int flags)
 {
 	if (ddi_model_convert_from(flags & FMODELS) == DDI_MODEL_ILP32) {
 		overlay_targ_pkt_t *pkt = buf;
@@ -806,7 +827,8 @@ typedef struct overlay_targ_list_int {
 } overlay_targ_list_int_t;
 
 static int
-overlay_target_list_copyin(void *ubuf, void **outp, size_t *bsize, int flags)
+overlay_target_list_copyin(const void *ubuf, void **outp, size_t *bsize,
+    int flags)
 {
 	overlay_targ_list_t n;
 	overlay_targ_list_int_t *otl;
@@ -819,7 +841,7 @@ overlay_target_list_copyin(void *ubuf, void **outp, size_t *bsize, int flags)
 	 * XXX We should do something to limit the number of entries we
 	 * support, or at least more than this...
 	 */
-	if (n.otl_nents >= INT32_MAX)
+	if (n.otl_nents >= INT32_MAX / sizeof (uint32_t))
 		return (EINVAL);
 	*bsize = sizeof (overlay_targ_list_int_t) +
 	    sizeof (uint32_t) * n.otl_nents;
@@ -880,6 +902,351 @@ overlay_target_list_copyout(void *ubuf, void *buf, size_t bufsize, int flags)
 	return (0);
 }
 
+static int
+overlay_target_cache_get(overlay_target_hdl_t *thdl, void *arg)
+{
+	int ret = 0;
+	overlay_dev_t *odd;
+	overlay_target_t *ott;
+	overlay_target_entry_t *ote;
+	overlay_targ_cache_t *otc = arg;
+
+	odd = overlay_hold_by_dlid(otc->otc_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	mutex_enter(&odd->odd_lock);
+	if (!(odd->odd_flags & OVERLAY_F_VARPD)) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	ott = odd->odd_target;
+	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	mutex_enter(&ott->ott_lock);
+	mutex_exit(&odd->odd_lock);
+
+	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    otc->otc_entry.otce_mac);
+	if (ote != NULL) {
+		mutex_enter(&ote->ote_lock);
+		if ((ote->ote_flags & OVERLAY_ENTRY_F_VALID_MASK) != 0) {
+			if (ote->ote_flags & OVERLAY_ENTRY_F_DROP) {
+				otc->otc_entry.otce_flags =
+				    OVERLAY_TARGET_CACHE_DROP;
+			} else {
+				otc->otc_entry.otce_flags = 0;
+				bcopy(&ote->ote_dest,
+				    &otc->otc_entry.otce_dest,
+				    sizeof (overlay_target_point_t));
+			}
+			ret = 0;
+		} else {
+			ret = ENOENT;
+		}
+		mutex_exit(&ote->ote_lock);
+	} else {
+		ret = ENOENT;
+	}
+
+	mutex_exit(&ott->ott_lock);
+	overlay_hold_rele(odd);
+
+	return (ret);
+}
+
+static int
+overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
+{
+	overlay_dev_t *odd;
+	overlay_target_t *ott;
+	overlay_target_entry_t *ote;
+	overlay_targ_cache_t *otc = arg;
+
+	if (otc->otc_entry.otce_flags & ~OVERLAY_TARGET_CACHE_DROP)
+		return (EINVAL);
+
+	odd = overlay_hold_by_dlid(otc->otc_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	mutex_enter(&odd->odd_lock);
+	if (!(odd->odd_flags & OVERLAY_F_VARPD)) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	ott = odd->odd_target;
+	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	mutex_enter(&ott->ott_lock);
+	mutex_exit(&odd->odd_lock);
+
+	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    otc->otc_entry.otce_mac);
+	if (ote == NULL) {
+		ote = kmem_cache_alloc(overlay_entry_cache, KM_SLEEP);
+		bcopy(otc->otc_entry.otce_mac, ote->ote_addr, ETHERADDRL);
+		ote->ote_chead = ote->ote_ctail = NULL;
+		ote->ote_mbsize = 0;
+		ote->ote_ott = ott;
+		ote->ote_odd = odd;
+		mutex_enter(&ote->ote_lock);
+		refhash_insert(ott->ott_u.ott_dyn.ott_dhash, ote);
+		avl_add(&ott->ott_u.ott_dyn.ott_tree, ote);
+	} else {
+		mutex_enter(&ote->ote_lock);
+	}
+	if (otc->otc_entry.otce_flags & OVERLAY_TARGET_CACHE_DROP) {
+		ote->ote_flags = OVERLAY_ENTRY_F_DROP;
+	} else {
+		ote->ote_flags = OVERLAY_ENTRY_F_VALID;
+		bcopy(&otc->otc_entry.otce_dest, &ote->ote_dest,
+		    sizeof (overlay_target_point_t));
+	}
+
+	mutex_exit(&ote->ote_lock);
+	mutex_exit(&ott->ott_lock);
+	overlay_hold_rele(odd);
+
+	return (0);
+}
+
+static int
+overlay_target_cache_remove(overlay_target_hdl_t *thdl, void *arg)
+{
+	int ret = 0;
+	overlay_dev_t *odd;
+	overlay_target_t *ott;
+	overlay_target_entry_t *ote;
+	overlay_targ_cache_t *otc = arg;
+
+	odd = overlay_hold_by_dlid(otc->otc_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	mutex_enter(&odd->odd_lock);
+	if (!(odd->odd_flags & OVERLAY_F_VARPD)) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	ott = odd->odd_target;
+	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	mutex_enter(&ott->ott_lock);
+	mutex_exit(&odd->odd_lock);
+
+	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    otc->otc_entry.otce_mac);
+	if (ote != NULL) {
+		mutex_enter(&ote->ote_lock);
+		ote->ote_flags &= ~OVERLAY_ENTRY_F_VALID_MASK;
+		mutex_exit(&ote->ote_lock);
+		ret = 0;
+	} else {
+		ret = ENOENT;
+	}
+
+	mutex_exit(&ott->ott_lock);
+	overlay_hold_rele(odd);
+
+	return (ret);
+}
+
+static int
+overlay_target_cache_flush(overlay_target_hdl_t *thdl, void *arg)
+{
+	avl_tree_t *avl;
+	overlay_dev_t *odd;
+	overlay_target_t *ott;
+	overlay_target_entry_t *ote;
+	overlay_targ_cache_t *otc = arg;
+
+	odd = overlay_hold_by_dlid(otc->otc_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	mutex_enter(&odd->odd_lock);
+	if (!(odd->odd_flags & OVERLAY_F_VARPD)) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	ott = odd->odd_target;
+	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	mutex_enter(&ott->ott_lock);
+	mutex_exit(&odd->odd_lock);
+	avl = &ott->ott_u.ott_dyn.ott_tree;
+
+	for (ote = avl_first(avl); ote != NULL; ote = AVL_NEXT(avl, ote)) {
+		mutex_enter(&ote->ote_lock);
+		ote->ote_flags &= ~OVERLAY_ENTRY_F_VALID_MASK;
+		mutex_exit(&ote->ote_lock);
+	}
+	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    otc->otc_entry.otce_mac);
+
+	mutex_exit(&ott->ott_lock);
+	overlay_hold_rele(odd);
+
+	return (0);
+}
+
+static int
+overlay_target_cache_iter_copyin(const void *ubuf, void **outp, size_t *bsize,
+    int flags)
+{
+	overlay_targ_cache_iter_t base, *iter;
+
+	if (ddi_copyin(ubuf, &base, sizeof (overlay_targ_cache_iter_t),
+	    flags & FKIOCTL) != 0)
+		return (EFAULT);
+
+	if (base.otci_count > OVERLAY_TARGET_ITER_MAX)
+		return (E2BIG);
+
+	if (base.otci_count == 0)
+		return (EINVAL);
+
+	*bsize = sizeof (overlay_targ_cache_iter_t) +
+	    base.otci_count * sizeof (overlay_targ_cache_entry_t);
+	iter = kmem_alloc(*bsize, KM_SLEEP);
+	bcopy(&base, iter, sizeof (overlay_targ_cache_iter_t));
+	*outp = iter;
+
+	return (0);
+}
+
+typedef struct overlay_targ_cache_marker {
+	uint8_t		otcm_mac[ETHERADDRL];
+	uint16_t	otcm_done;
+} overlay_targ_cache_marker_t;
+
+static int
+overlay_target_cache_iter(overlay_target_hdl_t *thdl, void *arg)
+{
+	overlay_dev_t *odd;
+	overlay_target_t *ott;
+	overlay_target_entry_t lookup, *ent;
+	overlay_targ_cache_marker_t *mark;
+	avl_index_t where;
+	avl_tree_t *avl;
+	uint16_t written = 0;
+
+	overlay_targ_cache_iter_t *iter = arg;
+	mark = (void *)&iter->otci_marker;
+
+	if (mark->otcm_done != 0) {
+		iter->otci_count = 0;
+		return (0);
+	}
+
+	odd = overlay_hold_by_dlid(iter->otci_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	mutex_enter(&odd->odd_lock);
+	if (!(odd->odd_flags & OVERLAY_F_VARPD)) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+	ott = odd->odd_target;
+	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (ENXIO);
+	}
+
+	/*
+	 * XXX Holding this lock across the entire iteration probably isn't very
+	 * good. We should perhaps add an r/w lock for the avl tree.
+	 */
+	mutex_enter(&ott->ott_lock);
+	mutex_exit(&odd->odd_lock);
+
+	avl = &ott->ott_u.ott_dyn.ott_tree;
+	bcopy(mark->otcm_mac, lookup.ote_addr, ETHERADDRL);
+	ent = avl_find(avl, &lookup, &where);
+
+	/*
+	 * NULL ent means that the entry does not exist, so we want to start
+	 * with the closest node in the tree. This means that we implicitly rely
+	 * on the tree's order and the first node will be the mac 00:00:00:00:00
+	 * and the last will be ff:ff:ff:ff:ff:ff.
+	 */
+	if (ent == NULL) {
+		ent = avl_nearest(avl, where, AVL_AFTER);
+		if (ent == NULL) {
+			mark->otcm_done = 1;
+			goto done;
+		}
+	}
+
+	for (; ent != NULL && written < iter->otci_count;
+	    ent = AVL_NEXT(avl, ent)) {
+		overlay_targ_cache_entry_t *out = &iter->otci_ents[written];
+		mutex_enter(&ent->ote_lock);
+		if ((ent->ote_flags & OVERLAY_ENTRY_F_VALID_MASK) == 0) {
+			mutex_exit(&ent->ote_lock);
+			continue;
+		}
+		bcopy(ent->ote_addr, out->otce_mac, ETHERADDRL);
+		out->otce_flags = 0;
+		if (ent->ote_flags & OVERLAY_ENTRY_F_DROP)
+			out->otce_flags |= OVERLAY_TARGET_CACHE_DROP;
+		if (ent->ote_flags & OVERLAY_ENTRY_F_VALID)
+			bcopy(&ent->ote_dest, &out->otce_dest,
+			    sizeof (overlay_target_point_t));
+		written++;
+		mutex_exit(&ent->ote_lock);
+	}
+
+	if (ent != NULL) {
+		bcopy(ent->ote_addr, mark->otcm_mac, ETHERADDRL);
+	} else {
+		mark->otcm_done = 1;
+	}
+
+done:
+	iter->otci_count = written;
+	mutex_exit(&ott->ott_lock);
+	overlay_hold_rele(odd);
+
+	return (0);
+}
+
+static int
+overlay_target_cache_iter_copyout(void *ubuf, void *buf, size_t bufsize,
+    int flags)
+{
+	size_t outsize;
+	const overlay_targ_cache_iter_t *iter = buf;
+
+	outsize = sizeof (overlay_targ_cache_iter_t) +
+	    iter->otci_count * sizeof (overlay_targ_cache_entry_t);
+
+	if (ddi_copyout(buf, ubuf, outsize, flags & FKIOCTL) != 0)
+		return (EFAULT);
+
+	return (0);
+}
+
 static overlay_target_ioctl_t overlay_target_ioctab[] = {
 	{ OVERLAY_TARG_INFO, B_TRUE, B_TRUE,
 		NULL, overlay_target_info,
@@ -923,6 +1290,23 @@ static overlay_target_ioctl_t overlay_target_ioctab[] = {
 		overlay_target_ioctl_list,
 		overlay_target_list_copyout,
 		sizeof (overlay_targ_list_t)		},
+	{ OVERLAY_TARG_CACHE_GET, B_FALSE, B_TRUE,
+		NULL, overlay_target_cache_get,
+		NULL, sizeof (overlay_targ_cache_t)	},
+	{ OVERLAY_TARG_CACHE_SET, B_TRUE, B_TRUE,
+		NULL, overlay_target_cache_set,
+		NULL, sizeof (overlay_targ_cache_t)	},
+	{ OVERLAY_TARG_CACHE_REMOVE, B_TRUE, B_TRUE,
+		NULL, overlay_target_cache_remove,
+		NULL, sizeof (overlay_targ_cache_t)	},
+	{ OVERLAY_TARG_CACHE_FLUSH, B_TRUE, B_TRUE,
+		NULL, overlay_target_cache_flush,
+		NULL, sizeof (overlay_targ_cache_t)	},
+	{ OVERLAY_TARG_CACHE_ITER, B_FALSE, B_TRUE,
+		overlay_target_cache_iter_copyin,
+		overlay_target_cache_iter,
+		overlay_target_cache_iter_copyout,
+		sizeof (overlay_targ_cache_iter_t)		},
 	{ 0 }
 };
 

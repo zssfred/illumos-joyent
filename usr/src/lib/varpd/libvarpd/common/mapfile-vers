@@ -45,6 +45,14 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_c_prop_get;
 	libvarpd_c_prop_set;
 
+	libvarpd_c_instance_lookup;
+	libvarpd_c_instance_target_mode;
+	libvarpd_c_instance_cache_flush;
+	libvarpd_c_instance_cache_delete;
+	libvarpd_c_instance_cache_get;
+	libvarpd_c_instance_cache_set;
+	libvarpd_c_instance_cache_walk;
+
 	libvarpd_create;
 	libvarpd_destroy;
 

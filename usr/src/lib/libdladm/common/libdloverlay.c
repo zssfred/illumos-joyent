@@ -549,3 +549,261 @@ dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
 	return (dladm_overlay_walk_varpd_prop(handle, linkid, varpdid, func,
 	    arg));
 }
+
+typedef struct overlay_walk_cb {
+	dladm_handle_t		owc_handle;
+	datalink_id_t		owc_linkid;
+	void			*owc_arg;
+	dladm_overlay_cache_f	owc_func;
+	uint_t			owc_mode;
+} overlay_walk_cb_t;
+
+int
+dladm_overlay_walk_cache_cb(varpd_client_handle_t chdl, uint64_t varpdid,
+    const struct ether_addr *key, const varpd_client_cache_entry_t *entry,
+    void *arg)
+{
+	overlay_walk_cb_t *owc = arg;
+	dladm_overlay_point_t point;
+
+	bzero(&point, sizeof (dladm_overlay_point_t));
+	point.dop_mode = owc->owc_mode;
+	point.dop_mac = entry->vcp_mac;
+	point.dop_flags = entry->vcp_flags;
+	point.dop_ip = entry->vcp_ip;
+	point.dop_port = entry->vcp_port;
+
+	if (owc->owc_func(owc->owc_handle, owc->owc_linkid, key, &point,
+	    owc->owc_arg) == DLADM_WALK_TERMINATE)
+		return (1);
+	return (0);
+}
+
+dladm_status_t
+dladm_overlay_walk_cache(dladm_handle_t handle, datalink_id_t linkid,
+    dladm_overlay_cache_f func, void *arg)
+{
+	int ret;
+	uint_t mode;
+	uint64_t varpdid;
+	varpd_client_handle_t chdl;
+	overlay_walk_cb_t cbarg;
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_instance_target_mode(chdl, varpdid,
+	    &mode)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	cbarg.owc_handle = handle;
+	cbarg.owc_linkid = linkid;
+	cbarg.owc_arg = arg;
+	cbarg.owc_func = func;
+	cbarg.owc_mode = mode;
+	ret = libvarpd_c_instance_cache_walk(chdl, varpdid,
+	    dladm_overlay_walk_cache_cb, &cbarg);
+	libvarpd_c_destroy(chdl);
+
+	return (dladm_errno2status(ret));
+}
+
+dladm_status_t
+dladm_overlay_cache_flush(dladm_handle_t handle, datalink_id_t linkid)
+{
+	int ret;
+	uint64_t varpdid;
+	varpd_client_handle_t chdl;
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	ret = libvarpd_c_instance_cache_flush(chdl, varpdid);
+	libvarpd_c_destroy(chdl);
+
+	return (dladm_errno2status(ret));
+}
+
+dladm_status_t
+dladm_overlay_cache_delete(dladm_handle_t handle, datalink_id_t linkid,
+    const struct ether_addr *key)
+{
+	int ret;
+	uint64_t varpdid;
+	varpd_client_handle_t chdl;
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	ret = libvarpd_c_instance_cache_delete(chdl, varpdid, key);
+	libvarpd_c_destroy(chdl);
+
+	return (dladm_errno2status(ret));
+}
+
+dladm_status_t
+dladm_overlay_cache_set(dladm_handle_t handle, datalink_id_t linkid,
+    const struct ether_addr *key, char *val)
+{
+	int ret;
+	uint_t mode;
+	uint64_t varpdid;
+	char *ip, *port = NULL;
+	varpd_client_handle_t chdl;
+	varpd_client_cache_entry_t vcp;
+
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_instance_target_mode(chdl, varpdid,
+	    &mode)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	/*
+	 * Mode tells us what we should expect in val. It we have more than one
+	 * thing listed, the canonical format of it right now is mac,ip:port.
+	 */
+	bzero(&vcp, sizeof (varpd_client_cache_entry_t));
+
+	if (strcasecmp(val, "drop") == 0) {
+		vcp.vcp_flags = OVERLAY_TARGET_CACHE_DROP;
+		goto send;
+	}
+
+	if (mode & OVERLAY_PLUGIN_D_ETHERNET) {
+		if (ether_aton_r(val, &vcp.vcp_mac) == NULL) {
+			libvarpd_c_destroy(chdl);
+			return (dladm_errno2status(EINVAL));
+		}
+	}
+
+	if (mode & OVERLAY_PLUGIN_D_IP) {
+		if (mode & OVERLAY_PLUGIN_D_ETHERNET) {
+			if ((ip = strchr(val, ',')) == NULL) {
+				libvarpd_c_destroy(chdl);
+				return (dladm_errno2status(ret));
+			}
+			ip++;
+		} else {
+			ip = val;
+		}
+
+		if (mode & OVERLAY_PLUGIN_D_PORT) {
+			if ((port = strchr(val, ':')) == NULL) {
+				libvarpd_c_destroy(chdl);
+				return (dladm_errno2status(ret));
+			}
+			*port = '\0';
+			port++;
+		}
+
+		/* Try v6, then fall back to v4 */
+		ret = inet_pton(AF_INET6, ip, &vcp.vcp_ip);
+		if (ret == -1)
+			abort();
+		if (ret == 0) {
+			struct in_addr v4;
+
+			ret = inet_pton(AF_INET, ip, &v4);
+			if (ret == -1)
+				abort();
+			if (ret == 0) {
+				libvarpd_c_destroy(chdl);
+				return (dladm_errno2status(ret));
+			}
+			IN6_INADDR_TO_V4MAPPED(&v4, &vcp.vcp_ip);
+		}
+	}
+
+	if (mode & OVERLAY_PLUGIN_D_PORT) {
+		char *eptr;
+		unsigned long l;
+		if (port == NULL && (mode & OVERLAY_PLUGIN_D_ETHERNET)) {
+			if ((port = strchr(val, ',')) == NULL) {
+				libvarpd_c_destroy(chdl);
+				return (dladm_errno2status(EINVAL));
+			}
+		} else if (port == NULL)
+			port = val;
+
+		errno = 0;
+		l = strtoul(port, &eptr, 10);
+		if (errno != 0 || *eptr != '\0') {
+			libvarpd_c_destroy(chdl);
+			return (dladm_errno2status(EINVAL));
+		}
+		if (l == 0 || l > UINT16_MAX) {
+			libvarpd_c_destroy(chdl);
+			return (dladm_errno2status(EINVAL));
+		}
+		vcp.vcp_port = l;
+	}
+
+send:
+	ret = libvarpd_c_instance_cache_set(chdl, varpdid, key, &vcp);
+
+	libvarpd_c_destroy(chdl);
+	return (dladm_errno2status(ret));
+}
+
+dladm_status_t
+dladm_overlay_cache_get(dladm_handle_t handle, datalink_id_t linkid,
+    const struct ether_addr *key, dladm_overlay_point_t *point)
+{
+	int ret;
+	uint_t mode;
+	uint64_t varpdid;
+	varpd_client_handle_t chdl;
+	varpd_client_cache_entry_t entry;
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_instance_target_mode(chdl, varpdid,
+	    &mode)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	ret = libvarpd_c_instance_cache_get(chdl, varpdid, key, &entry);
+	if (ret == 0) {
+		point->dop_mode = mode;
+		point->dop_mac = entry.vcp_mac;
+		point->dop_flags = entry.vcp_flags;
+		point->dop_ip = entry.vcp_ip;
+		point->dop_port = entry.vcp_port;
+	}
+
+	libvarpd_c_destroy(chdl);
+	return (dladm_errno2status(ret));
+}
