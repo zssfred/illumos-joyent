@@ -121,8 +121,8 @@ typedef struct varpd_client_lookup_arg {
 
 typedef struct varpd_client_target_mode_arg {
 	uint64_t	vtma_id;
+	uint32_t	vtma_dest;
 	uint32_t	vtma_mode;
-	uint32_t	vtma_pad;
 } varpd_client_target_mode_arg_t;
 
 typedef struct varpd_client_target_cache_arg {

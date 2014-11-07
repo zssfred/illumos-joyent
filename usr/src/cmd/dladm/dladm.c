@@ -10138,19 +10138,23 @@ show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
 		return (DLADM_WALK_CONTINUE);
 
 
-	if (ether_ntoa_r(key, keybuf) == NULL) {
-		warn("encountered malformed mac address key\n");
-		return (DLADM_WALK_CONTINUE);
+	if ((point->dop_flags & DLADM_OVERLAY_F_DEFAULT) != 0) {
+		(void) snprintf(keybuf, sizeof (keybuf), "*:*:*:*:*:*");
+	} else {
+		if (ether_ntoa_r(key, keybuf) == NULL) {
+			warn("encountered malformed mac address key\n");
+			return (DLADM_WALK_CONTINUE);
+		}
 	}
 
 	printf("%-14s %-18s ", linkbuf, keybuf);
 
-	if (point->dop_flags & OVERLAY_TARGET_CACHE_DROP) {
+	if (point->dop_flags & DLADM_OVERLAY_F_DROP) {
 		printf("DROP\n");
 		return (DLADM_WALK_CONTINUE);
 	}
 
-	if (point->dop_mode & OVERLAY_PLUGIN_D_ETHERNET) {
+	if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET) {
 		if (ether_ntoa_r(&point->dop_mac, macbuf) == NULL) {
 			warn("encountered malformed mac address target "
 			    "for key %s\n", keybuf);
@@ -10159,7 +10163,7 @@ show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
 		printf("%s", macbuf);
 	}
 
-	if (point->dop_mode & OVERLAY_PLUGIN_D_IP) {
+	if (point->dop_dest & OVERLAY_PLUGIN_D_IP) {
 		if (IN6_IS_ADDR_V4MAPPED(&point->dop_ip)) {
 			struct in_addr v4;
 			IN6_V4MAPPED_TO_INADDR(&point->dop_ip, &v4);
@@ -10177,15 +10181,15 @@ show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
 			abort();
 		}
 
-		if (point->dop_mode & OVERLAY_PLUGIN_D_ETHERNET)
+		if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET)
 			putc(',', stdout);
 		printf("%s", ipbuf);
 	}
 
-	if (point->dop_mode & OVERLAY_PLUGIN_D_PORT) {
-		if (point->dop_mode & OVERLAY_PLUGIN_D_IP)
+	if (point->dop_dest & OVERLAY_PLUGIN_D_PORT) {
+		if (point->dop_dest & OVERLAY_PLUGIN_D_IP)
 			putc(':', stdout);
-		else if (point->dop_mode & OVERLAY_PLUGIN_D_ETHERNET)
+		else if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET)
 			putc(',', stdout);
 		printf("%u", point->dop_port);
 	}

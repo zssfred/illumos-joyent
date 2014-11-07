@@ -71,7 +71,7 @@ extern int libvarpd_c_prop_set(varpd_client_prop_handle_t, const void *,
 extern int libvarpd_c_instance_lookup(varpd_client_handle_t, datalink_id_t,
     uint64_t *);
 extern int libvarpd_c_instance_target_mode(varpd_client_handle_t, uint64_t,
-    uint_t *);
+    uint_t *, uint_t *);
 extern int libvarpd_c_instance_cache_flush(varpd_client_handle_t, uint64_t);
 extern int libvarpd_c_instance_cache_delete(varpd_client_handle_t, uint64_t,
     const struct ether_addr *);

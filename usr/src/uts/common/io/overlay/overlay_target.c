@@ -908,7 +908,6 @@ overlay_target_cache_get(overlay_target_hdl_t *thdl, void *arg)
 	int ret = 0;
 	overlay_dev_t *odd;
 	overlay_target_t *ott;
-	overlay_target_entry_t *ote;
 	overlay_targ_cache_t *otc = arg;
 
 	odd = overlay_hold_by_dlid(otc->otc_linkid);
@@ -922,35 +921,44 @@ overlay_target_cache_get(overlay_target_hdl_t *thdl, void *arg)
 		return (ENXIO);
 	}
 	ott = odd->odd_target;
-	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
+	if (ott->ott_mode != OVERLAY_TARGET_POINT &&
+	    ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
 		mutex_exit(&odd->odd_lock);
 		overlay_hold_rele(odd);
-		return (ENXIO);
+		return (ENOTSUP);
 	}
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
 
-	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-	    otc->otc_entry.otce_mac);
-	if (ote != NULL) {
-		mutex_enter(&ote->ote_lock);
-		if ((ote->ote_flags & OVERLAY_ENTRY_F_VALID_MASK) != 0) {
-			if (ote->ote_flags & OVERLAY_ENTRY_F_DROP) {
-				otc->otc_entry.otce_flags =
-				    OVERLAY_TARGET_CACHE_DROP;
+	if (ott->ott_mode == OVERLAY_TARGET_POINT) {
+		otc->otc_entry.otce_flags = 0;
+		bcopy(&ott->ott_u.ott_point, &otc->otc_entry.otce_dest,
+		    sizeof (overlay_target_point_t));
+	} else {
+		overlay_target_entry_t *ote;
+		ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+		    otc->otc_entry.otce_mac);
+		if (ote != NULL) {
+			mutex_enter(&ote->ote_lock);
+			if ((ote->ote_flags &
+			    OVERLAY_ENTRY_F_VALID_MASK) != 0) {
+				if (ote->ote_flags & OVERLAY_ENTRY_F_DROP) {
+					otc->otc_entry.otce_flags =
+					    OVERLAY_TARGET_CACHE_DROP;
+				} else {
+					otc->otc_entry.otce_flags = 0;
+					bcopy(&ote->ote_dest,
+					    &otc->otc_entry.otce_dest,
+					    sizeof (overlay_target_point_t));
+				}
+				ret = 0;
 			} else {
-				otc->otc_entry.otce_flags = 0;
-				bcopy(&ote->ote_dest,
-				    &otc->otc_entry.otce_dest,
-				    sizeof (overlay_target_point_t));
+				ret = ENOENT;
 			}
-			ret = 0;
+			mutex_exit(&ote->ote_lock);
 		} else {
 			ret = ENOENT;
 		}
-		mutex_exit(&ote->ote_lock);
-	} else {
-		ret = ENOENT;
 	}
 
 	mutex_exit(&ott->ott_lock);
@@ -984,7 +992,7 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
 		mutex_exit(&odd->odd_lock);
 		overlay_hold_rele(odd);
-		return (ENXIO);
+		return (ENOTSUP);
 	}
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
@@ -1042,7 +1050,7 @@ overlay_target_cache_remove(overlay_target_hdl_t *thdl, void *arg)
 	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
 		mutex_exit(&odd->odd_lock);
 		overlay_hold_rele(odd);
-		return (ENXIO);
+		return (ENOTSUP);
 	}
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
@@ -1087,7 +1095,7 @@ overlay_target_cache_flush(overlay_target_hdl_t *thdl, void *arg)
 	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
 		mutex_exit(&odd->odd_lock);
 		overlay_hold_rele(odd);
-		return (ENXIO);
+		return (ENOTSUP);
 	}
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
@@ -1167,10 +1175,11 @@ overlay_target_cache_iter(overlay_target_hdl_t *thdl, void *arg)
 		return (ENXIO);
 	}
 	ott = odd->odd_target;
-	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC) {
+	if (ott->ott_mode != OVERLAY_TARGET_DYNAMIC &&
+	    ott->ott_mode != OVERLAY_TARGET_POINT) {
 		mutex_exit(&odd->odd_lock);
 		overlay_hold_rele(odd);
-		return (ENXIO);
+		return (ENOTSUP);
 	}
 
 	/*
@@ -1179,6 +1188,16 @@ overlay_target_cache_iter(overlay_target_hdl_t *thdl, void *arg)
 	 */
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
+
+	if (ott->ott_mode == OVERLAY_TARGET_POINT) {
+		overlay_targ_cache_entry_t *out = &iter->otci_ents[0];
+		bzero(out->otce_mac, ETHERADDRL);
+		out->otce_flags = 0;
+		bcopy(&ott->ott_u.ott_point, &out->otce_dest,
+		    sizeof (overlay_target_point_t));
+		written++;
+		mark->otcm_done = 1;
+	}
 
 	avl = &ott->ott_u.ott_dyn.ott_tree;
 	bcopy(mark->otcm_mac, lookup.ote_addr, ETHERADDRL);

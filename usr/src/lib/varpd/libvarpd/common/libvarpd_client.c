@@ -424,7 +424,7 @@ libvarpd_c_instance_lookup(varpd_client_handle_t chp, datalink_id_t linkid,
 
 int
 libvarpd_c_instance_target_mode(varpd_client_handle_t chp, uint64_t cid,
-    uint_t *modep)
+    uint_t *dtype, uint_t *mtype)
 {
 	int ret;
 	varpd_client_arg_t carg;
@@ -440,8 +440,12 @@ libvarpd_c_instance_target_mode(varpd_client_handle_t chp, uint64_t cid,
 
 	if (carg.vca_errno != 0)
 		return (carg.vca_errno);
-	if (ret == 0 && modep != NULL)
-		*modep = vctmap->vtma_mode;
+	if (ret == 0) {
+		if (mtype != NULL)
+			*mtype = vctmap->vtma_mode;
+		if (dtype != NULL)
+			*dtype = vctmap->vtma_dest;
+	}
 
 	return (ret);
 }

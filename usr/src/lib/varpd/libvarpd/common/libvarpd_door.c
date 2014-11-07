@@ -243,7 +243,8 @@ libvarpd_door_f_target(varpd_impl_t *vip, varpd_client_arg_t *vcap,
 	if (ihp == NULL)
 		return (ENOENT);
 	inst = (varpd_instance_t *)ihp;
-	vtmap->vtma_mode = inst->vri_dest;
+	vtmap->vtma_dest = inst->vri_dest;
+	vtmap->vtma_mode = inst->vri_mode;
 	return (0);
 }
 

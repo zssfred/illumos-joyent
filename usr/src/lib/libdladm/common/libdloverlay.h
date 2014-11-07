@@ -29,8 +29,11 @@
 extern "C" {
 #endif
 
+#define	DLADM_OVERLAY_F_DROP	0x0001
+#define	DLADM_OVERLAY_F_DEFAULT	0xf000
+
 typedef struct dladm_overlay_point {
-	uint_t			dop_mode;
+	uint_t			dop_dest;
 	struct ether_addr	dop_mac;
 	uint16_t		dop_flags;
 	struct in6_addr		dop_ip;
