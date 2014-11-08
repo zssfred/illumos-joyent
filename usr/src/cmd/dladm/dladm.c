@@ -10207,7 +10207,7 @@ show_one_overlay_table(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 	ret = dladm_overlay_walk_cache(handle, linkid,
 	    show_one_overlay_table_entry, arg);
 	(void) fflush(stdout);
-	return (ret);
+	return (ret == 0 ? DLADM_WALK_CONTINUE : DLADM_WALK_TERMINATE);
 }
 
 /* XXX Needs all the parseable, selectable options, etc. */
