@@ -97,7 +97,7 @@ libvarpd_create(varpd_handle_t *vphp)
 	avl_create(&vip->vdi_instances, libvarpd_instance_comparator,
 	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_inode));
 	avl_create(&vip->vdi_linstances, libvarpd_instance_lcomparator,
-	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_inode));
+	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_lnode));
 
 	if (mutex_init(&vip->vdi_lock, USYNC_THREAD, NULL) != 0)
 		abort();

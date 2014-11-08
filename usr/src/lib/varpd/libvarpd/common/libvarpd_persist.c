@@ -315,6 +315,10 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	if (avl_find(&vip->vdi_instances, &lookup, NULL) != NULL)
 		abort();
 	avl_add(&vip->vdi_instances, inst);
+	lookup.vri_linkid = inst->vri_linkid;
+	if (avl_find(&vip->vdi_linstances, &lookup, NULL) != NULL)
+		abort();
+	avl_add(&vip->vdi_linstances, inst);
 	mutex_unlock(&vip->vdi_lock);
 
 	if (plugin->vpp_ops->vpo_start(inst->vri_private) != 0) {
