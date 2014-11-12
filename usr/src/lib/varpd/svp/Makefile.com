@@ -13,21 +13,23 @@
 # Copyright (c) 2014 Joyent, Inc.  All rights reserved.
 #
 
-SUBDIRS = libvarpd .WAIT direct files svp
+LIBRARY =	libvarpd_svp.a
+VERS =		.1
+OBJECTS =	libvarpd_svp.o
 
-all :=		TARGET = all
-clean :=	TARGET = clean
-clobber :=	TARGET = clobber
-check :=	TARGET = check
-install :=	TARGET = install
-install_h :=	TARGET = install_h
-lint :=		TARGET = lint
+include ../../../Makefile.lib
+include ../../Makefile.plugin
+
+LIBS =		$(DYNLIB)
+LDLIBS +=	-lc -lvarpd -lumem -lnvpair -lsocket -lnsl
+CPPFLAGS +=	-I../common
+
+SRCDIR =	../common
 
 .KEEP_STATE:
 
-all clean clobber install install_h check lint: $(SUBDIRS)
+all:	$(LIBS)
 
-$(SUBDIRS):  FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
+lint:	lintcheck
 
-FRC:
+include ../../../Makefile.targ
