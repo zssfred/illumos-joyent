@@ -45,11 +45,6 @@ typedef struct varpd_plugin {
 	uint_t			vpp_active;
 } varpd_plugin_t;
 
-typedef struct varpd_query {
-	overlay_targ_lookup_t	vq_lookup;
-	overlay_targ_resp_t	vq_response;
-} varpd_query_t;
-
 typedef struct varpd_impl {
 	mutex_t		vdi_lock;
 	mutex_t		vdi_loglock;
@@ -85,6 +80,12 @@ typedef struct varpd_instance {
 	mutex_t		vri_lock;
 	varpd_instance_flags_t vri_flags;	/* vri_lock */
 } varpd_instance_t;
+
+typedef struct varpd_query {
+	overlay_targ_lookup_t	vq_lookup;
+	overlay_targ_resp_t	vq_response;
+	varpd_instance_t	*vq_instance;
+} varpd_query_t;
 
 typedef struct varpd_client_create_arg {
 	datalink_id_t	vcca_linkid;
@@ -212,12 +213,12 @@ extern int libvarpd_overlay_disassociate(varpd_instance_t *);
 extern int libvarpd_overlay_degrade(varpd_instance_t *);
 extern int libvarpd_overlay_degrade_datalink(varpd_impl_t *, datalink_id_t);
 extern int libvarpd_overlay_restore(varpd_instance_t *);
-extern int libvarpd_overlay_packet(varpd_impl_t *, overlay_targ_lookup_t *,
-    void *, size_t *);
-extern int libvarpd_overlay_inject(varpd_impl_t *, overlay_targ_lookup_t *,
-    void *, size_t);
-extern int libvarpd_overlay_resend(varpd_impl_t *, overlay_targ_lookup_t *,
-    void *, size_t);
+extern int libvarpd_overlay_packet(varpd_impl_t *,
+    const overlay_targ_lookup_t *, void *, size_t *);
+extern int libvarpd_overlay_inject(varpd_impl_t *,
+    const overlay_targ_lookup_t *, void *, size_t);
+extern int libvarpd_overlay_resend(varpd_impl_t *,
+    const overlay_targ_lookup_t *, void *, size_t);
 typedef int (*libvarpd_overlay_iter_f)(varpd_impl_t *, datalink_id_t, void *);
 extern int libvarpd_overlay_iter(varpd_impl_t *, libvarpd_overlay_iter_f,
     void *);

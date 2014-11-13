@@ -116,13 +116,9 @@ varpd_direct_destroy(void *arg)
 }
 
 static int
-varpd_direct_lookup(void *arg, overlay_targ_lookup_t *hp,
-    overlay_target_point_t *otp)
+varpd_direct_default(void *arg, overlay_target_point_t *otp)
 {
 	varpd_direct_t *vdp = arg;
-
-	if (hp != NULL)
-		return (VARPD_LOOKUP_DROP);
 
 	mutex_lock(&vdp->vad_lock);
 	bcopy(&vdp->vad_ip, &otp->otp_ip, sizeof (struct in6_addr));
@@ -369,7 +365,8 @@ static const varpd_plugin_ops_t varpd_direct_ops = {
 	varpd_direct_start,
 	varpd_direct_stop,
 	varpd_direct_destroy,
-	varpd_direct_lookup,
+	varpd_direct_default,
+	NULL,
 	varpd_direct_nprops,
 	varpd_direct_propinfo,
 	varpd_direct_getprop,

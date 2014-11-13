@@ -32,21 +32,51 @@
 
 #define	IPV6_VERSION	6
 
-int
-libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl,
-    overlay_targ_lookup_t *otl)
+typedef struct varpd_arp_query {
+	int				vaq_type;
+	char				vaq_buf[ETHERMAX + VLAN_TAGSZ];
+	size_t				vaq_bsize;
+	uint8_t				vaq_lookup[ETHERADDRL];
+	struct sockaddr_storage		vaq_sock;
+	varpd_instance_t		*vaq_inst;
+	struct ether_arp		*vaq_ea;
+	varpd_query_handle_t		vaq_query;
+	const overlay_targ_lookup_t	*vaq_otl;
+	ip6_t				*vaq_ip6;
+	nd_neighbor_solicit_t 		*vaq_ns;
+} varpd_arp_query_t;
+
+typedef struct varpd_dhcp_query {
+	char				vdq_buf[ETHERMAX + VLAN_TAGSZ];
+	size_t				vdq_bsize;
+	uint8_t				vdq_lookup[ETHERADDRL];
+	const overlay_targ_lookup_t	*vdq_otl;
+	varpd_instance_t		*vdq_inst;
+	varpd_query_handle_t		vdq_query;
+	struct ether_header		*vdq_ether;
+} varpd_dhcp_query_t;
+
+void
+libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
+    const overlay_targ_lookup_t *otl)
 {
-	char buf[1500];
-	size_t bsize = sizeof (buf);
+	varpd_arp_query_t *vaq;
 	varpd_instance_t *inst = (varpd_instance_t *)hdl;
 	struct ether_arp *ea;
-	struct sockaddr_storage s;
 	struct sockaddr_in *ip;
-	struct ether_header *ether;
-	uint8_t lookup[ETHERADDRL];
 
-	if (otl->otl_sap != ETHERTYPE_ARP)
-		return (VARPD_LOOKUP_DROP);
+	vaq = umem_alloc(sizeof (varpd_arp_query_t), UMEM_DEFAULT);
+	if (vaq == NULL) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		return;
+	}
+	vaq->vaq_bsize = sizeof (vaq->vaq_buf);
+
+	if (otl->otl_sap != ETHERTYPE_ARP) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
 	/*
 	 * An ARP packet should not be very large because it's definited to only
@@ -54,15 +84,24 @@ libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl,
 	 * be at least as large as an ether_arp and our header must be at least
 	 * as large as a standard ethernet header.
 	 */
-	if (otl->otl_hdrsize + otl->otl_pktsize > bsize ||
+	if (otl->otl_hdrsize + otl->otl_pktsize > vaq->vaq_bsize ||
 	    otl->otl_pktsize < sizeof (struct ether_arp) ||
-	    otl->otl_hdrsize < sizeof (struct ether_header))
-		return (VARPD_LOOKUP_DROP);
+	    otl->otl_hdrsize < sizeof (struct ether_header)) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
-	if (libvarpd_overlay_packet(inst->vri_impl, otl, buf, &bsize) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (libvarpd_overlay_packet(inst->vri_impl, otl, vaq->vaq_buf,
+	    &vaq->vaq_bsize) != 0) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
-	ea = (void *)((uintptr_t)buf + (uintptr_t)otl->otl_hdrsize);
+	/* XXX Check how many bytes we actually have */
+
+	ea = (void *)((uintptr_t)vaq->vaq_buf + (uintptr_t)otl->otl_hdrsize);
 
 	/*
 	 * Make sure it matches something that we know about.
@@ -71,48 +110,76 @@ libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl,
 	    ntohs(ea->ea_hdr.ar_pro) != ETHERTYPE_IP ||
 	    ea->ea_hdr.ar_hln != ETHERADDRL ||
 	    ea->ea_hdr.ar_pln != sizeof (ea->arp_spa) ||
-	    ntohs(ea->ea_hdr.ar_op) != ARPOP_REQUEST)
-		return (VARPD_LOOKUP_DROP);
+	    ntohs(ea->ea_hdr.ar_op) != ARPOP_REQUEST) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
 	/*
 	 * Now that we've verified that our data is sane, see if we're doing a
 	 * gratuitous arp and if so, drop it. Otherwise, we may end up
 	 * triggering duplicate address detection.
 	 */
-	if (bcmp(ea->arp_spa, ea->arp_tpa, sizeof (ea->arp_spa)) == 0)
-		return (VARPD_LOOKUP_DROP);
+	if (bcmp(ea->arp_spa, ea->arp_tpa, sizeof (ea->arp_spa)) == 0) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
-	bzero(&s, sizeof (struct sockaddr_storage));
-	ip = (struct sockaddr_in *)&s;
+	bzero(&vaq->vaq_sock, sizeof (struct sockaddr_storage));
+	ip = (struct sockaddr_in *)&vaq->vaq_sock;
 	ip->sin_family = AF_INET;
 	bcopy(ea->arp_tpa, &ip->sin_addr, sizeof (ea->arp_tpa));
 
-	if (inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
-	    VARPD_ARP_ETHERNET, (struct sockaddr *)ip, lookup) != 0)
-		return (VARPD_LOOKUP_DROP);
+	vaq->vaq_type = AF_INET;
+	vaq->vaq_inst = inst;
+	vaq->vaq_ea = ea;
+	vaq->vaq_query = vqh;
+	vaq->vaq_otl = otl;
 
+	if (inst->vri_plugin->vpp_ops->vpo_arp == NULL)
+		abort();
+
+	inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
+	    (varpd_arp_handle_t)vaq, VARPD_QTYPE_ETHERNET,
+	    (struct sockaddr *)ip, vaq->vaq_lookup);
+}
+
+static void
+libvarpd_proxy_arp_fini(varpd_arp_query_t *vaq)
+{
+	struct ether_header *ether;
+	struct sockaddr_in *ip;
+
+	ip = (struct sockaddr_in *)&vaq->vaq_sock;
 	/*
 	 * Modify our packet in place for a reply. We need to swap around the
 	 * sender and target addresses.
 	 */
-	ea->ea_hdr.ar_op = htons(ARPOP_REPLY);
-	bcopy(ea->arp_sha, ea->arp_tha, ETHERADDRL);
-	bcopy(lookup, ea->arp_sha, ETHERADDRL);
-	bcopy(ea->arp_spa, &ip->sin_addr, sizeof (ea->arp_spa));
-	bcopy(ea->arp_tpa, ea->arp_spa, sizeof (ea->arp_spa));
-	bcopy(&ip->sin_addr, ea->arp_tpa, sizeof (ea->arp_spa));
+	vaq->vaq_ea->ea_hdr.ar_op = htons(ARPOP_REPLY);
+	bcopy(vaq->vaq_ea->arp_sha, vaq->vaq_ea->arp_tha, ETHERADDRL);
+	bcopy(vaq->vaq_lookup, vaq->vaq_ea->arp_sha, ETHERADDRL);
+	bcopy(vaq->vaq_ea->arp_spa, &ip->sin_addr,
+	    sizeof (vaq->vaq_ea->arp_spa));
+	bcopy(vaq->vaq_ea->arp_tpa, vaq->vaq_ea->arp_spa,
+	    sizeof (vaq->vaq_ea->arp_spa));
+	bcopy(&ip->sin_addr, vaq->vaq_ea->arp_tpa,
+	    sizeof (vaq->vaq_ea->arp_spa));
 
 	/*
 	 * Finally go ahead and fix up the mac header and reply to the sender
 	 * explicitly.
 	 */
-	ether = (struct ether_header *)buf;
+	ether = (struct ether_header *)vaq->vaq_buf;
 	bcopy(&ether->ether_shost, &ether->ether_dhost, ETHERADDRL);
-	bcopy(lookup, &ether->ether_shost, ETHERADDRL);
+	bcopy(vaq->vaq_lookup, &ether->ether_shost, ETHERADDRL);
 
-	(void) libvarpd_overlay_inject(inst->vri_impl, otl, buf, bsize);
+	(void) libvarpd_overlay_inject(vaq->vaq_inst->vri_impl, vaq->vaq_otl,
+	    vaq->vaq_buf, vaq->vaq_bsize);
 
-	return (VARPD_LOOKUP_DROP);
+	libvarpd_plugin_query_reply(vaq->vaq_query, VARPD_LOOKUP_DROP);
+	umem_free(vaq, sizeof (varpd_arp_query_t));
 }
 
 static uint16_t
@@ -152,53 +219,75 @@ libvarpd_icmpv6_checksum(const ip6_t *v6hdr, const uint16_t *buf, uint16_t mlen)
  * multicast packet and then determine if we actually want to do anything with
  * it.
  */
-int
-libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl,
-    overlay_targ_lookup_t *otl)
+void
+libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
+    const overlay_targ_lookup_t *otl)
 {
-	char buf[ETHERMAX + VLAN_TAGSZ];
-	char resp[ETHERMAX + VLAN_TAGSZ];
+	size_t bsize, plen;
+	varpd_arp_query_t *vaq;
 	ip6_t *v6hdr;
 	nd_neighbor_solicit_t *ns;
-	nd_neighbor_advert_t *na;
 	nd_opt_hdr_t *opt;
-	uint8_t lookup[ETHERADDRL];
-	struct sockaddr_storage s;
 	struct sockaddr_in6 *s6;
-	struct ether_header *ether;
-	ssize_t plen, roff;
 
-	uint8_t *eth = NULL;
-	size_t bsize = sizeof (buf);
 	varpd_instance_t *inst = (varpd_instance_t *)hdl;
+	uint8_t *eth = NULL;
+
+	vaq = umem_alloc(sizeof (varpd_arp_query_t), UMEM_DEFAULT);
+	if (vaq == NULL) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		return;
+	}
+	vaq->vaq_bsize = sizeof (vaq->vaq_buf);
 
 	if (otl->otl_dstaddr[0] != 0x33 ||
-	    otl->otl_dstaddr[1] != 0x33)
-		return (VARPD_LOOKUP_DROP);
+	    otl->otl_dstaddr[1] != 0x33) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
 	/*
 	 * If we have more than a standard frame size for the ICMP neighbor
 	 * solicitation, drop it. Similarly if there isn't enough data present
 	 * for us, drop it.
 	 */
-	if (otl->otl_hdrsize + otl->otl_pktsize > bsize)
-		return (VARPD_LOOKUP_DROP);
+	if (otl->otl_hdrsize + otl->otl_pktsize > vaq->vaq_bsize) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
-	if (otl->otl_pktsize < sizeof (ip6_t) + sizeof (nd_neighbor_solicit_t))
-		return (VARPD_LOOKUP_DROP);
+	if (otl->otl_pktsize < sizeof (ip6_t) +
+	    sizeof (nd_neighbor_solicit_t)) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
-	if (libvarpd_overlay_packet(inst->vri_impl, otl, buf, &bsize) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (libvarpd_overlay_packet(inst->vri_impl, otl, vaq->vaq_buf,
+	    &vaq->vaq_bsize) != 0) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
+	bsize = vaq->vaq_bsize;
 	bsize -= otl->otl_hdrsize;
 	assert(bsize > sizeof (ip6_t));
 
-	v6hdr = (ip6_t *)(buf + otl->otl_hdrsize);
-	if (((v6hdr->ip6_vfc & 0xf0) >> 4) != IPV6_VERSION)
-		return (VARPD_LOOKUP_DROP);
+	v6hdr = (ip6_t *)(vaq->vaq_buf + otl->otl_hdrsize);
+	if (((v6hdr->ip6_vfc & 0xf0) >> 4) != IPV6_VERSION) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
-	if (v6hdr->ip6_nxt != IPPROTO_ICMPV6)
-		return (VARPD_LOOKUP_DROP);
+	if (v6hdr->ip6_nxt != IPPROTO_ICMPV6) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
 	/*
 	 * In addition to getting these requests on the multicast address for
@@ -208,12 +297,19 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl,
 	 * wants them to a solicitation address.
 	 */
 	if (!IN6_IS_ADDR_MC_SOLICITEDNODE(&v6hdr->ip6_dst) &&
-	    !IN6_IS_ADDR_MC_LINKLOCAL(&v6hdr->ip6_dst))
-		return (VARPD_LOOKUP_DROP);
+	    !IN6_IS_ADDR_MC_LINKLOCAL(&v6hdr->ip6_dst)) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
+
 	bsize -= sizeof (ip6_t);
 	plen = ntohs(v6hdr->ip6_plen);
-	if (bsize < plen)
-		return (VARPD_LOOKUP_DROP);
+	if (bsize < plen) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
 	/*
 	 * Now we know that this is an ICMPv6 request targetting the right
@@ -224,20 +320,32 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl,
 	 *
 	 * XXX We should probably validate the checksum here...
 	 */
-	ns = (nd_neighbor_solicit_t *)(buf + otl->otl_hdrsize + sizeof (ip6_t));
-	if (ns->nd_ns_type != ND_NEIGHBOR_SOLICIT && ns->nd_ns_code != 0)
-		return (VARPD_LOOKUP_DROP);
+	ns = (nd_neighbor_solicit_t *)(vaq->vaq_buf + otl->otl_hdrsize +
+	    sizeof (ip6_t));
+	if (ns->nd_ns_type != ND_NEIGHBOR_SOLICIT && ns->nd_ns_code != 0) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
 	if (IN6_IS_ADDR_MULTICAST(&ns->nd_ns_target) ||
 	    IN6_IS_ADDR_V4MAPPED(&ns->nd_ns_target) ||
-	    IN6_IS_ADDR_LOOPBACK(&ns->nd_ns_target))
-		return (VARPD_LOOKUP_DROP);
+	    IN6_IS_ADDR_LOOPBACK(&ns->nd_ns_target)) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
+
 	plen -= sizeof (nd_neighbor_solicit_t);
 	opt = (nd_opt_hdr_t *)(ns+1);
 	while (plen >= sizeof (struct nd_opt_hdr)) {
 		/* If we have an option with no lenght, that's clear bogus */
-		if (opt->nd_opt_len == 0)
-			return (VARPD_LOOKUP_DROP);
+		if (opt->nd_opt_len == 0) {
+			libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+			umem_free(vaq, sizeof (varpd_arp_query_t));
+			return;
+		}
+
 		if (opt->nd_opt_type == ND_OPT_SOURCE_LINKADDR) {
 			eth = (uint8_t *)((uintptr_t)opt +
 			    sizeof (nd_opt_hdr_t));
@@ -247,32 +355,57 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl,
 		    opt->nd_opt_len * 8);
 	}
 
-	if (eth == NULL)
-		return (VARPD_LOOKUP_DROP);
+	if (eth == NULL) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	}
 
-	bzero(&s, sizeof (struct sockaddr_storage));
-	s6 = (struct sockaddr_in6 *)&s;
+	bzero(&vaq->vaq_sock, sizeof (struct sockaddr_storage));
+	s6 = (struct sockaddr_in6 *)&vaq->vaq_sock;
 	s6->sin6_family = AF_INET6;
 	bcopy(&ns->nd_ns_target, &s6->sin6_addr, sizeof (s6->sin6_addr));
 
-	if (inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
-	    VARPD_ARP_ETHERNET, (struct sockaddr *)s6, lookup) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (inst->vri_plugin->vpp_ops->vpo_arp == NULL)
+		abort();
+
+	vaq->vaq_type = AF_INET6;
+	vaq->vaq_inst = inst;
+	vaq->vaq_ea = NULL;
+	vaq->vaq_query = vqh;
+	vaq->vaq_otl = otl;
+	vaq->vaq_ns = ns;
+	vaq->vaq_ip6 = v6hdr;
+	inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
+	    (varpd_arp_handle_t)vaq,  VARPD_QTYPE_ETHERNET,
+	    (struct sockaddr *)s6, vaq->vaq_lookup);
+}
+
+static void
+libvarpd_proxy_ndp_fini(varpd_arp_query_t *vaq)
+{
+	char resp[ETHERMAX + VLAN_TAGSZ];
+	struct ether_header *ether;
+	nd_neighbor_advert_t *na;
+	nd_opt_hdr_t *opt;
+	ip6_t *v6hdr;
+	size_t roff = 0;
 
 	/*
 	 * Now we need to assemble an RA as a response. Unlike with arp, we opt
 	 * to use a new packet just to make things a bit simpler saner here.
 	 */
-	roff = 0;
-	bcopy(buf, resp, otl->otl_hdrsize);
+	v6hdr = vaq->vaq_ip6;
+	bcopy(vaq->vaq_buf, resp, vaq->vaq_otl->otl_hdrsize);
 	ether = (struct ether_header *)resp;
 	bcopy(&ether->ether_shost, &ether->ether_dhost, ETHERADDRL);
-	bcopy(lookup, &ether->ether_shost, ETHERADDRL);
-	roff += otl->otl_hdrsize;
+	bcopy(vaq->vaq_lookup, &ether->ether_shost, ETHERADDRL);
+	roff += vaq->vaq_otl->otl_hdrsize;
 	bcopy(v6hdr, resp + roff, sizeof (ip6_t));
 	v6hdr = (ip6_t *)(resp + roff);
 	bcopy(&v6hdr->ip6_src, &v6hdr->ip6_dst, sizeof (struct in6_addr));
-	bcopy(&ns->nd_ns_target, &v6hdr->ip6_src, sizeof (struct in6_addr));
+	bcopy(&vaq->vaq_ns->nd_ns_target, &v6hdr->ip6_src,
+	    sizeof (struct in6_addr));
 	roff += sizeof (ip6_t);
 	na = (nd_neighbor_advert_t *)(resp + roff);
 	na->nd_na_type = ND_NEIGHBOR_ADVERT;
@@ -288,78 +421,171 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl,
 	 * into the appropriate host order. Don't use htonl.
 	 */
 	na->nd_na_flags_reserved = ND_NA_FLAG_SOLICITED | ND_NA_FLAG_OVERRIDE;
-	bcopy(&ns->nd_ns_target, &na->nd_na_target, sizeof (struct in6_addr));
+	bcopy(&vaq->vaq_ns->nd_ns_target, &na->nd_na_target,
+	    sizeof (struct in6_addr));
 	roff += sizeof (nd_neighbor_advert_t);
 
 	opt = (nd_opt_hdr_t *)(resp + roff);
 	opt->nd_opt_type = ND_OPT_TARGET_LINKADDR;
 	opt->nd_opt_len = 1;
 	roff += sizeof (nd_opt_hdr_t);
-	bcopy(lookup, resp + roff, ETHERADDRL);
+	bcopy(vaq->vaq_lookup, resp + roff, ETHERADDRL);
 	roff += ETHERADDRL;
 
 	/*
 	 * Now that we've filled in the packet, go back and compute the checksum
 	 * and fill in the IPv6 payload size.
 	 */
-	v6hdr->ip6_plen = htons(roff - sizeof (ip6_t) - otl->otl_hdrsize);
+	v6hdr->ip6_plen = htons(roff - sizeof (ip6_t) -
+	    vaq->vaq_otl->otl_hdrsize);
 	na->nd_na_cksum = ~libvarpd_icmpv6_checksum(v6hdr, (uint16_t *)na,
 	    ntohs(v6hdr->ip6_plen)) & 0xffff;
 
-	(void) libvarpd_overlay_inject(inst->vri_impl, otl, resp, roff);
+	(void) libvarpd_overlay_inject(vaq->vaq_inst->vri_impl, vaq->vaq_otl,
+	    resp, roff);
 
-	return (VARPD_LOOKUP_DROP);
+	libvarpd_plugin_query_reply(vaq->vaq_query, VARPD_LOOKUP_DROP);
+	umem_free(vaq, sizeof (varpd_arp_query_t));
 }
 
-int
-libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
-    overlay_targ_lookup_t *otl, const uint8_t *naddr)
+void
+libvarpd_plugin_arp_reply(varpd_arp_handle_t vah, int action)
 {
-	char buf[1500];
-	size_t bsize = sizeof (buf);
-	varpd_instance_t *inst = (varpd_instance_t *)hdl;
+	varpd_arp_query_t *vaq = (varpd_arp_query_t *)vah;
+
+	if (vaq == NULL)
+		abort();
+
+	if (action == VARPD_LOOKUP_DROP) {
+		libvarpd_plugin_query_reply(vaq->vaq_query, VARPD_LOOKUP_DROP);
+		umem_free(vaq, sizeof (varpd_arp_query_t));
+		return;
+	} else if (action != VARPD_LOOKUP_OK)
+		abort();
+
+	switch (vaq->vaq_type) {
+	case AF_INET:
+		libvarpd_proxy_arp_fini(vaq);
+		break;
+	case AF_INET6:
+		libvarpd_proxy_ndp_fini(vaq);
+		break;
+	default:
+		abort();
+	}
+}
+
+void
+libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
+    varpd_query_handle_t vqh, const overlay_targ_lookup_t *otl)
+{
+	varpd_dhcp_query_t *vdq;
 	struct ether_header *ether;
 	struct ip *ip;
 	struct udphdr *udp;
+	varpd_instance_t *inst = (varpd_instance_t *)hdl;
 	static const uint8_t bcast_mac[6] = { 0xff, 0xff, 0xff, 0xff, 0xff,
 	    0xff };
 
-	if (otl->otl_sap != ETHERTYPE_IP)
-		return (VARPD_LOOKUP_DROP);
+	vdq = umem_alloc(sizeof (varpd_dhcp_query_t), UMEM_DEFAULT);
+	if (vdq == NULL) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		return;
+	}
+	vdq->vdq_bsize = sizeof (vdq->vdq_buf);
 
-	if (bcmp(otl->otl_dstaddr, bcast_mac, ETHERADDRL) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (otl->otl_sap != ETHERTYPE_IP) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
 
-	if (otl->otl_hdrsize + otl->otl_pktsize > bsize ||
+	if (bcmp(otl->otl_dstaddr, bcast_mac, ETHERADDRL) != 0) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
+
+	if (otl->otl_hdrsize + otl->otl_pktsize > vdq->vdq_bsize ||
 	    otl->otl_pktsize < sizeof (struct ip) + sizeof (struct udphdr) +
 	    sizeof (struct dhcp) ||
-	    otl->otl_hdrsize < sizeof (struct ether_header))
-		return (VARPD_LOOKUP_DROP);
+	    otl->otl_hdrsize < sizeof (struct ether_header)) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
 
-	if (libvarpd_overlay_packet(inst->vri_impl, otl, buf, &bsize) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (libvarpd_overlay_packet(inst->vri_impl, otl, vdq->vdq_buf,
+	    &vdq->vdq_bsize) != 0) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
 
-	if (bsize != otl->otl_hdrsize + otl->otl_pktsize)
-		return (VARPD_LOOKUP_DROP);
+	if (vdq->vdq_bsize != otl->otl_hdrsize + otl->otl_pktsize) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
 
-	ether = (struct ether_header *)buf;
-	ip = (struct ip *)(buf + otl->otl_hdrsize);
+	ether = (struct ether_header *)vdq->vdq_buf;
+	ip = (struct ip *)(vdq->vdq_buf + otl->otl_hdrsize);
 
-	if (ip->ip_v != IPVERSION && ip->ip_p != IPPROTO_UDP)
-		return (VARPD_LOOKUP_DROP);
+	if (ip->ip_v != IPVERSION && ip->ip_p != IPPROTO_UDP) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
 
-	if (otl->otl_hdrsize + ip->ip_hl * 4 + sizeof (struct udphdr) > bsize)
-		return (VARPD_LOOKUP_DROP);
+	if (otl->otl_hdrsize + ip->ip_hl * 4 + sizeof (struct udphdr) >
+	    vdq->vdq_bsize) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
 
-	udp = (struct udphdr *)(buf + otl->otl_hdrsize + ip->ip_hl * 4);
+	udp = (struct udphdr *)(vdq->vdq_buf + otl->otl_hdrsize +
+	    ip->ip_hl * 4);
 
 	if (ntohs(udp->uh_sport) != IPPORT_BOOTPC ||
-	    ntohs(udp->uh_dport) != IPPORT_BOOTPS)
-		return (VARPD_LOOKUP_DROP);
+	    ntohs(udp->uh_dport) != IPPORT_BOOTPS) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	}
 
-	bcopy(naddr, &ether->ether_dhost, ETHERADDRL);
+	vdq->vdq_ether = ether;
+	vdq->vdq_inst = inst;
+	vdq->vdq_query = vqh;
+	vdq->vdq_otl = otl;
 
-	(void) libvarpd_overlay_resend(inst->vri_impl, otl, buf, bsize);
+	if (inst->vri_plugin->vpp_ops->vpo_dhcp == NULL)
+		abort();
 
-	return (VARPD_LOOKUP_DROP);
+	inst->vri_plugin->vpp_ops->vpo_dhcp(inst->vri_private,
+	    (varpd_dhcp_handle_t)vdq, VARPD_QTYPE_ETHERNET, otl,
+	    vdq->vdq_lookup);
+}
+
+void
+libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t vdh, int action)
+{
+	varpd_dhcp_query_t *vdq = (varpd_dhcp_query_t *)vdh;
+
+	if (vdq == NULL)
+		abort();
+
+	if (action == VARPD_LOOKUP_DROP) {
+		libvarpd_plugin_query_reply(vdq->vdq_query, VARPD_LOOKUP_DROP);
+		umem_free(vdq, sizeof (varpd_dhcp_query_t));
+		return;
+	} else if (action != VARPD_LOOKUP_OK)
+		abort();
+
+	bcopy(vdq->vdq_lookup, &vdq->vdq_ether->ether_dhost, ETHERADDRL);
+	(void) libvarpd_overlay_resend(vdq->vdq_inst->vri_impl, vdq->vdq_otl,
+	    vdq->vdq_buf, vdq->vdq_bsize);
+
+	libvarpd_plugin_query_reply(vdq->vdq_query, VARPD_LOOKUP_DROP);
+	umem_free(vdq, sizeof (varpd_dhcp_query_t));
 }

@@ -36,6 +36,9 @@ extern "C" {
 #define	VARPD_CURRENT_VERSION	VARPD_VERSION_ONE
 
 typedef struct __varpd_provier_handle *varpd_provider_handle_t;
+typedef struct __varpd_query_handle *varpd_query_handle_t;
+typedef struct __varpd_arp_handle *varpd_arp_handle_t;
+typedef struct __varpd_dhcp_handle *varpd_dhcp_handle_t;
 
 /*
  * Create a new instance of a plugin.
@@ -59,17 +62,40 @@ typedef int (*varpd_plugin_stop_f)(void *);
 typedef void (*varpd_plugin_destroy_f)(void *);
 
 /*
- * Look up the destination specified by the overlay_targ_lookup_t and store it
- * in the overlay_target_point_t. If the value of the overlay_targ_t is NULL,
- * then that is our way of asking for a default. This function should return
- * either VARPD_LOOKUP_OK or VARPD_LOOKUP_DROP.
+ * The varpd_plugin_default_f and varpd_plugin_lookup_f both look up
+ * destinations and should have them written into the overlay_target_point_t.
+ * The varpd_plugin_default_f should only be implemented for plugins which are
+ * of type OVERLAY_TARGET_POINT, where as only the lookup function should be
+ * implemented by plugins that are of type OVERLAY_TARGET_DYNAMIC.
  *
- * Multiple threads may call this function in parallel.
+ * In both cases, the answer should be filled into the overlay_target_point_t.
+ * In the case of the varpd_plugin_default_f, one of the VARPD_LOOKUP_* values
+ * should be returned by the function.
+ *
+ * In the case of the varpd_plugin_lookup_f, no value is returned. Instead, this
+ * is allowed to be an asynchronous operation and therefore any thread may call
+ * back the status by using the function varpd_plugin_reply. Again, specifying
+ * the appropriate VARPD_LOOKUP_* flags.
+ *
+ * The flag, VARPD_LOOKUP_OK indicates that the overlay_target_point_t has been
+ * filled in completely. The flag, VARPD_LOOKUP_DROP indicates that the packet
+ * in question should be dropped.
  */
 #define	VARPD_LOOKUP_OK		(0)
 #define	VARPD_LOOKUP_DROP	(-1)
-typedef int (*varpd_plugin_lookup_f)(void *, overlay_targ_lookup_t *,
-    overlay_target_point_t *);
+typedef int (*varpd_plugin_default_f)(void *, overlay_target_point_t *);
+typedef void (*varpd_plugin_lookup_f)(void *, varpd_query_handle_t,
+    const overlay_targ_lookup_t *, overlay_target_point_t *);
+
+/*
+ * Do a proxy ARP/NDP lookup.
+ */
+#define	VARPD_QTYPE_ETHERNET	0x0
+typedef void (*varpd_plugin_arp_f)(void *, varpd_arp_handle_t, int,
+    const struct sockaddr *, uint8_t *);
+
+typedef void (*varpd_plugin_dhcp_f)(void *, varpd_dhcp_handle_t, int,
+    const overlay_targ_lookup_t *, uint8_t *);
 
 /*
  * The following four functions all revolve around properties that exist for
@@ -113,19 +139,13 @@ typedef int (*varpd_plugin_save_f)(void *, nvlist_t *);
 typedef int (*varpd_plugin_restore_f)(nvlist_t *, varpd_provider_handle_t,
     overlay_plugin_dest_t, void **);
 
-/*
- * Do a proxy ARP/NDP lookup.
- */
-#define	VARPD_ARP_ETHERNET	0x0
-typedef int (*varpd_plugin_arp_f)(void *, int, const struct sockaddr *,
-    uint8_t *);
-
 typedef struct varpd_plugin_ops {
 	uint_t			vpo_callbacks;
 	varpd_plugin_create_f	vpo_create;
 	varpd_plugin_start_f	vpo_start;
 	varpd_plugin_stop_f	vpo_stop;
 	varpd_plugin_destroy_f	vpo_destroy;
+	varpd_plugin_default_f	vpo_default;
 	varpd_plugin_lookup_f	vpo_lookup;
 	varpd_plugin_nprops_f	vpo_nprops;
 	varpd_plugin_propinfo_f	vpo_propinfo;
@@ -134,6 +154,7 @@ typedef struct varpd_plugin_ops {
 	varpd_plugin_save_f	vpo_save;
 	varpd_plugin_restore_f	vpo_restore;
 	varpd_plugin_arp_f	vpo_arp;
+	varpd_plugin_dhcp_f	vpo_dhcp;
 } varpd_plugin_ops_t;
 
 typedef struct varpd_plugin_register {
@@ -148,6 +169,22 @@ extern void libvarpd_plugin_free(varpd_plugin_register_t *);
 extern int libvarpd_plugin_register(varpd_plugin_register_t *);
 
 /*
+ * Lookup Replying query and proxying
+ */
+extern void libvarpd_plugin_query_reply(varpd_query_handle_t, int);
+
+extern void libvarpd_plugin_proxy_arp(varpd_provider_handle_t,
+    varpd_query_handle_t, const overlay_targ_lookup_t *);
+extern void libvarpd_plugin_proxy_ndp(varpd_provider_handle_t,
+    varpd_query_handle_t, const overlay_targ_lookup_t *);
+extern void libvarpd_plugin_arp_reply(varpd_arp_handle_t, int);
+
+extern void libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t,
+    varpd_query_handle_t, const overlay_targ_lookup_t *);
+extern void libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t, int);
+
+
+/*
  * Property information callbacks
  */
 extern void libvarpd_prop_set_name(varpd_prop_handle_t, const char *);
@@ -160,14 +197,7 @@ extern void libvarpd_prop_set_range_uint32(varpd_prop_handle_t, uint32_t,
 extern void libvarpd_prop_set_range_str(varpd_prop_handle_t, const char *);
 
 /*
- * Routines for proxying certain types of traffic
  */
-extern int libvarpd_plugin_proxy_arp(varpd_provider_handle_t,
-    overlay_targ_lookup_t *);
-extern int libvarpd_plugin_proxy_ndp(varpd_provider_handle_t,
-    overlay_targ_lookup_t *);
-extern int libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t,
-    overlay_targ_lookup_t *, const uint8_t *);
 
 #ifdef __cplusplus
 }

@@ -81,9 +81,9 @@ libvarpd_overlay_associate(varpd_instance_t *inst)
 
 	if (ota.ota_mode == OVERLAY_TARGET_POINT) {
 		int ret;
-		ret = inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private,
-		    NULL, &ota.ota_point);
-		if (ret != 0)
+		ret = inst->vri_plugin->vpp_ops->vpo_default(inst->vri_private,
+		    &ota.ota_point);
+		if (ret != VARPD_LOOKUP_OK)
 			return (ret);
 	}
 
@@ -137,7 +137,7 @@ libvarpd_overlay_restore(varpd_instance_t *inst)
 }
 
 int
-libvarpd_overlay_packet(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
+libvarpd_overlay_packet(varpd_impl_t *vip, const overlay_targ_lookup_t *otl,
     void *buf, size_t *buflen)
 {
 	int ret;
@@ -163,8 +163,8 @@ libvarpd_overlay_packet(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 }
 
 static int
-libvarpd_overlay_inject_common(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
-    void *buf, size_t buflen, int cmd)
+libvarpd_overlay_inject_common(varpd_impl_t *vip,
+    const overlay_targ_lookup_t *otl, void *buf, size_t buflen, int cmd)
 {
 	int ret;
 	overlay_targ_pkt_t otp;
@@ -186,7 +186,7 @@ libvarpd_overlay_inject_common(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 }
 
 int
-libvarpd_overlay_inject(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
+libvarpd_overlay_inject(varpd_impl_t *vip, const overlay_targ_lookup_t *otl,
     void *buf, size_t buflen)
 {
 	return (libvarpd_overlay_inject_common(vip, otl, buf, buflen,
@@ -194,7 +194,7 @@ libvarpd_overlay_inject(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 }
 
 int
-libvarpd_overlay_resend(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
+libvarpd_overlay_resend(varpd_impl_t *vip, const overlay_targ_lookup_t *otl,
     void *buf, size_t buflen)
 {
 	return (libvarpd_overlay_inject_common(vip, otl, buf, buflen,
@@ -202,8 +202,8 @@ libvarpd_overlay_resend(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
 }
 
 static void
-libvarpd_overlay_lookup_reply(varpd_impl_t *vip, overlay_targ_lookup_t *otl,
-    overlay_targ_resp_t *otr, int cmd)
+libvarpd_overlay_lookup_reply(varpd_impl_t *vip,
+    const overlay_targ_lookup_t *otl, overlay_targ_resp_t *otr, int cmd)
 {
 	int ret;
 
@@ -250,17 +250,10 @@ libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 		umem_cache_free(vip->vdi_qcache, vqp);
 		return;
 	}
+	vqp->vq_instance = inst;
 
-	ret = inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private, otl,
-	    &otr->otr_answer);
-	if (ret == VARPD_LOOKUP_DROP) {
-		libvarpd_overlay_lookup_reply(vip, otl, otr,
-		    OVERLAY_TARG_DROP);
-	} else {
-		libvarpd_overlay_lookup_reply(vip, otl, otr,
-		    OVERLAY_TARG_RESPOND);
-	}
-	umem_cache_free(vip->vdi_qcache, vqp);
+	inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private,
+	    (varpd_query_handle_t)vqp, otl, &otr->otr_answer);
 }
 
 void
@@ -473,4 +466,22 @@ libvarpd_overlay_cache_walk_fill(varpd_instance_t *inst, uint64_t *markerp,
 out:
 	umem_free(iter, asize);
 	return (ret);
+}
+
+void
+libvarpd_plugin_query_reply(varpd_query_handle_t vqh, int action)
+{
+	varpd_query_t *vqp = (varpd_query_t *)vqh;
+
+	if (vqp == NULL)
+		abort();
+
+	if (action == VARPD_LOOKUP_DROP)
+		libvarpd_overlay_lookup_reply(vqp->vq_instance->vri_impl,
+		    &vqp->vq_lookup, &vqp->vq_response, OVERLAY_TARG_DROP);
+	else if (action == VARPD_LOOKUP_OK)
+		libvarpd_overlay_lookup_reply(vqp->vq_instance->vri_impl,
+		    &vqp->vq_lookup, &vqp->vq_response, OVERLAY_TARG_RESPOND);
+	else
+		abort();
 }

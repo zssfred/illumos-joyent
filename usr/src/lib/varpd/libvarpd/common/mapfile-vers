@@ -72,6 +72,9 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_plugin_alloc;
 	libvarpd_plugin_load;
 	libvarpd_plugin_free;
+	libvarpd_plugin_arp_reply;
+	libvarpd_plugin_dhcp_reply;
+	libvarpd_plugin_query_reply;
 	libvarpd_plugin_proxy_arp;
 	libvarpd_plugin_proxy_dhcp;
 	libvarpd_plugin_proxy_ndp;

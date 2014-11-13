@@ -215,9 +215,9 @@ varpd_files_destroy(void *arg)
 	umem_free(vaf, sizeof (varpd_files_t));
 }
 
-static int
-varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
-    overlay_target_point_t *otp)
+static void
+varpd_files_lookup(void *arg, varpd_query_handle_t qh,
+    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
 {
 	char macstr[ETHERADDRSTRL], *ipstr;
 	nvlist_t *nvl;
@@ -226,16 +226,22 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 	static const uint8_t bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 	/* We don't support a default */
-	if (otl == NULL)
-		return (VARPD_LOOKUP_DROP);
+	if (otl == NULL) {
+		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+		return;
+	}
 
-	if (otl->otl_sap == ETHERTYPE_ARP)
-		return (libvarpd_plugin_proxy_arp(vaf->vaf_hdl, otl));
+	if (otl->otl_sap == ETHERTYPE_ARP) {
+		libvarpd_plugin_proxy_arp(vaf->vaf_hdl, qh, otl);
+		return;
+	}
 
 	if (otl->otl_sap == ETHERTYPE_IPV6 &&
 	    otl->otl_dstaddr[0] == 0x33 &&
-	    otl->otl_dstaddr[1] == 0x33)
-		return (libvarpd_plugin_proxy_ndp(vaf->vaf_hdl, otl));
+	    otl->otl_dstaddr[1] == 0x33) {
+		libvarpd_plugin_proxy_ndp(vaf->vaf_hdl, qh, otl);
+		return;
+	}
 
 	if (otl->otl_sap == ETHERTYPE_IP &&
 	    bcmp(otl->otl_dstaddr, bcast, ETHERADDRL) == 0) {
@@ -244,37 +250,56 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 
 		addr = &a;
 		if (ether_ntoa_r((struct ether_addr *)otl->otl_srcaddr,
-		    macstr) == NULL)
-			return (VARPD_LOOKUP_DROP);
+		    macstr) == NULL) {
+			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+			return;
+		}
 
-		if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0)
-			return (VARPD_LOOKUP_DROP);
+		if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0) {
+			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+			return;
+		}
 
-		if (nvlist_lookup_string(nvl, "dhcp-proxy", &mac) != 0)
-			return (VARPD_LOOKUP_DROP);
+		if (nvlist_lookup_string(nvl, "dhcp-proxy", &mac) != 0) {
+			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+			return;
+		}
 
-		if (ether_aton_r(mac, addr) == NULL)
-			return (VARPD_LOOKUP_DROP);
+		if (ether_aton_r(mac, addr) == NULL) {
+			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+			return;
+		}
 
-		return (libvarpd_plugin_proxy_dhcp(vaf->vaf_hdl, otl,
-		    (const uint8_t *)addr));
+		libvarpd_plugin_proxy_dhcp(vaf->vaf_hdl, qh, otl);
+		return;
 	}
 
-	if (ether_ntoa_r((struct ether_addr *)otl->otl_dstaddr, macstr) == NULL)
-		return (VARPD_LOOKUP_DROP);
+	if (ether_ntoa_r((struct ether_addr *)otl->otl_dstaddr,
+	    macstr) == NULL) {
+		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+		return;
+	}
 
-	if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0) {
+		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+		return;
+	}
 
-	if (nvlist_lookup_int32(nvl, "port", &port) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (nvlist_lookup_int32(nvl, "port", &port) != 0) {
+		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+		return;
+	}
 
-	if (port <= 0 || port > UINT16_MAX)
-		return (VARPD_LOOKUP_DROP);
+	if (port <= 0 || port > UINT16_MAX) {
+		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+		return;
+	}
 	otp->otp_port = port;
 
-	if (nvlist_lookup_string(nvl, "ip", &ipstr) != 0)
-		return (VARPD_LOOKUP_DROP);
+	if (nvlist_lookup_string(nvl, "ip", &ipstr) != 0) {
+		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+		return;
+	}
 
 	/*
 	 * Try to parse it as a v6 address and then if it's not, try to
@@ -283,12 +308,14 @@ varpd_files_lookup(void *arg, overlay_targ_lookup_t *otl,
 	 */
 	if (inet_pton(AF_INET6, ipstr, &otp->otp_ip) != 1) {
 		uint32_t v4;
-		if (inet_pton(AF_INET, ipstr, &v4) != 1)
-			return (VARPD_LOOKUP_DROP);
+		if (inet_pton(AF_INET, ipstr, &v4) != 1) {
+			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+			return;
+		}
 		IN6_IPADDR_TO_V4MAPPED(v4, &otp->otp_ip);
 	}
 
-	return (VARPD_LOOKUP_OK);
+	libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_OK);
 }
 
 static int
@@ -416,20 +443,24 @@ varpd_files_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 	return (0);
 }
 
-static int
-varpd_files_proxy_arp(void *arg, int kind, const struct sockaddr *sock,
-    uint8_t *out)
+static void
+varpd_files_proxy_arp(void *arg, varpd_arp_handle_t vah, int kind,
+    const struct sockaddr *sock, uint8_t *out)
 {
 	varpd_files_t *vaf = arg;
 	const struct sockaddr_in *ip;
 	const struct sockaddr_in6 *ip6;
 	nvpair_t *pair;
 
-	if (kind != VARPD_ARP_ETHERNET)
-		return (ENOTSUP);
+	if (kind != VARPD_QTYPE_ETHERNET) {
+		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
+		return;
+	}
 
-	if (sock->sa_family != AF_INET && sock->sa_family != AF_INET6)
-		return (ENOTSUP);
+	if (sock->sa_family != AF_INET && sock->sa_family != AF_INET6) {
+		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
+		return;
+	}
 
 	ip = (const struct sockaddr_in *)sock;
 	ip6 = (const struct sockaddr_in6 *)sock;
@@ -473,14 +504,57 @@ varpd_files_proxy_arp(void *arg, int kind, const struct sockaddr *sock,
 		}
 
 		/* XXX Crappy errno */
-		if (ether_aton_r(mac, e) == NULL)
-			return (EIO);
+		if (ether_aton_r(mac, e) == NULL) {
+			libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
+			return;
+		}
 
 		bcopy(e, out, ETHERADDRL);
-		return (0);
+		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_OK);
+		return;
 	}
 
-	return (ENOENT);
+	libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
+}
+
+static void
+varpd_files_proxy_dhcp(void *arg, varpd_dhcp_handle_t vdh, int type,
+    const overlay_targ_lookup_t *otl, uint8_t *out)
+{
+	varpd_files_t *vaf = arg;
+	nvlist_t *nvl;
+	char macstr[ETHERADDRSTRL], *mac;
+	struct ether_addr a, *addr;
+
+	addr = &a;
+	if (type != VARPD_QTYPE_ETHERNET) {
+		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	if (ether_ntoa_r((struct ether_addr *)otl->otl_srcaddr,
+	    macstr) == NULL) {
+		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0) {
+		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	if (nvlist_lookup_string(nvl, "dhcp-proxy", &mac) != 0) {
+		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	if (ether_aton_r(mac, addr) == NULL) {
+		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	bcopy(addr, out, ETHERADDRL);
+	libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_OK);
 }
 
 static const varpd_plugin_ops_t varpd_files_ops = {
@@ -489,6 +563,7 @@ static const varpd_plugin_ops_t varpd_files_ops = {
 	varpd_files_start,
 	varpd_files_stop,
 	varpd_files_destroy,
+	NULL,
 	varpd_files_lookup,
 	varpd_files_nprops,
 	varpd_files_propinfo,
@@ -496,7 +571,8 @@ static const varpd_plugin_ops_t varpd_files_ops = {
 	varpd_files_setprop,
 	varpd_files_save,
 	varpd_files_restore,
-	varpd_files_proxy_arp
+	varpd_files_proxy_arp,
+	varpd_files_proxy_dhcp
 };
 
 #pragma init(varpd_files_init)

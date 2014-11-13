@@ -115,11 +115,11 @@ varpd_svp_destroy(void *arg)
 	umem_free(svp, sizeof (svp_t));
 }
 
-static int
-varpd_svp_lookup(void *arg, overlay_targ_lookup_t *otl,
-    overlay_target_point_t *otp)
+static void
+varpd_svp_lookup(void *arg, varpd_query_handle_t vqh,
+    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
 {
-	return (VARPD_LOOKUP_DROP);
+	libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
 }
 
 static int
@@ -474,10 +474,11 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 	return (0);
 }
 
-static int
-varpd_svp_arp(void *arg, int type, const struct sockaddr *sock, uint8_t *out)
+static void
+varpd_svp_arp(void *arg, varpd_arp_handle_t vah, int type,
+    const struct sockaddr *sock, uint8_t *out)
 {
-	return (EIO);
+	libvarpd_
 }
 
 static const varpd_plugin_ops_t varpd_svp_ops = {
@@ -486,6 +487,7 @@ static const varpd_plugin_ops_t varpd_svp_ops = {
 	varpd_svp_start,
 	varpd_svp_stop,
 	varpd_svp_destroy,
+	NULL,
 	varpd_svp_lookup,
 	varpd_svp_nprops,
 	varpd_svp_propinfo,
@@ -493,7 +495,8 @@ static const varpd_plugin_ops_t varpd_svp_ops = {
 	varpd_svp_setprop,
 	varpd_svp_save,
 	varpd_svp_restore,
-	varpd_svp_arp
+	varpd_svp_arp,
+	NULL
 };
 
 #pragma init(varpd_svp_init)
