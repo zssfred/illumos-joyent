@@ -219,34 +219,48 @@ static void
 libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 {
 	int ret;
-	overlay_targ_lookup_t otl;
-	overlay_targ_resp_t otr;
+	varpd_query_t *vqp;
+	overlay_targ_lookup_t *otl;
+	overlay_targ_resp_t *otr;
 	varpd_instance_t *inst;
 
-	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_LOOKUP, &otl);
+	vqp = umem_cache_alloc(vip->vdi_qcache, UMEM_DEFAULT);
+	otl = &vqp->vq_lookup;
+	otr = &vqp->vq_response;
+	/*
+	 * XXX abort doesn't really help here, we should figure out what to do.
+	 * Try and force a reap, then some?
+	 */
+	if (vqp == NULL)
+		abort();
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_LOOKUP, otl);
 	if (ret != 0 && errno != ETIME && errno != EINTR)
 		abort();
 
-	if (ret != 0)
+	if (ret != 0) {
+		umem_cache_free(vip->vdi_qcache, vqp);
 		return;
+	}
 
 	inst = (varpd_instance_t *)libvarpd_instance_lookup((varpd_handle_t)vip,
-	    otl.otl_varpdid);
+	    otl->otl_varpdid);
 	if (inst == NULL) {
-		libvarpd_overlay_lookup_reply(vip, &otl, &otr,
+		libvarpd_overlay_lookup_reply(vip, otl, otr,
 		    OVERLAY_TARG_DROP);
+		umem_cache_free(vip->vdi_qcache, vqp);
 		return;
 	}
 
-	ret = inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private, &otl,
-	    &otr.otr_answer);
+	ret = inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private, otl,
+	    &otr->otr_answer);
 	if (ret == VARPD_LOOKUP_DROP) {
-		libvarpd_overlay_lookup_reply(vip, &otl, &otr,
+		libvarpd_overlay_lookup_reply(vip, otl, otr,
 		    OVERLAY_TARG_DROP);
 	} else {
-		libvarpd_overlay_lookup_reply(vip, &otl, &otr,
+		libvarpd_overlay_lookup_reply(vip, otl, otr,
 		    OVERLAY_TARG_RESPOND);
 	}
+	umem_cache_free(vip->vdi_qcache, vqp);
 }
 
 void

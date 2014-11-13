@@ -83,7 +83,17 @@ libvarpd_create(varpd_handle_t *vphp)
 		return (ret);
 	}
 
+	vip->vdi_qcache = umem_cache_create("query", sizeof (varpd_query_t), 0,
+	    NULL, NULL, NULL, NULL, NULL, 0);
+	if (vip->vdi_qcache == NULL) {
+		int ret = errno;
+		id_space_destroy(vip->vdi_idspace);
+		umem_free(vip, sizeof (varpd_impl_t));
+		return (ret);
+	}
+
 	if ((ret = libvarpd_overlay_init(vip)) != 0) {
+		umem_cache_destroy(vip->vdi_qcache);
 		id_space_destroy(vip->vdi_idspace);
 		umem_free(vip, sizeof (varpd_impl_t));
 		return (ret);
@@ -121,6 +131,7 @@ libvarpd_destroy(varpd_handle_t vhp)
 		abort();
 	libvarpd_persist_fini(vip);
 	libvarpd_overlay_fini(vip);
+	umem_cache_destroy(vip->vdi_qcache);
 	id_space_destroy(vip->vdi_idspace);
 	umem_free(vip, sizeof (varpd_impl_t));
 }

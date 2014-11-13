@@ -27,6 +27,7 @@
 #include <synch.h>
 #include <limits.h>
 #include <libidspace.h>
+#include <umem.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +45,11 @@ typedef struct varpd_plugin {
 	uint_t			vpp_active;
 } varpd_plugin_t;
 
+typedef struct varpd_query {
+	overlay_targ_lookup_t	vq_lookup;
+	overlay_targ_resp_t	vq_response;
+} varpd_query_t;
+
 typedef struct varpd_impl {
 	mutex_t		vdi_lock;
 	mutex_t		vdi_loglock;
@@ -52,6 +58,7 @@ typedef struct varpd_impl {
 	avl_tree_t	vdi_instances;	/* vdi_lock */
 	avl_tree_t	vdi_linstances;	/* vdi_lock */
 	id_space_t	*vdi_idspace;	/* RO */
+	umem_cache_t	*vdi_qcache;	/* RO */
 	int		vdi_overlayfd;	/* RO */
 	int		vdi_doorfd;	/* vdi_lock */
 	int		vdi_persistfd;	/* vdi_plock */
