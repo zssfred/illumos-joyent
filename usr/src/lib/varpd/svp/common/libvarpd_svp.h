@@ -26,161 +26,158 @@
 #include <synch.h>
 #include <libvarpd_provider.h>
 #include <sys/avl.h>
+#include <port.h>
+
+#include <libvarpd_svp_prot.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+typedef struct svp svp_t;
+typedef struct svp_remote svp_remote_t;
+typedef struct svp_conn svp_conn_t;
+
+typedef void (*svp_event_f)(port_event_t *, void *);
+
+typedef struct svp_event {
+	svp_event_f	se_func;
+	void		*se_arg;
+} svp_event_t;
+
+typedef enum svp_conn_state {
+	SVP_CS_ERROR		= 0x00,
+	SVP_CS_UNBOUND		= 0x01,
+	SVP_CS_CONNECTING	= 0x02,
+	SVP_CS_BOUND		= 0x03
+} svp_conn_state_t;
+
+typedef struct svp_conn_out {
+	void	*sco_buffer;
+	size_t	sco_buflen;
+	size_t	sco_offset;
+} svp_conn_out_t;
+
+typedef enum svp_conn_in_state {
+	SVP_CIS_NEED_HEADER	= 0x00,
+	SVP_CIS_NEED_BODY	= 0x01
+} svp_conn_in_state_t;
+
+typedef struct svp_conn_in {
+	svp_conn_in_state_t	sci_state;
+	size_t			sci_nbytes;
+	size_t			sci_offset;
+	svp_req_t		sci_req;
+	void			*sci_body;
+} svp_conn_in_t;
+
+struct svp_conn {
+	mutex_t			sc_lock;
+	svp_event_t		sc_event;
+	svp_conn_t		*sc_next;
+	int			sc_socket;
+	uint_t			sc_gen;
+	struct in6_addr		sc_addr;
+	svp_conn_state_t	sc_cstate;
+	hrtime_t		sc_lastact;
+	svp_conn_out_t		sc_output;
+	svp_conn_in_t		sc_input;
+};
+
+typedef enum svp_remote_state {
+	SVP_RS_LOOKUP_SCHEDULED		= 0x01,	/* On the DNS Queue */
+	SVP_RS_LOOKUP_INPROGRESS 	= 0x02,	/* Doing a DNS lookup */
+	SVP_RS_LOOKUP_VALID		= 0x04	/* addrinfo valid */
+} svp_remote_state_t;
+
+struct svp_remote {
+	char			*sr_hostname;	/* RO */
+	avl_node_t		sr_gnode;	/* svp_remote_lock */
+	svp_remote_t		*sr_nexthost;	/* svp_host_lock */
+	mutex_t			sr_lock;
+	svp_remote_state_t	sr_state;
+	struct addrinfo 	*sr_addrinfo;
+	avl_tree_t		sr_tree;
+	uint_t			sr_count;
+	uint_t			sr_gen;
+	svp_conn_t		*sr_conns;
+};
+
+/*
+ * We have a bunch of different things that we get back from the API at the
+ * plug-in layer. These include:
+ *
+ *   o OOB Shootdowns
+ *   o VL3->VL2 Lookups
+ *   o VL2->UL3 Lookups
+ *   o VL2 Log invalidations
+ *   o VL3 Log injections
+ */
+typedef void (*svp_vl2_lookup_f)(svp_t *, svp_status_t, const struct in6_addr *,
+    const uint16_t, void *);
+typedef void (*svp_vl3_lookup_f)(svp_t *, svp_status_t, const uint8_t *,
+    const struct in6_addr *, const uint16_t, void *);
+typedef void (*svp_vl2_invalidation_f)(svp_t *, const uint8_t *);
+typedef void (*svp_vl3_inject_f)(svp_t *, const uint16_t,
+    const struct in6_addr *, const uint8_t *, const uint8_t *);
+typedef void (*svp_shootdown_f)(svp_t *, const uint8_t *,
+    const struct in6_addr *, const uint16_t uport);
+
+typedef struct svp_cb {
+	svp_vl2_lookup_f	scb_vl2_lookup;
+	svp_vl3_lookup_f	scb_vl3_lookup;
+	svp_vl2_invalidation_f	scb_vl2_invalidate;
+	svp_vl3_inject_f	scb_vl3_inject;
+	svp_shootdown_f		scb_shootdown;
+} svp_cb_t;
+
 /*
  * Core implementation structure.
  */
-typedef struct svp {
+struct svp {
 	overlay_plugin_dest_t	svp_dest;	/* RO */
 	varpd_provider_handle_t	svp_hdl;	/* RO */
+	svp_cb_t		svp_cb;		/* RO */
+	uint64_t		svp_vid;	/* RO? */
+	avl_node_t 		svp_rlink;	/* Owned by svp_remote */
+	svp_remote_t		*svp_remote;	/* ROish XXX */
 	mutex_t			svp_lock;
 	char			*svp_host;
 	uint16_t		svp_port;
 	uint16_t		svp_uport;
 	boolean_t		svp_huip;
 	struct in6_addr		svp_uip;
-} svp_t;
+};
 
-typedef struct svp_backend svp_backend_t;
+extern int svp_comparator(const void *, const void *);
 
 /*
  * XXX Strawman backend APIs
  */
-extern int svp_backend_get(const char *, svp_backend_t **);
-extern void svp_backend_release(svp_backend_t *);
+extern int svp_remote_find(char *, svp_remote_t **);
+extern int svp_remote_attach(svp_remote_t *, svp_t *);
+extern void svp_remote_detach(svp_t *);
+extern void svp_remote_release(svp_remote_t *);
+extern void svp_remote_vl3_lookup(svp_t *, const struct sockaddr *, void *);
+extern void svp_remote_vl2_lookup(svp_t *, const uint8_t *, void *);
 
 /*
- * SDC VXLAN Protocol Definitions
+ * Host and Event Loop APIs
  */
+extern int svp_remote_init(void);
+extern void svp_remote_fini(void);
+extern int svp_event_init(void);
+extern void svp_event_fini(void);
 
-typedef struct svp_req {
-	uint16_t	svp_ver;
-	uint16_t	svp_op;
-	uint32_t	svp_size;
-	uint64_t	svp_id;
-	uint8_t		svp_data[];
-} svp_req_t;
+extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
+extern void svp_host_queue(svp_remote_t *);
 
-typedef enum svp_op {
-	SVP_R_PING	= 0x01,
-	SVP_R_PONG	= 0x02,
-	SVP_R_VL2_REQ	= 0x03,
-	SVP_R_VL2_ACK	= 0x04,
-	SVP_R_VL3_REQ	= 0x05,
-	SVP_R_VL3_ACK	= 0x06,
-	SVP_R_BULK_REQ	= 0x07,
-	SVP_R_BULK_ACK	= 0x08,
-	SVP_R_LOG_REQ	= 0x09,
-	SVP_R_LOG_ACK	= 0x0A,
-	SVP_R_LOG_RM	= 0x0B,
-	SVP_R_LOG_RACK	= 0x0C,
-	SVP_R_SHOOTDOWN	= 0x0D,
-} svp_op_t;
+extern void svp_remote_dns_timer(port_event_t *, void *);
 
-typedef enum svp_status {
-	SVP_S_OK	= 0x00,	/* Everything OK */
-	SVP_S_FATAL	= 0x01,	/* Fatal error, close connection */
-	SVP_S_NOTFOUND	= 0x02,	/* Entry not found */
-	SVP_S_BADL3TYPE	= 0x03,	/* Unknown svp_vl3_type_t */
-	SVP_S_BADBULK	= 0x04,	/* Unknown svp_bulk_type_t */
-	SVP_S_BADLOG	= 0x05,	/* Unknown svp_log_type_t */
-	SVP_S_LOGAGIN	= 0x06	/* Nothing in the log yet */
-} svp_status_t;
+extern void svp_remote_conn_handler(port_event_t *, void *);
 
-typedef struct svp_vl2_req {
-	uint64_t	sl2r_vnetid;
-	uint8_t		sl2r_mac[ETHERADDRL];
-} svp_vl2_req_t;
-
-typedef struct svp_vl2_ack {
-	uint16_t	sl2a_status;
-	uint16_t	sl2a_port;
-	struct in6_addr	sl2a_addr;
-} svp_vl2_ack_t;
-
-typedef enum svp_vl3_type {
-	SVP_VL3_IP	= 0x01,
-	SVP_VL3_IPV6	= 0x02
-} svp_vl3_type_t;
-
-typedef struct svp_vl3_req {
-	uint64_t	sl3r_vnetid;
-	struct in6_addr	sl3r_ip;
-	uint32_t	sl3r_type;
-} svp_vl3_req_t;
-
-typedef struct svp_vl3_ack {
-	uint32_t	sl3a_status;
-	uint8_t		sl3a_mac[ETHERADDRL];
-	uint16_t	sl3a_uport;
-	struct in6_addr	sl3a_uip;
-} svp_vl3_ack_t;
-
-typedef enum svp_bulk_type {
-	SVP_BULK_VL2	= 0x01,
-	SVP_BULK_VL3	= 0x02
-} svp_bulk_type_t;
-
-typedef struct svp_bulk_req {
-	uint32_t	svbr_type;
-} svp_bulk_req_t;
-
-typedef struct svp_bulk_ack {
-	uint32_t	svba_status;
-	uint32_t	svba_type;
-	uint8_t		svba_data[];
-} svp_bulk_ack_t;
-
-typedef enum svp_log_type {
-	SVP_LOG_VL2	= 0x01,
-	SVP_LOG_VL3	= 0x02
-} svp_log_type_t;
-
-typedef struct svp_log_req {
-	uint32_t	svlr_type;
-	uint32_t	svlr_count;
-} svp_log_req_t;
-
-typedef struct svp_log_vl2 {
-	uint64_t	svl2_id;
-	uint64_t	svl2_vnetid;
-	uint8_t		svl2_mac[ETHERADDRL];
-	uint8_t		svl2_pad[2];
-} svp_log_vl2_t;
-
-typedef struct svp_log_vl3 {
-	uint64_t	svl3_id;
-	uint64_t	svl3_vnetid;
-	struct in6_addr	svl3_ip;
-	uint8_t		svl3_mac[ETHERADDRL];
-	uint8_t		svl3_pad[2];
-} svp_log_vl3_t;
-
-typedef struct svp_log_ack {
-	uint32_t	svla_status;
-	uint32_t	svla_type;
-	uint8_t		svla_data[];
-} svp_log_ack_t;
-
-typedef struct svp_lrm_req {
-	uint32_t	svrr_type;
-	uint32_t	svrr_pad;
-	uint64_t	svrr_ids[];
-} svp_lrm_req_t;
-
-typedef struct svp_lrm_ack {
-	uint32_t	svra_status;
-} svp_lrm_ack_t;
-
-typedef struct svp_shootdown {
-	uint64_t	svsd_vnetid;
-	uint8_t		svsd_mac[ETHERADDRL];
-	uint8_t		svsd_pad[2];
-} svp_shootdown_t;
+extern int svp_remote_conn_create(svp_remote_t *, const struct in6_addr *);
+extern void svp_remote_conn_destroy(svp_remote_t *, svp_conn_t *);
 
 #ifdef __cplusplus
 }

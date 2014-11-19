@@ -265,6 +265,8 @@ varpd_setup_lookup_threads(void)
 	int ret;
 	long i, ncpus = sysconf(_SC_NPROCESSORS_ONLN) * 2 + 1;
 
+	if (ncpus <= 0)
+		abort();
 	for (i = 0; i < ncpus; i++) {
 		thread_t thr;
 

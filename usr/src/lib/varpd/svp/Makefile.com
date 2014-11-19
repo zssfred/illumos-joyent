@@ -15,13 +15,17 @@
 
 LIBRARY =	libvarpd_svp.a
 VERS =		.1
-OBJECTS =	libvarpd_svp.o
+OBJECTS =	libvarpd_svp.o \
+		libvarpd_svp_conn.o \
+		libvarpd_svp_host.o \
+		libvarpd_svp_loop.o \
+		libvarpd_svp_remote.o
 
 include ../../../Makefile.lib
 include ../../Makefile.plugin
 
 LIBS =		$(DYNLIB)
-LDLIBS +=	-lc -lvarpd -lumem -lnvpair -lsocket -lnsl
+LDLIBS +=	-lc -lvarpd -lumem -lnvpair -lsocket -lnsl -lavl
 CPPFLAGS +=	-I../common
 
 SRCDIR =	../common

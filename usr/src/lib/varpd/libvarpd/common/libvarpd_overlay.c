@@ -163,14 +163,19 @@ libvarpd_overlay_packet(varpd_impl_t *vip, const overlay_targ_lookup_t *otl,
 }
 
 static int
-libvarpd_overlay_inject_common(varpd_impl_t *vip,
+libvarpd_overlay_inject_common(varpd_impl_t *vip, varpd_instance_t *inst,
     const overlay_targ_lookup_t *otl, void *buf, size_t buflen, int cmd)
 {
 	int ret;
 	overlay_targ_pkt_t otp;
 
-	otp.otp_linkid = UINT64_MAX;
-	otp.otp_reqid = otl->otl_reqid;
+	if (otl == NULL) {
+		otp.otp_linkid = inst->vri_linkid;
+		otp.otp_reqid = 0;
+	} else {
+		otp.otp_linkid = UINT64_MAX;
+		otp.otp_reqid = otl->otl_reqid;
+	}
 	otp.otp_size = buflen;
 	otp.otp_buf = buf;
 
@@ -189,15 +194,23 @@ int
 libvarpd_overlay_inject(varpd_impl_t *vip, const overlay_targ_lookup_t *otl,
     void *buf, size_t buflen)
 {
-	return (libvarpd_overlay_inject_common(vip, otl, buf, buflen,
+	return (libvarpd_overlay_inject_common(vip, NULL, otl, buf, buflen,
 	    OVERLAY_TARG_INJECT));
+}
+
+int
+libvarpd_overlay_instance_inject(varpd_instance_t *inst, void *buf,
+    size_t buflen)
+{
+	return (libvarpd_overlay_inject_common(inst->vri_impl, inst, NULL, buf,
+	    buflen, OVERLAY_TARG_INJECT));
 }
 
 int
 libvarpd_overlay_resend(varpd_impl_t *vip, const overlay_targ_lookup_t *otl,
     void *buf, size_t buflen)
 {
-	return (libvarpd_overlay_inject_common(vip, otl, buf, buflen,
+	return (libvarpd_overlay_inject_common(vip, NULL, otl, buf, buflen,
 	    OVERLAY_TARG_RESEND));
 }
 
@@ -484,4 +497,31 @@ libvarpd_plugin_query_reply(varpd_query_handle_t vqh, int action)
 		    &vqp->vq_lookup, &vqp->vq_response, OVERLAY_TARG_RESPOND);
 	else
 		abort();
+}
+
+void
+libvarpd_inject_varp(varpd_provider_handle_t vph, const uint8_t *mac,
+    const overlay_target_point_t *otp)
+{
+	int ret;
+	overlay_targ_cache_t otc;
+	varpd_instance_t *inst = (varpd_instance_t *)vph;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	otc.otc_linkid = inst->vri_linkid;
+	otc.otc_entry.otce_flags = 0;
+	bcopy(mac, otc.otc_entry.otce_mac, ETHERADDRL);
+	bcopy(otp, &otc.otc_entry.otce_dest, sizeof (overlay_target_point_t));
+
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_SET, &otc);
+	if (ret != 0) {
+		switch (errno) {
+		case EBADF:
+		case EFAULT:
+		case ENOTSUP:
+			abort();
+		default:
+			break;
+		}
+	}
 }

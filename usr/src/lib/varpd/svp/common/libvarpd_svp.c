@@ -36,12 +36,135 @@
 
 static int svp_defport = 169;
 static int svp_defuport = 1690;
+static umem_cache_t *svp_lookup_cache;
+
+typedef enum svp_lookup_type {
+	SVP_L_UNKNOWN	= 0x0,
+	SVP_L_VL2	= 0x1,
+	SVP_L_VL3	= 0x2
+} svp_lookup_type_t;
+
+typedef struct svp_lookup {
+	int svl_type;
+	union {
+		struct svl_lookup_vl2 {
+			varpd_query_handle_t	svl_handle;
+			overlay_target_point_t	*svl_point;
+		} svl_vl2;
+		struct svl_lookup_vl3 {
+			varpd_arp_handle_t	svl_vah;
+			uint8_t			*svl_out;
+		} svl_vl3;
+	} svl_u;
+} svp_lookup_t;
 
 static const char *varpd_svp_props[] = {
 	"svp/host",
 	"svp/port",
 	"svp/underlay_ip",
 	"svp/underlay_port"
+};
+
+int
+svp_comparator(const void *l, const void *r)
+{
+	const svp_t *ls = l;
+	const svp_t *rs = r;
+
+	if (ls->svp_vid > rs->svp_vid)
+		return (1);
+	if (ls->svp_vid < rs->svp_vid)
+		return (-1);
+	return (0);
+}
+
+static void
+svp_vl2_lookup_cb(svp_t *svp, svp_status_t status, const struct in6_addr *uip,
+    const uint16_t uport, void *arg)
+{
+	svp_lookup_t *svl = arg;
+	overlay_target_point_t *otp;
+
+	assert(svp != NULL);
+	assert(arg != NULL);
+
+	if (status != SVP_S_OK) {
+		libvarpd_plugin_query_reply(svl->svl_u.svl_vl2.svl_handle,
+		    VARPD_LOOKUP_DROP);
+		umem_cache_free(svp_lookup_cache, svl);
+		return;
+	}
+
+	otp = svl->svl_u.svl_vl2.svl_point;
+	bcopy(uip, &otp->otp_ip, sizeof (struct in6_addr));
+	otp->otp_port = uport;
+	libvarpd_plugin_query_reply(svl->svl_u.svl_vl2.svl_handle,
+	    VARPD_LOOKUP_OK);
+	umem_cache_free(svp_lookup_cache, svl);
+}
+
+static void
+svp_vl3_lookup_cb(svp_t *svp, svp_status_t status, const uint8_t *vl2mac,
+    const struct in6_addr *uip, const uint16_t uport, void *arg)
+{
+	overlay_target_point_t point;
+	svp_lookup_t *svl = arg;
+
+	assert(svp != NULL);
+	assert(svl != NULL);
+
+	if (status != SVP_S_OK) {
+		libvarpd_plugin_arp_reply(svl->svl_u.svl_vl3.svl_vah,
+		    VARPD_LOOKUP_DROP);
+		umem_cache_free(svp_lookup_cache, svp);
+		return;
+	}
+
+	/* Inject the L2 mapping before the L3 */
+	bcopy(uip, &point.otp_ip, sizeof (struct in6_addr));
+	point.otp_port = uport;
+	libvarpd_inject_varp(svp->svp_hdl, vl2mac, &point);
+
+	bcopy(vl2mac, svl->svl_u.svl_vl3.svl_out, ETHERADDRL);
+	libvarpd_plugin_arp_reply(svl->svl_u.svl_vl3.svl_vah,
+	    VARPD_LOOKUP_OK);
+	umem_cache_free(svp_lookup_cache, svp);
+}
+
+static void
+svp_vl2_invalidate_cb(svp_t *svp, const uint8_t *vl2mac)
+{
+	libvarpd_inject_varp(svp->svp_hdl, vl2mac, NULL);
+}
+
+static void
+svp_vl3_inject_cb(svp_t *svp, const uint16_t vlan, const struct in6_addr *vl3ip,
+    const uint8_t *vl2mac, const uint8_t *targmac)
+{
+	struct in_addr v4;
+
+	if (IN6_IS_ADDR_V4MAPPED(vl3ip) == 0)
+		abort();
+	IN6_V4MAPPED_TO_INADDR(vl3ip, &v4);
+	libvarpd_inject_arp(svp->svp_hdl, vlan, vl2mac, &v4, targmac);
+}
+
+static void
+svp_shootdown_cb(svp_t *svp, const uint8_t *vl2mac, const struct in6_addr *uip,
+    const uint16_t uport)
+{
+	/*
+	 * XXX We should probably do a conditional invlaidation here.
+	 */
+	libvarpd_inject_varp(svp->svp_hdl, vl2mac, NULL);
+}
+
+static svp_cb_t svp_defops = {
+	svp_vl2_lookup_cb,
+	svp_vl3_lookup_cb,
+	svp_vl2_invalidate_cb,
+	svp_vl3_inject_cb,
+	svp_shootdown_cb
 };
 
 static boolean_t
@@ -72,6 +195,7 @@ varpd_svp_create(varpd_provider_handle_t hdl, void **outp,
 		return (ret);
 	}
 
+	svp->svp_cb = svp_defops;
 	svp->svp_hdl = hdl;
 	*outp = svp;
 	return (0);
@@ -80,6 +204,8 @@ varpd_svp_create(varpd_provider_handle_t hdl, void **outp,
 static int
 varpd_svp_start(void *arg)
 {
+	int ret;
+	svp_remote_t *srp;
 	svp_t *svp = arg;
 
 	mutex_lock(&svp->svp_lock);
@@ -90,14 +216,23 @@ varpd_svp_start(void *arg)
 	}
 	mutex_unlock(&svp->svp_lock);
 
-	/* XXX rig up backend */
+	if ((ret = svp_remote_find(svp->svp_host, &srp)) != 0)
+		return (ret);
+
+	if ((ret = svp_remote_attach(srp, svp)) != 0) {
+		svp_remote_release(srp);
+		return (ret);
+	}
+
 	return (0);
 }
 
 static int
 varpd_svp_stop(void *arg)
 {
-	/* XXX Rig up backend decrement */
+	svp_t *svp = arg;
+
+	svp_remote_detach(svp);
 	return (0);
 }
 
@@ -119,7 +254,44 @@ static void
 varpd_svp_lookup(void *arg, varpd_query_handle_t vqh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
 {
-	libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+	svp_lookup_t *slp;
+	svp_t *svp = arg;
+
+	/*
+	 * Check if this is something that we need to proxy, eg. arp or ndp.
+	 */
+	if (otl->otl_sap == ETHERTYPE_ARP) {
+		libvarpd_plugin_proxy_arp(svp->svp_hdl, vqh, otl);
+		return;
+	}
+
+	if (otl->otl_sap == ETHERTYPE_IPV6 &&
+	    otl->otl_dstaddr[0] == 0x33 &&
+	    otl->otl_dstaddr[1] == 0x33) {
+		libvarpd_plugin_proxy_ndp(svp->svp_hdl, vqh, otl);
+	}
+
+	/* XXX CACHES */
+
+	/*
+	 * If we have a failure to allocate memory for this, that's not good.
+	 * However, telling the kernel to just drop this packet is much better
+	 * than the alternative at this moment. At least we'll try again and we
+	 * may have something more available to us in a little bit.
+	 *
+	 * TODO We need to have observability around this case.
+	 */
+	slp = umem_cache_alloc(svp_lookup_cache, UMEM_DEFAULT);
+	if (slp == NULL) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	slp->svl_type = SVP_L_VL2;
+	slp->svl_u.svl_vl2.svl_handle = vqh;
+	slp->svl_u.svl_vl2.svl_point = otp;
+
+	svp_remote_vl2_lookup(svp, otl->otl_dstaddr, slp);
 }
 
 static int
@@ -388,7 +560,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 	if (varpd_svp_valid_dest(dest) == B_FALSE)
 		return (ENOTSUP);
 
-	svp = umem_alloc(sizeof (svp_t), UMEM_DEFAULT);
+	svp = umem_zalloc(sizeof (svp_t), UMEM_DEFAULT);
 	if (svp == NULL)
 		return (ENOMEM);
 
@@ -478,7 +650,26 @@ static void
 varpd_svp_arp(void *arg, varpd_arp_handle_t vah, int type,
     const struct sockaddr *sock, uint8_t *out)
 {
-	libvarpd_
+	svp_t *svp = arg;
+	svp_lookup_t *svl;
+
+	if (type != VARPD_QTYPE_ETHERNET) {
+		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	/* XXX CACHES */
+
+	svl = umem_cache_alloc(svp_lookup_cache, UMEM_DEFAULT);
+	if (svl == NULL) {
+		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	svl->svl_type = SVP_L_VL3;
+	svl->svl_u.svl_vl3.svl_vah = vah;
+	svl->svl_u.svl_vl3.svl_out = out;
+	svp_remote_vl3_lookup(svp, sock, svl);
 }
 
 static const varpd_plugin_ops_t varpd_svp_ops = {
@@ -506,10 +697,32 @@ varpd_svp_init(void)
 	int err;
 	varpd_plugin_register_t *vpr;
 
+	/* XXX Communicate failure */
+	svp_lookup_cache = umem_cache_create("svp_lookup",
+	    sizeof (svp_lookup_t),  0, NULL, NULL, NULL, NULL, NULL, 0);
+	if (svp_lookup_cache == NULL)
+		return;
+
+	if ((err = svp_event_init()) != 0) {
+		umem_cache_destroy(svp_lookup_cache);
+		return;
+	}
+
+	if ((err = svp_remote_init()) != 0) {
+		svp_event_fini();
+		umem_cache_destroy(svp_lookup_cache);
+		return;
+	}
+
+
 	/* XXX Revisit failure semantics here */
 	vpr = libvarpd_plugin_alloc(VARPD_CURRENT_VERSION, &err);
-	if (vpr == NULL)
+	if (vpr == NULL) {
+		svp_remote_fini();
+		svp_event_fini();
+		umem_cache_destroy(svp_lookup_cache);
 		return;
+	}
 
 	vpr->vpr_mode = OVERLAY_TARGET_DYNAMIC;
 	vpr->vpr_name = "svp";

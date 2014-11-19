@@ -56,6 +56,9 @@ typedef struct varpd_dhcp_query {
 	struct ether_header		*vdq_ether;
 } varpd_dhcp_query_t;
 
+static const uint8_t libvarpd_arp_bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff,
+	    0xff };
+
 void
 libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
     const overlay_targ_lookup_t *otl)
@@ -484,8 +487,6 @@ libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
 	struct ip *ip;
 	struct udphdr *udp;
 	varpd_instance_t *inst = (varpd_instance_t *)hdl;
-	static const uint8_t bcast_mac[6] = { 0xff, 0xff, 0xff, 0xff, 0xff,
-	    0xff };
 
 	vdq = umem_alloc(sizeof (varpd_dhcp_query_t), UMEM_DEFAULT);
 	if (vdq == NULL) {
@@ -500,7 +501,7 @@ libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
 		return;
 	}
 
-	if (bcmp(otl->otl_dstaddr, bcast_mac, ETHERADDRL) != 0) {
+	if (bcmp(otl->otl_dstaddr, libvarpd_arp_bcast, ETHERADDRL) != 0) {
 		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
 		umem_free(vdq, sizeof (varpd_dhcp_query_t));
 		return;
@@ -588,4 +589,49 @@ libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t vdh, int action)
 
 	libvarpd_plugin_query_reply(vdq->vdq_query, VARPD_LOOKUP_DROP);
 	umem_free(vdq, sizeof (varpd_dhcp_query_t));
+}
+
+/*
+ * Inject a gratuitious ARP packet to the specified mac address.
+ */
+void
+libvarpd_inject_arp(varpd_provider_handle_t vph, const uint16_t vlan,
+    const uint8_t *srcmac, const struct in_addr *srcip, const uint8_t *dstmac)
+{
+	char buf[1500];
+	size_t bsize = 0;
+	struct ether_arp *ea;
+	varpd_instance_t *inst = (varpd_instance_t *)vph;
+
+	if (vlan != 0) {
+		struct ether_vlan_header *eh;
+		eh = (struct ether_vlan_header *)(buf + bsize);
+		bsize += sizeof (struct ether_vlan_header);
+		bcopy(dstmac, &eh->ether_dhost, ETHERADDRL);
+		bcopy(srcmac, &eh->ether_shost, ETHERADDRL);
+		eh->ether_tpid = htons(ETHERTYPE_VLAN);
+		eh->ether_tci = htons(VLAN_TCI(0, ETHER_CFI, vlan));
+		eh->ether_type = htons(ETHERTYPE_ARP);
+	} else {
+		struct ether_header *eh;
+		eh = (struct ether_header *)(buf + bsize);
+		bsize += sizeof (struct ether_header);
+		bcopy(dstmac, &eh->ether_dhost, ETHERADDRL);
+		bcopy(srcmac, &eh->ether_shost, ETHERADDRL);
+		eh->ether_type = htons(ETHERTYPE_ARP);
+	}
+
+	ea = (struct ether_arp *)(buf + bsize);
+	bsize += sizeof (struct ether_arp);
+	ea->ea_hdr.ar_hrd = htons(ARPHRD_ETHER);
+	ea->ea_hdr.ar_pro = htons(ETHERTYPE_IP);
+	ea->ea_hdr.ar_hln = ETHERADDRL;
+	ea->ea_hdr.ar_pln = sizeof (struct in_addr);
+	ea->ea_hdr.ar_op = htons(ARPOP_REQUEST);
+	bcopy(srcmac, ea->arp_sha, ETHERADDRL);
+	bcopy(srcip, ea->arp_spa, sizeof (struct in_addr));
+	bcopy(libvarpd_arp_bcast, ea->arp_tha, ETHERADDRL);
+	bcopy(srcip, ea->arp_tpa, sizeof (struct in_addr));
+
+	(void) libvarpd_overlay_instance_inject(inst, buf, bsize);
 }

@@ -169,6 +169,11 @@ extern void libvarpd_plugin_free(varpd_plugin_register_t *);
 extern int libvarpd_plugin_register(varpd_plugin_register_t *);
 
 /*
+ * Misc. Information APIs
+ */
+extern int libvarpd_plugin_varpdid(varpd_provider_handle_t, uint64_t *);
+
+/*
  * Lookup Replying query and proxying
  */
 extern void libvarpd_plugin_query_reply(varpd_query_handle_t, int);
@@ -197,7 +202,13 @@ extern void libvarpd_prop_set_range_uint32(varpd_prop_handle_t, uint32_t,
 extern void libvarpd_prop_set_range_str(varpd_prop_handle_t, const char *);
 
 /*
+ * Various injecting and invalidation routines
  */
+extern void libvarpd_inject_varp(varpd_provider_handle_t, const uint8_t *,
+    const overlay_target_point_t *);
+extern void libvarpd_inject_arp(varpd_provider_handle_t, const uint16_t,
+    const uint8_t *, const struct in_addr *, const uint8_t *);
+/* TODO NDP */
 
 #ifdef __cplusplus
 }

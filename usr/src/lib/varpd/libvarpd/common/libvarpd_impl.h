@@ -217,6 +217,7 @@ extern int libvarpd_overlay_packet(varpd_impl_t *,
     const overlay_targ_lookup_t *, void *, size_t *);
 extern int libvarpd_overlay_inject(varpd_impl_t *,
     const overlay_targ_lookup_t *, void *, size_t);
+extern int libvarpd_overlay_instance_inject(varpd_instance_t *, void *, size_t);
 extern int libvarpd_overlay_resend(varpd_impl_t *,
     const overlay_targ_lookup_t *, void *, size_t);
 typedef int (*libvarpd_overlay_iter_f)(varpd_impl_t *, datalink_id_t, void *);
