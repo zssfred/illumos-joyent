@@ -67,6 +67,7 @@
 #include <sys/vfs_opreg.h>
 #include <sys/param.h>
 #include <sys/utsname.h>
+#include <sys/rctl.h>
 
 /* Dependent on procfs */
 extern kthread_t *prchoose(proc_t *);
@@ -131,10 +132,12 @@ static void lxpr_read_meminfo(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_mounts(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_partitions(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_stat(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_swaps(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_uptime(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_version(lxpr_node_t *, lxpr_uiobuf_t *);
 
 static void lxpr_read_pid_cmdline(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_pid_limits(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_pid_maps(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_pid_mountinfo(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_pid_stat(lxpr_node_t *, lxpr_uiobuf_t *);
@@ -224,6 +227,7 @@ static lxpr_dirent_t lx_procdir[] = {
 	{ LXPR_PARTITIONS,	"partitions" },
 	{ LXPR_SELF,		"self" },
 	{ LXPR_STAT,		"stat" },
+	{ LXPR_SWAPS,		"swaps" },
 	{ LXPR_SYSDIR,		"sys" },
 	{ LXPR_UPTIME,		"uptime" },
 	{ LXPR_VERSION,		"version" }
@@ -240,6 +244,7 @@ static lxpr_dirent_t piddir[] = {
 	{ LXPR_PID_CURDIR,	"cwd" },
 	{ LXPR_PID_ENV,		"environ" },
 	{ LXPR_PID_EXE,		"exe" },
+	{ LXPR_PID_LIMITS,	"limits" },
 	{ LXPR_PID_MAPS,	"maps" },
 	{ LXPR_PID_MEM,		"mem" },
 	{ LXPR_PID_MOUNTINFO,	"mountinfo" },
@@ -251,6 +256,37 @@ static lxpr_dirent_t piddir[] = {
 };
 
 #define	PIDDIRFILES	(sizeof (piddir) / sizeof (piddir[0]))
+
+#define	LX_RLIM_INFINITY	0xFFFFFFFFFFFFFFFF
+
+#define	RCTL_INFINITE(x) \
+	((x->rcv_flagaction & RCTL_LOCAL_MAXIMAL) && \
+	(x->rcv_flagaction & RCTL_GLOBAL_INFINITE))
+
+typedef struct lxpr_rlimtab {
+	char	*rlim_name;	/* limit name */
+	char	*rlim_unit;	/* limit unit */
+	char	*rlim_rctl;	/* rctl source */
+} lxpr_rlimtab_t;
+
+static lxpr_rlimtab_t lxpr_rlimtab[] = {
+	{ "Max cpu time",	"seconds",	"process.max-cpu-time" },
+	{ "Max file size",	"bytes",	"process.max-file-size" },
+	{ "Max data size",	"bytes",	"process.max-data-size" },
+	{ "Max stack size",	"bytes",	"process.max-stack-size" },
+	{ "Max core file size",	"bytes",	"process.max-core-size" },
+	{ "Max resident set",	"bytes",	"zone.max-physical-memory" },
+	{ "Max processes",	"processes",	"zone.max-lwps" },
+	{ "Max open files",	"files",	"process.max-file-descriptor" },
+	{ "Max locked memory",	"bytes",	"zone.max-locked-memory" },
+	{ "Max address space",	"bytes",	"process.max-address-space" },
+	{ "Max file locks",	"locks",	NULL },
+	{ "Max pending signals",	"signals",
+		"process.max-sigqueue-size" },
+	{ "Max msgqueue size",	"bytes",	"process.max-msg-messages" },
+	{ NULL, NULL, NULL }
+};
+
 
 /*
  * contents of lx /proc/net directory
@@ -411,6 +447,7 @@ static void (*lxpr_read_function[LXPR_NFILES])() = {
 	lxpr_read_invalid,		/* /proc/<pid>/cwd	*/
 	lxpr_read_empty,		/* /proc/<pid>/environ	*/
 	lxpr_read_invalid,		/* /proc/<pid>/exe	*/
+	lxpr_read_pid_limits,		/* /proc/<pid>/limits	*/
 	lxpr_read_pid_maps,		/* /proc/<pid>/maps	*/
 	lxpr_read_empty,		/* /proc/<pid>/mem	*/
 	lxpr_read_pid_mountinfo,	/* /proc/<pid>/mountinfo */
@@ -455,6 +492,7 @@ static void (*lxpr_read_function[LXPR_NFILES])() = {
 	lxpr_read_partitions,		/* /proc/partitions	*/
 	lxpr_read_invalid,		/* /proc/self		*/
 	lxpr_read_stat,			/* /proc/stat		*/
+	lxpr_read_swaps,		/* /proc/swaps		*/
 	lxpr_read_invalid,		/* /proc/sys		*/
 	lxpr_read_invalid,		/* /proc/sys/fs		*/
 	lxpr_read_invalid,		/* /proc/sys/fs/inotify	*/
@@ -483,6 +521,7 @@ static vnode_t *(*lxpr_lookup_function[LXPR_NFILES])() = {
 	lxpr_lookup_not_a_dir,		/* /proc/<pid>/cwd	*/
 	lxpr_lookup_not_a_dir,		/* /proc/<pid>/environ	*/
 	lxpr_lookup_not_a_dir,		/* /proc/<pid>/exe	*/
+	lxpr_lookup_not_a_dir,		/* /proc/<pid>/limits	*/
 	lxpr_lookup_not_a_dir,		/* /proc/<pid>/maps	*/
 	lxpr_lookup_not_a_dir,		/* /proc/<pid>/mem	*/
 	lxpr_lookup_not_a_dir,		/* /proc/<pid>/mountinfo */
@@ -527,6 +566,7 @@ static vnode_t *(*lxpr_lookup_function[LXPR_NFILES])() = {
 	lxpr_lookup_not_a_dir,		/* /proc/partitions	*/
 	lxpr_lookup_not_a_dir,		/* /proc/self		*/
 	lxpr_lookup_not_a_dir,		/* /proc/stat		*/
+	lxpr_lookup_not_a_dir,		/* /proc/swaps		*/
 	lxpr_lookup_sysdir,		/* /proc/sys		*/
 	lxpr_lookup_sys_fsdir,		/* /proc/sys/fs		*/
 	lxpr_lookup_sys_fs_inotifydir,	/* /proc/sys/fs/inotify	*/
@@ -555,6 +595,7 @@ static int (*lxpr_readdir_function[LXPR_NFILES])() = {
 	lxpr_readdir_not_a_dir,		/* /proc/<pid>/cwd	*/
 	lxpr_readdir_not_a_dir,		/* /proc/<pid>/environ	*/
 	lxpr_readdir_not_a_dir,		/* /proc/<pid>/exe	*/
+	lxpr_readdir_not_a_dir,		/* /proc/<pid>/limits	*/
 	lxpr_readdir_not_a_dir,		/* /proc/<pid>/maps	*/
 	lxpr_readdir_not_a_dir,		/* /proc/<pid>/mem	*/
 	lxpr_readdir_not_a_dir,		/* /proc/<pid>/mountinfo */
@@ -599,6 +640,7 @@ static int (*lxpr_readdir_function[LXPR_NFILES])() = {
 	lxpr_readdir_not_a_dir,		/* /proc/partitions	*/
 	lxpr_readdir_not_a_dir,		/* /proc/self		*/
 	lxpr_readdir_not_a_dir,		/* /proc/stat		*/
+	lxpr_readdir_not_a_dir,		/* /proc/swaps		*/
 	lxpr_readdir_sysdir,		/* /proc/sys		*/
 	lxpr_readdir_sys_fsdir,		/* /proc/sys/fs		*/
 	lxpr_readdir_sys_fs_inotifydir,	/* /proc/sys/fs/inotify	*/
@@ -738,6 +780,75 @@ lxpr_read_pid_cmdline(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 }
 
 /*
+ * lxpr_read_pid_limits(): ulimit file
+ */
+static void
+lxpr_read_pid_limits(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	proc_t *p;
+	rctl_qty_t cur, max;
+	rctl_val_t *oval, *nval;
+	rctl_hndl_t hndl;
+	char *kname;
+	int i;
+
+	ASSERT(lxpnp->lxpr_type == LXPR_PID_LIMITS);
+
+	nval = kmem_alloc(sizeof (rctl_val_t), KM_SLEEP);
+
+	p = lxpr_lock(lxpnp->lxpr_pid);
+	if (p == NULL) {
+		kmem_free(nval, sizeof (rctl_val_t));
+		lxpr_uiobuf_seterr(uiobuf, EINVAL);
+		return;
+	}
+
+	lxpr_uiobuf_printf(uiobuf, "%-25s %-20s %-20s %-10s\n",
+	    "Limit", "Soft Limit", "Hard Limit", "Units");
+	for (i = 0; lxpr_rlimtab[i].rlim_name != NULL; i++) {
+		kname = lxpr_rlimtab[i].rlim_rctl;
+		/* default to unlimited for resources without an analog */
+		cur = RLIM_INFINITY;
+		max = RLIM_INFINITY;
+		if (kname != NULL) {
+			hndl = rctl_hndl_lookup(kname);
+			oval = NULL;
+			while ((hndl != -1) &&
+			    rctl_local_get(hndl, oval, nval, p) == 0) {
+				oval = nval;
+				switch (nval->rcv_privilege) {
+				case RCPRIV_BASIC:
+					if (!RCTL_INFINITE(nval))
+						cur = nval->rcv_value;
+					break;
+				case RCPRIV_PRIVILEGED:
+					if (!RCTL_INFINITE(nval))
+						max = nval->rcv_value;
+					break;
+				}
+			}
+		}
+
+		lxpr_uiobuf_printf(uiobuf, "%-25s", lxpr_rlimtab[i].rlim_name);
+		if (cur == RLIM_INFINITY || cur == LX_RLIM_INFINITY) {
+			lxpr_uiobuf_printf(uiobuf, " %-20s", "unlimited");
+		} else {
+			lxpr_uiobuf_printf(uiobuf, " %-20lu", cur);
+		}
+		if (max == RLIM_INFINITY || max == LX_RLIM_INFINITY) {
+			lxpr_uiobuf_printf(uiobuf, " %-20s", "unlimited");
+		} else {
+			lxpr_uiobuf_printf(uiobuf, " %-20lu", max);
+		}
+		lxpr_uiobuf_printf(uiobuf, " %-10s\n",
+		    lxpr_rlimtab[i].rlim_unit);
+	}
+
+	lxpr_unlock(p);
+	kmem_free(nval, sizeof (rctl_val_t));
+}
+
+/*
  * lxpr_read_pid_maps(): memory map file
  */
 static void
@@ -749,11 +860,11 @@ lxpr_read_pid_maps(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 	char *buf;
 	int buflen = MAXPATHLEN;
 	struct print_data {
-		caddr_t saddr;
-		caddr_t eaddr;
+		uintptr_t saddr;
+		uintptr_t eaddr;
 		int type;
 		char prot[5];
-		uint32_t offset;
+		uintptr_t offset;
 		vnode_t *vp;
 		struct print_data *next;
 	} *print_head = NULL;
@@ -785,8 +896,8 @@ lxpr_read_pid_maps(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 
 		pbuf = kmem_alloc(sizeof (*pbuf), KM_SLEEP);
 
-		pbuf->saddr = seg->s_base;
-		pbuf->eaddr = seg->s_base+seg->s_size;
+		pbuf->saddr = (uintptr_t)seg->s_base;
+		pbuf->eaddr = pbuf->saddr + seg->s_size;
 		pbuf->type = SEGOP_GETTYPE(seg, seg->s_base);
 
 		/*
@@ -811,7 +922,7 @@ lxpr_read_pid_maps(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 			pbuf->vp = NULL;
 		}
 
-		pbuf->offset = (uint32_t)SEGOP_GETOFFSET(seg, pbuf->saddr);
+		pbuf->offset = SEGOP_GETOFFSET(seg, (caddr_t)pbuf->saddr);
 
 		pbuf->next = NULL;
 		*print_tail = pbuf;
@@ -846,16 +957,17 @@ lxpr_read_pid_maps(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 			VN_RELE(pbuf->vp);
 		}
 
-		if (*buf != '\0') {
+		if (p->p_model == DATAMODEL_LP64) {
 			lxpr_uiobuf_printf(uiobuf,
-			    "%08x-%08x %s %08x %02d:%03d %lld %s\n",
+			    "%016llx-%16llx %s %016llx %02d:%03d %lld%s%s\n",
 			    pbuf->saddr, pbuf->eaddr, pbuf->prot, pbuf->offset,
-			    maj, min, inode, buf);
+			    maj, min, inode, *buf != '\0' ? " " : "", buf);
 		} else {
 			lxpr_uiobuf_printf(uiobuf,
-			    "%08x-%08x %s %08x %02d:%03d %lld\n",
-			    pbuf->saddr, pbuf->eaddr, pbuf->prot, pbuf->offset,
-			    maj, min, inode);
+			    "%08x-%08x %s %08x %02d:%03d %lld%s%s\n",
+			    (uint32_t)pbuf->saddr, (uint32_t)pbuf->eaddr,
+			    pbuf->prot, (uint32_t)pbuf->offset, maj, min,
+			    inode, *buf != '\0' ? " " : "", buf);
 		}
 
 		pbuf_next = pbuf->next;
@@ -2092,6 +2204,21 @@ lxpr_read_stat(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 }
 
 /*
+ * lxpr_read_swaps():
+ *
+ * We don't support swap files or partitions, so just provide a dummy file with
+ * the necessary header.
+ */
+/* ARGSUSED */
+static void
+lxpr_read_swaps(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	lxpr_uiobuf_printf(uiobuf,
+	    "Filename                                "
+	    "Type            Size    Used    Priority\n");
+}
+
+/*
  * inotify tunables exported via /proc.
  */
 extern int inotify_maxevents;
@@ -2574,6 +2701,7 @@ lxpr_access(vnode_t *vp, int mode, int flags, cred_t *cr, caller_context_t *ct)
 	case LXPR_PID_CURDIR:
 	case LXPR_PID_ENV:
 	case LXPR_PID_EXE:
+	case LXPR_PID_LIMITS:
 	case LXPR_PID_MAPS:
 	case LXPR_PID_MEM:
 	case LXPR_PID_ROOTDIR:

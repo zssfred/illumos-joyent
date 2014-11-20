@@ -83,7 +83,6 @@ extern long lx_vhangup(void);
 extern long lx_fadvise64(uintptr_t, off64_t, uintptr_t, uintptr_t);
 extern long lx_fadvise64_64(uintptr_t, off64_t, off64_t, uintptr_t);
 
-extern long lx_read(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_readv(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_writev(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_pread(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
@@ -104,9 +103,7 @@ extern long lx_getsockopt(int, int, int, void *, int *);
 extern long lx_listen(int, int);
 extern long lx_recvfrom(int, void *, size_t, int, void *, int *);
 extern long lx_recvmsg(int, void *, int);
-extern long lx_recvmmsg(int, void *, uint_t, uint_t, struct timespec *);
 extern long lx_sendmsg(int, void *, int);
-extern long lx_sendmmsg(int, void *, uint_t, uint_t);
 extern long lx_sendto(int, void *, size_t, int, void *, int);
 extern long lx_setsockopt(int, int, int, void *, int);
 extern long lx_shutdown(int, int);
@@ -193,6 +190,7 @@ extern long lx_llseek(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_lseek(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_sysfs(uintptr_t, uintptr_t, uintptr_t);
 
+extern long lx_getcpu(unsigned int *, uintptr_t, uintptr_t);
 extern long lx_getcwd(uintptr_t, uintptr_t);
 extern long lx_uname(uintptr_t);
 extern long lx_reboot(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
@@ -341,6 +339,7 @@ extern long lx_shmdt(char *);
 extern long lx_stime(const time_t *);
 extern long lx_symlink(const char *, const char *);
 extern long lx_syslog(int, char *, int);
+extern long lx_sysinfo32(uintptr_t);
 extern long lx_umask(mode_t);
 extern long lx_utimes(const char *, const struct timeval *);
 extern long lx_write(int, const void *, size_t);
@@ -377,7 +376,8 @@ extern long lx_yield(void);
 #define	LX_EMUL_pipe2			24
 #define	LX_EMUL_rt_tgsigqueueinfo	25
 #define	LX_EMUL_arch_prctl		26
-#define	LX_EMUL_tgkill			LX_N_IKE_FUNCS
+#define	LX_EMUL_tgkill			27
+#define	LX_EMUL_read			LX_N_IKE_FUNCS
 
 /* Note: adjust LX_N_IKE_FUNCS when adding new in-kernel functions */
 

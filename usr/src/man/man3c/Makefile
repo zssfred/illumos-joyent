@@ -482,7 +482,7 @@ MANFILES= 	__fbufsize.3c					\
 	 	u8_validate.3c					\
 	 	ualarm.3c					\
 	 	uconv_u16tou32.3c				\
-	 	ucred_get.3c					\
+	 	ucred.3c					\
 	 	ungetc.3c					\
 	 	ungetwc.3c					\
 	 	unlockpt.3c					\
@@ -498,8 +498,12 @@ MANFILES= 	__fbufsize.3c					\
 	 	wait3.3c					\
 	 	waitpid.3c					\
 	 	walkcontext.3c					\
+		wcpcpy.3c					\
 	 	wcrtomb.3c					\
+		wcscasecmp.3c					\
 	 	wcscoll.3c					\
+		wcsdup.3c					\
+		wcslen.3c					\
 	 	wcsftime.3c					\
 	 	wcsrtombs.3c					\
 	 	wcsstr.3c					\
@@ -1194,6 +1198,7 @@ MANLINKS=	FD_CLR.3c				\
 	 	uconv_u8tou16.3c			\
 	 	uconv_u8tou32.3c			\
 	 	ucred_free.3c				\
+	 	ucred_get.3c				\
 	 	ucred_getegid.3c			\
 	 	ucred_geteuid.3c			\
 	 	ucred_getgroups.3c			\
@@ -1239,7 +1244,9 @@ MANLINKS=	FD_CLR.3c				\
 	 	watoi.3c				\
 	 	watol.3c				\
 	 	watoll.3c				\
+		wcpncpy.3c				\
 	 	wcrtomb_l.3c				\
+		wcscasecmp_l.3c				\
 	 	wcscat.3c				\
 	 	wcschr.3c				\
 	 	wcscmp.3c				\
@@ -1247,10 +1254,12 @@ MANLINKS=	FD_CLR.3c				\
 	 	wcscpy.3c				\
 	 	wcscspn.3c				\
 	 	wcsetno.3c				\
-	 	wcslen.3c				\
+		wcsncasecmp.3c				\
+		wcsncasecmp_l.3c			\
 	 	wcsncat.3c				\
 	 	wcsncmp.3c				\
 	 	wcsncpy.3c				\
+	 	wcsnlen.3c				\
 		wcsnrtombs.3c				\
 		wcsnrtombs_l.3c				\
 	 	wcspbrk.3c				\
@@ -2204,21 +2213,22 @@ uconv_u32tou8.3c			:= LINKSRC = uconv_u16tou32.3c
 uconv_u8tou16.3c			:= LINKSRC = uconv_u16tou32.3c
 uconv_u8tou32.3c			:= LINKSRC = uconv_u16tou32.3c
 
-ucred_free.3c				:= LINKSRC = ucred_get.3c
-ucred_getegid.3c			:= LINKSRC = ucred_get.3c
-ucred_geteuid.3c			:= LINKSRC = ucred_get.3c
-ucred_getgroups.3c			:= LINKSRC = ucred_get.3c
-ucred_getlabel.3c			:= LINKSRC = ucred_get.3c
-ucred_getpflags.3c			:= LINKSRC = ucred_get.3c
-ucred_getpid.3c				:= LINKSRC = ucred_get.3c
-ucred_getprivset.3c			:= LINKSRC = ucred_get.3c
-ucred_getprojid.3c			:= LINKSRC = ucred_get.3c
-ucred_getrgid.3c			:= LINKSRC = ucred_get.3c
-ucred_getruid.3c			:= LINKSRC = ucred_get.3c
-ucred_getsgid.3c			:= LINKSRC = ucred_get.3c
-ucred_getsuid.3c			:= LINKSRC = ucred_get.3c
-ucred_getzoneid.3c			:= LINKSRC = ucred_get.3c
-ucred_size.3c				:= LINKSRC = ucred_get.3c
+ucred_free.3c				:= LINKSRC = ucred.3c
+ucred_get.3c				:= LINKSRC = ucred.3c
+ucred_getegid.3c			:= LINKSRC = ucred.3c
+ucred_geteuid.3c			:= LINKSRC = ucred.3c
+ucred_getgroups.3c			:= LINKSRC = ucred.3c
+ucred_getlabel.3c			:= LINKSRC = ucred.3c
+ucred_getpflags.3c			:= LINKSRC = ucred.3c
+ucred_getpid.3c				:= LINKSRC = ucred.3c
+ucred_getprivset.3c			:= LINKSRC = ucred.3c
+ucred_getprojid.3c			:= LINKSRC = ucred.3c
+ucred_getrgid.3c			:= LINKSRC = ucred.3c
+ucred_getruid.3c			:= LINKSRC = ucred.3c
+ucred_getsgid.3c			:= LINKSRC = ucred.3c
+ucred_getsuid.3c			:= LINKSRC = ucred.3c
+ucred_getzoneid.3c			:= LINKSRC = ucred.3c
+ucred_size.3c				:= LINKSRC = ucred.3c
 
 vswprintf.3c				:= LINKSRC = vfwprintf.3c
 vwprintf.3c				:= LINKSRC = vfwprintf.3c
@@ -2236,10 +2246,18 @@ backtrace_symbols.3c			:= LINKSRC = walkcontext.3c
 backtrace_symbols_fd.3c			:= LINKSRC = walkcontext.3c
 printstack.3c				:= LINKSRC = walkcontext.3c
 
+wcpncpy.3c				:= LINKSRC = wcpcpy.3c
+
 wcrtomb_l.3c				:= LINKSRC = wcrtomb.3c
+
+wcscasecmp_l.3c				:= LINKSRC = wcscasecmp.3c
+wcsncasecmp.3c				:= LINKSRC = wcscasecmp.3c
+wcsncasecmp_l.3c			:= LINKSRC = wcscasecmp.3c
 
 wcscoll_l.3c				:= LINKSRC = wcscoll.3c
 wscoll.3c				:= LINKSRC = wcscoll.3c
+
+wcsnlen.3c				:= LINKSRC = wcslen.3c
 
 wcsnrtombs.3c				:= LINKSRC = wcsrtombs.3c
 wcsnrtombs_l.3c				:= LINKSRC = wcsrtombs.3c
@@ -2265,7 +2283,6 @@ wcschr.3c				:= LINKSRC = wcstring.3c
 wcscmp.3c				:= LINKSRC = wcstring.3c
 wcscpy.3c				:= LINKSRC = wcstring.3c
 wcscspn.3c				:= LINKSRC = wcstring.3c
-wcslen.3c				:= LINKSRC = wcstring.3c
 wcsncat.3c				:= LINKSRC = wcstring.3c
 wcsncmp.3c				:= LINKSRC = wcstring.3c
 wcsncpy.3c				:= LINKSRC = wcstring.3c

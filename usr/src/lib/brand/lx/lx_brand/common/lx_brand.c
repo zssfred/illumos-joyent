@@ -1106,6 +1106,7 @@ IN_KERNEL_EMULATION(get_thread_area, LX_EMUL_get_thread_area)
 IN_KERNEL_EMULATION(set_tid_address, LX_EMUL_set_tid_address)
 IN_KERNEL_EMULATION(arch_prctl, LX_EMUL_arch_prctl)
 IN_KERNEL_EMULATION(tgkill, LX_EMUL_tgkill)
+IN_KERNEL_EMULATION(read, LX_EMUL_read)
 
 #if defined(_LP64)
 /* The following is the 64-bit syscall table */
@@ -1410,7 +1411,7 @@ static struct lx_sysent sysents[] = {
 	{"pwritev",	NULL,			NOSYS_NULL,	0}, /* 296 */
 	{"rt_tgsigqueueinfo", lx_rt_tgsigqueueinfo, 0,		4}, /* 297 */
 	{"perf_event_open", NULL,		NOSYS_NULL,	0}, /* 298 */
-	{"recvmmsg",	lx_recvmmsg,		0,		5}, /* 299 */
+	{"recvmmsg",	NULL,			NOSYS_NULL,	0}, /* 299 */
 	{"fanotify_init", NULL,			NOSYS_NULL,	0}, /* 300 */
 	{"fanotify_mark", NULL,			NOSYS_NULL,	0}, /* 301 */
 	{"prlimit64",	lx_prlimit64,		0,		4}, /* 302 */
@@ -1418,9 +1419,9 @@ static struct lx_sysent sysents[] = {
 	{"open_by_handle_at", NULL,		NOSYS_NULL,	0}, /* 304 */
 	{"clock_adjtime", NULL,			NOSYS_NULL,	0}, /* 305 */
 	{"syncfs",	NULL,			NOSYS_NULL,	0}, /* 306 */
-	{"sendmmsg",	lx_sendmmsg,		0,		4}, /* 307 */
+	{"sendmmsg",	NULL,			NOSYS_NULL,	0}, /* 307 */
 	{"setns",	NULL,			NOSYS_NULL,	0}, /* 309 */
-	{"getcpu",	NULL,			NOSYS_NULL,	0}, /* 309 */
+	{"getcpu",	lx_getcpu,		0,		3}, /* 309 */
 	{"process_vm_readv", NULL,		NOSYS_NULL,	0}, /* 310 */
 	{"process_vm_writev", NULL,		NOSYS_NULL,	0}, /* 311 */
 	{"kcmp",	NULL,			NOSYS_NULL,	0}, /* 312 */
@@ -1552,7 +1553,7 @@ static struct lx_sysent sysents[] = {
 	{"vm86old",	NULL,		NOSYS_OBSOLETE,	0},	/* 113 */
 	{"wait4",	lx_wait4,	0,		4},	/* 114 */
 	{"swapoff",	NULL,		NOSYS_KERNEL,	0},	/* 115 */
-	{"sysinfo",	lx_sysinfo,	0,		1},	/* 116 */
+	{"sysinfo",	lx_sysinfo32,	0,		1},	/* 116 */
 	{"ipc",		lx_ipc,		0,		5},	/* 117 */
 	{"fsync",	lx_fsync,	0,		1},	/* 118 */
 	{"sigreturn",	lx_sigreturn,	0,		1},	/* 119 */
@@ -1756,7 +1757,7 @@ static struct lx_sysent sysents[] = {
 	{"tee",		NULL,		NOSYS_NULL,	0},	/* 315 */
 	{"vmsplice",	NULL,		NOSYS_NULL,	0},	/* 316 */
 	{"move_pages",	NULL,		NOSYS_NULL,	0},	/* 317 */
-	{"getcpu",	NULL,		NOSYS_NULL,	0},	/* 318 */
+	{"getcpu",	lx_getcpu,	0,		3},	/* 318 */
 	{"epoll_pwait",	lx_epoll_pwait, 0,		5},	/* 319 */
 	{"utimensat",	lx_utimensat,	0,		4},	/* 320 */
 	{"signalfd",	NULL,		NOSYS_NULL,	0},	/* 321 */

@@ -48,11 +48,47 @@
 #include <sys/lx_thunk_server.h>
 #include <sys/lx_fcntl.h>
 #include <sys/inotify.h>
+#include <thread.h>
 #include <unistd.h>
 #include <libintl.h>
 #include <zone.h>
+#include <priv.h>
 
 extern int sethostname(char *, int);
+
+struct lx_sysinfo {
+	int64_t si_uptime;	/* Seconds since boot */
+	uint64_t si_loads[3];	/* 1, 5, and 15 minute avg runq length */
+	uint64_t si_totalram;	/* Total memory size */
+	uint64_t si_freeram;	/* Available memory */
+	uint64_t si_sharedram;	/* Shared memory */
+	uint64_t si_bufferram;	/* Buffer memory */
+	uint64_t si_totalswap;	/* Total swap space */
+	uint64_t si_freeswap;	/* Avail swap space */
+	uint16_t si_procs;	/* Process count */
+	uint16_t si_pad;	/* Padding */
+	uint64_t si_totalhigh;	/* High memory size */
+	uint64_t si_freehigh;	/* Avail high memory */
+	uint32_t si_mem_unit;	/* Unit size of memory fields */
+};
+
+struct lx_sysinfo32 {
+	int32_t si_uptime;	/* Seconds since boot */
+	uint32_t si_loads[3];	/* 1, 5, and 15 minute avg runq length */
+	uint32_t si_totalram;	/* Total memory size */
+	uint32_t si_freeram;	/* Available memory */
+	uint32_t si_sharedram;	/* Shared memory */
+	uint32_t si_bufferram;	/* Buffer memory */
+	uint32_t si_totalswap;	/* Total swap space */
+	uint32_t si_freeswap;	/* Avail swap space */
+	uint16_t si_procs;	/* Process count */
+	uint16_t si_pad;	/* Padding */
+	uint32_t si_totalhigh;	/* High memory size */
+	uint32_t si_freehigh;	/* Avail high memory */
+	uint32_t si_mem_unit;	/* Unit size of memory fields */
+};
+
+extern long lx_sysinfo(struct lx_sysinfo *sip);
 
 /* ARGUSED */
 long
@@ -502,6 +538,12 @@ lx_execve(uintptr_t p1, uintptr_t p2, uintptr_t p3)
 
 	lx_ptrace_stop_if_option(LX_PTRACE_O_TRACEEXEC);
 
+	/*
+	 * Emulate PR_SET_KEEPCAPS which is reset on execve. If this is not done
+	 * the emulated capabilities could be reduced more than expected.
+	 */
+	(void) setpflags(PRIV_AWARE_RESET, 1);
+
 	/* This is a normal exec call. */
 	(void) execve(filename, argv, envp);
 
@@ -560,9 +602,17 @@ lx_prctl(int option, uintptr_t arg2, uintptr_t arg3,
 
 	if (option == LX_PR_SET_KEEPCAPS) {
 		/*
-		 * See lx_capget and lx_capset. We totally punt on capabilities
-		 * so do the same here.
+		 * The closest illumos analog to SET_KEEPCAPS is the PRIV_AWARE
+		 * flag.  There are probably some cases where it's not exactly
+		 * the same, but this will do for a first try.
 		 */
+		if (arg2 == 0) {
+			if (setpflags(PRIV_AWARE_RESET, 1) != 0)
+				return (-errno);
+		} else {
+			if (setpflags(PRIV_AWARE, 1) != 0)
+				return (-errno);
+		}
 		return (0);
 	}
 
@@ -570,6 +620,18 @@ lx_prctl(int option, uintptr_t arg2, uintptr_t arg3,
 		lx_unsupported("prctl option %d", option);
 		return (-ENOSYS);
 	}
+
+	/*
+	 * In Linux, PR_SET_NAME sets the name of the thread, not the process.
+	 * Due to the historical quirks of Linux's asinine thread model, this
+	 * name is effectively the name of the process (as visible via ps(1))
+	 * if the thread is the first of its task group.  The first thread is
+	 * therefore special, and to best mimic Linux semantics (and absent a
+	 * notion of per-LWP names), we do nothing (but return success) on LWPs
+	 * other than LWP 1.
+	 */
+	if (thr_self() != 1)
+		return (0);
 
 	if (uucopy((void *)arg2, psinfo.pr_fname,
 	    MIN(LX_PR_SET_NAME_NAMELEN, fnamelen)) != 0)
@@ -623,6 +685,45 @@ lx_syslog(int type, char *bufp, int len)
 
 	if ((type == 8) && (len < 1 || len > 8))
 		return (-EINVAL);
+
+	return (0);
+}
+
+long
+lx_sysinfo32(uintptr_t arg)
+{
+	struct lx_sysinfo32 *sip = (struct lx_sysinfo32 *)arg;
+	struct lx_sysinfo32 si;
+	struct lx_sysinfo sil;
+	int i;
+
+	if (lx_sysinfo(&sil) != 0)
+		return (-errno);
+
+	si.si_uptime = sil.si_uptime;
+
+	for (i = 0; i < 3; i++) {
+		if ((sil.si_loads[i]) > 0x7fffffff)
+			si.si_loads[i] = 0x7fffffff;
+		else
+			si.si_loads[i] = sil.si_loads[i];
+	}
+
+	si.si_procs = sil.si_procs;
+	si.si_totalram = sil.si_totalram;
+	si.si_freeram = sil.si_freeram;
+	si.si_totalswap = sil.si_totalswap;
+	si.si_freeswap = sil.si_freeswap;
+	si.si_mem_unit = sil.si_mem_unit;
+
+	si.si_bufferram = sil.si_bufferram;
+	si.si_sharedram = sil.si_sharedram;
+
+	si.si_totalhigh = sil.si_totalhigh;
+	si.si_freehigh = sil.si_freehigh;
+
+	if (uucopy(&si, sip, sizeof (si)) != 0)
+		return (-errno);
 
 	return (0);
 }
@@ -739,6 +840,28 @@ lx_fchmod(int fildes, mode_t mode)
 
 	r = fchmod(fildes, mode);
 	return ((r == -1) ? -errno : r);
+}
+
+/*
+ * We support neither the second argument (NUMA node), nor the third (obsolete
+ * pre-2.6.24 caching functionality which was ultimately broken).
+ */
+long
+lx_getcpu(unsigned int *cpu, uintptr_t p2, uintptr_t p3)
+{
+	psinfo_t psinfo;
+	int procfd;
+	unsigned int curcpu;
+
+	if ((procfd = open("/native/proc/self/psinfo", O_RDONLY)) == -1)
+		return (-errno);
+
+	if (read(procfd, &psinfo, sizeof (psinfo_t)) == -1)
+		return (-errno);
+
+	curcpu = psinfo.pr_lwp.pr_onpro;
+
+	return ((uucopy(&curcpu, cpu, sizeof (curcpu)) != 0) ? -errno : 0);
 }
 
 long

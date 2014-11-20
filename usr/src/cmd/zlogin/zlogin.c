@@ -23,6 +23,7 @@
  * Copyright 2013 DEY Storage Systems, Inc.
  * Copyright (c) 2014 Gary Mills
  * Copyright 2014 Nexenta Systems, Inc. All rights reserved.
+ * Copyright 2014 Joyent, Inc. All rights reserved.
  */
 
 /*
@@ -35,7 +36,9 @@
  *   loop between parent and child processes takes care of the interactive
  *   session.  In this mode, login(1) (and its -c option, which means
  *   "already authenticated") is employed to take care of the initialization
- *   of the user's session.
+ *   of the user's session.  Interactive login can also be forced when running
+ *   a specific command by specifying the -i option; for example, the user
+ *   could issue 'zlogin -i my-zone /bin/sh'.
  *
  * - "non-interactive login" is similar to su(1M); the user could issue
  *   'zlogin my-zone ls -l' and the command would be run as specified.
@@ -122,7 +125,8 @@ static boolean_t forced_login = B_FALSE;
 #define	TEXT_DOMAIN	"SYS_TEST"	/* Use this only if it wasn't */
 #endif
 
-#define	SUPATH	"/usr/bin/su"
+#define	SUPATH1	"/usr/bin/su"
+#define	SUPATH2	"/bin/su"
 #define	FAILSAFESHELL	"/sbin/sh"
 #define	DEFAULTSHELL	"/sbin/sh"
 #define	DEF_PATH	"/usr/sbin:/usr/bin"
@@ -152,7 +156,7 @@ static boolean_t forced_login = B_FALSE;
 static void
 usage(void)
 {
-	(void) fprintf(stderr, gettext("usage: %s [ -nQCES ] [ -e cmdchar ] "
+	(void) fprintf(stderr, gettext("usage: %s [ -inQCES ] [ -e cmdchar ] "
 	    "[-l user] zonename [command [args ...] ]\n"), pname);
 	exit(2);
 }
@@ -1098,7 +1102,7 @@ zone_login_cmd(brand_handle_t bh, const char *login)
  * checks).
  */
 static char **
-prep_args(brand_handle_t bh, const char *login, char **argv)
+prep_args(brand_handle_t bh, char *zonename, const char *login, char **argv)
 {
 	int argc = 0, a = 0, i, n = -1;
 	char **new_argv;
@@ -1128,11 +1132,37 @@ prep_args(brand_handle_t bh, const char *login, char **argv)
 
 			new_argv[a++] = FAILSAFESHELL;
 		} else {
+			struct stat sb;
+			char zonepath[MAXPATHLEN];
+			char supath[MAXPATHLEN];
+
 			n = 5;
 			if ((new_argv = malloc(sizeof (char *) * n)) == NULL)
 				return (NULL);
 
-			new_argv[a++] = SUPATH;
+			if (zone_get_zonepath(zonename, zonepath,
+			    sizeof (zonepath)) != Z_OK) {
+				zerror(gettext("unable to determine zone "
+				    "path"));
+				return (NULL);
+			}
+
+			(void) snprintf(supath, sizeof (supath), "%s/root/%s",
+			    zonepath, SUPATH1);
+			if (stat(supath, &sb) == 0) {
+				new_argv[a++] = SUPATH1;
+			} else {
+				(void) snprintf(supath, sizeof (supath),
+				    "%s/root/%s", zonepath, SUPATH2);
+				if (stat(supath, &sb) == 0) {
+					new_argv[a++] = SUPATH2;
+				} else {
+					zerror(gettext("unable to find 'su' "
+					    "command"));
+					return (NULL);
+				}
+			}
+
 			if (strcmp(login, "root") != 0) {
 				new_argv[a++] = "-";
 				n++;
@@ -1729,6 +1759,7 @@ main(int argc, char **argv)
 	zoneid_t zoneid;
 	zone_state_t st;
 	char *login = "root";
+	int iflag = 0;
 	int lflag = 0;
 	int nflag = 0;
 	char *zonename = NULL;
@@ -1753,7 +1784,7 @@ main(int argc, char **argv)
 	(void) getpname(argv[0]);
 	username = get_username();
 
-	while ((arg = getopt(argc, argv, "nECR:Se:l:Q")) != EOF) {
+	while ((arg = getopt(argc, argv, "inECR:Se:l:Q")) != EOF) {
 		switch (arg) {
 		case 'C':
 			console = 1;
@@ -1781,6 +1812,9 @@ main(int argc, char **argv)
 			break;
 		case 'e':
 			set_cmdchar(optarg);
+			break;
+		case 'i':
+			iflag = 1;
 			break;
 		case 'l':
 			login = optarg;
@@ -1822,6 +1856,11 @@ main(int argc, char **argv)
 
 	}
 
+	if (iflag !=0 && nflag != 0) {
+		zerror(gettext("-i and -n flags are incompatible"));
+		usage();
+	}
+
 	if (failsafe != 0 && lflag != 0) {
 		zerror(gettext("-l may not be specified for failsafe login"));
 		usage();
@@ -1849,7 +1888,8 @@ main(int argc, char **argv)
 		/* zone name and process name, and possibly some args */
 		zonename = argv[optind];
 		proc_args = &argv[optind + 1];
-		interactive = 0;
+		if (iflag && isatty(STDIN_FILENO))
+			interactive = 1;
 	} else {
 		usage();
 	}
@@ -2041,7 +2081,7 @@ main(int argc, char **argv)
 		return (1);
 	}
 
-	if ((new_args = prep_args(bh, login, proc_args)) == NULL) {
+	if ((new_args = prep_args(bh, zonename, login, proc_args)) == NULL) {
 		zperror(gettext("could not assemble new arguments"));
 		brand_close(bh);
 		return (1);
@@ -2242,7 +2282,7 @@ main(int argc, char **argv)
 		 * we can simply skip it.  If future brands don't fall into
 		 * either category, we'll have to add a per-brand utmpx
 		 * setup hook.
- 		 */
+		 */
 		if (!failsafe && (strcmp(zonebrand, "lx") != 0))
 			if (setup_utmpx(slaveshortname) == -1)
 				return (1);

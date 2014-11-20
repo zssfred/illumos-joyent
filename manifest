@@ -349,7 +349,6 @@ f etc/init.d/PRESERVE 0744 root sys
 f etc/init.d/README 0644 root sys
 f etc/init.d/acct 0744 root sys
 f etc/init.d/devlinks 0744 root sys
-f etc/init.d/dhcp 0744 root sys
 f etc/init.d/dodatadm.udaplt 0744 root sys
 f etc/init.d/drvconfig 0744 root sys
 f etc/init.d/ldap.client 0744 root sys
@@ -1341,9 +1340,7 @@ s lib/libdevid.so=libdevid.so.1
 f lib/libdevinfo.so.1 0755 root bin
 s lib/libdevinfo.so=libdevinfo.so.1
 f lib/libdhcpagent.so.1 0755 root bin
-s lib/libdhcpagent.so=libdhcpagent.so.1
 f lib/libdhcputil.so.1 0755 root bin
-s lib/libdhcputil.so=libdhcputil.so.1
 f lib/libdl.so.1 0755 root bin
 s lib/libdl.so=libdl.so.1
 f lib/libdladm.so.1 0755 root bin
@@ -2630,19 +2627,6 @@ f usr/include/device_info.h 0644 root bin
 f usr/include/devid.h 0644 root bin
 f usr/include/devmgmt.h 0644 root bin
 f usr/include/devpoll.h 0644 root bin
-f usr/include/dhcp_hostconf.h 0644 root bin
-f usr/include/dhcp_impl.h 0644 root bin
-f usr/include/dhcp_inittab.h 0644 root bin
-f usr/include/dhcp_stable.h 0644 root bin
-f usr/include/dhcp_svc_confkey.h 0644 root bin
-f usr/include/dhcp_svc_confopt.h 0644 root bin
-f usr/include/dhcp_svc_private.h 0644 root bin
-f usr/include/dhcp_svc_public.h 0644 root bin
-f usr/include/dhcp_symbol.h 0644 root bin
-f usr/include/dhcp_symbol_common.h 0644 root bin
-f usr/include/dhcpagent_ipc.h 0644 root bin
-f usr/include/dhcpagent_util.h 0644 root bin
-f usr/include/dhcpmsg.h 0644 root bin
 f usr/include/dial.h 0644 root bin
 f usr/include/directory.h 0644 root bin
 f usr/include/dirent.h 0644 root bin
@@ -4269,7 +4253,6 @@ f usr/include/sys/sunldi.h 0644 root bin
 f usr/include/sys/sunldi_impl.h 0644 root bin
 f usr/include/sys/sunmdi.h 0644 root bin
 f usr/include/sys/sunndi.h 0644 root bin
-f usr/include/sys/sunos_dhcp_class.h 0644 root bin
 f usr/include/sys/sunpm.h 0644 root bin
 f usr/include/sys/suntpi.h 0644 root bin
 f usr/include/sys/suntty.h 0644 root bin
@@ -5073,6 +5056,10 @@ f usr/lib/brand/lx/amd64/lx_librtld_db.so.1 0755 root root
 f usr/lib/brand/lx/amd64/lx_nametoaddr.so.1 0755 root root
 f usr/lib/brand/lx/amd64/lx_thunk.so.1 0755 root root
 f usr/lib/brand/lx/amd64/lx_vdso.so.1 0755 root root
+d usr/lib/brand/lx/ld 0755 root root
+f usr/lib/brand/lx/ld/ld.config 0755 root root
+d usr/lib/brand/lx/ld/64 0755 root root
+f usr/lib/brand/lx/ld/64/ld.config 0755 root root
 f usr/lib/brand/lx/etc_default_nfs 0444 root root
 f usr/lib/brand/lx/etc_netconfig 0444 root root
 f usr/lib/brand/lx/ifconfig 0755 root root
@@ -5987,23 +5974,12 @@ f usr/lib/inet/amd64/in.iked 0555 root bin
 f usr/lib/inet/certdb 0555 root bin
 f usr/lib/inet/certlocal 0555 root bin
 f usr/lib/inet/certrldb 0555 root bin
-d usr/lib/inet/dhcp 0755 root bin
-d usr/lib/inet/dhcp/nsu 0755 root bin
-f usr/lib/inet/dhcp/nsu/rfc2136.so.1 0755 root bin
-d usr/lib/inet/dhcp/svc 0755 root bin
-f usr/lib/inet/dhcp/svc/ds_SUNWbinfiles.so.1 0755 root bin
-s usr/lib/inet/dhcp/svc/ds_SUNWbinfiles.so=ds_SUNWbinfiles.so.1
-f usr/lib/inet/dhcp/svc/ds_SUNWfiles.so.0 0755 root bin
-f usr/lib/inet/dhcp/svc/ds_SUNWfiles.so.1 0755 root bin
-s usr/lib/inet/dhcp/svc/ds_SUNWfiles.so=ds_SUNWfiles.so.1
-f usr/lib/inet/dsvclockd 0555 root bin
 d usr/lib/inet/i86 0755 root bin
 d usr/lib/inet/ilb 0755 root bin
 f usr/lib/inet/ilb/ilb_probe 0555 root bin
 f usr/lib/inet/ilbd 0555 root bin
 f usr/lib/inet/in.chargend 0555 root bin
 f usr/lib/inet/in.daytimed 0555 root bin
-f usr/lib/inet/in.dhcpd 0555 root bin
 f usr/lib/inet/in.discardd 0555 root bin
 f usr/lib/inet/in.echod 0555 root bin
 h usr/lib/inet/in.iked=usr/lib/isaexec
@@ -6167,11 +6143,7 @@ s usr/lib/libdevid.so=../../lib/libdevid.so.1
 s usr/lib/libdevinfo.so.1=../../lib/libdevinfo.so.1
 s usr/lib/libdevinfo.so=../../lib/libdevinfo.so.1
 s usr/lib/libdhcpagent.so.1=../../lib/libdhcpagent.so.1
-s usr/lib/libdhcpagent.so=../../lib/libdhcpagent.so.1
-f usr/lib/libdhcpsvc.so.1 0755 root bin
-s usr/lib/libdhcpsvc.so=libdhcpsvc.so.1
 s usr/lib/libdhcputil.so.1=../../lib/libdhcputil.so.1
-s usr/lib/libdhcputil.so=../../lib/libdhcputil.so.1
 f usr/lib/libdisasm.so.1 0755 root bin
 s usr/lib/libdisasm.so=libdisasm.so.1
 f usr/lib/libdiskmgt.so.1 0755 root bin
@@ -10375,7 +10347,6 @@ f usr/sbin/fuser 0555 root bin
 f usr/sbin/fwflash 0555 root bin
 f usr/sbin/getdevpolicy 0555 root sys
 f usr/sbin/getmajor 0755 root sys
-f usr/sbin/gettable 0555 root bin
 f usr/sbin/groupadd 0555 root sys
 f usr/sbin/groupdel 0555 root sys
 f usr/sbin/groupmod 0555 root sys
@@ -10385,7 +10356,6 @@ f usr/sbin/gsscred 0555 root sys
 f usr/sbin/halt 0755 root bin
 s usr/sbin/hostconfig=../../sbin/hostconfig
 f usr/sbin/hotplug 0555 root bin
-f usr/sbin/htable 0555 root bin
 d usr/sbin/i86 0755 root bin
 f usr/sbin/idmap 0555 root bin
 f usr/sbin/if_mpadm 0555 root bin
@@ -11972,7 +11942,6 @@ f usr/share/man/man1m/getdev.1m 0444 root bin
 f usr/share/man/man1m/getdevpolicy.1m 0444 root bin
 f usr/share/man/man1m/getdgrp.1m 0444 root bin
 f usr/share/man/man1m/getent.1m 0444 root bin
-f usr/share/man/man1m/gettable.1m 0444 root bin
 f usr/share/man/man1m/getty.1m 0444 root bin
 f usr/share/man/man1m/getvol.1m 0444 root bin
 f usr/share/man/man1m/groupadd.1m 0444 root bin
@@ -11983,7 +11952,6 @@ f usr/share/man/man1m/gsscred.1m 0444 root bin
 f usr/share/man/man1m/gssd.1m 0444 root bin
 f usr/share/man/man1m/halt.1m 0444 root bin
 f usr/share/man/man1m/hostconfig.1m 0444 root bin
-f usr/share/man/man1m/htable.1m 0444 root bin
 f usr/share/man/man1m/id.1m 0444 root bin
 f usr/share/man/man1m/idmap.1m 0444 root bin
 f usr/share/man/man1m/idmapd.1m 0444 root bin
@@ -13678,22 +13646,23 @@ s usr/share/man/man3c/uconv_u32tou16.3c=uconv_u16tou32.3c
 s usr/share/man/man3c/uconv_u32tou8.3c=uconv_u16tou32.3c
 s usr/share/man/man3c/uconv_u8tou16.3c=uconv_u16tou32.3c
 s usr/share/man/man3c/uconv_u8tou32.3c=uconv_u16tou32.3c
-s usr/share/man/man3c/ucred_free.3c=ucred_get.3c
-f usr/share/man/man3c/ucred_get.3c 0444 root bin
-s usr/share/man/man3c/ucred_getegid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_geteuid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getgroups.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getlabel.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getpflags.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getpid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getprivset.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getprojid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getrgid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getruid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getsgid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getsuid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_getzoneid.3c=ucred_get.3c
-s usr/share/man/man3c/ucred_size.3c=ucred_get.3c
+f usr/share/man/man3c/ucred.3c 0444 root bin
+s usr/share/man/man3c/ucred_free.3c=ucred.3c
+s usr/share/man/man3c/ucred_get.3c=ucred.3c 0444 root bin
+s usr/share/man/man3c/ucred_getegid.3c=ucred.3c
+s usr/share/man/man3c/ucred_geteuid.3c=ucred.3c
+s usr/share/man/man3c/ucred_getgroups.3c=ucred.3c
+s usr/share/man/man3c/ucred_getlabel.3c=ucred.3c
+s usr/share/man/man3c/ucred_getpflags.3c=ucred.3c
+s usr/share/man/man3c/ucred_getpid.3c=ucred.3c
+s usr/share/man/man3c/ucred_getprivset.3c=ucred.3c
+s usr/share/man/man3c/ucred_getprojid.3c=ucred.3c
+s usr/share/man/man3c/ucred_getrgid.3c=ucred.3c
+s usr/share/man/man3c/ucred_getruid.3c=ucred.3c
+s usr/share/man/man3c/ucred_getsgid.3c=ucred.3c
+s usr/share/man/man3c/ucred_getsuid.3c=ucred.3c
+s usr/share/man/man3c/ucred_getzoneid.3c=ucred.3c
+s usr/share/man/man3c/ucred_size.3c=ucred.3c
 s usr/share/man/man3c/ulckpwdf.3c=lckpwdf.3c
 s usr/share/man/man3c/ulltostr.3c=strtol.3c
 f usr/share/man/man3c/ungetc.3c 0444 root bin
@@ -13740,8 +13709,12 @@ s usr/share/man/man3c/watof.3c=wcstod.3c
 s usr/share/man/man3c/watoi.3c=wcstol.3c
 s usr/share/man/man3c/watol.3c=wcstol.3c
 s usr/share/man/man3c/watoll.3c=wcstol.3c
+f usr/share/man/man3c/wcpcpy.3c 0444 root bin
+s usr/share/man/man3c/wcpncpy.3c=wcpcpy.3c
 f usr/share/man/man3c/wcrtomb.3c 0444 root bin
 s usr/share/man/man3c/wcrtomb_l.3c=wcrtomb.3c
+f usr/share/man/man3c/wcscasecmp.3c 0444 root bin
+s usr/share/man/man3c/wcscasecmp_l.3c=wcscasecmp.3c
 s usr/share/man/man3c/wcscat.3c=wcstring.3c
 s usr/share/man/man3c/wcschr.3c=wcstring.3c
 s usr/share/man/man3c/wcscmp.3c=wcstring.3c
@@ -13749,12 +13722,16 @@ f usr/share/man/man3c/wcscoll.3c 0444 root bin
 s usr/share/man/man3c/wcscoll_l.3c=wcscoll.3c
 s usr/share/man/man3c/wcscpy.3c=wcstring.3c
 s usr/share/man/man3c/wcscspn.3c=wcstring.3c
+f usr/share/man/man3c/wcsdup.3c 0444 root bin
 s usr/share/man/man3c/wcsetno.3c=cset.3c
 f usr/share/man/man3c/wcsftime.3c 0444 root bin
-s usr/share/man/man3c/wcslen.3c=wcstring.3c
+f usr/share/man/man3c/wcslen.3c 0444 root bin
+s usr/share/man/man3c/wcsncasecmp.3c=wcscasecmp.3c
+s usr/share/man/man3c/wcsncasecmp_l.3c=wcscasecmp.3c
 s usr/share/man/man3c/wcsncat.3c=wcstring.3c
 s usr/share/man/man3c/wcsncmp.3c=wcstring.3c
 s usr/share/man/man3c/wcsncpy.3c=wcstring.3c
+s usr/share/man/man3c/wcsnlen.3c=wcslen.3c
 s usr/share/man/man3c/wcsnrtombs.3c=wcsrtombs.3c
 s usr/share/man/man3c/wcsnrtombs_l.3c=wcsrtombs.3c
 s usr/share/man/man3c/wcspbrk.3c=wcstring.3c
@@ -17285,6 +17262,13 @@ s usr/share/man/man3socket/setservent.3socket=getservbyname.3socket
 s usr/share/man/man3socket/setsockopt.3socket=getsockopt.3socket
 s usr/share/man/man3socket/setsourcefilter.3socket=getsourcefilter.3socket
 f usr/share/man/man3socket/shutdown.3socket 0444 root bin
+f usr/share/man/man3socket/sockaddr.3socket 0444 root bin
+s usr/share/man/man3socket/sockaddr_dl.3socket=sockaddr.3socket
+s usr/share/man/man3socket/sockaddr_in.3socket=sockaddr.3socket
+s usr/share/man/man3socket/sockaddr_in6.3socket=sockaddr.3socket
+s usr/share/man/man3socket/sockaddr_ll.3socket=sockaddr.3socket
+s usr/share/man/man3socket/sockaddr_storage.3socket=sockaddr.3socket
+s usr/share/man/man3socket/sockaddr_un.3socket=sockaddr.3socket
 f usr/share/man/man3socket/socket.3socket 0444 root bin
 f usr/share/man/man3socket/socketpair.3socket 0444 root bin
 f usr/share/man/man3socket/spray.3socket 0444 root bin
@@ -17990,9 +17974,6 @@ s usr/share/man/man4/devid_cache.4=devices.4
 s usr/share/man/man4/devname_cache.4=devices.4
 f usr/share/man/man4/dfstab.4 0444 root bin
 f usr/share/man/man4/dhcp_inittab.4 0444 root bin
-f usr/share/man/man4/dhcp_network.4 0444 root bin
-f usr/share/man/man4/dhcpsvc.conf.4 0444 root bin
-f usr/share/man/man4/dhcptab.4 0444 root bin
 f usr/share/man/man4/dialups.4 0444 root bin
 s usr/share/man/man4/dir.4=dir_ufs.4
 f usr/share/man/man4/dir_ufs.4 0444 root bin
@@ -18210,7 +18191,6 @@ f usr/share/man/man5/crypt_sunmd5.5 0444 root bin
 f usr/share/man/man5/crypt_unix.5 0444 root bin
 f usr/share/man/man5/device_clean.5 0444 root bin
 f usr/share/man/man5/dhcp.5 0444 root bin
-f usr/share/man/man5/dhcp_modules.5 0444 root bin
 f usr/share/man/man5/environ.5 0444 root bin
 f usr/share/man/man5/epoll.5 0444 root bin
 f usr/share/man/man5/eqn.5 0444 root bin
@@ -19192,6 +19172,7 @@ f usr/share/man/man9f/devmap_set_ctx_timeout.9f 0444 root bin
 f usr/share/man/man9f/devmap_setup.9f 0444 root bin
 s usr/share/man/man9f/devmap_umem_setup.9f=devmap_devmem_setup.9f
 f usr/share/man/man9f/devmap_unload.9f 0444 root bin
+s usr/share/man/man9f/dev_err.9f=cmn_err.9f
 f usr/share/man/man9f/disksort.9f 0444 root bin
 f usr/share/man/man9f/dlbindack.9f 0444 root bin
 s usr/share/man/man9f/dlerrorack.9f=dlbindack.9f
@@ -19750,6 +19731,7 @@ s usr/share/man/man9f/va_copy.9f=va_arg.9f
 s usr/share/man/man9f/va_end.9f=va_arg.9f
 s usr/share/man/man9f/va_start.9f=va_arg.9f
 s usr/share/man/man9f/vcmn_err.9f=cmn_err.9f
+s usr/share/man/man9f/vzcmn_err.9f=cmn_err.9f
 f usr/share/man/man9f/vsprintf.9f 0444 root bin
 s usr/share/man/man9f/wr.9f=WR.9f
 s usr/share/man/man9f/zcmn_err.9f=cmn_err.9f

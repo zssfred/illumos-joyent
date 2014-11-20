@@ -721,6 +721,36 @@ ict_einval(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
 }
 
 static int
+/* ARGSUSED */
+ict_fionbio(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
+{
+	int flags;
+	int opt, *optp = (int *)arg;
+
+	assert(cmd == FIONBIO);
+
+	if (uucopy(optp, &opt, sizeof (opt)) != 0)
+		return (-errno);
+
+	/*
+	 * Emulate FIONBIO in terms of O_NONBLOCK, as Linux does.
+	 *
+	 * The get/set behavior is a potential race and should be moved into
+	 * the kernel for safe locking at some point.
+	 */
+	if ((flags = fcntl(fd, F_GETFL) < 0))
+		return (-errno);
+	if (opt == 0)
+		flags = flags & ~(O_NONBLOCK);
+	else
+		flags = flags | O_NONBLOCK;
+	if (fcntl(fd, F_SETFL, flags) < 0)
+		return (-errno);
+
+	return (0);
+}
+
+static int
 /*ARGSUSED*/
 ict_pass(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
 {
@@ -1188,6 +1218,27 @@ ict_tiocgpgrp(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
 	lx_debug("\tioctl(%d, 0x%x - %s, ...)",
 	    fd, TIOCGPGRP, "TIOCGPGRP");
 	ret = ioctl(fd, TIOCGPGRP, arg);
+	return ((ret < 0) ? -errno : ret);
+}
+
+static int
+/*ARGSUSED*/
+ict_tiocspgrp(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
+{
+	pid_t	lpid, spid;
+	int	ret;
+
+	assert(cmd == LX_TIOCSPGRP);
+	lx_debug("\tioctl(%d, 0x%x - %s, ...)",
+	    fd, TIOCSPGRP, "TIOCSPGRP");
+
+	/* Converting to the illumos pid is necessary */
+	if (uucopy((pid_t *)arg, &lpid, sizeof (lpid)) < 0)
+		return (-errno);
+	if ((ret = lx_lpid_to_spid(lpid, &spid)) < 0)
+		return (ret);
+
+	ret = ioctl(fd, TIOCSPGRP, &spid);
 	return ((ret < 0) ? -errno : ret);
 }
 
@@ -2450,7 +2501,7 @@ static oss_fmt_translator_t oft_table[] = {
 /* All files will need to support these ioctls. */
 #define	IOC_CMD_TRANSLATORS_ALL						\
 	IOC_CMD_TRANSLATOR_NONE(FIONREAD)				\
-	IOC_CMD_TRANSLATOR_NONE(FIONBIO)
+	IOC_CMD_TRANSLATOR_FILTER(FIONBIO,		ict_fionbio)
 
 /* Any files supporting streams semantics will need these ioctls. */
 #define	IOC_CMD_TRANSLATORS_STREAMS					\
@@ -2458,7 +2509,7 @@ static oss_fmt_translator_t oft_table[] = {
 	IOC_CMD_TRANSLATOR_NONE(TCFLSH)					\
 	IOC_CMD_TRANSLATOR_NONE(TIOCEXCL)				\
 	IOC_CMD_TRANSLATOR_NONE(TIOCNXCL)				\
-	IOC_CMD_TRANSLATOR_NONE(TIOCSPGRP)				\
+	IOC_CMD_TRANSLATOR_CUSTOM(LX_TIOCSPGRP,		ict_tiocspgrp)	\
 	IOC_CMD_TRANSLATOR_NONE(TIOCSTI)				\
 	IOC_CMD_TRANSLATOR_NONE(TIOCSWINSZ)				\
 	IOC_CMD_TRANSLATOR_NONE(TIOCMBIS)				\

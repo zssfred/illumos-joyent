@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2013, Joyent Inc. All rights reserved.
+ * Copyright 2014, Joyent Inc. All rights reserved.
  */
 
 /*
@@ -2619,6 +2619,7 @@ zone_init(void)
 	zone0.zone_ntasks = 1;
 	mutex_exit(&p0.p_lock);
 	zone0.zone_restart_init = B_TRUE;
+	zone0.zone_init_status = -1;
 	zone0.zone_brand = &native_brand;
 	rctl_prealloc_destroy(gp);
 	/*
@@ -2698,6 +2699,8 @@ zone_init(void)
 static void
 zone_free(zone_t *zone)
 {
+	zone_dl_t *zdl;
+
 	ASSERT(zone != global_zone);
 	ASSERT(zone->zone_ntasks == 0);
 	ASSERT(zone->zone_nlwps == 0);
@@ -2726,6 +2729,19 @@ zone_free(zone_t *zone)
 	list_destroy(&zone->zone_ref_list);
 	zone_free_zsd(zone);
 	zone_free_datasets(zone);
+
+	/*
+	 * While dlmgmtd should have removed all of these, it could have left
+	 * something behind or crashed. In which case it's not safe for us to
+	 * assume that the list is empty which list_destroy() will ASSERT. We
+	 * clean up for our userland comrades which may have crashed, or worse,
+	 * been disabled by SMF.
+	 */
+	while ((zdl = list_remove_head(&zone->zone_dl_list)) != NULL) {
+		if (zdl->zdl_net != NULL)
+			nvlist_free(zdl->zdl_net);
+		kmem_free(zdl, sizeof (zone_dl_t));
+	}
 	list_destroy(&zone->zone_dl_list);
 
 	if (zone->zone_rootvp != NULL)
@@ -4798,6 +4814,7 @@ zone_create(const char *zone_name, const char *zone_root,
 	zone->zone_ncpus = 0;
 	zone->zone_ncpus_online = 0;
 	zone->zone_restart_init = B_TRUE;
+	zone->zone_init_status = -1;
 	zone->zone_brand = &native_brand;
 	zone->zone_initname = NULL;
 	mutex_init(&zone->zone_lock, NULL, MUTEX_DEFAULT, NULL);
@@ -6917,6 +6934,7 @@ zone_ki_call_zoneadmd(struct zarg *zargp)
 	bcopy(zone->zone_name, zone_name, zone_namelen);
 	zoneid = zone->zone_id;
 	uniqid = zone->zone_uniqid;
+	arg.status = zone->zone_init_status;
 	/*
 	 * zoneadmd may be down, but at least we can empty out the zone.
 	 * We can ignore the return value of zone_empty() since we're called

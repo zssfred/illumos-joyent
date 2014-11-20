@@ -105,9 +105,6 @@ _MANFILES=	6to4relay.1m		\
 		dfshares.1m		\
 		dfshares_nfs.1m		\
 		dhcpagent.1m		\
-		dhcpconfig.1m		\
-		dhcpmgr.1m		\
-		dhtadm.1m		\
 		disks.1m		\
 		diskscan.1m		\
 		dispadmin.1m		\
@@ -123,7 +120,6 @@ _MANFILES=	6to4relay.1m		\
 		dscfgadm.1m		\
 		dscfglockd.1m		\
 		dsstat.1m		\
-		dsvclockd.1m		\
 		dtrace.1m		\
 		dumpadm.1m		\
 		editmap.1m		\
@@ -165,7 +161,6 @@ _MANFILES=	6to4relay.1m		\
 		getdevpolicy.1m		\
 		getdgrp.1m		\
 		getent.1m		\
-		gettable.1m		\
 		getty.1m		\
 		getvol.1m		\
 		groupadd.1m		\
@@ -182,7 +177,6 @@ _MANFILES=	6to4relay.1m		\
 		halt.1m			\
 		hextoalabel.1m		\
 		hostconfig.1m		\
-		htable.1m		\
 		ickey.1m		\
 		id.1m			\
 		idmap.1m		\
@@ -199,7 +193,6 @@ _MANFILES=	6to4relay.1m		\
 		in.chargend.1m		\
 		in.comsat.1m		\
 		in.daytimed.1m		\
-		in.dhcpd.1m		\
 		in.discardd.1m		\
 		in.echod.1m		\
 		in.fingerd.1m		\
@@ -380,7 +373,6 @@ _MANFILES=	6to4relay.1m		\
 		plockstat.1m		\
 		pmadm.1m		\
 		pmconfig.1m		\
-		pntadm.1m		\
 		polkit-is-privileged.1m \
 		pooladm.1m		\
 		poolbind.1m		\

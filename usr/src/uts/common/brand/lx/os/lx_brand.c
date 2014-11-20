@@ -185,6 +185,15 @@ lx_proc_exit(proc_t *p, klwp_t *lwp)
 	 */
 	if (lwp != NULL)
 		lx_exitlwp(lwp);
+
+	/*
+	 * The call path here is:
+	 *    proc_exit -> brand_clearbrand -> b_proc_exit
+	 * and then brand_clearbrand will set p_brand to be the native brand.
+	 * We are done with our brand data but we don't free it here since
+	 * that is done for us by proc_exit due to the fact that we have a
+	 * b_exit_with_sig handler setup.
+	 */
 	p->p_exit_data = sig;
 }
 
@@ -544,39 +553,33 @@ lx_psig_to_proc(proc_t *p, kthread_t *t, int sig)
 #ifdef DEBUG
 	/*
 	 * Debug check to see if we have the correct fsbase.
+	 *
+	 * Note that it is not guaranteed that our %fsbase is loaded (i.e.
+	 * rdmsr(MSR_AMD_FSBASE) won't necessarily return our expected fsbase)
+	 * when this function runs. While it is usually loaded, it's possible
+	 * to be in this function via the following sequence:
+	 *    we go off-cpu in the kernel
+	 *    another process runs in user-land and its fsbase gets loaded
+	 *    we go on-cpu to run and post a signal, but since we haven't run
+	 *	in user-land yet, our fsbase has not yet been loaded by
+	 *	update_sregs.
 	 */
-	ulong_t curr_base = rdmsr(MSR_AMD_FSBASE);
-
-	if (curr_base != 0) {
-		if (lwpd->br_ntv_syscall == 0 && lwpd->br_lx_fsbase != 0) {
-			/* should have Linux fsbase */
-			if (lwpd->br_lx_fsbase != curr_base) {
-				DTRACE_PROBE2(brand__lx__psig__lx__fsb,
-				    uintptr_t, lwpd->br_lx_fsbase,
-				    uintptr_t, curr_base);
-			}
-
-			if (lwpd->br_lx_fsbase != pcb->pcb_fsbase) {
-				DTRACE_PROBE2(brand__lx__psig__lx__pcb,
-				    uintptr_t, lwpd->br_lx_fsbase,
-				    uintptr_t, pcb->pcb_fsbase);
-			}
-
+	if (lwpd->br_ntv_syscall == 0 && lwpd->br_lx_fsbase != 0) {
+		/* should have Linux fsbase */
+		if (lwpd->br_lx_fsbase != pcb->pcb_fsbase) {
+			DTRACE_PROBE2(brand__lx__psig__lx__pcb,
+			    uintptr_t, lwpd->br_lx_fsbase,
+			    uintptr_t, pcb->pcb_fsbase);
 		}
 
-		if (lwpd->br_ntv_syscall == 1 && lwpd->br_ntv_fsbase != 0) {
-			/* should have Illumos fsbase */
-			if (lwpd->br_ntv_fsbase != curr_base) {
-				DTRACE_PROBE2(brand__lx__psig__ntv__fsb,
-				    uintptr_t, lwpd->br_ntv_fsbase,
-				    uintptr_t, curr_base);
-			}
+	}
 
-			if (lwpd->br_ntv_fsbase != pcb->pcb_fsbase) {
-				DTRACE_PROBE2(brand__lx__psig__ntv__pcb,
-				    uintptr_t, lwpd->br_ntv_fsbase,
-				    uintptr_t, pcb->pcb_fsbase);
-			}
+	if (lwpd->br_ntv_syscall == 1 && lwpd->br_ntv_fsbase != 0) {
+		/* should have Illumos fsbase */
+		if (lwpd->br_ntv_fsbase != pcb->pcb_fsbase) {
+			DTRACE_PROBE2(brand__lx__psig__ntv__pcb,
+			    uintptr_t, lwpd->br_ntv_fsbase,
+			    uintptr_t, pcb->pcb_fsbase);
 		}
 	}
 #endif
@@ -602,7 +605,6 @@ lx_psig_to_proc(proc_t *p, kthread_t *t, int sig)
 		 * code in lx_brandsys().
 		 */
 		pcb->pcb_fsbase = lwpd->br_ntv_fsbase;
-		wrmsr(MSR_AMD_FSBASE, lwpd->br_ntv_fsbase);
 
 		/* Ensure that we go out via update_sregs */
 		pcb->pcb_rupdate = 1;
@@ -661,9 +663,6 @@ lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
 	int error;
 	lx_brand_registration_t reg;
 	lx_lwp_data_t *lwpd;
-#if defined(__amd64) && defined(DEBUG)
-	ulong_t curr_base;
-#endif
 
 	/*
 	 * There is one operation that is suppored for non-branded
@@ -806,17 +805,10 @@ lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
 	/*
 	 * The B_TRUSS_POINT subcommand is used so that we can make a no-op
 	 * syscall for debugging purposes (dtracing) from within the user-level
-	 * emulation. Enhanced in the lx brand to allow probing of fsbase.
+	 * emulation.
 	 */
 	case B_TRUSS_POINT:
-		DTRACE_PROBE1(brand__lx__rd__fsbase,
-		    uintptr_t, rdmsr(MSR_AMD_FSBASE));
-#if defined(__amd64)
-		lwpd = ttolxlwp(curthread);
-		*rval = lwpd->br_ntv_fsbase;
-#else
 		*rval = 0;
-#endif
 		return (0);
 
 	case B_LPID_TO_SPAIR:
@@ -855,15 +847,29 @@ lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
 
 	case B_SYSENTRY:
 		if (lx_systrace_enabled) {
-			uintptr_t args[6];
-
 			ASSERT(lx_systrace_entry_ptr != NULL);
 
-			if (copyin((void *)arg2, args, sizeof (args)) != 0)
-				return (EFAULT);
+			if (get_udatamodel() == DATAMODEL_NATIVE) {
+				uintptr_t a[6];
 
-			(*lx_systrace_entry_ptr)(arg1, args[0], args[1],
-			    args[2], args[3], args[4], args[5]);
+				if (copyin((void *)arg2, a, sizeof (a)) != 0)
+					return (EFAULT);
+
+				(*lx_systrace_entry_ptr)(arg1, a[0], a[1],
+				    a[2], a[3], a[4], a[5]);
+			}
+#if defined(_LP64)
+			else {
+				/* 32-bit userland on 64-bit kernel */
+				uint32_t a[6];
+
+				if (copyin((void *)arg2, a, sizeof (a)) != 0)
+					return (EFAULT);
+
+				(*lx_systrace_entry_ptr)(arg1, a[0], a[1],
+				    a[2], a[3], a[4], a[5]);
+			}
+#endif
 		}
 
 		lx_ptrace_fire();
@@ -986,36 +992,28 @@ lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
 		lwpd = ttolxlwp(curthread);
 		lwpd->br_ntv_syscall = 0;
 
-#ifdef DEBUG
-		/*
-		 * Debug check to see if we have the native fsbase. We should
-		 * since this syscall came from native code.
-		 */
-		curr_base = rdmsr(MSR_AMD_FSBASE);
-
-		if (curr_base != 0 && lwpd->br_ntv_fsbase != 0 &&
-		    lwpd->br_ntv_fsbase != curr_base) {
-			DTRACE_PROBE2(brand__lx__clr__ntv__fsb,
-			    uintptr_t, lwpd->br_ntv_fsbase,
-			    uintptr_t, curr_base);
-		}
-#endif
-
 		/*
 		 * If Linux fsbase has been set, restore it. The user-level
 		 * code only ever calls this in the 64-bit library.
 		 *
-		 * When we use wrmsr to set the correct fsbase here, and in
-		 * B_SIGNAL_RETURN, we also make sure we save the correct fsbase
-		 * in the pcb so that if we service an interrupt we will restore
-		 * the correct fsbase in update_sregs().
+		 * Note that it is not guaranteed that our %fsbase is loaded
+		 * (i.e. rdmsr(MSR_AMD_FSBASE) won't necessarily return our
+		 * expected fsbase) when this block runs. While it is usually
+		 * loaded, it's possible to be in this function via the
+		 * following sequence:
+		 *    we make the brandsys syscall and go off-cpu on entering
+		 *	the kernel
+		 *    another process runs in user-land and its fsbase gets
+		 *	loaded
+		 *    we go on-cpu to finish the syscall but since we haven't
+		 *	run again in user-land yet, our fsbase has not yet been
+		 *	reloaded by update_sregs
 		 */
 		if (lwpd->br_lx_fsbase != 0) {
 			klwp_t *lwp = ttolwp(t);
 			pcb_t *pcb = &lwp->lwp_pcb;
 
 			pcb->pcb_fsbase = lwpd->br_lx_fsbase;
-			wrmsr(MSR_AMD_FSBASE, lwpd->br_lx_fsbase);
 
 			/* Ensure that we go out via update_sregs */
 			pcb->pcb_rupdate = 1;
@@ -1039,30 +1037,6 @@ lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
 		lwpd->br_ntv_syscall = lwpd->br_scms & 0x1;
 		/* "pop" this value from the "stack" */
 		lwpd->br_scms >>= 1;
-
-#ifdef DEBUG
-		/*
-		 * Debug check to see if we have the native fsbase. We should
-		 * since this syscall came from native code.
-		 */
-		curr_base = rdmsr(MSR_AMD_FSBASE);
-
-		if (curr_base != 0 && lwpd->br_ntv_fsbase != 0) {
-			klwp_t *lwp = ttolwp(t);
-			pcb_t *pcb = &lwp->lwp_pcb;
-
-			if (lwpd->br_ntv_fsbase != curr_base) {
-				DTRACE_PROBE2(brand__lx__sigret__ntv__fsb,
-				    uintptr_t, lwpd->br_ntv_fsbase,
-				    uintptr_t, curr_base);
-			}
-			if (lwpd->br_ntv_fsbase != pcb->pcb_fsbase) {
-				DTRACE_PROBE2(brand__lx__sigret__ntv__pcb,
-				    uintptr_t, lwpd->br_ntv_fsbase,
-				    uintptr_t, pcb->pcb_fsbase);
-			}
-		}
-#endif
 
 		/*
 		 * If setting the mode to lx, make sure we fix up the context
@@ -1212,7 +1186,7 @@ lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
 	Ehdr		ehdr;
 	Addr		uphdr_vaddr;
 	intptr_t	voffset;
-	int		interp;
+	char		*interp;
 	uintptr_t	ldaddr = NULL;
 	int		i;
 	proc_t		*p = ttoproc(curthread);
@@ -1224,19 +1198,16 @@ lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
 	lx_elf_data_t	*edp =
 	    &((lx_proc_data_t *)ttoproc(curthread)->p_brand_data)->l_elf_data;
 	char		*lib_path = NULL;
-	char		*lx_linker_path = NULL;
 
 	ASSERT(ttoproc(curthread)->p_brand == &lx_brand);
 	ASSERT(ttoproc(curthread)->p_brand_data != NULL);
 
 	if (args->to_model == DATAMODEL_NATIVE) {
 		lib_path = LX_LIB_PATH;
-		lx_linker_path = LX_LINKER;
 	}
 #if defined(_LP64)
 	else {
 		lib_path = LX_LIB_PATH32;
-		lx_linker_path = LX_LINKER32;
 	}
 #endif
 
@@ -1325,6 +1296,10 @@ lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
 #endif
 	if (error != 0) {
 		restoreexecenv(&origenv, &orig_sigaltstack);
+
+		if (interp != NULL)
+			kmem_free(interp, MAXPATHLEN);
+
 		return (error);
 	}
 
@@ -1339,7 +1314,7 @@ lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
 	edp->ed_phent = ehdr.e_phentsize;
 	edp->ed_phnum = ehdr.e_phnum;
 
-	if (interp) {
+	if (interp != NULL) {
 		if (ehdr.e_type == ET_DYN) {
 			/*
 			 * This is a shared object executable, so we need to
@@ -1355,19 +1330,23 @@ lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
 		 * store relevant information about it in the aux vector, where
 		 * the brand library can find it.
 		 */
-		if ((error = lookupname(lx_linker_path, UIO_SYSSPACE, FOLLOW,
+		if ((error = lookupname(interp, UIO_SYSSPACE, FOLLOW,
 		    NULLVPP, &nvp))) {
-			uprintf("%s: not found.", lx_linker_path);
+			uprintf("%s: not found.", interp);
 			restoreexecenv(&origenv, &orig_sigaltstack);
+			kmem_free(interp, MAXPATHLEN);
 			return (error);
 		}
+
+		kmem_free(interp, MAXPATHLEN);
+		interp = NULL;
 
 		/*
 		 * map in the Linux linker
 		 */
 		if (args->to_model == DATAMODEL_NATIVE) {
 			error = mapexec_brand(nvp, args, &ehdr,
-			    &uphdr_vaddr, &voffset, exec_file, &interp, NULL,
+			    &uphdr_vaddr, &voffset, exec_file, NULL, NULL,
 			    NULL, NULL, NULL, &ldaddr);
 		}
 #if defined(_LP64)
@@ -1376,7 +1355,7 @@ lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
 			Elf32_Addr	uphdr_vaddr32;
 
 			error = mapexec32_brand(nvp, args, &ehdr32,
-			    &uphdr_vaddr32, &voffset, exec_file, &interp, NULL,
+			    &uphdr_vaddr32, &voffset, exec_file, NULL, NULL,
 			    NULL, NULL, NULL, &ldaddr);
 
 			Ehdr32to64(&ehdr32, &ehdr);
