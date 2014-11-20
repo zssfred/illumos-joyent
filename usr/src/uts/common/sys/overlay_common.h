@@ -56,6 +56,7 @@ typedef enum overlay_prop_prot {
 
 #define	OVERLAY_PROP_NAMELEN	64
 #define	OVERLAY_PROP_SIZEMAX	256
+#define	OVERLAY_STATUS_BUFLEN	256
 
 #ifdef __cplusplus
 }

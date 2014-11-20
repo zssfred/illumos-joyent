@@ -10199,6 +10199,7 @@ show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
 	return (DLADM_WALK_CONTINUE);
 }
 
+/* XXX Should be done in terms of ofmt */
 static int
 show_one_overlay_table(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 {
@@ -10208,6 +10209,44 @@ show_one_overlay_table(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 	    show_one_overlay_table_entry, arg);
 	(void) fflush(stdout);
 	return (ret == 0 ? DLADM_WALK_CONTINUE : DLADM_WALK_TERMINATE);
+}
+
+static void
+show_one_overlay_fma_cb(dladm_handle_t handle, datalink_id_t linkid,
+    dladm_overlay_status_t *stat, void *arg)
+{
+	const char *linkname = arg;
+
+	if (stat->dos_degraded == B_TRUE) {
+		printf("%-14s %-8s %s\n", linkname, "DEGRADED",
+		    stat->dos_fmamsg);
+	} else {
+		printf("%-14s %-8s -\n", linkname, "ONLINE");
+	}
+}
+
+/* XXX Should be done in terms of ofmt */
+static int
+show_one_overlay_fma(dladm_handle_t handle, datalink_id_t linkid, void *arg)
+{
+	dladm_status_t		status;
+	char			linkbuf[MAXLINKNAMELEN];
+	datalink_class_t	class;
+
+	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL, linkbuf,
+	    MAXLINKNAMELEN) != DLADM_STATUS_OK ||
+	    class != DATALINK_CLASS_OVERLAY) {
+		die("datalink %s is not an overlay device\n", linkbuf);
+	}
+
+	(void) printf("%-14s %-8s %s\n", "LINK", "STATUS", "DETAILS");
+	status = dladm_overlay_status(handle, linkid,
+	    show_one_overlay_fma_cb, linkbuf);
+	if (status != DLADM_STATUS_OK)
+		die_dlerr(status, "failed to obtain device status for %s",
+		    linkbuf);
+
+	return (DLADM_WALK_CONTINUE);
 }
 
 /* XXX Needs all the parseable, selectable options, etc. */
@@ -10221,8 +10260,11 @@ do_show_overlay(int argc, char *argv[], const char *use)
 
 
 	funcp = show_one_overlay;
-	while ((opt = getopt(argc, argv, ":t")) != -1) {
+	while ((opt = getopt(argc, argv, ":ft")) != -1) {
 		switch (opt) {
+		case 'f':
+			funcp = show_one_overlay_fma;
+			break;
 		case 't':
 			funcp = show_one_overlay_table;
 			break;

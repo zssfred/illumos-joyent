@@ -210,8 +210,9 @@ extern int libvarpd_overlay_info(varpd_impl_t *, datalink_id_t,
     overlay_plugin_dest_t *, uint64_t *);
 extern int libvarpd_overlay_associate(varpd_instance_t *);
 extern int libvarpd_overlay_disassociate(varpd_instance_t *);
-extern int libvarpd_overlay_degrade(varpd_instance_t *);
-extern int libvarpd_overlay_degrade_datalink(varpd_impl_t *, datalink_id_t);
+extern int libvarpd_overlay_degrade(varpd_instance_t *, const char *);
+extern int libvarpd_overlay_degrade_datalink(varpd_impl_t *, datalink_id_t,
+    const char *);
 extern int libvarpd_overlay_restore(varpd_instance_t *);
 extern int libvarpd_overlay_packet(varpd_impl_t *,
     const overlay_targ_lookup_t *, void *, size_t *);

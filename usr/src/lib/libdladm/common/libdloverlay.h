@@ -40,9 +40,23 @@ typedef struct dladm_overlay_point {
 	uint16_t		dop_port;
 } dladm_overlay_point_t;
 
+typedef struct dladm_overlay_status {
+	boolean_t	dos_degraded;
+	char		dos_fmamsg[256];
+} dladm_overlay_status_t;
+
 extern dladm_status_t dladm_overlay_create(dladm_handle_t, const char *,
     const char *, const char *, uint64_t, dladm_arg_list_t *, uint32_t);
 extern dladm_status_t dladm_overlay_delete(dladm_handle_t, datalink_id_t);
+
+/*
+ * XXX I don't really like this API, but I also have a feeling that this will
+ * change over time. I guess we could turf it given a lack of stability, but...
+ */
+typedef void (*dladm_overlay_status_f)(dladm_handle_t, datalink_id_t,
+    dladm_overlay_status_t *, void *);
+extern dladm_status_t dladm_overlay_status(dladm_handle_t, datalink_id_t,
+    dladm_overlay_status_f, void *);
 
 extern dladm_status_t dladm_overlay_cache_flush(dladm_handle_t, datalink_id_t);
 extern dladm_status_t dladm_overlay_cache_delete(dladm_handle_t, datalink_id_t,

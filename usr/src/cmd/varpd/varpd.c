@@ -302,10 +302,12 @@ varpd_cleanup(void)
 int
 main(int argc, char *argv[])
 {
-	int err, c, dfd;
+	int err, c, dfd, i;
 	const char *doorpath = VARPD_DEFAULT_DOOR;
 	sigset_t set;
 	struct sigaction act;
+	int nincpath = 0, nextincpath = 0;
+	char **incpath = NULL;
 
 	varpd_pname = basename(argv[0]);
 
@@ -323,13 +325,23 @@ main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, ":i:d:")) != -1) {
 		switch (c) {
 		case 'i':
-			err = libvarpd_plugin_load(varpd_handle, optarg);
-			if (err != 0) {
-				(void) fprintf(stderr,
-				    "failed to load from %s: %s\n",
-				    optarg, strerror(err));
-				return (1);
+			if (nextincpath == nincpath) {
+				if (nincpath == 0)
+					nincpath = 16;
+				else
+					nincpath *= 2;
+				incpath = realloc(incpath, sizeof (char *) *
+				    nincpath);
+				if (incpath == NULL) {
+					(void) fprintf(stderr, "failed to "
+					    "allocate memory for the %dth "
+					    "-I option: %s\n", nextincpath + 1,
+					    strerror(errno));
+				}
+
 			}
+			incpath[nextincpath] = optarg;
+			nextincpath++;
 			break;
 		case 'd':
 			doorpath = optarg;
@@ -345,6 +357,21 @@ main(int argc, char *argv[])
 	libvarpd_plugin_walk(varpd_handle, varpd_plugin_walk_cb, NULL);
 
 	dfd = varpd_daemonize();
+
+	/*
+	 * Now that we're in the child, go ahead and load all of our plug-ins.
+	 * We do this, in part, because these plug-ins may need threads of their
+	 * own and fork won't preserve those and we'd rather the plug-ins don't
+	 * have to learn about fork-handlers.
+	 */
+	for (i = 0; i < nextincpath; i++) {
+		err = libvarpd_plugin_load(varpd_handle, incpath[i]);
+		if (err != 0) {
+			(void) fprintf(stderr, "failed to load from %s: %s\n",
+			    optarg, strerror(err));
+			return (1);
+		}
+	}
 
 	if ((err = libvarpd_persist_enable(varpd_handle, VARPD_RUNDIR)) != 0)
 		varpd_dfatal(dfd, "failed to enable varpd persistence: %s\n",

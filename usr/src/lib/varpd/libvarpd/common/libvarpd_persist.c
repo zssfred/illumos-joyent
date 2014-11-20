@@ -419,7 +419,8 @@ libvarpd_check_degrade_cb(varpd_impl_t *vip, datalink_id_t linkid, void *arg)
 
 	mutex_unlock(&vip->vdi_lock);
 
-	(void) libvarpd_overlay_degrade_datalink(vip, linkid);
+	(void) libvarpd_overlay_degrade_datalink(vip, linkid,
+	    "no varpd instance exists");
 	return (0);
 }
 

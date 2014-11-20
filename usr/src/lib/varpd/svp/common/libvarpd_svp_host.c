@@ -103,6 +103,7 @@ svp_host_loop(void *unused)
 					 * of an EREPORT to describe what
 					 * happened...
 					 */
+					svp_remote_degrade(srp, SVP_RD_DNS_FAIL);
 					break;
 				default:
 					abort();
@@ -110,7 +111,8 @@ svp_host_loop(void *unused)
 			}
 		}
 
-		svp_remote_resolved(srp, addrs);
+		if (err == 0)
+			svp_remote_resolved(srp, addrs);
 	}
 }
 
@@ -137,6 +139,7 @@ svp_host_queue(svp_remote_t *srp)
 	}
 	srp->sr_nexthost = NULL;
 	cond_signal(&svp_host_cv);
+	mutex_unlock(&srp->sr_lock);
 	mutex_unlock(&svp_host_lock);
 }
 

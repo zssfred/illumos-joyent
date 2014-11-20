@@ -35,6 +35,23 @@
 mutex_t svp_remote_lock = DEFAULTMUTEX;
 avl_tree_t svp_remote_tree;
 
+static void
+svp_remote_mkfmamsg(svp_remote_t *srp, svp_degrade_state_t state, char *buf,
+    size_t buflen)
+{
+	switch (state) {
+	case SVP_RD_DNS_FAIL:
+		(void) snprintf(buf, buflen, "failed to resolve or find "
+		    "entries for hostname %s", srp->sr_hostname);
+		break;
+	case SVP_RD_REMOTE_FAIL:
+		(void) snprintf(buf, buflen, "cannot reach any remote peers");
+		break;
+	default:
+		abort();
+	}
+}
+
 static int
 svp_remote_comparator(const void *l, const void *r)
 {
@@ -106,6 +123,8 @@ svp_remote_create(const char *host, svp_remote_t **outp)
 	}
 	if (mutex_init(&remote->sr_lock, USYNC_THREAD, NULL) != 0)
 		abort();
+	avl_create(&remote->sr_tree, svp_comparator, sizeof (svp_t),
+	    offsetof(svp_t, svp_rlink));
 	(void) strlcpy(remote->sr_hostname, host, hlen);
 	remote->sr_count = 1;
 
@@ -305,6 +324,70 @@ svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 		mutex_unlock(&scp->sc_lock);
 
 		prev = scp;
+	}
+	mutex_unlock(&srp->sr_lock);
+}
+
+void
+svp_remote_degrade(svp_remote_t *srp, svp_degrade_state_t flag)
+{
+	int sf, nf;
+	char buf[256];
+
+	if (flag == SVP_RD_ALL || flag == 0)
+		abort();
+
+	mutex_lock(&srp->sr_lock);
+	if ((flag & srp->sr_degrade) != 0) {
+		mutex_unlock(&srp->sr_lock);
+		return;
+	}
+
+	sf = ffs(srp->sr_degrade);
+	nf = ffs(flag);
+	srp->sr_degrade |= flag;
+	if (sf == 0 || sf > nf) {
+		svp_t *svp;
+		svp_remote_mkfmamsg(srp, flag, buf, sizeof (buf));
+
+		for (svp = avl_first(&srp->sr_tree); svp != NULL;
+		    svp = AVL_NEXT(&srp->sr_tree, svp)) {
+			libvarpd_fma_degrade(svp->svp_hdl, buf);
+		}
+	}
+	mutex_unlock(&srp->sr_lock);
+}
+
+void
+svp_remote_restore(svp_remote_t *srp, svp_degrade_state_t flag)
+{
+	int sf, nf;
+	mutex_lock(&srp->sr_lock);
+	sf = ffs(srp->sr_degrade);
+	if ((srp->sr_degrade & flag) != flag)
+		abort();
+	srp->sr_degrade &= ~flag;
+	nf = ffs(srp->sr_degrade);
+
+	/*
+	 * If we're now empty, restore the device. If we still are degraded, but
+	 * we now have a higher base than we used to, change the message.
+	 */
+	if (srp->sr_degrade == 0) {
+		svp_t *svp;
+		for (svp = avl_first(&srp->sr_tree); svp != NULL;
+		    svp = AVL_NEXT(&srp->sr_tree, svp)) {
+			libvarpd_fma_restore(svp->svp_hdl);
+		}
+	} else if (nf != sf) {
+		svp_t *svp;
+		char buf[256];
+
+		svp_remote_mkfmamsg(srp, 1U << (nf - 1), buf, sizeof (buf));
+		for (svp = avl_first(&srp->sr_tree); svp != NULL;
+		    svp = AVL_NEXT(&srp->sr_tree, svp)) {
+			libvarpd_fma_degrade(svp->svp_hdl, buf);
+		}
 	}
 	mutex_unlock(&srp->sr_lock);
 }

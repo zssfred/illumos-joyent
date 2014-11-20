@@ -106,22 +106,24 @@ libvarpd_overlay_disassociate(varpd_instance_t *inst)
 }
 
 int
-libvarpd_overlay_degrade_datalink(varpd_impl_t *vip, datalink_id_t linkid)
+libvarpd_overlay_degrade_datalink(varpd_impl_t *vip, datalink_id_t linkid,
+    const char *msg)
 {
-	overlay_targ_id_t otid;
+	overlay_targ_degrade_t otd;
 
-	otid.otid_linkid = linkid;
-	if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_DEGRADE, &otid) != 0)
+	otd.otd_linkid = linkid;
+	(void) strlcpy(otd.otd_buf, msg, OVERLAY_STATUS_BUFLEN);
+	if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_DEGRADE, &otd) != 0)
 		return (errno);
 	return (0);
 
 }
 
 int
-libvarpd_overlay_degrade(varpd_instance_t *inst)
+libvarpd_overlay_degrade(varpd_instance_t *inst, const char *msg)
 {
 	return (libvarpd_overlay_degrade_datalink(inst->vri_impl,
-	    inst->vri_linkid));
+	    inst->vri_linkid, msg));
 }
 
 int
@@ -523,5 +525,37 @@ libvarpd_inject_varp(varpd_provider_handle_t vph, const uint8_t *mac,
 		default:
 			break;
 		}
+	}
+}
+
+void
+libvarpd_fma_degrade(varpd_provider_handle_t vph, const char *msg)
+{
+	int ret;
+	varpd_instance_t *inst = (varpd_instance_t *)vph;
+
+	ret = libvarpd_overlay_degrade(inst, msg);
+	switch (ret) {
+	case ENOENT:
+	case EFAULT:
+		abort();
+	default:
+		break;
+	}
+}
+
+void
+libvarpd_fma_restore(varpd_provider_handle_t vph)
+{
+	int ret;
+	varpd_instance_t *inst = (varpd_instance_t *)vph;
+
+	ret = libvarpd_overlay_restore(inst);
+	switch (ret) {
+	case ENOENT:
+	case EFAULT:
+		abort();
+	default:
+		break;
 	}
 }

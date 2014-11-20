@@ -38,12 +38,16 @@ overlay_fm_fini(void)
 }
 
 void
-overlay_fm_degrade(overlay_dev_t *odd)
+overlay_fm_degrade(overlay_dev_t *odd, const char *msg)
 {
 	int impact = DDI_SERVICE_DEGRADED;
 
 	mutex_enter(&overlay_fm_lock);
 	mutex_enter(&odd->odd_lock);
+
+	if (msg != NULL)
+		(void) strlcpy(odd->odd_fmamsg, msg, OVERLAY_STATUS_BUFLEN);
+
 	if (odd->odd_flags & OVERLAY_F_DEGRADED)
 		goto out;
 

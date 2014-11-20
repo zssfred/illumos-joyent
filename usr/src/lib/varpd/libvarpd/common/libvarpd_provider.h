@@ -208,6 +208,8 @@ extern void libvarpd_inject_varp(varpd_provider_handle_t, const uint8_t *,
     const overlay_target_point_t *);
 extern void libvarpd_inject_arp(varpd_provider_handle_t, const uint16_t,
     const uint8_t *, const struct in_addr *, const uint8_t *);
+extern void libvarpd_fma_degrade(varpd_provider_handle_t, const char *);
+extern void libvarpd_fma_restore(varpd_provider_handle_t);
 /* TODO NDP */
 
 #ifdef __cplusplus

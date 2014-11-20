@@ -195,6 +195,8 @@ varpd_svp_create(varpd_provider_handle_t hdl, void **outp,
 		return (ret);
 	}
 
+	svp->svp_port = svp_defport;
+	svp->svp_uport = svp_defuport;
 	svp->svp_cb = svp_defops;
 	svp->svp_hdl = hdl;
 	*outp = svp;
@@ -504,7 +506,7 @@ static int
 varpd_svp_save(void *arg, nvlist_t *nvp)
 {
 	int ret;
-	svp_t *svp = svp;
+	svp_t *svp = arg;
 
 	mutex_lock(&svp->svp_lock);
 	if (svp->svp_host != NULL) {
@@ -696,6 +698,9 @@ varpd_svp_init(void)
 {
 	int err;
 	varpd_plugin_register_t *vpr;
+
+	if ((err == svp_host_init()) != 0)
+		return;
 
 	/* XXX Communicate failure */
 	svp_lookup_cache = umem_cache_create("svp_lookup",

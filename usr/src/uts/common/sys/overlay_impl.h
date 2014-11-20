@@ -91,7 +91,7 @@ typedef enum overlay_dev_flag {
 	OVERLAY_F_MDDROP	= 0x10,	/* Drop traffic for metadata update */
 	OVERLAY_F_VARPD		= 0x20,	/* varpd plugin exists */
 	OVERLAY_F_DEGRADED	= 0x40,	/* device is degraded */
-	OVERLAY_F_MASK		= 0x3f	/* mask of everything */
+	OVERLAY_F_MASK		= 0x7f	/* mask of everything */
 } overlay_dev_flag_t;
 
 typedef struct overlay_dev {
@@ -111,6 +111,7 @@ typedef struct overlay_dev {
 	uint64_t	odd_vid;		/* RO if active else odd_lock */
 	avl_node_t	odd_muxnode;		/* managed by mux */
 	overlay_target_t *odd_target;		/* XXX Write once? */
+	char		odd_fmamsg[OVERLAY_STATUS_BUFLEN];	/* odd_lock */
 } overlay_dev_t;
 
 typedef enum overlay_target_entry_flags {
@@ -184,7 +185,7 @@ extern void overlay_target_fini(void);
 
 extern void overlay_fm_init(void);
 extern void overlay_fm_fini(void);
-extern void overlay_fm_degrade(overlay_dev_t *);
+extern void overlay_fm_degrade(overlay_dev_t *, const char *);
 extern void overlay_fm_restore(overlay_dev_t *);
 
 extern overlay_dev_t *overlay_hold_by_dlid(datalink_id_t);

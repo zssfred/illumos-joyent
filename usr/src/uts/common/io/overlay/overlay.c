@@ -1115,6 +1115,37 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	return (ret);
 }
 
+static int
+overlay_i_status(void *karg, intptr_t arg, int mode, cred_t *cred,
+    int *rvalp)
+{
+	overlay_dev_t *odd;
+	overlay_ioc_status_t *os = karg;
+
+	odd = overlay_hold_by_dlid(os->ois_linkid);
+	if (odd == NULL)
+		return (ENOENT);
+
+	mutex_enter(&odd->odd_lock);
+	if ((odd->odd_flags & OVERLAY_F_DEGRADED) != 0) {
+		os->ois_status = OVERLAY_I_DEGRADED;
+		if (odd->odd_fmamsg != NULL) {
+			(void) strlcpy(os->ois_message, odd->odd_fmamsg,
+			    OVERLAY_STATUS_BUFLEN);
+		} else {
+			os->ois_message[0] = '\0';
+		}
+
+	} else {
+		os->ois_status = OVERLAY_I_OK;
+		os->ois_message[0] = '\0';
+	}
+	mutex_exit(&odd->odd_lock);
+	overlay_hold_rele(odd);
+
+	return (0);
+}
+
 static dld_ioc_info_t overlay_ioc_list[] = {
 	{ OVERLAY_IOC_CREATE, DLDCOPYIN, sizeof (overlay_ioc_create_t),
 		overlay_i_create, secpolicy_dl_config },
@@ -1133,7 +1164,10 @@ static dld_ioc_info_t overlay_ioc_list[] = {
 		secpolicy_dl_config },
 	{ OVERLAY_IOC_NPROPS, DLDCOPYIN | DLDCOPYOUT,
 		sizeof (overlay_ioc_nprops_t), overlay_i_nprops,
-		secpolicy_dl_config }
+		secpolicy_dl_config },
+	{ OVERLAY_IOC_STATUS, DLDCOPYIN | DLDCOPYOUT,
+		sizeof (overlay_ioc_status_t), overlay_i_status,
+		NULL }
 };
 
 static int

@@ -439,13 +439,13 @@ static int
 overlay_target_degrade(overlay_target_hdl_t *thdl, void *arg)
 {
 	overlay_dev_t *odd;
-	overlay_targ_id_t *otid = arg;
+	overlay_targ_degrade_t *otd = arg;
 
-	odd = overlay_hold_by_dlid(otid->otid_linkid);
+	odd = overlay_hold_by_dlid(otd->otd_linkid);
 	if (odd == NULL)
 		return (ENOENT);
 
-	overlay_fm_degrade(odd);
+	overlay_fm_degrade(odd, otd->otd_buf);
 	overlay_hold_rele(odd);
 	return (0);
 }
@@ -1278,7 +1278,7 @@ static overlay_target_ioctl_t overlay_target_ioctab[] = {
 		NULL, sizeof (overlay_targ_id_t)	},
 	{ OVERLAY_TARG_DEGRADE, B_TRUE, B_FALSE,
 		NULL, overlay_target_degrade,
-		NULL, sizeof (overlay_targ_id_t)	},
+		NULL, sizeof (overlay_targ_degrade_t)	},
 	{ OVERLAY_TARG_RESTORE, B_TRUE, B_FALSE,
 		NULL, overlay_target_restore,
 		NULL, sizeof (overlay_targ_id_t)	},

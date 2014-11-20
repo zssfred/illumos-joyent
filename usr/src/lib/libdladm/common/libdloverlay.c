@@ -195,7 +195,7 @@ dladm_overlay_setprop(dladm_handle_t handle, datalink_id_t linkid,
 	if (ret != 0)
 		status = dladm_errno2status(errno);
 
-	if (ret != DLADM_STATUS_OK)
+	if (status != DLADM_STATUS_OK)
 		return (status);
 
 	prop.oip_linkid = linkid;
@@ -813,4 +813,29 @@ dladm_overlay_cache_get(dladm_handle_t handle, datalink_id_t linkid,
 
 	libvarpd_c_destroy(chdl);
 	return (dladm_errno2status(ret));
+}
+
+dladm_status_t
+dladm_overlay_status(dladm_handle_t handle, datalink_id_t linkid,
+    dladm_overlay_status_f func, void *arg)
+{
+	int ret;
+	dladm_status_t status;
+	overlay_ioc_status_t ois;
+	dladm_overlay_status_t dos;
+
+	ois.ois_linkid = linkid;
+	status = DLADM_STATUS_OK;
+	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_STATUS, &ois);
+	if (ret != 0)
+		status = dladm_errno2status(errno);
+	if (status != DLADM_STATUS_OK)
+		return (status);
+
+	dos.dos_degraded = ois.ois_status == OVERLAY_I_DEGRADED ? B_TRUE :
+	    B_FALSE;
+	(void) strlcpy(dos.dos_fmamsg, ois.ois_message,
+	    sizeof (dos.dos_fmamsg));
+	func(handle, linkid, &dos, arg);
+	return (DLADM_STATUS_OK);
 }

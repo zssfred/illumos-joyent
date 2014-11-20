@@ -10110,10 +10110,14 @@ f usr/lib/varpd/amd64/libvarpd_direct.so.1 0555 root bin
 s usr/lib/varpd/amd64/libvarpd_direct.so=libvarpd_direct.so.1
 f usr/lib/varpd/amd64/libvarpd_files.so.1 0555 root bin
 s usr/lib/varpd/amd64/libvarpd_files.so=libvarpd_files.so.1
+f usr/lib/varpd/amd64/libvarpd_svp.so.1 0555 root bin
+s usr/lib/varpd/amd64/libvarpd_svp.so=libvarpd_svp.so.1
 f usr/lib/varpd/libvarpd_direct.so.1 0555 root bin
 s usr/lib/varpd/libvarpd_direct.so=libvarpd_direct.so.1
 f usr/lib/varpd/libvarpd_files.so.1 0555 root bin
 s usr/lib/varpd/libvarpd_files.so=libvarpd_files.so.1
+f usr/lib/varpd/libvarpd_svp.so.1 0555 root bin
+s usr/lib/varpd/libvarpd_svp.so=libvarpd_svp.so.1
 f usr/lib/vfontedpr 0555 root bin
 f usr/lib/vgrindefs 0444 root bin
 d usr/lib/vscan 0755 root bin

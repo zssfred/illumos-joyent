@@ -36,6 +36,7 @@ extern "C" {
 #define	OVERLAY_IOC_SETPROP	OVERLAYIOC(5)
 #define	OVERLAY_IOC_NPROPS	OVERLAYIOC(6)
 #define	OVERLAY_IOC_ACTIVATE	OVERLAYIOC(7)
+#define	OVERLAY_IOC_STATUS	OVERLAYIOC(8)
 
 typedef struct overlay_ioc_create {
 	datalink_id_t	oic_linkid;
@@ -76,6 +77,17 @@ typedef struct overlay_ioc_prop {
 	uint8_t		oip_value[OVERLAY_PROP_SIZEMAX];
 	uint32_t	oip_size;
 } overlay_ioc_prop_t;
+
+typedef enum overlay_status {
+	OVERLAY_I_OK		= 0x00,
+	OVERLAY_I_DEGRADED	= 0x01
+} overlay_status_t;
+
+typedef struct overlay_ioc_status {
+	datalink_id_t	ois_linkid;
+	uint_t		ois_status;
+	char		ois_message[OVERLAY_STATUS_BUFLEN];
+} overlay_ioc_status_t;
 
 #ifdef __cplusplus
 }

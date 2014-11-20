@@ -59,6 +59,9 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_door_server_create;
 	libvarpd_door_server_destroy;
 
+	libvarpd_fma_degrade;
+	libvarpd_fma_restore;
+
 	libvarpd_inject_varp;
 	libvarpd_inject_arp;
 

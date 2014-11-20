@@ -90,12 +90,24 @@ typedef enum svp_remote_state {
 	SVP_RS_LOOKUP_VALID		= 0x04	/* addrinfo valid */
 } svp_remote_state_t;
 
+/*
+ * These series of bit-based flags should be ordered such that the most severe
+ * is first. We only can set one message that user land can see, so if more than
+ * one is set we want to make sure that one is there.
+ */
+typedef enum svp_degrade_state {
+	SVP_RD_DNS_FAIL		= 0x01,	/* DNS Resolution Failure */
+	SVP_RD_REMOTE_FAIL	= 0x02,	/* cannot reach any remote peers */
+	SVP_RD_ALL		= 0x03	/* Only suitable for restore */
+} svp_degrade_state_t;
+
 struct svp_remote {
 	char			*sr_hostname;	/* RO */
 	avl_node_t		sr_gnode;	/* svp_remote_lock */
 	svp_remote_t		*sr_nexthost;	/* svp_host_lock */
 	mutex_t			sr_lock;
 	svp_remote_state_t	sr_state;
+	svp_degrade_state_t	sr_degrade;
 	struct addrinfo 	*sr_addrinfo;
 	avl_tree_t		sr_tree;
 	uint_t			sr_count;
@@ -168,6 +180,7 @@ extern int svp_remote_init(void);
 extern void svp_remote_fini(void);
 extern int svp_event_init(void);
 extern void svp_event_fini(void);
+extern int svp_host_init(void);
 
 extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
 extern void svp_host_queue(svp_remote_t *);
@@ -178,6 +191,9 @@ extern void svp_remote_conn_handler(port_event_t *, void *);
 
 extern int svp_remote_conn_create(svp_remote_t *, const struct in6_addr *);
 extern void svp_remote_conn_destroy(svp_remote_t *, svp_conn_t *);
+
+extern void svp_remote_degrade(svp_remote_t *, svp_degrade_state_t);
+extern void svp_remote_restore(svp_remote_t *, svp_degrade_state_t);
 
 #ifdef __cplusplus
 }

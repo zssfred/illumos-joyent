@@ -78,6 +78,12 @@ typedef struct overlay_targ_associate {
  */
 #define	OVERLAY_TARG_DEGRADE	(OVERLAY_TARG_IOCTL | 0x4)
 
+typedef struct overlay_targ_degrade {
+	datalink_id_t	otd_linkid;
+	uint32_t	otd_pad;
+	char		otd_buf[OVERLAY_STATUS_BUFLEN];
+} overlay_targ_degrade_t;
+
 /*
  * Tells the kernel to remove the degraded status that it set on a device.
  */
