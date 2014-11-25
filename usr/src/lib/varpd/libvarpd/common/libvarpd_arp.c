@@ -142,7 +142,8 @@ libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
 	vaq->vaq_otl = otl;
 
 	if (inst->vri_plugin->vpp_ops->vpo_arp == NULL)
-		abort();
+		libvarpd_panic("%s plugin asked to do arp, but has no method",
+		    inst->vri_plugin->vpp_name);
 
 	inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
 	    (varpd_arp_handle_t)vaq, VARPD_QTYPE_ETHERNET,
@@ -370,7 +371,8 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
 	bcopy(&ns->nd_ns_target, &s6->sin6_addr, sizeof (s6->sin6_addr));
 
 	if (inst->vri_plugin->vpp_ops->vpo_arp == NULL)
-		abort();
+		libvarpd_panic("%s plugin asked to do arp, but has no method",
+		    inst->vri_plugin->vpp_name);
 
 	vaq->vaq_type = AF_INET6;
 	vaq->vaq_inst = inst;
@@ -457,14 +459,16 @@ libvarpd_plugin_arp_reply(varpd_arp_handle_t vah, int action)
 	varpd_arp_query_t *vaq = (varpd_arp_query_t *)vah;
 
 	if (vaq == NULL)
-		abort();
+		libvarpd_panic("unknown plugin passed invalid "
+		    "varpd_arp_handle_t");
 
 	if (action == VARPD_LOOKUP_DROP) {
 		libvarpd_plugin_query_reply(vaq->vaq_query, VARPD_LOOKUP_DROP);
 		umem_free(vaq, sizeof (varpd_arp_query_t));
 		return;
 	} else if (action != VARPD_LOOKUP_OK)
-		abort();
+		libvarpd_panic("%s plugin returned invalid action %d",
+		    vaq->vaq_inst->vri_plugin->vpp_name, action);
 
 	switch (vaq->vaq_type) {
 	case AF_INET:
@@ -474,7 +478,8 @@ libvarpd_plugin_arp_reply(varpd_arp_handle_t vah, int action)
 		libvarpd_proxy_ndp_fini(vaq);
 		break;
 	default:
-		abort();
+		libvarpd_panic("encountered unknown vaq_type: %d",
+		    vaq->vaq_type);
 	}
 }
 
@@ -561,7 +566,8 @@ libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
 	vdq->vdq_otl = otl;
 
 	if (inst->vri_plugin->vpp_ops->vpo_dhcp == NULL)
-		abort();
+		libvarpd_panic("%s plugin asked to do dhcp, but has no method",
+		    inst->vri_plugin->vpp_name);
 
 	inst->vri_plugin->vpp_ops->vpo_dhcp(inst->vri_private,
 	    (varpd_dhcp_handle_t)vdq, VARPD_QTYPE_ETHERNET, otl,
@@ -574,14 +580,16 @@ libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t vdh, int action)
 	varpd_dhcp_query_t *vdq = (varpd_dhcp_query_t *)vdh;
 
 	if (vdq == NULL)
-		abort();
+		libvarpd_panic("unknown plugin passed invalid "
+		    "varpd_dhcp_handle_t");
 
 	if (action == VARPD_LOOKUP_DROP) {
 		libvarpd_plugin_query_reply(vdq->vdq_query, VARPD_LOOKUP_DROP);
 		umem_free(vdq, sizeof (varpd_dhcp_query_t));
 		return;
 	} else if (action != VARPD_LOOKUP_OK)
-		abort();
+		libvarpd_panic("%s plugin returned invalid action %d",
+		    vdq->vdq_inst->vri_plugin->vpp_name, action);
 
 	bcopy(vdq->vdq_lookup, &vdq->vdq_ether->ether_dhost, ETHERADDRL);
 	(void) libvarpd_overlay_resend(vdq->vdq_inst->vri_impl, vdq->vdq_otl,

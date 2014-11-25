@@ -47,7 +47,8 @@ libvarpd_overlay_fini(varpd_impl_t *vip)
 {
 	assert(vip->vdi_overlayfd > 0);
 	if (close(vip->vdi_overlayfd) != 0)
-		abort();
+		libvarpd_panic("failed to close /dev/overlay fd %d: %d",
+		    vip->vdi_overlayfd, errno);
 }
 
 int
@@ -154,7 +155,7 @@ libvarpd_overlay_packet(varpd_impl_t *vip, const overlay_targ_lookup_t *otl,
 		ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_PKT, &otp);
 	} while (ret != 0 && errno == EINTR);
 	if (ret != 0 && errno == EFAULT)
-		abort();
+		libvarpd_panic("OVERLAY_TARG_PKT ioctl efault");
 	else if (ret != 0)
 		ret = errno;
 
@@ -185,7 +186,7 @@ libvarpd_overlay_inject_common(varpd_impl_t *vip, varpd_instance_t *inst,
 		ret = ioctl(vip->vdi_overlayfd, cmd, &otp);
 	} while (ret != 0 && errno == EINTR);
 	if (ret != 0 && errno == EFAULT)
-		abort();
+		libvarpd_panic("overlay_inject_common ioctl efault");
 	else if (ret != 0)
 		ret = errno;
 
@@ -226,8 +227,10 @@ libvarpd_overlay_lookup_reply(varpd_impl_t *vip,
 	do {
 		ret = ioctl(vip->vdi_overlayfd, cmd, otr);
 	} while (ret != 0 && errno == EINTR);
+	/* XXX abort feels wrong here */
 	if (ret != 0)
-		abort();
+		libvarpd_panic("receieved bad errno from lookup_reply: %d\n",	
+		    errno);
 }
 
 static void
@@ -247,10 +250,12 @@ libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 	 * Try and force a reap, then some?
 	 */
 	if (vqp == NULL)
-		abort();
+		libvarpd_panic("failed to allocate memory for lookup "
+		    "handle..., we should not panic()");
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_LOOKUP, otl);
 	if (ret != 0 && errno != ETIME && errno != EINTR)
-		abort();
+		libvarpd_panic("received bad errno from OVERLAY_TARG_LOOKUP: "
+		    "%d", errno);
 
 	if (ret != 0) {
 		umem_cache_free(vip->vdi_qcache, vqp);
@@ -331,7 +336,8 @@ libvarpd_overlay_iter(varpd_impl_t *vip, libvarpd_overlay_iter_f func,
 		otl->otl_nents = curents;
 		if (ioctl(vip->vdi_overlayfd, OVERLAY_TARG_LIST, otl) != 0) {
 			if (errno == EFAULT)
-				abort();
+				libvarpd_panic("OVERLAY_TARG_LIST ioctl "
+				    "efault");
 			umem_free(otl, size);
 			if (errno == EINTR)
 				continue;
@@ -366,7 +372,7 @@ libvarpd_overlay_cache_flush(varpd_instance_t *inst)
 
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_FLUSH, &cache);
 	if (ret != 0 && errno == EFAULT)
-		abort();
+		libvarpd_panic("OVERLAY_TARG_CACHE_FLUSH ioctl efault");
 	else if (ret != 0)
 		ret = errno;
 
@@ -386,7 +392,7 @@ libvarpd_overlay_cache_delete(varpd_instance_t *inst, const uint8_t *key)
 
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_REMOVE, &cache);
 	if (ret != 0 && errno == EFAULT)
-		abort();
+		libvarpd_panic("OVERLAY_TARG_CACHE_REMOVE ioctl efault");
 	else if (ret != 0)
 		ret = errno;
 
@@ -408,7 +414,7 @@ libvarpd_overlay_cache_get(varpd_instance_t *inst, const uint8_t *key,
 
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_GET, &cache);
 	if (ret != 0 && errno == EFAULT)
-		abort();
+		libvarpd_panic("OVERLAY_TARG_CACHE_GET ioctl efault");
 	else if (ret != 0)
 		return (errno);
 
@@ -438,7 +444,7 @@ libvarpd_overlay_cache_set(varpd_instance_t *inst, const uint8_t *key,
 
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_SET, &cache);
 	if (ret != 0 && errno == EFAULT)
-		abort();
+		libvarpd_panic("OVERLAY_TARG_CACHE_SET ioctl efault");
 	else if (ret != 0)
 		return (errno);
 
@@ -468,7 +474,7 @@ libvarpd_overlay_cache_walk_fill(varpd_instance_t *inst, uint64_t *markerp,
 	iter->otci_count = *countp;
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_ITER, iter);
 	if (ret != 0 && errno == EFAULT)
-		abort();
+		libvarpd_panic("OVERLAY_TARG_CACHE_ITER ioctl efault");
 	else if (ret != 0) {
 		ret = errno;
 		goto out;
@@ -489,7 +495,8 @@ libvarpd_plugin_query_reply(varpd_query_handle_t vqh, int action)
 	varpd_query_t *vqp = (varpd_query_t *)vqh;
 
 	if (vqp == NULL)
-		abort();
+		libvarpd_panic("unkonwn plugin passed invalid "
+		    "varpd_query_handle_t");
 
 	if (action == VARPD_LOOKUP_DROP)
 		libvarpd_overlay_lookup_reply(vqp->vq_instance->vri_impl,
@@ -498,7 +505,8 @@ libvarpd_plugin_query_reply(varpd_query_handle_t vqh, int action)
 		libvarpd_overlay_lookup_reply(vqp->vq_instance->vri_impl,
 		    &vqp->vq_lookup, &vqp->vq_response, OVERLAY_TARG_RESPOND);
 	else
-		abort();
+		libvarpd_panic("plugin %s passed in an invalid action: %d",
+		    vqp->vq_instance->vri_plugin->vpp_name, action);
 }
 
 void
@@ -521,7 +529,8 @@ libvarpd_inject_varp(varpd_provider_handle_t vph, const uint8_t *mac,
 		case EBADF:
 		case EFAULT:
 		case ENOTSUP:
-			abort();
+			libvarpd_panic("received bad errno from "
+			    "OVERLAY_TARG_CACHE_SET: %d", errno);
 		default:
 			break;
 		}
@@ -538,7 +547,8 @@ libvarpd_fma_degrade(varpd_provider_handle_t vph, const char *msg)
 	switch (ret) {
 	case ENOENT:
 	case EFAULT:
-		abort();
+		libvarpd_panic("received bad errno from degrade ioctl: %d",
+		    errno);
 	default:
 		break;
 	}
@@ -554,7 +564,8 @@ libvarpd_fma_restore(varpd_provider_handle_t vph)
 	switch (ret) {
 	case ENOENT:
 	case EFAULT:
-		abort();
+		libvarpd_panic("received bad errno from restore ioctl: %d",
+		    errno);
 	default:
 		break;
 	}

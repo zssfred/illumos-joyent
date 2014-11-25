@@ -19,13 +19,21 @@ OBJECTS =	libvarpd_svp.o \
 		libvarpd_svp_conn.o \
 		libvarpd_svp_host.o \
 		libvarpd_svp_loop.o \
-		libvarpd_svp_remote.o
+		libvarpd_svp_remote.o \
+		$(COMMON_OBJS)
 
 include ../../../Makefile.lib
 include ../../Makefile.plugin
 
 LIBS =		$(DYNLIB)
-LDLIBS +=	-lc -lvarpd -lumem -lnvpair -lsocket -lnsl -lavl
+
+#
+# Yes, this isn't a command, but libcmdutils does have the list(9F)
+# functions and better to use that then compile list.o yet again
+# ourselves... probably.
+#
+LDLIBS +=	-lc -lvarpd -lumem -lnvpair -lsocket -lnsl -lavl \
+		-lcmdutils
 CPPFLAGS +=	-I../common
 
 SRCDIR =	../common

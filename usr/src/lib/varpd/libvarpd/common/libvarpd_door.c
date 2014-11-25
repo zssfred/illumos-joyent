@@ -406,10 +406,11 @@ libvarpd_door_server_create(varpd_handle_t vhp, const char *path)
 		return (errno);
 	}
 
-	if ((fd = open(path, O_CREAT | O_RDWR)) == -1) {
+	if ((fd = open(path, O_CREAT | O_RDWR, 0666)) == -1) {
 		ret = errno;
 		if (door_revoke(vip->vdi_doorfd) != 0)
-			abort();
+			libvarpd_panic("failed to revoke door: %d",
+			    errno);
 		mutex_unlock(&vip->vdi_lock);
 		return (errno);
 	}
@@ -417,18 +418,21 @@ libvarpd_door_server_create(varpd_handle_t vhp, const char *path)
 	if (fchown(fd, UID_NETADM, GID_NETADM) != 0) {
 		ret = errno;
 		if (door_revoke(vip->vdi_doorfd) != 0)
-			abort();
+			libvarpd_panic("failed to revoke door: %d",
+			    errno);
 		mutex_unlock(&vip->vdi_lock);
 		return (ret);
 	}
 
 	if (close(fd) != 0)
-		abort();
+		libvarpd_panic("failed to close door fd %d: %d",
+		    fd, errno);
 	(void) fdetach(path);
 	if (fattach(vip->vdi_doorfd, path) != 0) {
 		ret = errno;
 		if (door_revoke(vip->vdi_doorfd) != 0)
-			abort();
+			libvarpd_panic("failed to revoke door: %d",
+			    errno);
 		mutex_unlock(&vip->vdi_lock);
 		return (ret);
 	}
@@ -445,7 +449,8 @@ libvarpd_door_server_destroy(varpd_handle_t vhp)
 	mutex_lock(&vip->vdi_lock);
 	if (vip->vdi_doorfd != 0) {
 		if (door_revoke(vip->vdi_doorfd) != 0)
-			abort();
+			libvarpd_panic("failed to revoke door: %d",
+			    errno);
 		vip->vdi_doorfd = -1;
 	}
 	mutex_unlock(&vip->vdi_lock);

@@ -58,7 +58,7 @@ libvarpd_persist_init(varpd_impl_t *vip)
 {
 	vip->vdi_persistfd = -1;
 	if (rwlock_init(&vip->vdi_pfdlock, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create rw vdi_pfdlock");
 }
 
 void
@@ -69,11 +69,12 @@ libvarpd_persist_fini(varpd_impl_t *vip)
 	 */
 	if (vip->vdi_persistfd != -1) {
 		if (close(vip->vdi_persistfd) != 0)
-			abort();
+			libvarpd_panic("failed to close persist fd %d: %d",
+			    vip->vdi_persistfd, errno);
 		vip->vdi_persistfd = -1;
 	}
 	if (rwlock_destroy(&vip->vdi_pfdlock) != 0)
-		abort();
+		libvarpd_panic("failed to destroy rw vdi_pfdlock");
 }
 
 int
@@ -90,13 +91,15 @@ libvarpd_persist_enable(varpd_handle_t vhp, const char *rootdir)
 	if (fstat(fd, &st) != 0) {
 		int ret = errno;
 		if (close(fd) != 0)
-			abort();
+			libvarpd_panic("failed to close rootdir fd (%s) %d: %d",
+			    rootdir, fd, errno);
 		return (ret);
 	}
 
 	if (!S_ISDIR(st.st_mode)) {
 		if (close(fd) != 0)
-			abort();
+			libvarpd_panic("failed to close rootdir fd (%s) %d: %d",
+			    rootdir, fd, errno);
 		return (EINVAL);
 	}
 
@@ -105,7 +108,8 @@ libvarpd_persist_enable(varpd_handle_t vhp, const char *rootdir)
 	if (vip->vdi_persistfd != -1) {
 		rw_unlock(&vip->vdi_pfdlock);
 		if (close(fd) != 0)
-			abort();
+			libvarpd_panic("failed to close rootdir fd (%s) %d: %d",
+			    rootdir, fd, errno);
 		return (EEXIST);
 	}
 	vip->vdi_persistfd = fd;
@@ -308,16 +312,18 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	}
 
 	if (mutex_init(&inst->vri_lock, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create vri_lock mutex");
 
 	mutex_lock(&vip->vdi_lock);
 	lookup.vri_id = inst->vri_id;
 	if (avl_find(&vip->vdi_instances, &lookup, NULL) != NULL)
-		abort();
+		libvarpd_panic("found duplicate instance with id %d",
+		    lookup.vri_id);
 	avl_add(&vip->vdi_instances, inst);
 	lookup.vri_linkid = inst->vri_linkid;
 	if (avl_find(&vip->vdi_linstances, &lookup, NULL) != NULL)
-		abort();
+		libvarpd_panic("found duplicate linstance with id %d",
+		    lookup.vri_linkid);
 	avl_add(&vip->vdi_linstances, inst);
 	mutex_unlock(&vip->vdi_lock);
 
@@ -370,13 +376,13 @@ libvarpd_persist_restore_one(varpd_impl_t *vip, int fd)
 	if (bcmp(varpd_persist_magic, hdr->vph_magic,
 	    sizeof (varpd_persist_magic)) != 0) {
 		if (munmap(buf, st.st_size) != 0)
-			abort();
+			libvarpd_panic("failed to munmap %p: %d", buf, errno);
 		return (EINVAL);
 	}
 
 	if (hdr->vph_version != VARPD_PERSIST_VERSION_ONE) {
 		if (munmap(buf, st.st_size) != 0)
-			abort();
+			libvarpd_panic("failed to munmap %p: %d", buf, errno);
 		return (EINVAL);
 	}
 
@@ -384,13 +390,13 @@ libvarpd_persist_restore_one(varpd_impl_t *vip, int fd)
 	md5_calc(md5, datap, fsize);
 	if (bcmp(md5, hdr->vph_md5, sizeof (uint8_t) * 16) != 0) {
 		if (munmap(buf, st.st_size) != 0)
-			abort();
+			libvarpd_panic("failed to munmap %p: %d", buf, errno);
 		return (EINVAL);
 	}
 
 	err = nvlist_unpack(datap, fsize, &nvl, 0);
 	if (munmap(buf, st.st_size) != 0)
-		abort();
+		libvarpd_panic("failed to munmap %p: %d", buf, errno);
 
 	if (err != 0)
 		return (EINVAL);
@@ -452,7 +458,8 @@ libvarpd_persist_restore(varpd_handle_t vhp)
 	if ((dirp = fdopendir(dirfd)) == NULL) {
 		ret = errno;
 		if (close(dirfd) != 0)
-			abort();
+			libvarpd_panic("failed to close dirfd %d: %d",
+			    dirfd, errno);
 		goto out;
 	}
 
@@ -499,13 +506,15 @@ libvarpd_persist_restore(varpd_handle_t vhp)
 
 		if (!S_ISREG(st.st_mode)) {
 			if (close(fd) != 0)
-				abort();
+				libvarpd_panic("failed to close fd (%s) %d: "
+				    "%d\n", dp->d_name, fd, errno);
 			continue;
 		}
 
 		ret = libvarpd_persist_restore_one(vip, fd);
 		if (close(fd) != 0)
-			abort();
+			libvarpd_panic("failed to close fd (%s) %d: "
+			    "%d\n", dp->d_name, fd, errno);
 		/*
 		 * This is an invalid file. We'll unlink it to save us this
 		 * trouble in the future. XXX We shouldn't unlink on all
@@ -540,7 +549,8 @@ libvarpd_persist_disable(varpd_handle_t vhp)
 		return (ENOENT);
 	}
 	if (close(vip->vdi_persistfd) != 0)
-		abort();
+		libvarpd_panic("failed to close persist fd %d: %d",
+		    vip->vdi_persistfd, errno);
 	vip->vdi_persistfd = -1;
 	rw_unlock(&vip->vdi_pfdlock);
 	return (0);

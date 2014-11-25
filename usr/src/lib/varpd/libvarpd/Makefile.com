@@ -20,6 +20,7 @@ OBJECTS =	libvarpd.o \
 		libvarpd_client.o \
 		libvarpd_door.o \
 		libvarpd_overlay.o \
+		libvarpd_panic.o \
 		libvarpd_persist.o \
 		libvarpd_prop.o \
 		libvarpd_plugin.o \

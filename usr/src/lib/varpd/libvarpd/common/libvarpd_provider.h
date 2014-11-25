@@ -169,6 +169,11 @@ extern void libvarpd_plugin_free(varpd_plugin_register_t *);
 extern int libvarpd_plugin_register(varpd_plugin_register_t *);
 
 /*
+ * Blowing up
+ */
+extern void libvarpd_panic(const char *, ...) __NORETURN;
+
+/*
  * Misc. Information APIs
  */
 extern int libvarpd_plugin_varpdid(varpd_provider_handle_t, uint64_t *);

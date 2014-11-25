@@ -110,10 +110,10 @@ libvarpd_create(varpd_handle_t *vphp)
 	    sizeof (varpd_instance_t), offsetof(varpd_instance_t, vri_lnode));
 
 	if (mutex_init(&vip->vdi_lock, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create mutex: %d", errno);
 
 	if (mutex_init(&vip->vdi_loglock, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create mutex: %d", errno);
 
 	vip->vdi_doorfd = -1;
 	*vphp = (varpd_handle_t)vip;
@@ -126,9 +126,9 @@ libvarpd_destroy(varpd_handle_t vhp)
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 
 	if (mutex_destroy(&vip->vdi_loglock) != 0)
-		abort();
+		libvarpd_panic("failed to destroy mutex: %d", errno);
 	if (mutex_destroy(&vip->vdi_lock) != 0)
-		abort();
+		libvarpd_panic("failed to destroy mutex: %d", errno);
 	libvarpd_persist_fini(vip);
 	libvarpd_overlay_fini(vip);
 	umem_cache_destroy(vip->vdi_qcache);
@@ -187,16 +187,18 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 	}
 
 	if (mutex_init(&inst->vri_lock, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create mutex: %d", errno);
 
 	mutex_lock(&vip->vdi_lock);
 	lookup.vri_id = inst->vri_id;
 	if (avl_find(&vip->vdi_instances, &lookup, NULL) != NULL)
-		abort();
+		libvarpd_panic("found duplicate instance with id %d",
+		    lookup.vri_id);
 	avl_add(&vip->vdi_instances, inst);
 	lookup.vri_linkid = inst->vri_linkid;
 	if (avl_find(&vip->vdi_linstances, &lookup, NULL) != NULL)
-		abort();
+		libvarpd_panic("found duplicate linstance with id %d",
+		    lookup.vri_linkid);
 	avl_add(&vip->vdi_linstances, inst);
 	mutex_unlock(&vip->vdi_lock);
 	*outp = (varpd_instance_handle_t)inst;
@@ -251,8 +253,7 @@ libvarpd_instance_activate(varpd_instance_handle_t ihp)
 	int ret;
 	varpd_instance_t *inst = (varpd_instance_t *)ihp;
 
-	if (mutex_lock(&inst->vri_lock) != 0)
-		abort();
+	mutex_lock(&inst->vri_lock);
 
 	if (inst->vri_flags & VARPD_INSTANCE_F_ACTIVATED) {
 		ret = EEXIST;
@@ -273,8 +274,7 @@ libvarpd_instance_activate(varpd_instance_handle_t ihp)
 	inst->vri_flags |= VARPD_INSTANCE_F_ACTIVATED;
 
 out:
-	if (mutex_unlock(&inst->vri_lock))
-		abort();
+	mutex_unlock(&inst->vri_lock);
 	return (ret);
 }
 
@@ -296,7 +296,7 @@ libvarpd_init(void)
 {
 	libvarpd_plugin_init();
 	if (pthread_atfork(NULL, libvarpd_prefork, libvarpd_postfork) != 0)
-		abort();
+		libvarpd_panic("failed to create varpd atfork: %d", errno);
 }
 
 #pragma fini(libvarpd_fini)

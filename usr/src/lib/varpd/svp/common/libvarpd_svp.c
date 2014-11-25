@@ -144,7 +144,7 @@ svp_vl3_inject_cb(svp_t *svp, const uint16_t vlan, const struct in6_addr *vl3ip,
 	struct in_addr v4;
 
 	if (IN6_IS_ADDR_V4MAPPED(vl3ip) == 0)
-		abort();
+		libvarpd_panic("implement libvarpd_inject_ndp");
 	IN6_V4MAPPED_TO_INADDR(vl3ip, &v4);
 	libvarpd_inject_arp(svp->svp_hdl, vlan, vl2mac, &v4, targmac);
 }
@@ -218,7 +218,7 @@ varpd_svp_start(void *arg)
 	}
 	mutex_unlock(&svp->svp_lock);
 
-	if ((ret = svp_remote_find(svp->svp_host, &srp)) != 0)
+	if ((ret = svp_remote_find(svp->svp_host, svp->svp_port, &srp)) != 0)
 		return (ret);
 
 	if ((ret = svp_remote_attach(srp, svp)) != 0) {
@@ -247,7 +247,7 @@ varpd_svp_destroy(void *arg)
 		umem_free(svp->svp_host, strlen(svp->svp_host) + 1);
 
 	if (mutex_destroy(&svp->svp_lock) != 0)
-		abort();
+		libvarpd_panic("failed to destroy svp_t`svp_lock");
 
 	umem_free(svp, sizeof (svp_t));
 }
@@ -530,7 +530,8 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 
 		if (inet_ntop(AF_INET6, &svp->svp_uip, buf, sizeof (buf)) ==
 		    NULL)
-			abort();
+			libvarpd_panic("unexpected inet_ntop failure: %d",
+			    errno);
 
 		if ((ret = nvlist_add_string(nvp, varpd_svp_props[2],
 		    buf)) != 0) {
@@ -562,22 +563,15 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 	if (varpd_svp_valid_dest(dest) == B_FALSE)
 		return (ENOTSUP);
 
-	svp = umem_zalloc(sizeof (svp_t), UMEM_DEFAULT);
-	if (svp == NULL)
-		return (ENOMEM);
-
-	if ((ret = mutex_init(&svp->svp_lock, USYNC_THREAD, NULL)) != 0) {
-		umem_free(svp, sizeof (svp_t));
+	if ((ret = varpd_svp_create(hdl, (void **)&svp, dest)) != 0)
 		return (ret);
-	}
 
 	/* XXX Validate hostname */
 	if ((ret = nvlist_lookup_string(nvp, varpd_svp_props[0],
 	    &hstr)) != 0) {
 		if (ret != ENOENT) {
-			if (mutex_destroy(&svp->svp_lock) != 0)
-				abort();
-			umem_free(svp, sizeof (svp_t));
+			varpd_svp_destroy(svp);
+			return (ret);
 		}
 		svp->svp_host = NULL;
 	} else {
@@ -589,12 +583,8 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 	if ((ret = nvlist_lookup_uint16(nvp, varpd_svp_props[1],
 	    &svp->svp_port)) != 0) {
 		if (ret != ENOENT) {
-			if (mutex_destroy(&svp->svp_lock) != 0)
-				abort();
-			if (svp->svp_host != NULL)
-				umem_free(svp->svp_host,
-				    strlen(svp->svp_host) + 1);
-			umem_free(svp, sizeof (svp_t));
+			varpd_svp_destroy(svp);
+			return (ret);
 		}
 		svp->svp_port = 0;
 	}
@@ -602,12 +592,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 	if ((ret = nvlist_lookup_string(nvp, varpd_svp_props[2],
 	    &ipstr)) != 0) {
 		if (ret != ENOENT) {
-			if (mutex_destroy(&svp->svp_lock) != 0)
-				abort();
-			if (svp->svp_host != NULL)
-				umem_free(svp->svp_host,
-				    strlen(svp->svp_host) + 1);
-			umem_free(svp, sizeof (svp_t));
+			varpd_svp_destroy(svp);
 			return (ret);
 		}
 		svp->svp_huip = B_FALSE;
@@ -615,16 +600,12 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 		ret = inet_pton(AF_INET6, ipstr, &svp->svp_uip);
 		if (ret == -1) {
 			assert(errno == EAFNOSUPPORT);
-			abort();
+			libvarpd_panic("unexpected inet_pton failure: %d",
+			    errno);
 		}
 
 		if (ret == 0) {
-			if (mutex_destroy(&svp->svp_lock) != 0)
-				abort();
-			if (svp->svp_host != NULL)
-				umem_free(svp->svp_host,
-				    strlen(svp->svp_host) + 1);
-			umem_free(svp, sizeof (svp_t));
+			varpd_svp_destroy(svp);
 			return (EINVAL);
 		}
 		svp->svp_huip = B_TRUE;
@@ -633,12 +614,8 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 	if ((ret = nvlist_lookup_uint16(nvp, varpd_svp_props[3],
 	    &svp->svp_uport)) != 0) {
 		if (ret != ENOENT) {
-			if (mutex_destroy(&svp->svp_lock) != 0)
-				abort();
-			if (svp->svp_host != NULL)
-				umem_free(svp->svp_host,
-				    strlen(svp->svp_host) + 1);
-			umem_free(svp, sizeof (svp_t));
+			varpd_svp_destroy(svp);
+			return (ret);
 		}
 		svp->svp_uport = 0;
 	}

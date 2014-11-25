@@ -71,6 +71,8 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_instance_lookup;
 	libvarpd_instance_id;
 
+	libvarpd_panic;
+
 	libvarpd_persist_disable;
 	libvarpd_persist_enable;
 	libvarpd_persist_restore;

@@ -76,7 +76,8 @@ libvarpd_c_door_call(varpd_client_t *client, varpd_client_arg_t *argp,
 		case ENOTSUP:
 		case EOVERFLOW:
 		case ENFILE:
-			abort();
+			libvarpd_panic("unhandalable errno from door_call: %d",
+			    errno);
 		}
 		ret = errno;
 	}
@@ -109,7 +110,8 @@ libvarpd_c_destroy(varpd_client_handle_t chp)
 {
 	varpd_client_t *client = (varpd_client_t *)chp;
 	if (close(client->vcl_doorfd) != 0)
-		abort();
+		libvarpd_panic("failed to close door fd %d: %d",
+		    client->vcl_doorfd, errno);
 
 	umem_free(chp, sizeof (varpd_client_handle_t));
 	return (0);

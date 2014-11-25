@@ -94,7 +94,7 @@ libvarpd_plugin_register(varpd_plugin_register_t *vprp)
 
 	mutex_lock(&varpd_load_lock);
 	if (varpd_load_handle == NULL)
-		abort();
+		libvarpd_panic("varpd_load_handle was unexpectedly null");
 
 	mutex_lock(&varpd_load_handle->vdi_lock);
 	lookup.vpp_name = vprp->vpr_name;
@@ -115,7 +115,7 @@ libvarpd_plugin_register(varpd_plugin_register_t *vprp)
 	vpp->vpp_mode = vprp->vpr_mode;
 	vpp->vpp_ops = vprp->vpr_ops;
 	if (mutex_init(&vpp->vpp_lock, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create plugin's vpp_lock");
 	vpp->vpp_active = 0;
 	avl_add(&varpd_load_handle->vdi_plugins, vpp);
 	mutex_unlock(&varpd_load_handle->vdi_lock);
@@ -198,10 +198,10 @@ libvarpd_plugin_init(void)
 {
 	if (mutex_init(&varpd_load_lock, USYNC_THREAD | LOCK_RECURSIVE |
 	    LOCK_ERRORCHECK, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create varpd_load_lock");
 
 	if (cond_init(&varpd_load_cv, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create varpd_load_cv");
 
 	varpd_load_handle = NULL;
 }
@@ -211,9 +211,9 @@ libvarpd_plugin_fini(void)
 {
 	assert(varpd_load_handle == NULL);
 	if (mutex_destroy(&varpd_load_lock) != 0)
-		abort();
+		libvarpd_panic("failed to destroy varpd_load_lock");
 	if (cond_destroy(&varpd_load_cv) != 0)
-		abort();
+		libvarpd_panic("failed to destroy varpd_load_cv");
 }
 
 void

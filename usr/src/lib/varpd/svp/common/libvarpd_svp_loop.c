@@ -31,11 +31,11 @@ typedef struct svp_event_loop {
 	int		sel_port;	/* RO */
 	int		sel_nthread;	/* RO */
 	thread_t	*sel_threads;	/* RO */
-	boolean_t	sel_continue;	/* svp_elock */
+	boolean_t	sel_stop;	/* svp_elock */
 	timer_t		sel_hosttimer;
 } svp_event_loop_t;
 
-int svp_hosttime = 60 * 5;	/* 5 minutes in seconds */
+int svp_hosttime = 30;		/* XXX 30 seconds for testing */
 static svp_event_t svp_hosttimer;
 static struct sigevent svp_hostevp;
 static port_notify_t svp_hostnotify;
@@ -52,7 +52,7 @@ svp_event_thr(void *arg)
 		svp_event_t *sep;
 
 		mutex_lock(&svp_elock);
-		if (svp_event.sel_continue == B_FALSE) {
+		if (svp_event.sel_stop == B_TRUE) {
 			mutex_unlock(&svp_elock);
 			break;
 		}
@@ -64,7 +64,8 @@ svp_event_thr(void *arg)
 			case EFAULT:
 			case EBADF:
 			case EINVAL:
-				abort();
+				libvarpd_panic("unexpected port_get errno: %d",
+				    errno);
 			default:
 				break;
 			}
@@ -72,12 +73,52 @@ svp_event_thr(void *arg)
 
 		/* TODO Process the event */
 		if (pe.portev_user == NULL)
-			abort();
+			libvarpd_panic("received event (%p) without "
+			    "protev_user set", &pe);
 		sep = (svp_event_t *)pe.portev_user;
 		sep->se_func(&pe, sep->se_arg);
 	}
 
 	return (NULL);
+}
+
+int
+svp_event_associate(svp_event_t *sep, int fd)
+{
+	int ret;
+
+	ret = port_associate(svp_event.sel_port, PORT_SOURCE_FD, fd,
+	    POLLIN | POLLOUT | POLLRDNORM | POLLERR | POLLHUP, sep);
+	if (ret != 0) {
+		switch (errno) {
+		case EBADF:
+		case EBADFD:
+		case EINVAL:
+		case EAGAIN:
+			libvarpd_panic("unexpected port_associate error: %d",
+			    errno);
+		default:
+			ret = errno;
+			break;
+		}
+	}
+
+	return (ret);
+}
+
+int
+svp_event_dissociate(svp_event_t *sep, int fd)
+{
+	int ret;
+
+	ret = port_dissociate(svp_event.sel_port, PORT_SOURCE_FD, fd);
+	if (ret != 0) {
+		if (errno != ENOENT)
+			libvarpd_panic("unexpected port_dissociate error: %d",
+			    errno);
+		ret = errno;
+	}
+	return (ret);
 }
 
 int
@@ -92,7 +133,8 @@ svp_event_init(void)
 
 	ncpus = sysconf(_SC_NPROCESSORS_ONLN) * 2 + 1;
 	if (ncpus <= 0)
-		abort();
+		libvarpd_panic("sysconf for nprocs failed... %d/%d",
+		    ncpus, errno);
 
 	svp_hosttimer.se_func = svp_remote_dns_timer;
 	svp_hosttimer.se_arg = NULL;
@@ -112,6 +154,7 @@ svp_event_init(void)
 	ts.it_value.tv_nsec = 0;
 	ts.it_interval.tv_sec = svp_hosttime;
 	ts.it_interval.tv_nsec = 0;
+
 	if (timer_settime(svp_event.sel_hosttimer, TIMER_RELTIME, &ts,
 	    NULL) != 0) {
 		int ret = errno;
@@ -153,7 +196,7 @@ void
 svp_event_fini(void)
 {
 	mutex_lock(&svp_elock);
-	svp_event.sel_continue = B_FALSE;
+	svp_event.sel_stop = B_TRUE;
 	mutex_unlock(&svp_elock);
 
 	(void) timer_delete(svp_event.sel_hosttimer);

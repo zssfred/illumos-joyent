@@ -83,7 +83,9 @@ svp_host_loop(void *unused)
 				case EAI_SERVICE:
 				case EAI_SOCKTYPE:
 				case EAI_OVERFLOW:
-					abort();
+				default:
+					libvarpd_panic("unexpected getaddrinfo "
+					    "failure: %d", err);
 				case EAI_AGAIN:
 				case EAI_MEMORY:
 				case EAI_SYSTEM:
@@ -103,16 +105,29 @@ svp_host_loop(void *unused)
 					 * of an EREPORT to describe what
 					 * happened...
 					 */
+					mutex_lock(&srp->sr_lock);
 					svp_remote_degrade(srp, SVP_RD_DNS_FAIL);
+					mutex_unlock(&srp->sr_lock);
 					break;
-				default:
-					abort();
 				}
 			}
+			break;
 		}
 
-		if (err == 0)
+		if (err == 0) {
+			/*
+			 * We've successfully resolved something, mark this
+			 * degredation over for now.
+			 */
+			mutex_lock(&srp->sr_lock);
+			svp_remote_restore(srp, SVP_RD_DNS_FAIL);
+			mutex_unlock(&srp->sr_lock);
 			svp_remote_resolved(srp, addrs);
+		}
+
+		mutex_lock(&srp->sr_lock);
+		srp->sr_state &= ~SVP_RS_LOOKUP_INPROGRESS;
+		mutex_unlock(&srp->sr_lock);
 	}
 }
 

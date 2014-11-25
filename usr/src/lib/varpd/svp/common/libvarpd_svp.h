@@ -27,6 +27,7 @@
 #include <libvarpd_provider.h>
 #include <sys/avl.h>
 #include <port.h>
+#include <sys/list.h>
 
 #include <libvarpd_svp_prot.h>
 
@@ -52,6 +53,15 @@ typedef enum svp_conn_state {
 	SVP_CS_BOUND		= 0x03
 } svp_conn_state_t;
 
+typedef enum svp_conn_error {
+	SVP_CE_NONE		= 0x00,
+	SVP_CE_ASSOCIATE	= 0x01,
+	SVP_CE_CONNECT		= 0x02,
+	SVP_CE_POLLHUP		= 0x03,
+	SVP_CE_POLLERR		= 0x04,
+	SVP_CE_NOPOLLOUT	= 0x05
+} svp_conn_error_t;
+
 typedef struct svp_conn_out {
 	void	*sco_buffer;
 	size_t	sco_buflen;
@@ -72,13 +82,16 @@ typedef struct svp_conn_in {
 } svp_conn_in_t;
 
 struct svp_conn {
+	svp_remote_t		*sc_remote;	/* RO */
+	struct in6_addr		sc_addr;	/* RO */
+	list_node_t		sc_rlist;	/* svp_remote_t`sr_lock */
 	mutex_t			sc_lock;
 	svp_event_t		sc_event;
-	svp_conn_t		*sc_next;
 	int			sc_socket;
 	uint_t			sc_gen;
-	struct in6_addr		sc_addr;
 	svp_conn_state_t	sc_cstate;
+	svp_conn_error_t	sc_error;
+	int			sc_errno;
 	hrtime_t		sc_lastact;
 	svp_conn_out_t		sc_output;
 	svp_conn_in_t		sc_input;
@@ -103,6 +116,7 @@ typedef enum svp_degrade_state {
 
 struct svp_remote {
 	char			*sr_hostname;	/* RO */
+	uint16_t		sr_rport;	/* RO */
 	avl_node_t		sr_gnode;	/* svp_remote_lock */
 	svp_remote_t		*sr_nexthost;	/* svp_host_lock */
 	mutex_t			sr_lock;
@@ -110,9 +124,12 @@ struct svp_remote {
 	svp_degrade_state_t	sr_degrade;
 	struct addrinfo 	*sr_addrinfo;
 	avl_tree_t		sr_tree;
-	uint_t			sr_count;
+	uint_t			sr_count;	/* active count */
 	uint_t			sr_gen;
-	svp_conn_t		*sr_conns;
+	uint_t			sr_tconns;	/* total conns + dconns */
+	uint_t			sr_ndconns;	/* number of degraded conns */
+	list_t			sr_conns;	/* active conns */
+	list_t			sr_dconns;	/* degraded conns */
 };
 
 /*
@@ -166,7 +183,7 @@ extern int svp_comparator(const void *, const void *);
 /*
  * XXX Strawman backend APIs
  */
-extern int svp_remote_find(char *, svp_remote_t **);
+extern int svp_remote_find(char *, uint16_t, svp_remote_t **);
 extern int svp_remote_attach(svp_remote_t *, svp_t *);
 extern void svp_remote_detach(svp_t *);
 extern void svp_remote_release(svp_remote_t *);
@@ -184,6 +201,9 @@ extern int svp_host_init(void);
 
 extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
 extern void svp_host_queue(svp_remote_t *);
+
+extern int svp_event_associate(svp_event_t *, int);
+extern int svp_event_dissociate(svp_event_t *, int);
 
 extern void svp_remote_dns_timer(port_event_t *, void *);
 

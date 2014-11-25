@@ -48,7 +48,7 @@ svp_remote_mkfmamsg(svp_remote_t *srp, svp_degrade_state_t state, char *buf,
 		(void) snprintf(buf, buflen, "cannot reach any remote peers");
 		break;
 	default:
-		abort();
+		(void) snprintf(buf, buflen, "unkonwn error state: %d", state);
 	}
 }
 
@@ -62,6 +62,11 @@ svp_remote_comparator(const void *l, const void *r)
 	if (ret > 0)
 		return (1);
 	else if (ret < 0)
+		return (-1);
+
+	if (lr->sr_rport > rr->sr_rport)
+		return (1);
+	else if (lr->sr_rport < rr->sr_rport)
 		return (-1);
 	else
 		return (0);
@@ -92,7 +97,7 @@ svp_remote_destroy(svp_remote_t *srp)
 	 */
 
 	if (mutex_destroy(&srp->sr_lock) != 0)
-		abort();
+		libvarpd_panic("failed to destroy mutex sr_lock");
 
 	if (srp->sr_addrinfo != NULL)
 		freeaddrinfo(srp->sr_addrinfo);
@@ -102,7 +107,7 @@ svp_remote_destroy(svp_remote_t *srp)
 }
 
 static int
-svp_remote_create(const char *host, svp_remote_t **outp)
+svp_remote_create(const char *host, uint16_t port, svp_remote_t **outp)
 {
 	size_t hlen;
 	svp_remote_t *remote;
@@ -121,8 +126,13 @@ svp_remote_create(const char *host, svp_remote_t **outp)
 		mutex_unlock(&svp_remote_lock);
 		return (ENOMEM);
 	}
+	remote->sr_rport = port;
 	if (mutex_init(&remote->sr_lock, USYNC_THREAD, NULL) != 0)
-		abort();
+		libvarpd_panic("failed to create mutex sr_lock");
+	list_create(&remote->sr_conns, sizeof (svp_conn_t),
+	    offsetof(svp_conn_t, sc_rlist));
+	list_create(&remote->sr_dconns, sizeof (svp_conn_t),
+	    offsetof(svp_conn_t, sc_rlist));
 	avl_create(&remote->sr_tree, svp_comparator, sizeof (svp_t),
 	    offsetof(svp_t, svp_rlink));
 	(void) strlcpy(remote->sr_hostname, host, hlen);
@@ -133,12 +143,13 @@ svp_remote_create(const char *host, svp_remote_t **outp)
 }
 
 int
-svp_remote_find(char *host, svp_remote_t **outp)
+svp_remote_find(char *host, uint16_t port, svp_remote_t **outp)
 {
 	int ret;
 	svp_remote_t lookup, *remote;
 
 	lookup.sr_hostname = host;
+	lookup.sr_rport = port;
 	mutex_lock(&svp_remote_lock);
 	remote = avl_find(&svp_remote_tree, &lookup, NULL);
 	if (remote != NULL) {
@@ -149,7 +160,7 @@ svp_remote_find(char *host, svp_remote_t **outp)
 		return (0);
 	}
 
-	if ((ret = svp_remote_create(host, outp)) != 0) {
+	if ((ret = svp_remote_create(host, port, outp)) != 0) {
 		mutex_unlock(&svp_remote_lock);
 		return (ret);
 	}
@@ -189,23 +200,24 @@ svp_remote_attach(svp_remote_t *srp, svp_t *svp)
 
 	mutex_lock(&srp->sr_lock);
 	if (svp->svp_remote != NULL)
-		abort();
+		libvarpd_panic("failed to create mutex sr_lock");
 
 	/*
 	 * We require everything except shootdowns
 	 */
 	if (svp->svp_cb.scb_vl2_lookup == NULL)
-		abort();
+		libvarpd_panic("missing callback scb_vl2_lookup");
 	if (svp->svp_cb.scb_vl3_lookup == NULL)
-		abort();
+		libvarpd_panic("missing callback scb_vl3_lookup");
 	if (svp->svp_cb.scb_vl2_invalidate == NULL)
-		abort();
+		libvarpd_panic("missing callback scb_vl2_invalidate");
 	if (svp->svp_cb.scb_vl3_inject == NULL)
-		abort();
+		libvarpd_panic("missing callback scb_vl3_inject");
 
 	check.svp_vid = svp->svp_vid;
 	if (avl_find(&srp->sr_tree, &check, &where) != NULL)
-		abort();
+		libvarpd_panic("found duplicate entry with vid %ld",
+		    svp->svp_vid);
 	avl_insert(&srp->sr_tree, svp, where);
 	svp->svp_remote = srp;
 	mutex_unlock(&srp->sr_lock);
@@ -220,12 +232,12 @@ svp_remote_detach(svp_t *svp)
 	svp_remote_t *srp = svp->svp_remote;
 
 	if (srp == NULL)
-		abort();
+		libvarpd_panic("trying to detach remote when none exists");
 
 	mutex_lock(&srp->sr_lock);
 	lookup = avl_find(&srp->sr_tree, svp, NULL);
 	if (lookup == NULL || lookup != svp)
-		abort();
+		libvarpd_panic("inconsitent remote avl tree...");
 	avl_remove(&srp->sr_tree, svp);
 	svp->svp_remote = NULL;
 	mutex_unlock(&srp->sr_lock);
@@ -242,7 +254,7 @@ void
 svp_remote_vl3_lookup(svp_t *svp, const struct sockaddr *addr, void *arg)
 {
 	if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
-		abort();
+		libvarpd_panic("unexpected sa_family for the vl3 lookup");
 
 	svp->svp_cb.scb_vl3_lookup(svp, SVP_S_NOTFOUND, NULL, NULL, NULL, arg);
 }
@@ -263,7 +275,7 @@ void
 svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 {
 	struct addrinfo *a;
-	svp_conn_t *scp, *prev;
+	svp_conn_t *scp, *next;
 	int ngen;
 
 	mutex_lock(&srp->sr_lock);
@@ -276,7 +288,7 @@ svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 		struct in6_addr *addrp;
 
 		if (a->ai_family != AF_INET && a->ai_family != AF_INET6)
-			abort();
+			continue;
 
 		if (a->ai_family == AF_INET) {
 			struct sockaddr_in *v4;
@@ -290,7 +302,8 @@ svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 		}
 
 		mutex_lock(&srp->sr_lock);
-		for (scp = srp->sr_conns; scp != NULL; scp = scp->sc_next) {
+		for (scp = list_head(&srp->sr_conns); scp != NULL;
+		    scp = list_next(&srp->sr_conns, scp)) {
 			mutex_lock(&scp->sc_lock);
 			if (bcmp(addrp, &scp->sc_addr,
 			    sizeof (struct in6_addr)) == 0) {
@@ -300,30 +313,38 @@ svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 			}
 			mutex_unlock(&scp->sc_lock);
 		}
+
+		/*
+		 * We need to be careful in the assumptions that we make here,
+		 * as there's a good chance that svp_remote_conn_create will
+		 * drop the svp_remote_t`sr_lock to kick off its effective event
+		 * loop.
+		 */
 		if (scp == NULL)
 			svp_remote_conn_create(srp, addrp);
 		mutex_unlock(&srp->sr_lock);
 	}
 
+	/*
+	 * Now it's time to clean things up. We do not actively clean up the
+	 * current connections that we have, instead allowing them to stay
+	 * around assuming that they're still useful. Instead, we go through and
+	 * purge the degraded list for anything that's from an older generation.
+	 */
 	mutex_lock(&srp->sr_lock);
-	prev = NULL;
-	scp = srp->sr_conns;
+	scp = list_head(&srp->sr_dconns);
 	while (scp != NULL) {
+		next = list_next(&srp->sr_dconns, scp);
 		mutex_lock(&scp->sc_lock);
 		if (scp->sc_gen != ngen) {
-			svp_conn_t *d = scp;
-			if (prev == NULL)
-				srp->sr_conns = scp->sc_next;
-			else
-				prev->sc_next = scp->sc_next;
-			scp = scp->sc_next;
 			mutex_unlock(&scp->sc_lock);
-			svp_remote_conn_destroy(srp, d);
+			list_remove(&srp->sr_dconns, scp);
+			svp_remote_conn_destroy(srp, scp);
+			scp = next;
 			continue;
 		}
 		mutex_unlock(&scp->sc_lock);
-
-		prev = scp;
+		scp = next;
 	}
 	mutex_unlock(&srp->sr_lock);
 }
@@ -334,12 +355,12 @@ svp_remote_degrade(svp_remote_t *srp, svp_degrade_state_t flag)
 	int sf, nf;
 	char buf[256];
 
-	if (flag == SVP_RD_ALL || flag == 0)
-		abort();
+	assert(MUTEX_HELD(&srp->sr_lock));
 
-	mutex_lock(&srp->sr_lock);
+	if (flag == SVP_RD_ALL || flag == 0)
+		libvarpd_panic("invalid flag passed to degrade");
+
 	if ((flag & srp->sr_degrade) != 0) {
-		mutex_unlock(&srp->sr_lock);
 		return;
 	}
 
@@ -355,17 +376,17 @@ svp_remote_degrade(svp_remote_t *srp, svp_degrade_state_t flag)
 			libvarpd_fma_degrade(svp->svp_hdl, buf);
 		}
 	}
-	mutex_unlock(&srp->sr_lock);
 }
 
 void
 svp_remote_restore(svp_remote_t *srp, svp_degrade_state_t flag)
 {
 	int sf, nf;
-	mutex_lock(&srp->sr_lock);
+
+	assert(MUTEX_HELD(&srp->sr_lock));
 	sf = ffs(srp->sr_degrade);
 	if ((srp->sr_degrade & flag) != flag)
-		abort();
+		return;
 	srp->sr_degrade &= ~flag;
 	nf = ffs(srp->sr_degrade);
 
@@ -389,5 +410,4 @@ svp_remote_restore(svp_remote_t *srp, svp_degrade_state_t flag)
 			libvarpd_fma_degrade(svp->svp_hdl, buf);
 		}
 	}
-	mutex_unlock(&srp->sr_lock);
 }
