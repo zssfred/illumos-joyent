@@ -690,6 +690,12 @@ varpd_svp_init(void)
 		return;
 	}
 
+	if ((err = svp_timer_init()) != 0) {
+		svp_event_fini();
+		umem_cache_destroy(svp_lookup_cache);
+		return;
+	}
+
 	if ((err = svp_remote_init()) != 0) {
 		svp_event_fini();
 		umem_cache_destroy(svp_lookup_cache);

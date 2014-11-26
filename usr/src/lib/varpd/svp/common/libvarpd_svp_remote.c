@@ -32,8 +32,10 @@
 #include <libvarpd_provider.h>
 #include <libvarpd_svp.h>
 
-mutex_t svp_remote_lock = DEFAULTMUTEX;
-avl_tree_t svp_remote_tree;
+static mutex_t svp_remote_lock = DEFAULTMUTEX;
+static avl_tree_t svp_remote_tree;
+static svp_timer_t svp_dns_timer;
+static int svp_dns_timer_rate = 30;	/* seconds */
 
 static void
 svp_remote_mkfmamsg(svp_remote_t *srp, svp_degrade_state_t state, char *buf,
@@ -70,20 +72,6 @@ svp_remote_comparator(const void *l, const void *r)
 		return (-1);
 	else
 		return (0);
-}
-
-int
-svp_remote_init(void)
-{
-	avl_create(&svp_remote_tree, svp_remote_comparator,
-	    sizeof (svp_remote_t), offsetof(svp_remote_t, sr_gnode));
-	return (0);
-}
-
-void
-svp_remote_fini(void)
-{
-	avl_destroy(&svp_remote_tree);
 }
 
 static void
@@ -260,7 +248,7 @@ svp_remote_vl3_lookup(svp_t *svp, const struct sockaddr *addr, void *arg)
 }
 
 void
-svp_remote_dns_timer(port_event_t *pe, void *unused)
+svp_remote_dns_timer(void *unused)
 {
 	svp_remote_t *s;
 	mutex_lock(&svp_remote_lock);
@@ -410,4 +398,24 @@ svp_remote_restore(svp_remote_t *srp, svp_degrade_state_t flag)
 			libvarpd_fma_degrade(svp->svp_hdl, buf);
 		}
 	}
+}
+
+int
+svp_remote_init(void)
+{
+	avl_create(&svp_remote_tree, svp_remote_comparator,
+	    sizeof (svp_remote_t), offsetof(svp_remote_t, sr_gnode));
+	svp_dns_timer.st_func = svp_remote_dns_timer;
+	svp_dns_timer.st_arg = NULL;
+	svp_dns_timer.st_oneshot = B_FALSE;
+	svp_dns_timer.st_value = svp_dns_timer_rate;
+	svp_timer_add(&svp_dns_timer);
+	return (0);
+}
+
+void
+svp_remote_fini(void)
+{
+	svp_timer_remove(&svp_dns_timer);
+	avl_destroy(&svp_remote_tree);
 }

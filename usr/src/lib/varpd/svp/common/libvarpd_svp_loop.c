@@ -35,13 +35,8 @@ typedef struct svp_event_loop {
 	timer_t		sel_hosttimer;
 } svp_event_loop_t;
 
-int svp_hosttime = 30;		/* XXX 30 seconds for testing */
-static svp_event_t svp_hosttimer;
-static struct sigevent svp_hostevp;
-static port_notify_t svp_hostnotify;
 static svp_event_loop_t svp_event;
 static mutex_t svp_elock = DEFAULTMUTEX;
-
 
 static void *
 svp_event_thr(void *arg)
@@ -122,10 +117,39 @@ svp_event_dissociate(svp_event_t *sep, int fd)
 }
 
 int
+svp_event_timer_init(svp_event_t *sep)
+{
+	port_notify_t pn;
+	struct sigevent evp;
+	struct itimerspec ts;
+
+	pn.portnfy_port = svp_event.sel_port;
+	pn.portnfy_user = sep;
+	evp.sigev_notify = SIGEV_PORT;
+	evp.sigev_value.sival_ptr = &pn;
+
+	if (timer_create(CLOCK_REALTIME, &evp, &svp_event.sel_hosttimer) != 0)
+		return (errno);
+
+	ts.it_value.tv_sec = svp_tickrate;
+	ts.it_value.tv_nsec = 0;
+	ts.it_interval.tv_sec = svp_tickrate;
+	ts.it_interval.tv_nsec = 0;
+
+	if (timer_settime(svp_event.sel_hosttimer, TIMER_RELTIME, &ts,
+	    NULL) != 0) {
+		int ret = errno;
+		(void) timer_delete(svp_event.sel_hosttimer);
+		return (ret);
+	}
+
+	return (0);
+}
+
+int
 svp_event_init(void)
 {
 	long i, ncpus;
-	struct itimerspec ts;
 
 	svp_event.sel_port = port_create();
 	if (svp_event.sel_port == -1)
@@ -135,34 +159,6 @@ svp_event_init(void)
 	if (ncpus <= 0)
 		libvarpd_panic("sysconf for nprocs failed... %d/%d",
 		    ncpus, errno);
-
-	svp_hosttimer.se_func = svp_remote_dns_timer;
-	svp_hosttimer.se_arg = NULL;
-	svp_hostnotify.portnfy_port = svp_event.sel_port;
-	svp_hostnotify.portnfy_user = &svp_hosttimer;
-	svp_hostevp.sigev_notify = SIGEV_PORT;
-	svp_hostevp.sigev_value.sival_ptr = &svp_hostnotify;
-	if (timer_create(CLOCK_MONOTONIC, &svp_hostevp,
-	    &svp_event.sel_hosttimer) != 0) {
-		int ret = errno;
-		(void) close(svp_event.sel_port);
-		svp_event.sel_port = -1;
-		return (ret);
-	}
-
-	ts.it_value.tv_sec = svp_hosttime;
-	ts.it_value.tv_nsec = 0;
-	ts.it_interval.tv_sec = svp_hosttime;
-	ts.it_interval.tv_nsec = 0;
-
-	if (timer_settime(svp_event.sel_hosttimer, TIMER_RELTIME, &ts,
-	    NULL) != 0) {
-		int ret = errno;
-		(void) timer_delete(svp_event.sel_hosttimer);
-		(void) close(svp_event.sel_port);
-		svp_event.sel_port = -1;
-		return (ret);
-	}
 
 	svp_event.sel_threads = umem_alloc(sizeof (thread_t) * ncpus,
 	    UMEM_DEFAULT);

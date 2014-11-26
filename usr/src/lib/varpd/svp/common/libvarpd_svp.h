@@ -46,6 +46,19 @@ typedef struct svp_event {
 	void		*se_arg;
 } svp_event_t;
 
+typedef void (*svp_timer_f)(void *);
+
+typedef struct svp_timer {
+	svp_timer_f	st_func;
+	void		*st_arg;
+	boolean_t	st_oneshot;
+	uint32_t	st_value;
+	/* Fields below here are private to the svp_timer implementaiton */
+	uint64_t	st_expire;
+	boolean_t	st_delivering;
+	avl_node_t	st_link;
+} svp_timer_t;
+
 typedef enum svp_conn_state {
 	SVP_CS_ERROR		= 0x00,
 	SVP_CS_UNBOUND		= 0x01,
@@ -191,29 +204,47 @@ extern void svp_remote_vl3_lookup(svp_t *, const struct sockaddr *, void *);
 extern void svp_remote_vl2_lookup(svp_t *, const uint8_t *, void *);
 
 /*
- * Host and Event Loop APIs
+ * Init functions
  */
 extern int svp_remote_init(void);
 extern void svp_remote_fini(void);
 extern int svp_event_init(void);
+extern int svp_event_timer_init(svp_event_t *);
 extern void svp_event_fini(void);
 extern int svp_host_init(void);
+extern int svp_timer_init(void);
 
-extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
-extern void svp_host_queue(svp_remote_t *);
+/*
+ * Timers
+ */
+extern int svp_tickrate;
+extern void svp_timer_add(svp_timer_t *);
+extern void svp_timer_remove(svp_timer_t *);
 
+/*
+ * Event loop management
+ */
 extern int svp_event_associate(svp_event_t *, int);
 extern int svp_event_dissociate(svp_event_t *, int);
 
-extern void svp_remote_dns_timer(port_event_t *, void *);
-
+/*
+ * Connection manager
+ */
 extern void svp_remote_conn_handler(port_event_t *, void *);
-
 extern int svp_remote_conn_create(svp_remote_t *, const struct in6_addr *);
 extern void svp_remote_conn_destroy(svp_remote_t *, svp_conn_t *);
 
+/*
+ * FMA related
+ */
 extern void svp_remote_degrade(svp_remote_t *, svp_degrade_state_t);
 extern void svp_remote_restore(svp_remote_t *, svp_degrade_state_t);
+
+/*
+ * Misc.
+ */
+extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
+extern void svp_host_queue(svp_remote_t *);
 
 #ifdef __cplusplus
 }
