@@ -71,6 +71,7 @@ typedef struct varpd_instance {
 	avl_node_t	vri_inode;
 	avl_node_t	vri_lnode;
 	uint64_t	vri_id;			/* RO */
+	uint64_t	vri_vnetid;		/* RO */
 	datalink_id_t	vri_linkid;		/* RO */
 	overlay_target_mode_t vri_mode;		/* RO */
 	overlay_plugin_dest_t vri_dest;		/* RO */
@@ -207,7 +208,7 @@ extern int libvarpd_dirwalk(varpd_impl_t *, const char *, const char *,
 extern int libvarpd_overlay_init(varpd_impl_t *);
 extern void libvarpd_overlay_fini(varpd_impl_t *);
 extern int libvarpd_overlay_info(varpd_impl_t *, datalink_id_t,
-    overlay_plugin_dest_t *, uint64_t *);
+    overlay_plugin_dest_t *, uint64_t *, uint64_t *);
 extern int libvarpd_overlay_associate(varpd_instance_t *);
 extern int libvarpd_overlay_disassociate(varpd_instance_t *);
 extern int libvarpd_overlay_degrade(varpd_instance_t *, const char *);

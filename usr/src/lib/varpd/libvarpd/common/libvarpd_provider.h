@@ -176,7 +176,7 @@ extern void libvarpd_panic(const char *, ...) __NORETURN;
 /*
  * Misc. Information APIs
  */
-extern int libvarpd_plugin_varpdid(varpd_provider_handle_t, uint64_t *);
+extern uint64_t libvarpd_plugin_vnetid(varpd_provider_handle_t);
 
 /*
  * Lookup Replying query and proxying

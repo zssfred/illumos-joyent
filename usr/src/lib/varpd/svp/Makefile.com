@@ -33,7 +33,7 @@ LIBS =		$(DYNLIB)
 # ourselves... probably.
 #
 LDLIBS +=	-lc -lvarpd -lumem -lnvpair -lsocket -lnsl -lavl \
-		-lcmdutils
+		-lcmdutils -lidspace
 CPPFLAGS +=	-I../common
 
 SRCDIR =	../common

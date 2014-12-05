@@ -38,12 +38,14 @@ extern "C" {
 typedef struct svp svp_t;
 typedef struct svp_remote svp_remote_t;
 typedef struct svp_conn svp_conn_t;
+typedef struct svp_query svp_query_t;
 
 typedef void (*svp_event_f)(port_event_t *, void *);
 
 typedef struct svp_event {
 	svp_event_f	se_func;
 	void		*se_arg;
+	int		se_events;
 } svp_event_t;
 
 typedef void (*svp_timer_f)(void *);
@@ -59,39 +61,143 @@ typedef struct svp_timer {
 	avl_node_t	st_link;
 } svp_timer_t;
 
+typedef union svp_query_data {
+	svp_vl2_req_t	sqd_vl2r;
+	svp_vl2_ack_t	sqd_vl2a;
+	svp_vl3_req_t	sdq_vl3r;
+	svp_vl3_ack_t	sdq_vl3a;
+} svp_query_data_t;
+
+typedef void (*svp_query_f)(svp_query_t *, void *);
+
+typedef enum svp_query_state {
+	SVP_QUERY_INIT		= 0x00,
+	SVP_QUERY_WRITING	= 0x01,
+	SVP_QUERY_READING	= 0x02,
+	SVP_QUERY_FINISHED	= 0x03
+} svp_query_state_t;
+
+/*
+ * The query structure is usable for all forms of svp queries that end up
+ * getting passed across. Right now it's optimized for the fixed size data
+ * requests as opposed to requests whose responses will always be streaming in
+ * nature. Though, the streaming requests are the less common ones we have.
+ *
+ * XXX Fix that and make this streaming friendly
+ */
+struct svp_query {
+	list_node_t		sq_lnode;
+	svp_query_f		sq_func;
+	svp_query_state_t	sq_state;
+	void			*sq_arg;
+	svp_t			*sq_svp;
+	svp_req_t		sq_header;
+	svp_query_data_t	sq_rdun;
+	svp_query_data_t	sq_wdun;
+	svp_status_t		sq_status;
+	void			*sq_rdata;
+	size_t			sq_rsize;
+	void			*sq_wdata;
+	size_t			sq_wsize;
+};
+
+/*
+ * XXX Centralize this somewhere more generally, big theroy statement, where are
+ * you?
+ *
+ * We have a connection pool that's built upon DNS records. DNS describes the
+ * membership of the set of remote peers that make up our pool and we maintain
+ * one connection to each of them.  In addition, we maintain an exponential
+ * backoff for each peer and will attempt to reconect immediately before backing
+ * off. The following are the valid states that a connection can be in:
+ *
+ *	SVP_CS_INITIAL		This is the initial state of a connection, all
+ *				that should exist is an unbound socket.
+ *
+ *	SVP_CS_CONNECTING	A call to connect has been made and we are
+ *				polling for it to complete.
+ *
+ *	SVP_CS_BACKOFF		A connect attempt has failed and we are
+ *				currently backing off, waiting to try again.
+ *
+ *	SVP_CS_ACTIVE		We have successfully connected to the remote
+ *				system.
+ *
+ *	SVP_CS_WINDDOWN		This connection is going to valhalla. In other
+ *				words, a previously active connection is no
+ *				longer valid in DNS, so we should curb our use
+ *				of it, and reap it as soon as we have other
+ *				active connections.
+ *
+ *	SVP_CS_REAPING		This connection object will be freed and reaped.
+ *				It will no longer be used.
+ *
+ * The following diagram attempts to describe our state transition scheme, and
+ * when we transition from one state to the next.
+ *
+ *                               |
+ *                               * New remote IP from DNS resolution,
+ *                               | not currently active in the system.
+ *                               |
+ *                               v                                Socket Error,
+ *                       +----------------+                       still in DNS
+ *                       | SVP_CS_INITIAL |<----------------------*-----+
+ *                       +----------------+                             |
+ *                                       |                              |
+ *    Connection failed ..        Always *               Successful     |
+ *    backoff limit      .               |               connect()      |
+ *    not exceeded  +----*---------+     |        +-----------*--+      |
+ *                  |              |     |        |              |      |
+ *                  V              ^     v        ^              V      ^
+ *     +----------------+         +-------------------+     +---------------+
+ * +-<-| SVP_CS_BACKOFF |         | SVP_CS_CONNECTING |     | SVP_CS_ACTIVE |
+ * |   +----------------+         +-------------------+     +---------------+
+ * |                V              ^  |                       ^    V
+ * |  Backoff wait  *              |  v                       |    * Removed
+ * |  interval      +--------------+  |              Added to *    | from DNS
+ * |  finished                        |              DNS      |    |
+ * |                                  |                       |    |
+ * |                                  |                       ^    V
+ * |                                  |            +-----------------+
+ * +---->---------------+-----<-------+        +-<-| SVP_CS_WINDDOWN |
+ *                      v                 Conn *   +-----------------+
+ *                      |                Error |                V
+ *         Removed from *                      v                |
+ *         DNS          |            +----------------+         * Connection
+ *                      +----------->| SVP_CS_REAPING |<--------+ Quiesced
+ *                                   +----------------+
+ *
+ */
 typedef enum svp_conn_state {
 	SVP_CS_ERROR		= 0x00,
-	SVP_CS_UNBOUND		= 0x01,
+	SVP_CS_INITIAL		= 0x01,
 	SVP_CS_CONNECTING	= 0x02,
-	SVP_CS_BOUND		= 0x03
+	SVP_CS_BACKOFF		= 0x03,
+	SVP_CS_ACTIVE		= 0x04,
+	SVP_CS_WINDDOWN		= 0x05
 } svp_conn_state_t;
 
 typedef enum svp_conn_error {
 	SVP_CE_NONE		= 0x00,
 	SVP_CE_ASSOCIATE	= 0x01,
-	SVP_CE_CONNECT		= 0x02,
-	SVP_CE_POLLHUP		= 0x03,
-	SVP_CE_POLLERR		= 0x04,
-	SVP_CE_NOPOLLOUT	= 0x05
+	SVP_CE_NOPOLLOUT	= 0x02,
+	SVP_CE_SOCKET		= 0x03
 } svp_conn_error_t;
 
+typedef enum svp_conn_flags {
+	SVP_CF_DEGRADED		= 0x01,
+	SVP_CF_REAP		= 0x02
+} svp_conn_flags_t;
+
 typedef struct svp_conn_out {
-	void	*sco_buffer;
-	size_t	sco_buflen;
-	size_t	sco_offset;
+	svp_query_t		*sco_query;
+	size_t			sco_offset;
 } svp_conn_out_t;
 
-typedef enum svp_conn_in_state {
-	SVP_CIS_NEED_HEADER	= 0x00,
-	SVP_CIS_NEED_BODY	= 0x01
-} svp_conn_in_state_t;
-
 typedef struct svp_conn_in {
-	svp_conn_in_state_t	sci_state;
-	size_t			sci_nbytes;
-	size_t			sci_offset;
+	svp_query_t 		*sci_query;
 	svp_req_t		sci_req;
-	void			*sci_body;
+	size_t			sci_offset;
 } svp_conn_in_t;
 
 struct svp_conn {
@@ -100,12 +206,16 @@ struct svp_conn {
 	list_node_t		sc_rlist;	/* svp_remote_t`sr_lock */
 	mutex_t			sc_lock;
 	svp_event_t		sc_event;
+	svp_timer_t		sc_timer;
 	int			sc_socket;
 	uint_t			sc_gen;
+	uint_t			sc_nbackoff;
+	svp_conn_flags_t	sc_flags;
 	svp_conn_state_t	sc_cstate;
 	svp_conn_error_t	sc_error;
 	int			sc_errno;
 	hrtime_t		sc_lastact;
+	list_t			sc_queries;
 	svp_conn_out_t		sc_output;
 	svp_conn_in_t		sc_input;
 };
@@ -141,8 +251,7 @@ struct svp_remote {
 	uint_t			sr_gen;
 	uint_t			sr_tconns;	/* total conns + dconns */
 	uint_t			sr_ndconns;	/* number of degraded conns */
-	list_t			sr_conns;	/* active conns */
-	list_t			sr_dconns;	/* degraded conns */
+	list_t			sr_conns;	/* all conns */
 };
 
 /*
@@ -200,8 +309,8 @@ extern int svp_remote_find(char *, uint16_t, svp_remote_t **);
 extern int svp_remote_attach(svp_remote_t *, svp_t *);
 extern void svp_remote_detach(svp_t *);
 extern void svp_remote_release(svp_remote_t *);
-extern void svp_remote_vl3_lookup(svp_t *, const struct sockaddr *, void *);
-extern void svp_remote_vl2_lookup(svp_t *, const uint8_t *, void *);
+extern void svp_remote_vl3_lookup(svp_t *, svp_query_t *, const struct sockaddr *, void *);
+extern void svp_remote_vl2_lookup(svp_t *, svp_query_t *, const uint8_t *, void *);
 
 /*
  * Init functions
@@ -230,9 +339,10 @@ extern int svp_event_dissociate(svp_event_t *, int);
 /*
  * Connection manager
  */
-extern void svp_remote_conn_handler(port_event_t *, void *);
-extern int svp_remote_conn_create(svp_remote_t *, const struct in6_addr *);
-extern void svp_remote_conn_destroy(svp_remote_t *, svp_conn_t *);
+extern int svp_conn_create(svp_remote_t *, const struct in6_addr *);
+extern void svp_conn_destroy(svp_conn_t *);
+extern void svp_conn_fallout(svp_conn_t *);
+extern void svp_conn_queue(svp_conn_t *, svp_query_t *);
 
 /*
  * FMA related
@@ -245,6 +355,7 @@ extern void svp_remote_restore(svp_remote_t *, svp_degrade_state_t);
  */
 extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
 extern void svp_host_queue(svp_remote_t *);
+extern void svp_query_release(svp_query_t *);
 
 #ifdef __cplusplus
 }

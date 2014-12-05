@@ -159,13 +159,14 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 	varpd_plugin_t *plugin;
 	varpd_instance_t *inst, lookup;
 	overlay_plugin_dest_t dest;
+	uint64_t vid;
 
 	/* XXX Really want our own errnos */
 	plugin = libvarpd_plugin_lookup(vip, pname);
 	if (plugin == NULL)
 		return (ENOENT);
 
-	if ((ret = libvarpd_overlay_info(vip, linkid, &dest, NULL)) != 0)
+	if ((ret = libvarpd_overlay_info(vip, linkid, &dest, NULL, &vid)) != 0)
 		return (ret);
 
 	inst = umem_alloc(sizeof (varpd_instance_t), UMEM_DEFAULT);
@@ -174,6 +175,7 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 
 	inst->vri_id = id_alloc(vip->vdi_idspace);
 	inst->vri_linkid = linkid;
+	inst->vri_vnetid = vid;
 	inst->vri_mode = plugin->vpp_mode;
 	inst->vri_dest = dest;
 	inst->vri_plugin = plugin;
@@ -210,6 +212,13 @@ libvarpd_instance_id(varpd_instance_handle_t ihp)
 {
 	varpd_instance_t *inst = (varpd_instance_t *)ihp;
 	return (inst->vri_id);
+}
+
+uint64_t
+libvarpd_plugin_vnetid(varpd_provider_handle_t vhp)
+{
+	varpd_instance_t *inst = (varpd_instance_t *)vhp;
+	return (inst->vri_vnetid);
 }
 
 varpd_instance_handle_t

@@ -83,7 +83,7 @@ svp_event_associate(svp_event_t *sep, int fd)
 	int ret;
 
 	ret = port_associate(svp_event.sel_port, PORT_SOURCE_FD, fd,
-	    POLLIN | POLLOUT | POLLRDNORM | POLLERR | POLLHUP, sep);
+	    sep->se_events, sep);
 	if (ret != 0) {
 		switch (errno) {
 		case EBADF:

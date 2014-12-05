@@ -349,6 +349,7 @@ overlay_target_info(overlay_target_hdl_t *thdl, void *arg)
 		oti->oti_flags |= OVERLAY_TARG_INFO_F_DEGRADED;
 	if (odd->odd_flags & OVERLAY_F_ACTIVATED)
 		oti->oti_flags |= OVERLAY_TARG_INFO_F_ACTIVE;
+	oti->oti_vnetid = odd->odd_vid;
 	mutex_exit(&odd->odd_lock);
 	overlay_hold_rele(odd);
 	return (0);

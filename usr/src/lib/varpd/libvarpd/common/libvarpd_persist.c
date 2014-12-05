@@ -249,7 +249,7 @@ static int
 libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 {
 	nvlist_t *pvl;
-	uint64_t id, flags;
+	uint64_t id, flags, vid;
 	uint32_t linkid, dest, mode;
 	char *pluginstr;
 	varpd_plugin_t *plugin;
@@ -281,7 +281,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	if (plugin->vpp_mode != mode)
 		return (EINVAL);
 
-	if (libvarpd_overlay_info(vip, linkid, &adest, &flags) != 0)
+	if (libvarpd_overlay_info(vip, linkid, &adest, &flags, &vid) != 0)
 		return (EINVAL);
 
 	if (dest != adest)
@@ -299,6 +299,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	}
 
 	inst->vri_linkid = linkid;
+	inst->vri_vnetid = vid;
 	inst->vri_mode = plugin->vpp_mode;
 	inst->vri_dest = dest;
 	inst->vri_plugin = plugin;

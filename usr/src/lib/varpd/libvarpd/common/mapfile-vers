@@ -88,6 +88,7 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_plugin_proxy_ndp;
 	libvarpd_plugin_register;
 	libvarpd_plugin_walk;
+	libvarpd_plugin_vnetid;
 
 	libvarpd_prop_set_default;
 	libvarpd_prop_set_nodefault;

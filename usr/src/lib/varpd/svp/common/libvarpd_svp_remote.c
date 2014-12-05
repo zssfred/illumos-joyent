@@ -28,6 +28,8 @@
 #include <assert.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <errno.h>
+#include <libidspace.h>
 
 #include <libvarpd_provider.h>
 #include <libvarpd_svp.h>
@@ -35,6 +37,7 @@
 static mutex_t svp_remote_lock = DEFAULTMUTEX;
 static avl_tree_t svp_remote_tree;
 static svp_timer_t svp_dns_timer;
+static id_space_t *svp_idspace;
 static int svp_dns_timer_rate = 30;	/* seconds */
 
 static void
@@ -72,6 +75,12 @@ svp_remote_comparator(const void *l, const void *r)
 		return (-1);
 	else
 		return (0);
+}
+
+void
+svp_query_release(svp_query_t *sqp)
+{
+	id_free(svp_idspace, sqp->sq_header.svp_id);
 }
 
 static void
@@ -118,8 +127,6 @@ svp_remote_create(const char *host, uint16_t port, svp_remote_t **outp)
 	if (mutex_init(&remote->sr_lock, USYNC_THREAD, NULL) != 0)
 		libvarpd_panic("failed to create mutex sr_lock");
 	list_create(&remote->sr_conns, sizeof (svp_conn_t),
-	    offsetof(svp_conn_t, sc_rlist));
-	list_create(&remote->sr_dconns, sizeof (svp_conn_t),
 	    offsetof(svp_conn_t, sc_rlist));
 	avl_create(&remote->sr_tree, svp_comparator, sizeof (svp_t),
 	    offsetof(svp_t, svp_rlink));
@@ -232,19 +239,132 @@ svp_remote_detach(svp_t *svp)
 	svp_remote_release(srp);
 }
 
-void
-svp_remote_vl2_lookup(svp_t *svp, const uint8_t *mac, void *arg)
+/*
+ * Walk the list of connections and find the first one that's available, the
+ * move it to the back of the list so it's less likely to be used again.
+ */
+static boolean_t
+svp_remote_conn_queue(svp_remote_t *srp, svp_query_t *sqp)
 {
-	svp->svp_cb.scb_vl2_lookup(svp, SVP_S_NOTFOUND, NULL, NULL, arg);
+	svp_conn_t *scp;
+
+	mutex_lock(&srp->sr_lock);
+	for (scp = list_head(&srp->sr_conns); scp != NULL;
+	    scp = list_next(&srp->sr_conns, scp)) {
+		mutex_lock(&scp->sc_lock);
+		if (scp->sc_cstate != SVP_CS_ACTIVE) {
+			mutex_unlock(&scp->sc_lock);
+			continue;
+		}
+		svp_conn_queue(scp, sqp);
+		mutex_unlock(&scp->sc_lock);
+		list_remove(&srp->sr_conns, scp);
+		list_insert_tail(&srp->sr_conns, scp);
+		mutex_unlock(&srp->sr_lock);
+		return (B_TRUE);
+	}
+	mutex_unlock(&srp->sr_lock);
+
+	return (B_FALSE);
+}
+
+static void
+svp_remote_vl2_lookup_cb(svp_query_t *sqp, void *arg)
+{
+	svp_t *svp = sqp->sq_svp;
+	svp_vl2_ack_t *vl2a = (svp_vl2_ack_t *)sqp->sq_wdata;
+
+	svp->svp_cb.scb_vl2_lookup(svp, sqp->sq_status,
+	    (struct in6_addr *)vl2a->sl2a_addr, ntohs(vl2a->sl2a_port), arg);
 }
 
 void
-svp_remote_vl3_lookup(svp_t *svp, const struct sockaddr *addr, void *arg)
+svp_remote_vl2_lookup(svp_t *svp, svp_query_t *sqp, const uint8_t *mac,
+    void *arg)
 {
+	svp_remote_t *srp;
+	svp_vl2_req_t *vl2r = &sqp->sq_rdun.sqd_vl2r;
+
+	srp = svp->svp_remote;
+	sqp->sq_func = svp_remote_vl2_lookup_cb;
+	sqp->sq_arg = arg;
+	sqp->sq_svp = svp;
+	sqp->sq_state = SVP_QUERY_INIT;
+	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
+	sqp->sq_header.svp_op = htons(SVP_R_VL2_REQ);
+	sqp->sq_header.svp_size = htonl(sizeof (svp_vl2_req_t));
+	/*
+	 * XXX ID, crc32 need real values
+	 */
+	sqp->sq_header.svp_id = id_alloc(svp_idspace);
+	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_rdata = vl2r;
+	sqp->sq_rsize = sizeof (svp_vl2_req_t);
+	sqp->sq_wdata = NULL;
+	sqp->sq_wsize = 0;
+
+	bcopy(mac, vl2r->sl2r_mac, ETHERADDRL);
+	vl2r->sl2r_vnetid = ntohl(svp->svp_vid);
+
+	if (svp_remote_conn_queue(srp, sqp) == B_FALSE)
+		svp->svp_cb.scb_vl2_lookup(svp, SVP_S_FATAL, NULL, NULL, arg);
+}
+
+static void
+svp_remote_vl3_lookup_cb(svp_query_t *sqp, void *arg)
+{
+	svp_t *svp = sqp->sq_svp;
+	svp_vl3_ack_t *vl3a = (svp_vl3_ack_t *)sqp->sq_wdata;
+
+	svp->svp_cb.scb_vl3_lookup(svp, sqp->sq_status, vl3a->sl3a_mac,
+	    (struct in6_addr *)vl3a->sl3a_uip, ntohs(vl3a->sl3a_uport), arg);
+}
+
+void
+svp_remote_vl3_lookup(svp_t *svp, svp_query_t *sqp,
+    const struct sockaddr *addr, void *arg)
+{
+	svp_remote_t *srp;
+	svp_vl3_req_t *vl3r = &sqp->sq_rdun.sdq_vl3r;
+
 	if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
 		libvarpd_panic("unexpected sa_family for the vl3 lookup");
 
-	svp->svp_cb.scb_vl3_lookup(svp, SVP_S_NOTFOUND, NULL, NULL, NULL, arg);
+	srp = svp->svp_remote;
+	sqp->sq_func = svp_remote_vl3_lookup_cb;
+	sqp->sq_arg = arg;
+	sqp->sq_svp = svp;
+	sqp->sq_state = SVP_QUERY_INIT;
+	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
+	sqp->sq_header.svp_op = htons(SVP_R_VL3_REQ);
+	sqp->sq_header.svp_size = htons(sizeof (svp_vl3_req_t));
+	/*
+	 * XXX ID, crc32 need real values
+	 */
+	sqp->sq_header.svp_id = id_alloc(svp_idspace);
+	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_rdata = vl3r;
+	sqp->sq_rsize = sizeof (svp_vl3_req_t);
+	sqp->sq_wdata = NULL;
+	sqp->sq_wsize = 0;
+
+	if (addr->sa_family == AF_INET6) {
+		struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)addr;
+		vl3r->sl3r_type = SVP_VL3_IPV6;
+		bcopy(&s6->sin6_addr, vl3r->sl3r_ip,
+		    sizeof (struct in6_addr));
+	} else {
+		struct sockaddr_in *s4 = (struct sockaddr_in *)addr;
+		struct in6_addr v6;
+
+		vl3r->sl3r_type = SVP_VL3_IP;
+		IN6_INADDR_TO_V4MAPPED(&s4->sin_addr, &v6);
+		bcopy(&v6, vl3r->sl3r_ip, sizeof (struct in6_addr));
+	}
+	vl3r->sl3r_vnetid = ntohl(svp->svp_vid);
+
+	if (svp_remote_conn_queue(srp, sqp) == B_FALSE)
+		svp->svp_cb.scb_vl3_lookup(svp, SVP_S_FATAL, NULL, NULL, NULL, arg);
 }
 
 void
@@ -263,7 +383,7 @@ void
 svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 {
 	struct addrinfo *a;
-	svp_conn_t *scp, *next;
+	svp_conn_t *scp;
 	int ngen;
 
 	mutex_lock(&srp->sr_lock);
@@ -304,12 +424,12 @@ svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 
 		/*
 		 * We need to be careful in the assumptions that we make here,
-		 * as there's a good chance that svp_remote_conn_create will
+		 * as there's a good chance that svp_conn_create will
 		 * drop the svp_remote_t`sr_lock to kick off its effective event
 		 * loop.
 		 */
 		if (scp == NULL)
-			svp_remote_conn_create(srp, addrp);
+			svp_conn_create(srp, addrp);
 		mutex_unlock(&srp->sr_lock);
 	}
 
@@ -320,19 +440,15 @@ svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 	 * purge the degraded list for anything that's from an older generation.
 	 */
 	mutex_lock(&srp->sr_lock);
-	scp = list_head(&srp->sr_dconns);
-	while (scp != NULL) {
-		next = list_next(&srp->sr_dconns, scp);
+	for (scp = list_head(&srp->sr_conns); scp != NULL;
+	    scp = list_next(&srp->sr_conns, scp)) {
+		boolean_t fall = B_FALSE;
 		mutex_lock(&scp->sc_lock);
-		if (scp->sc_gen != ngen) {
-			mutex_unlock(&scp->sc_lock);
-			list_remove(&srp->sr_dconns, scp);
-			svp_remote_conn_destroy(srp, scp);
-			scp = next;
-			continue;
-		}
+		if (scp->sc_gen < srp->sr_gen)
+			fall = B_TRUE;
 		mutex_unlock(&scp->sc_lock);
-		scp = next;
+		if (fall == B_TRUE)
+			svp_conn_fallout(scp);
 	}
 	mutex_unlock(&srp->sr_lock);
 }
@@ -403,6 +519,9 @@ svp_remote_restore(svp_remote_t *srp, svp_degrade_state_t flag)
 int
 svp_remote_init(void)
 {
+	svp_idspace = id_space_create("svp_req_ids", 1, INT32_MAX);
+	if (svp_idspace == NULL)
+		return (errno);
 	avl_create(&svp_remote_tree, svp_remote_comparator,
 	    sizeof (svp_remote_t), offsetof(svp_remote_t, sr_gnode));
 	svp_dns_timer.st_func = svp_remote_dns_timer;
@@ -418,4 +537,6 @@ svp_remote_fini(void)
 {
 	svp_timer_remove(&svp_dns_timer);
 	avl_destroy(&svp_remote_tree);
+	if (svp_idspace == NULL)
+		id_space_destroy(svp_idspace);
 }

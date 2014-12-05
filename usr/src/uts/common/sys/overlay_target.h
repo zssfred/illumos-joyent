@@ -51,6 +51,7 @@ typedef struct overlay_targ_info {
 	datalink_id_t		oti_linkid;
 	uint32_t		oti_needs;
 	uint64_t		oti_flags;
+	uint64_t		oti_vnetid;
 } overlay_targ_info_t;
 
 /*

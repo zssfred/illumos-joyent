@@ -56,6 +56,7 @@ typedef struct svp_lookup {
 			uint8_t			*svl_out;
 		} svl_vl3;
 	} svl_u;
+	svp_query_t				svl_query;
 } svp_lookup_t;
 
 static const char *varpd_svp_props[] = {
@@ -199,6 +200,7 @@ varpd_svp_create(varpd_provider_handle_t hdl, void **outp,
 	svp->svp_uport = svp_defuport;
 	svp->svp_cb = svp_defops;
 	svp->svp_hdl = hdl;
+	svp->svp_vid = libvarpd_plugin_vnetid(svp->svp_hdl);
 	*outp = svp;
 	return (0);
 }
@@ -293,7 +295,7 @@ varpd_svp_lookup(void *arg, varpd_query_handle_t vqh,
 	slp->svl_u.svl_vl2.svl_handle = vqh;
 	slp->svl_u.svl_vl2.svl_point = otp;
 
-	svp_remote_vl2_lookup(svp, otl->otl_dstaddr, slp);
+	svp_remote_vl2_lookup(svp, &slp->svl_query, otl->otl_dstaddr, slp);
 }
 
 static int
@@ -648,7 +650,7 @@ varpd_svp_arp(void *arg, varpd_arp_handle_t vah, int type,
 	svl->svl_type = SVP_L_VL3;
 	svl->svl_u.svl_vl3.svl_vah = vah;
 	svl->svl_u.svl_vl3.svl_out = out;
-	svp_remote_vl3_lookup(svp, sock, svl);
+	svp_remote_vl3_lookup(svp, &svl->svl_query, sock, svl);
 }
 
 static const varpd_plugin_ops_t varpd_svp_ops = {

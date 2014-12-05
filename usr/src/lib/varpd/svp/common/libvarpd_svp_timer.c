@@ -95,7 +95,7 @@ svp_timer_add(svp_timer_t *stp)
 
 	mutex_lock(&svp_timer_lock);
 	stp->st_delivering = B_FALSE;
-	stp->st_expire = svp_timer_nticks + stp->st_expire;
+	stp->st_expire = svp_timer_nticks + stp->st_value;
 	avl_add(&svp_timer_tree, stp);
 	mutex_unlock(&svp_timer_lock);
 }
