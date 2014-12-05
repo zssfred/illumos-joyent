@@ -20,6 +20,7 @@
 #
 #
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2014, Joyent, Inc.
 #
 
 #
@@ -81,6 +82,13 @@ objs/%.o pics/%.o: $(SRCDIR)/%.cc
 	$(COMPILE.cc) -o $@ $<
 	$(POST_PROCESS_O)
 
+pics/%.o: $(SRCDIR)/%.d
+	$(COMPILE.d) -o $@ -s $< $(USDT_G_PICS)
+	$(POST_PROCESS_O)
+
+%_impl.h: $(SRCDIR)/%.d
+	$(DTRACE) -h -o $@ -s $<
+
 objs pics:
 	-@mkdir -p $@
 
@@ -90,7 +98,7 @@ $(LIBRARY): objs .WAIT $$(OBJS)
 
 $(DYNLIB): $$(MAPFILES)
 
-$(DYNLIB): pics .WAIT $$(PICS) $$(ALTPICS) $$(EXTPICS)
+$(DYNLIB): pics $(USDT_HEADERS) .WAIT $$(PICS) $$(ALTPICS) $$(EXTPICS) .WAIT $(USDT_PICS)
 	$(BUILD.SO)
 	$(POST_PROCESS_SO)
 
@@ -111,5 +119,5 @@ clobber: clean
 	-$(RM) $(CLOBBERTARGFILES)
 
 clean:
-	-$(RM) $(OBJS)
+	-$(RM) $(OBJS) $(USDT_HEADERS) $(USDT_PICS)
 	-$(RM) $(PICS) $(DUPLICATE_SRC) $(LINTOUT) $(LINTLIB) $(CLEANFILES)
