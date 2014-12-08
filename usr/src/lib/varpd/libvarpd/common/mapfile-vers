@@ -108,8 +108,6 @@ SYMBOL_VERSION SUNWprivate {
 
 	libvarpd_overlay_lookup_quiesce;
 	libvarpd_overlay_lookup_run;
-
-	libvarpd_set_logfile;
     local:
 	*;
 };

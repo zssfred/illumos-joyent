@@ -30,10 +30,12 @@
 #include <strings.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include <libvarpd_provider.h>
 #include "libvarpd_svp.h"
 
+bunyan_logger_t *svp_bunyan;
 static int svp_defport = 169;
 static int svp_defuport = 1690;
 static umem_cache_t *svp_lookup_cache;
@@ -671,6 +673,27 @@ static const varpd_plugin_ops_t varpd_svp_ops = {
 	NULL
 };
 
+static int
+svp_bunyan_init(void)
+{
+	int ret;
+
+	if ((ret = bunyan_init("svp", &svp_bunyan)) != 0)
+		return (ret);
+	ret = bunyan_stream_add(svp_bunyan, "stderr", BUNYAN_L_INFO,
+	    bunyan_stream_fd, (void *)STDERR_FILENO);
+	if (ret != 0)
+		bunyan_fini(svp_bunyan);
+	return (ret);
+}
+
+static void
+svp_bunyan_fini(void)
+{
+	if (svp_bunyan != NULL)
+		bunyan_fini(svp_bunyan);
+}
+
 #pragma init(varpd_svp_init)
 static void
 varpd_svp_init(void)
@@ -678,16 +701,25 @@ varpd_svp_init(void)
 	int err;
 	varpd_plugin_register_t *vpr;
 
-	if ((err == svp_host_init()) != 0)
+	/* XXX Revisit and make sure we have proper clean up */
+	if (svp_bunyan_init() != 0)
 		return;
+
+	if ((err == svp_host_init()) != 0) {
+		svp_bunyan_fini();
+		return;
+	}
 
 	/* XXX Communicate failure */
 	svp_lookup_cache = umem_cache_create("svp_lookup",
 	    sizeof (svp_lookup_t),  0, NULL, NULL, NULL, NULL, NULL, 0);
-	if (svp_lookup_cache == NULL)
+	if (svp_lookup_cache == NULL) {
+		svp_bunyan_fini();
 		return;
+	}
 
 	if ((err = svp_event_init()) != 0) {
+		svp_bunyan_fini();
 		umem_cache_destroy(svp_lookup_cache);
 		return;
 	}
@@ -695,15 +727,16 @@ varpd_svp_init(void)
 	if ((err = svp_timer_init()) != 0) {
 		svp_event_fini();
 		umem_cache_destroy(svp_lookup_cache);
+		svp_bunyan_fini();
 		return;
 	}
 
 	if ((err = svp_remote_init()) != 0) {
 		svp_event_fini();
 		umem_cache_destroy(svp_lookup_cache);
+		svp_bunyan_fini();
 		return;
 	}
-
 
 	/* XXX Revisit failure semantics here */
 	vpr = libvarpd_plugin_alloc(VARPD_CURRENT_VERSION, &err);

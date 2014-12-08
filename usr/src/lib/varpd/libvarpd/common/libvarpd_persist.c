@@ -292,7 +292,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	if (inst == NULL)
 		return (ENOMEM);
 
-	inst->vri_id = id_alloc_specific_nosleep(vip->vdi_idspace, id);
+	inst->vri_id = id_alloc_specific(vip->vdi_idspace, id);
 	if (inst->vri_id != id) {
 		umem_free(inst, sizeof (varpd_instance_t));
 		return (EINVAL);

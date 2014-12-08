@@ -23,6 +23,7 @@
  * should register.
  */
 
+#include <bunyan.h>
 #include <libvarpd.h>
 #include <libnvpair.h>
 #include <sys/socket.h>
@@ -169,9 +170,10 @@ extern void libvarpd_plugin_free(varpd_plugin_register_t *);
 extern int libvarpd_plugin_register(varpd_plugin_register_t *);
 
 /*
- * Blowing up
+ * Blowing up and logging
  */
 extern void libvarpd_panic(const char *, ...) __NORETURN;
+extern const bunyan_logger_t *libvarpd_plugin_bunyan(varpd_provider_handle_t);
 
 /*
  * Misc. Information APIs

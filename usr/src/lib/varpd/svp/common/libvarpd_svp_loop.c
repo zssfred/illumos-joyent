@@ -117,6 +117,12 @@ svp_event_dissociate(svp_event_t *sep, int fd)
 }
 
 int
+svp_event_inject(void *user)
+{
+	return (port_send(svp_event.sel_port, 0, user));
+}
+
+int
 svp_event_timer_init(svp_event_t *sep)
 {
 	port_notify_t pn;

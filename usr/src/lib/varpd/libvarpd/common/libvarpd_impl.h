@@ -54,10 +54,10 @@ typedef struct varpd_impl {
 	avl_tree_t	vdi_linstances;	/* vdi_lock */
 	id_space_t	*vdi_idspace;	/* RO */
 	umem_cache_t	*vdi_qcache;	/* RO */
+	bunyan_logger_t	*vdi_bunyan;	/* RO */
 	int		vdi_overlayfd;	/* RO */
 	int		vdi_doorfd;	/* vdi_lock */
 	int		vdi_persistfd;	/* vdi_plock */
-	FILE		*vdi_err;	/* vdi_loglock */
 	cond_t		vdi_lthr_cv;	/* vdi_lock */
 	boolean_t	vdi_lthr_quiesce;	/* vdi_lock */
 	uint_t		vdi_lthr_count;	/* vdi_lock */
@@ -234,7 +234,6 @@ extern int libvarpd_overlay_cache_set(varpd_instance_t *, const uint8_t *,
     const varpd_client_cache_entry_t *);
 extern int libvarpd_overlay_cache_walk_fill(varpd_instance_t *, uint64_t *,
     uint64_t *, overlay_targ_cache_entry_t *);
-
 
 extern void libvarpd_persist_init(varpd_impl_t *);
 extern void libvarpd_persist_fini(varpd_impl_t *);

@@ -29,7 +29,8 @@ OBJECTS =	libvarpd.o \
 include ../../../Makefile.lib
 
 LIBS =		$(DYNLIB)
-LDLIBS +=	-lc -lavl -lumem -lidspace -lnvpair -lmd5 -lrename
+LDLIBS +=	-lc -lavl -lumem -lidspace -lnvpair -lmd5 -lrename \
+		-lbunyan
 CPPFLAGS +=	-I../common
 
 SRCDIR =	../common

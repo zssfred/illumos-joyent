@@ -248,7 +248,7 @@ svp_remote_conn_queue(svp_remote_t *srp, svp_query_t *sqp)
 {
 	svp_conn_t *scp;
 
-	mutex_lock(&srp->sr_lock);
+	assert(MUTEX_HELD(&srp->sr_lock));
 	for (scp = list_head(&srp->sr_conns); scp != NULL;
 	    scp = list_next(&srp->sr_conns, scp)) {
 		mutex_lock(&scp->sc_lock);
@@ -260,10 +260,8 @@ svp_remote_conn_queue(svp_remote_t *srp, svp_query_t *sqp)
 		mutex_unlock(&scp->sc_lock);
 		list_remove(&srp->sr_conns, scp);
 		list_insert_tail(&srp->sr_conns, scp);
-		mutex_unlock(&srp->sr_lock);
 		return (B_TRUE);
 	}
-	mutex_unlock(&srp->sr_lock);
 
 	return (B_FALSE);
 }
@@ -274,8 +272,12 @@ svp_remote_vl2_lookup_cb(svp_query_t *sqp, void *arg)
 	svp_t *svp = sqp->sq_svp;
 	svp_vl2_ack_t *vl2a = (svp_vl2_ack_t *)sqp->sq_wdata;
 
-	svp->svp_cb.scb_vl2_lookup(svp, sqp->sq_status,
-	    (struct in6_addr *)vl2a->sl2a_addr, ntohs(vl2a->sl2a_port), arg);
+	if (sqp->sq_status == SVP_S_OK)
+		svp->svp_cb.scb_vl2_lookup(svp, sqp->sq_status,
+		    (struct in6_addr *)vl2a->sl2a_addr, ntohs(vl2a->sl2a_port),
+		    arg);
+	else
+		svp->svp_cb.scb_vl2_lookup(svp, sqp->sq_status, NULL, 0, arg);
 }
 
 void
@@ -297,6 +299,9 @@ svp_remote_vl2_lookup(svp_t *svp, svp_query_t *sqp, const uint8_t *mac,
 	 * XXX ID, crc32 need real values
 	 */
 	sqp->sq_header.svp_id = id_alloc(svp_idspace);
+	if (sqp->sq_header.svp_id == -1)
+		libvarpd_panic("failed to allcoate from svp_idspace: %d",
+		    errno);
 	sqp->sq_header.svp_crc32 = htonl(0);
 	sqp->sq_rdata = vl2r;
 	sqp->sq_rsize = sizeof (svp_vl2_req_t);
@@ -306,8 +311,10 @@ svp_remote_vl2_lookup(svp_t *svp, svp_query_t *sqp, const uint8_t *mac,
 	bcopy(mac, vl2r->sl2r_mac, ETHERADDRL);
 	vl2r->sl2r_vnetid = ntohl(svp->svp_vid);
 
+	mutex_lock(&srp->sr_lock);
 	if (svp_remote_conn_queue(srp, sqp) == B_FALSE)
 		svp->svp_cb.scb_vl2_lookup(svp, SVP_S_FATAL, NULL, NULL, arg);
+	mutex_unlock(&srp->sr_lock);
 }
 
 static void
@@ -316,8 +323,13 @@ svp_remote_vl3_lookup_cb(svp_query_t *sqp, void *arg)
 	svp_t *svp = sqp->sq_svp;
 	svp_vl3_ack_t *vl3a = (svp_vl3_ack_t *)sqp->sq_wdata;
 
-	svp->svp_cb.scb_vl3_lookup(svp, sqp->sq_status, vl3a->sl3a_mac,
-	    (struct in6_addr *)vl3a->sl3a_uip, ntohs(vl3a->sl3a_uport), arg);
+	if (sqp->sq_status == SVP_S_OK)
+		svp->svp_cb.scb_vl3_lookup(svp, sqp->sq_status, vl3a->sl3a_mac,
+		    (struct in6_addr *)vl3a->sl3a_uip, ntohs(vl3a->sl3a_uport),
+		    arg);
+	else
+		svp->svp_cb.scb_vl3_lookup(svp, sqp->sq_status, NULL, NULL, 0,
+		    arg);
 }
 
 void
@@ -342,6 +354,9 @@ svp_remote_vl3_lookup(svp_t *svp, svp_query_t *sqp,
 	 * XXX ID, crc32 need real values
 	 */
 	sqp->sq_header.svp_id = id_alloc(svp_idspace);
+	if (sqp->sq_header.svp_id == -1)
+		libvarpd_panic("failed to allcoate from svp_idspace: %d",
+		    errno);
 	sqp->sq_header.svp_crc32 = htonl(0);
 	sqp->sq_rdata = vl3r;
 	sqp->sq_rsize = sizeof (svp_vl3_req_t);
@@ -363,8 +378,11 @@ svp_remote_vl3_lookup(svp_t *svp, svp_query_t *sqp,
 	}
 	vl3r->sl3r_vnetid = ntohl(svp->svp_vid);
 
+	mutex_lock(&srp->sr_lock);
 	if (svp_remote_conn_queue(srp, sqp) == B_FALSE)
-		svp->svp_cb.scb_vl3_lookup(svp, SVP_S_FATAL, NULL, NULL, NULL, arg);
+		svp->svp_cb.scb_vl3_lookup(svp, SVP_S_FATAL, NULL, NULL, NULL,
+		    arg);
+	mutex_unlock(&srp->sr_lock);
 }
 
 void
@@ -451,6 +469,42 @@ svp_remote_resolved(svp_remote_t *srp, struct addrinfo *newaddrs)
 			svp_conn_fallout(scp);
 	}
 	mutex_unlock(&srp->sr_lock);
+}
+
+/*
+ * This connection is in the process of being reset, we need to reassign all of
+ * its queries to other places or mark them as fatal.
+ */
+void
+svp_remote_reassign(svp_remote_t *srp, svp_conn_t *scp)
+{
+	assert(MUTEX_HELD(&srp->sr_lock));
+	svp_query_t *sqp;
+
+	/*
+	 * As we try to reassing all of its queries, remove it from the list.
+	 */
+	list_remove(&srp->sr_conns, scp);
+
+	while ((sqp = list_remove_head(&scp->sc_queries)) != NULL) {
+		sqp->sq_wdata = NULL;
+		sqp->sq_wsize = 0;
+		sqp->sq_acttime = -1;
+
+		/*
+		 * XXX We probably want to maintain a queue of these for some
+		 * time.
+		 */
+		if (svp_remote_conn_queue(srp, sqp) == B_FALSE) {
+			sqp->sq_status = SVP_S_FATAL;
+			sqp->sq_func(sqp, sqp->sq_arg);
+		}
+	}
+
+	/*
+	 * Now that we're done, go ahead and re-insert.
+	 */
+	list_insert_tail(&srp->sr_conns, scp);
 }
 
 void

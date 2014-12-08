@@ -15,6 +15,9 @@
 
 /*
  * Logic to manage an individual connection to a remote host.
+ *
+ * Individual connections always are associated with an svp_remote_t from their
+ * creation to their destruction.
  */
 
 #include <assert.h>
@@ -27,6 +30,7 @@
 
 #include <libvarpd_svp.h>
 
+static int svp_conn_query_timeout = 30;
 static int svp_conn_backoff_tbl[] = { 1, 2, 4, 8, 16, 32 };
 static int svp_conn_nbackoff = sizeof (svp_conn_backoff_tbl) / sizeof (int);
 
@@ -36,6 +40,19 @@ typedef enum svp_conn_act {
 	SVP_RA_RESTORE	= 0x02,
 	SVP_RA_ERROR	= 0x03
 } svp_conn_act_t;
+
+static void
+svp_conn_inject(svp_conn_t *scp)
+{
+	int ret;
+	assert(MUTEX_HELD(&scp->sc_lock));
+
+	if (scp->sc_flags & SVP_CF_USER)
+		return;
+	scp->sc_flags |= SVP_CF_USER;
+	if ((ret = svp_event_inject(scp)) != 0)
+		libvarpd_panic("failed to inject event: %d\n", ret);
+}
 
 static void
 svp_conn_degrade(svp_conn_t *scp)
@@ -71,6 +88,41 @@ svp_conn_restore(svp_conn_t *scp)
 	srp->sr_ndconns--;
 }
 
+static void
+svp_conn_add(svp_conn_t *scp)
+{
+	svp_remote_t *srp = scp->sc_remote;
+
+	assert(MUTEX_HELD(&srp->sr_lock));
+	assert(MUTEX_HELD(&scp->sc_lock));
+
+	if (scp->sc_flags & SVP_CF_ADDED)
+		return;
+
+	list_insert_tail(&srp->sr_conns, scp);
+	scp->sc_flags |= SVP_CF_ADDED;
+	srp->sr_tconns++;
+}
+
+static void
+svp_conn_remove(svp_conn_t *scp)
+{
+	svp_remote_t *srp = scp->sc_remote;
+
+	assert(MUTEX_HELD(&srp->sr_lock));
+	assert(MUTEX_HELD(&scp->sc_lock));
+
+	if (!(scp->sc_flags & SVP_CF_ADDED))
+		return;
+
+	scp->sc_flags &= ~SVP_CF_ADDED;
+	if (scp->sc_flags & SVP_CF_DEGRADED)
+		srp->sr_ndconns--;
+	srp->sr_tconns--;
+	if (srp->sr_tconns == srp->sr_ndconns)
+		svp_remote_degrade(srp, SVP_RD_REMOTE_FAIL);
+}
+
 static svp_query_t *
 svp_conn_query_find(svp_conn_t *scp, uint32_t id)
 {
@@ -92,20 +144,21 @@ svp_conn_backoff(svp_conn_t *scp)
 {
 	assert(MUTEX_HELD(&scp->sc_lock));
 
-	scp->sc_cstate = SVP_CS_BACKOFF;
-	scp->sc_nbackoff++;
-	if (scp->sc_nbackoff >= svp_conn_nbackoff) {
-		scp->sc_timer.st_value =
-		    svp_conn_backoff_tbl[svp_conn_nbackoff - 1];
-	} else {
-		scp->sc_timer.st_value =
-		    svp_conn_backoff_tbl[scp->sc_nbackoff - 1];
-	}
-	svp_timer_add(&scp->sc_timer);
-
 	if (close(scp->sc_socket) != 0)
 		libvarpd_panic("failed to close socket %d: %d\n",
 		    scp->sc_socket, errno);
+	scp->sc_socket = -1;
+
+	scp->sc_cstate = SVP_CS_BACKOFF;
+	scp->sc_nbackoff++;
+	if (scp->sc_nbackoff >= svp_conn_nbackoff) {
+		scp->sc_btimer.st_value =
+		    svp_conn_backoff_tbl[svp_conn_nbackoff - 1];
+	} else {
+		scp->sc_btimer.st_value =
+		    svp_conn_backoff_tbl[scp->sc_nbackoff - 1];
+	}
+	svp_timer_add(&scp->sc_btimer);
 
 	if (scp->sc_nbackoff > svp_conn_nbackoff)
 		return (SVP_RA_DEGRADE);
@@ -326,6 +379,90 @@ svp_conn_pollout(svp_conn_t *scp)
 	return (SVP_RA_NONE);
 }
 
+static boolean_t
+svp_conn_pollin_validate(svp_conn_t *scp)
+{
+	svp_query_t *sqp;
+	uint32_t nsize;
+	uint16_t nvers, nop;
+	svp_req_t *resp = &scp->sc_input.sci_req;
+
+	assert(MUTEX_HELD(&scp->sc_lock));
+
+	nvers = ntohs(resp->svp_ver);
+	nop = ntohs(resp->svp_op);
+	nsize = ntohl(resp->svp_size);
+
+	/* XXX Best practice around spaces in key names */
+	if (nvers != SVP_CURRENT_VERSION) {
+		bunyan_warn(svp_bunyan, "unsupported version",
+		    BUNYAN_T_IP, "remote ip", &scp->sc_addr,
+		    BUNYAN_T_INT32, "remote port", scp->sc_remote->sr_rport,
+		    BUNYAN_T_INT32, "version", nvers,
+		    BUNYAN_T_INT32, "operation", nop,
+		    BUNYAN_T_INT32, "response id", resp->svp_id,
+		    BUNYAN_T_END);
+		return (B_FALSE);
+	}
+
+	if (nop != SVP_R_VL2_ACK && nop != SVP_R_VL3_ACK) {
+		bunyan_warn(svp_bunyan, "unsupported operation",
+		    BUNYAN_T_IP, "remote ip", &scp->sc_addr,
+		    BUNYAN_T_INT32, "remote port", scp->sc_remote->sr_rport,
+		    BUNYAN_T_INT32, "version", nvers,
+		    BUNYAN_T_INT32, "operation", nop,
+		    BUNYAN_T_INT32, "response id", resp->svp_id,
+		    BUNYAN_T_END);
+		return (B_FALSE);
+	}
+
+	sqp = svp_conn_query_find(scp, resp->svp_id);
+	if (sqp == NULL) {
+		bunyan_warn(svp_bunyan, "unknown response id",
+		    BUNYAN_T_IP, "remote ip", &scp->sc_addr,
+		    BUNYAN_T_INT32, "remote port", scp->sc_remote->sr_rport,
+		    BUNYAN_T_INT32, "version", nvers,
+		    BUNYAN_T_INT32, "operation", nop,
+		    BUNYAN_T_INT32, "response id", resp->svp_id,
+		    BUNYAN_T_END);
+		return (B_FALSE);
+	}
+
+	if (sqp->sq_state != SVP_QUERY_READING) {
+		bunyan_warn(svp_bunyan, "got response for unexpecting query",
+		    BUNYAN_T_IP, "remote ip", &scp->sc_addr,
+		    BUNYAN_T_INT32, "remote port", scp->sc_remote->sr_rport,
+		    BUNYAN_T_INT32, "version", nvers,
+		    BUNYAN_T_INT32, "operation", nop,
+		    BUNYAN_T_INT32, "response id", resp->svp_id,
+		    BUNYAN_T_INT32, "query state", sqp->sq_state,
+		    BUNYAN_T_END);
+		return (B_FALSE);
+	}
+
+	if ((nop == SVP_R_VL2_ACK && nsize != sizeof (svp_vl2_ack_t)) ||
+	    (nop == SVP_R_VL3_ACK && nsize != sizeof (svp_vl3_ack_t))) {
+		bunyan_warn(svp_bunyan, "response size too large",
+		    BUNYAN_T_IP, "remote ip", &scp->sc_addr,
+		    BUNYAN_T_INT32, "remote port", scp->sc_remote->sr_rport,
+		    BUNYAN_T_INT32, "version", nvers,
+		    BUNYAN_T_INT32, "operation", nop,
+		    BUNYAN_T_INT32, "response id", resp->svp_id,
+		    BUNYAN_T_INT32, "response size", nsize,
+		    BUNYAN_T_INT32, "expected size", nop == SVP_R_VL2_ACK ?
+		    sizeof (svp_vl2_ack_t) : sizeof (svp_vl3_ack_t),
+		    BUNYAN_T_INT32, "query state", sqp->sq_state,
+		    BUNYAN_T_END);
+		return (B_FALSE);
+	}
+
+	scp->sc_input.sci_query = sqp;
+	sqp->sq_wdata = &sqp->sq_wdun;
+	sqp->sq_wsize = sizeof (svp_query_data_t);
+
+	return (B_TRUE);
+}
+
 static svp_conn_act_t
 svp_conn_pollin(svp_conn_t *scp)
 {
@@ -341,9 +478,8 @@ svp_conn_pollin(svp_conn_t *scp)
 	 */
 	off = scp->sc_input.sci_offset;
 	sqp = scp->sc_input.sci_query;
-	if (sqp == NULL) {
+	if (scp->sc_input.sci_query == NULL) {
 		svp_req_t *resp = &scp->sc_input.sci_req;
-		uint32_t nop, nsize;
 
 		assert(off < sizeof (svp_req_t));
 
@@ -362,7 +498,8 @@ svp_conn_pollin(svp_conn_t *scp)
 				return (SVP_RA_ERROR);
 				break;
 			default:
-				libvarpd_panic("unexpeted read errno: %d", errno);
+				libvarpd_panic("unexpeted read errno: %d",
+				    errno);
 			}
 		} else if (ret == 0) {
 			/* Try to reconnect to the remote host */
@@ -376,32 +513,12 @@ svp_conn_pollin(svp_conn_t *scp)
 			return (SVP_RA_NONE);
 		}
 
-		nop = ntohs(resp->svp_op);
-		nsize = ntohl(resp->svp_size);
-		sqp = svp_conn_query_find(scp, resp->svp_id);
-		if (sqp == NULL) {
-			/*
-			 * XXX Don't panic, probably kill connection and try
-			 * again
-			 */
-			libvarpd_panic("got bad connection");
-		}
-
-		/* XXX Validate header, don't assume it has valid data */
-		/*
-		 * XXX probably shouldn't assert our internal state, as a bad
-		 * server could take us out here, we should instead close
-		 * connection and resend elsewhere...
-		 */
-		assert(sqp->sq_state == SVP_QUERY_READING);
-		scp->sc_input.sci_query = sqp;
-		if (nop != SVP_R_VL2_ACK && nop != SVP_R_VL3_ACK)
-			libvarpd_panic("unimplemented op: %d", nop);
-		sqp->sq_wdata = &sqp->sq_wdun;
-		sqp->sq_wsize = sizeof (svp_query_data_t);
-		assert(sqp->sq_wsize >= nsize);
+		if (svp_conn_pollin_validate(scp) != B_TRUE)
+			return (SVP_RA_ERROR);
 	}
 
+	sqp = scp->sc_input.sci_query;
+	assert(sqp != NULL);
 	total = ntohl(scp->sc_input.sci_req.svp_size);
 	do {
 		ret = read(scp->sc_socket, sqp->sq_wdata + off, total - off);
@@ -465,6 +582,9 @@ svp_conn_pollin(svp_conn_t *scp)
 static svp_conn_act_t
 svp_conn_reset(svp_conn_t *scp)
 {
+	svp_remote_t *srp = scp->sc_remote;
+
+	assert(MUTEX_HELD(&srp->sr_lock));
 	assert(MUTEX_HELD(&scp->sc_lock));
 
 	assert(svp_event_dissociate(&scp->sc_event, scp->sc_socket) ==
@@ -473,23 +593,18 @@ svp_conn_reset(svp_conn_t *scp)
 		libvarpd_panic("failed to close socket %d: %d", scp->sc_socket,
 		    errno);
 	scp->sc_socket = -1;
-#if 0
-	scp->sc_socket = socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, 0);
-	if (scp->sc_socket == -1) {
-		scp->sc_error = SVP_CE_SOCKET;
-		scp->sc_errno = errno;
-		scp->sc_cstate = SVP_CS_ERROR;
-		return (SVP_RA_DEGRADE);
-	}
-#endif
-
 	scp->sc_cstate = SVP_CS_INITIAL;
+
+	svp_remote_reassign(srp, scp);
+
 	return (svp_conn_connect(scp));
 }
 
 /*
  * This is our general state transition function. We're called here when we want
- * to advance part of our state machine as well as to re-arm ourselves.
+ * to advance part of our state machine as well as to re-arm ourselves. We can
+ * also end up here from the standard event loop as a result of having a user
+ * event posted.
  */
 static void
 svp_conn_handler(port_event_t *pe, void *arg)
@@ -500,13 +615,45 @@ svp_conn_handler(port_event_t *pe, void *arg)
 
 	mutex_lock(&scp->sc_lock);
 
-	/* Check if this is being torn down */
+	/*
+	 * Check if one of our event interrupts is set. An event interrupt, such
+	 * as having to be reaped or be torndown is notified by a
+	 * PORT_SOURCE_USER event that tries to take care of this. However,
+	 * because of the fact that the event loop can be ongoing despite this,
+	 * we may get here before the PORT_SOURCE_USER has casued us to get
+	 * here. In such a case, if the PORT_SOURCE_USER event is tagged, then
+	 * we're going to opt to do nothing here and wait for it to come and
+	 * tear us down. That will also indicate to us that we have nothing to
+	 * worry about as far as general timing and the like goes.
+	 */
+
+	if ((scp->sc_flags & SVP_CF_UFLAG) != 0 &&
+	    (scp->sc_flags & SVP_CF_USER) != 0 &&
+	    pe != NULL &&
+	    pe->portev_source != PORT_SOURCE_USER) {
+		mutex_unlock(&scp->sc_lock);
+		return;
+	}
+
+	if (pe != NULL && pe->portev_source == PORT_SOURCE_USER) {
+		scp->sc_flags &= ~SVP_CF_USER;
+		if ((scp->sc_flags & SVP_CF_UFLAG) == 0) {
+			mutex_unlock(&scp->sc_lock);
+			return;
+		}
+	}
+
+	/* Check if this needs to be freed */
 	if (scp->sc_flags & SVP_CF_REAP) {
 		mutex_unlock(&scp->sc_lock);
-		mutex_lock(&srp->sr_lock);
 		svp_conn_destroy(scp);
-		mutex_unlock(&srp->sr_lock);
 		return;
+	}
+
+	/* Check if this needs to be reset */
+	if (scp->sc_flags & SVP_CF_TEARDOWN) {
+		ret = SVP_RA_ERROR;
+		goto out;
 	}
 
 	switch (scp->sc_cstate) {
@@ -525,7 +672,6 @@ svp_conn_handler(port_event_t *pe, void *arg)
 			ret = svp_conn_pollout(scp);
 		if (ret == SVP_RA_NONE && (pe->portev_events & POLLIN))
 			ret = svp_conn_pollin(scp);
-		/* XXX Need to handle queued requests... */
 		if (ret == SVP_RA_NONE) {
 			int err;
 			if ((err = svp_event_associate(&scp->sc_event,
@@ -535,14 +681,13 @@ svp_conn_handler(port_event_t *pe, void *arg)
 				scp->sc_cstate = SVP_CS_ERROR;
 			}
 			ret = SVP_RA_DEGRADE;
-		} else if (ret == SVP_RA_ERROR) {
-			ret = svp_conn_reset(scp);
 		}
 		break;
 	default:
-		libvarpd_panic("svp_conn_handler encountered "
-		    "SVP_CS_ERROR");
+		libvarpd_panic("svp_conn_handler encountered unexpected "
+		    "state: %d", scp->sc_cstate);
 	}
+out:
 	mutex_unlock(&scp->sc_lock);
 
 	if (ret == SVP_RA_NONE)
@@ -550,6 +695,9 @@ svp_conn_handler(port_event_t *pe, void *arg)
 
 	mutex_lock(&srp->sr_lock);
 	mutex_lock(&scp->sc_lock);
+	if (ret == SVP_RA_ERROR)
+		ret = svp_conn_reset(scp);
+
 	if (ret == SVP_RA_DEGRADE)
 		svp_conn_degrade(scp);
 	else if (ret == SVP_RA_RESTORE)
@@ -567,12 +715,58 @@ svp_conn_backtimer(void *arg)
 }
 
 /*
+ * This fires every svp_conn_query_timeout seconds. Its purpos is to determine
+ * if we haven't heard back on a request with in svp_conn_query_timeout seconds.
+ * If any of the svp_conn_query_t's that have been started (indicated by
+ * svp_query_t`sq_acttime != -1), and more than svp_conn_query_timeout seconds
+ * have passed, we basically tear this connection down and reassign outstanding
+ * queries.
+ */
+static void
+svp_conn_querytimer(void *arg)
+{
+	svp_query_t *sqp;
+	svp_conn_t *scp = arg;
+	hrtime_t now = gethrtime();
+
+	mutex_lock(&scp->sc_lock);
+
+	/*
+	 * If we're not in the active state, then we don't care about this as
+	 * we're already either going to die or we have no connections to worry
+	 * about.
+	 */
+	if (scp->sc_cstate != SVP_CS_ACTIVE) {
+		mutex_unlock(&scp->sc_lock);
+		return;
+	}
+
+	for (sqp = list_head(&scp->sc_queries); sqp != NULL;
+	    sqp = list_next(&scp->sc_queries, sqp)) {
+		if (sqp->sq_acttime == -1)
+			continue;
+		if ((sqp->sq_acttime - now) / NANOSEC > svp_conn_query_timeout)
+			break;
+	}
+
+	/* Nothing timed out, we're good here */
+	if (sqp == NULL) {
+		mutex_unlock(&scp->sc_lock);
+		return;
+	}
+
+	scp->sc_flags |= SVP_CF_TEARDOWN;
+	svp_conn_inject(scp);
+
+	mutex_unlock(&scp->sc_lock);
+}
+
+/*
  * This connection has fallen out of DNS, figure out what we need to do with it.
  */
 void
 svp_conn_fallout(svp_conn_t *scp)
 {
-	boolean_t unlock = B_TRUE;
 	svp_remote_t *srp = scp->sc_remote;
 
 	assert(MUTEX_HELD(&srp->sr_lock));
@@ -582,10 +776,12 @@ svp_conn_fallout(svp_conn_t *scp)
 	case SVP_CS_ERROR:
 		/*
 		 * Connection is already inactive, so it's safe to tear down.
+		 * Fire it off through the state machine to tear down via the
+		 * backoff timer.
 		 */
-		mutex_unlock(&scp->sc_lock);
-		svp_conn_destroy(scp);
-		unlock = B_FALSE;
+		svp_conn_remove(scp);
+		scp->sc_flags |= SVP_CF_REAP;
+		svp_conn_inject(scp);
 		break;
 	case SVP_CS_INITIAL:
 	case SVP_CS_BACKOFF:
@@ -594,9 +790,12 @@ svp_conn_fallout(svp_conn_t *scp)
 		 * Here, we have something actively going on, so we'll let it be
 		 * clean up the next time we hit the event loop by the event
 		 * loop itself. As it has no connections, there isn't much to
-		 * really do.
+		 * really do, though we'll take this chance to go ahead and
+		 * remove it from the remote.
 		 */
+		svp_conn_remove(scp);
 		scp->sc_flags |= SVP_CF_REAP;
+		svp_conn_inject(scp);
 		break;
 	case SVP_CS_ACTIVE:
 		scp->sc_cstate = SVP_CS_WINDDOWN;
@@ -617,8 +816,7 @@ svp_conn_fallout(svp_conn_t *scp)
 		libvarpd_panic("svp_conn_fallout encountered"
 		    "unkonwn state");
 	}
-	if (unlock == B_TRUE)
-		mutex_unlock(&scp->sc_lock);
+	mutex_unlock(&scp->sc_lock);
 	mutex_unlock(&srp->sr_lock);
 }
 
@@ -635,30 +833,30 @@ svp_conn_create(svp_remote_t *srp, const struct in6_addr *addr)
 	scp->sc_remote = srp;
 	scp->sc_event.se_func = svp_conn_handler;
 	scp->sc_event.se_arg = scp;
-	scp->sc_timer.st_func = svp_conn_backtimer;
-	scp->sc_timer.st_arg = scp;
-	scp->sc_timer.st_oneshot = B_TRUE;
-	scp->sc_timer.st_value = 0;
+	scp->sc_btimer.st_func = svp_conn_backtimer;
+	scp->sc_btimer.st_arg = scp;
+	scp->sc_btimer.st_oneshot = B_TRUE;
+	scp->sc_btimer.st_value = 1;
+
+	scp->sc_qtimer.st_func = svp_conn_querytimer;
+	scp->sc_qtimer.st_arg = scp;
+	scp->sc_qtimer.st_oneshot = B_FALSE;
+	scp->sc_qtimer.st_value = svp_conn_query_timeout;
+
 	scp->sc_socket = -1;
-#if 0
-	scp->sc_socket = socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, 0);
-	if (scp->sc_socket < 0) {
-		int ret = errno;
-		umem_free(scp, sizeof (svp_conn_t));
-		return (ret);
-	}
-#endif
+
 	list_create(&scp->sc_queries, sizeof (svp_query_t),
 	    offsetof(svp_query_t, sq_lnode));
 	scp->sc_gen = srp->sr_gen;
 	bcopy(addr, &scp->sc_addr, sizeof (struct in6_addr));
 	scp->sc_cstate = SVP_CS_INITIAL;
-	list_insert_tail(&srp->sr_conns, scp);
-	srp->sr_tconns++;
+	mutex_lock(&scp->sc_lock);
+	svp_conn_add(scp);
+	mutex_unlock(&scp->sc_lock);
 
-	mutex_unlock(&srp->sr_lock);
-	svp_conn_handler(NULL, scp);
-	mutex_lock(&srp->sr_lock);
+	/* Now that we're locked and loaded, add our timers */
+	svp_timer_add(&scp->sc_qtimer);
+	svp_timer_add(&scp->sc_btimer);
 
 	return (0);
 }
@@ -667,18 +865,23 @@ svp_conn_create(svp_remote_t *srp, const struct in6_addr *addr)
  * At the time of calling, the entry has been removed from all lists. In
  * addition, the entries state should be SVP_CS_ERROR, therefore, we know that
  * the fd should not be associated with the event loop. We'll double check that
- * just in case.
+ * just in case. We should also have already been removed from the remote's
+ * list.
  */
 void
 svp_conn_destroy(svp_conn_t *scp)
 {
 	int ret;
-	svp_remote_t *srp = scp->sc_remote;
 
-	assert(MUTEX_HELD(&srp->sr_lock));
 	mutex_lock(&scp->sc_lock);
 	if (scp->sc_cstate != SVP_CS_ERROR)
 		libvarpd_panic("asked to tear down an active connection");
+	if (scp->sc_flags & SVP_CF_ADDED)
+		libvarpd_panic("asked to remove a connection still in "
+		    "the remote list\n");
+	if (!list_is_empty(&scp->sc_queries))
+		libvarpd_panic("asked to remove a connection with non-empty "
+		    "query list");
 
 	if ((ret = svp_event_dissociate(&scp->sc_event, scp->sc_socket)) !=
 	    ENOENT) {
@@ -687,13 +890,9 @@ svp_conn_destroy(svp_conn_t *scp)
 	}
 	mutex_unlock(&scp->sc_lock);
 
-	if (scp->sc_flags & SVP_CF_DEGRADED) {
-		srp->sr_ndconns--;
-	}
-	srp->sr_tconns--;
-
-	if (srp->sr_tconns == srp->sr_ndconns)
-		svp_remote_degrade(srp, SVP_RD_REMOTE_FAIL);
+	/* Verify our timers are killed */
+	svp_timer_remove(&scp->sc_btimer);
+	svp_timer_remove(&scp->sc_qtimer);
 
 	if (scp->sc_socket != -1 && close(scp->sc_socket) != 0)
 		libvarpd_panic("failed to close svp_conn_t`scp_socket fd "
@@ -709,6 +908,7 @@ svp_conn_queue(svp_conn_t *scp, svp_query_t *sqp)
 	assert(MUTEX_HELD(&scp->sc_lock));
 	assert(scp->sc_cstate == SVP_CS_ACTIVE);
 
+	sqp->sq_acttime = -1;
 	list_insert_tail(&scp->sc_queries, sqp);
 	if (!(scp->sc_event.se_events & POLLOUT)) {
 		scp->sc_event.se_events |= POLLOUT;

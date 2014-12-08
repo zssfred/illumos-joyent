@@ -15,7 +15,8 @@
 
 LIBRARY =	libidspace.a
 VERS =		.1
-OBJECTS =	id_space.o
+OBJECTS =	id_space.o \
+		libidspace.o
 COMDIR =	$(SRC)/common/idspace
 
 include ../../Makefile.lib

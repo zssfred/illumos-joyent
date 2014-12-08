@@ -99,6 +99,14 @@ libvarpd_create(varpd_handle_t *vphp)
 		return (ret);
 	}
 
+	if ((ret = bunyan_init("varpd", &vip->vdi_bunyan)) != 0) {
+		libvarpd_overlay_fini(vip);
+		umem_cache_destroy(vip->vdi_qcache);
+		id_space_destroy(vip->vdi_idspace);
+		umem_free(vip, sizeof (varpd_impl_t));
+		return (ret);
+	}
+
 	libvarpd_persist_init(vip);
 
 	avl_create(&vip->vdi_plugins, libvarpd_plugin_comparator,
@@ -112,9 +120,6 @@ libvarpd_create(varpd_handle_t *vphp)
 	if (mutex_init(&vip->vdi_lock, USYNC_THREAD, NULL) != 0)
 		libvarpd_panic("failed to create mutex: %d", errno);
 
-	if (mutex_init(&vip->vdi_loglock, USYNC_THREAD, NULL) != 0)
-		libvarpd_panic("failed to create mutex: %d", errno);
-
 	vip->vdi_doorfd = -1;
 	*vphp = (varpd_handle_t)vip;
 	return (0);
@@ -125,8 +130,6 @@ libvarpd_destroy(varpd_handle_t vhp)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 
-	if (mutex_destroy(&vip->vdi_loglock) != 0)
-		libvarpd_panic("failed to destroy mutex: %d", errno);
 	if (mutex_destroy(&vip->vdi_lock) != 0)
 		libvarpd_panic("failed to destroy mutex: %d", errno);
 	libvarpd_persist_fini(vip);
@@ -134,20 +137,6 @@ libvarpd_destroy(varpd_handle_t vhp)
 	umem_cache_destroy(vip->vdi_qcache);
 	id_space_destroy(vip->vdi_idspace);
 	umem_free(vip, sizeof (varpd_impl_t));
-}
-
-FILE *
-libvarpd_set_logfile(varpd_handle_t vhp, FILE *fp)
-{
-	FILE *old;
-	varpd_impl_t *vip = (varpd_impl_t *)vhp;
-
-	mutex_lock(&vip->vdi_loglock);
-	old = vip->vdi_err;
-	vip->vdi_err = fp;
-	mutex_unlock(&vip->vdi_loglock);
-
-	return (old);
 }
 
 int
@@ -174,6 +163,9 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 		return (ENOMEM);
 
 	inst->vri_id = id_alloc(vip->vdi_idspace);
+	if (inst->vri_id == -1)
+		libvarpd_panic("failed to allocate id from vdi_idspace: %d",
+		    errno);
 	inst->vri_linkid = linkid;
 	inst->vri_vnetid = vid;
 	inst->vri_mode = plugin->vpp_mode;
@@ -285,6 +277,13 @@ libvarpd_instance_activate(varpd_instance_handle_t ihp)
 out:
 	mutex_unlock(&inst->vri_lock);
 	return (ret);
+}
+
+const bunyan_logger_t *
+libvarpd_plugin_bunyan(varpd_provider_handle_t vhp)
+{
+	varpd_instance_t *inst = (varpd_instance_t *)vhp;
+	return (inst->vri_impl->vdi_bunyan);
 }
 
 static void

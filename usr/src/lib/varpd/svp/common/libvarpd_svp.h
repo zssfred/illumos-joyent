@@ -28,6 +28,7 @@
 #include <sys/avl.h>
 #include <port.h>
 #include <sys/list.h>
+#include <bunyan.h>
 
 #include <libvarpd_svp_prot.h>
 
@@ -99,6 +100,7 @@ struct svp_query {
 	size_t			sq_rsize;
 	void			*sq_wdata;
 	size_t			sq_wsize;
+	hrtime_t		sq_acttime;
 };
 
 /*
@@ -185,8 +187,12 @@ typedef enum svp_conn_error {
 } svp_conn_error_t;
 
 typedef enum svp_conn_flags {
-	SVP_CF_DEGRADED		= 0x01,
-	SVP_CF_REAP		= 0x02
+	SVP_CF_ADDED		= 0x01,
+	SVP_CF_DEGRADED		= 0x02,
+	SVP_CF_REAP		= 0x04,
+	SVP_CF_TEARDOWN		= 0x08,
+	SVP_CF_UFLAG		= 0x0c,
+	SVP_CF_USER		= 0x10
 } svp_conn_flags_t;
 
 typedef struct svp_conn_out {
@@ -206,7 +212,8 @@ struct svp_conn {
 	list_node_t		sc_rlist;	/* svp_remote_t`sr_lock */
 	mutex_t			sc_lock;
 	svp_event_t		sc_event;
-	svp_timer_t		sc_timer;
+	svp_timer_t		sc_btimer;
+	svp_timer_t		sc_qtimer;
 	int			sc_socket;
 	uint_t			sc_gen;
 	uint_t			sc_nbackoff;
@@ -300,7 +307,7 @@ struct svp {
 	struct in6_addr		svp_uip;
 };
 
-extern int svp_comparator(const void *, const void *);
+extern bunyan_logger_t *svp_bunyan;
 
 /*
  * XXX Strawman backend APIs
@@ -309,8 +316,10 @@ extern int svp_remote_find(char *, uint16_t, svp_remote_t **);
 extern int svp_remote_attach(svp_remote_t *, svp_t *);
 extern void svp_remote_detach(svp_t *);
 extern void svp_remote_release(svp_remote_t *);
-extern void svp_remote_vl3_lookup(svp_t *, svp_query_t *, const struct sockaddr *, void *);
-extern void svp_remote_vl2_lookup(svp_t *, svp_query_t *, const uint8_t *, void *);
+extern void svp_remote_vl3_lookup(svp_t *, svp_query_t *,
+    const struct sockaddr *, void *);
+extern void svp_remote_vl2_lookup(svp_t *, svp_query_t *, const uint8_t *,
+    void *);
 
 /*
  * Init functions
@@ -335,6 +344,7 @@ extern void svp_timer_remove(svp_timer_t *);
  */
 extern int svp_event_associate(svp_event_t *, int);
 extern int svp_event_dissociate(svp_event_t *, int);
+extern int svp_event_inject(void *);
 
 /*
  * Connection manager
@@ -353,6 +363,8 @@ extern void svp_remote_restore(svp_remote_t *, svp_degrade_state_t);
 /*
  * Misc.
  */
+extern int svp_comparator(const void *, const void *);
+extern void svp_remote_reassign(svp_remote_t *, svp_conn_t *);
 extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
 extern void svp_host_queue(svp_remote_t *);
 extern void svp_query_release(svp_query_t *);
