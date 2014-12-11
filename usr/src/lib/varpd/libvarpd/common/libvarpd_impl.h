@@ -238,6 +238,7 @@ extern int libvarpd_overlay_cache_walk_fill(varpd_instance_t *, uint64_t *,
 extern void libvarpd_persist_init(varpd_impl_t *);
 extern void libvarpd_persist_fini(varpd_impl_t *);
 extern int libvarpd_persist_instance(varpd_impl_t *, varpd_instance_t *);
+extern void libvarpd_torch_instance(varpd_impl_t *,  varpd_instance_t *);
 
 #ifdef __cplusplus
 }

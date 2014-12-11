@@ -375,11 +375,12 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 dladm_status_t
 dladm_overlay_delete(dladm_handle_t handle, datalink_id_t linkid)
 {
-	dladm_status_t status;
 	datalink_class_t class;
 	overlay_ioc_delete_t oid;
+	varpd_client_handle_t chdl;
 	int ret;
 	uint32_t flags;
+	uint64_t varpdid;
 
 	if (dladm_datalink_id2info(handle, linkid, &flags, &class, NULL,
 	    NULL, 0) != DLADM_STATUS_OK)
@@ -389,16 +390,27 @@ dladm_overlay_delete(dladm_handle_t handle, datalink_id_t linkid)
 		return (DLADM_STATUS_BADARG);
 
 	oid.oid_linkid = linkid;
-	status = DLADM_STATUS_OK;
 	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_DELETE, &oid);
 	if (ret != 0)
-		status = dladm_errno2status(errno);
+		return (dladm_errno2status(errno));
 
-	if (status == DLADM_STATUS_OK)
-		(void) dladm_destroy_datalink_id(handle, linkid,
-		    flags);
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
 
-	return (status);
+	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_instance_destroy(chdl, varpdid)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+	libvarpd_c_destroy(chdl);
+
+	(void) dladm_destroy_datalink_id(handle, linkid, flags);
+
+	return (DLADM_STATUS_OK);
 }
 
 dladm_status_t

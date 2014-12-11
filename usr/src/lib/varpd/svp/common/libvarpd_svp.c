@@ -233,13 +233,12 @@ varpd_svp_start(void *arg)
 	return (0);
 }
 
-static int
+static void
 varpd_svp_stop(void *arg)
 {
 	svp_t *svp = arg;
 
 	svp_remote_detach(svp);
-	return (0);
 }
 
 static void

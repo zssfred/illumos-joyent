@@ -96,6 +96,7 @@ overlay_target_cache_constructor(void *buf, void *arg, int kmflgs)
 	overlay_target_t *ott = buf;
 
 	mutex_init(&ott->ott_lock, NULL, MUTEX_DRIVER, NULL);
+	cv_init(&ott->ott_cond, NULL, CV_DRIVER, NULL);
 	return (0);
 }
 
@@ -103,6 +104,8 @@ static void
 overlay_target_cache_destructor(void *buf, void *arg)
 {
 	overlay_target_t *ott = buf;
+
+	cv_destroy(&ott->ott_cond);
 	mutex_destroy(&ott->ott_lock);
 }
 
@@ -140,6 +143,18 @@ overlay_mac_cmp(const void *a, const void *b)
 static void
 overlay_target_entry_dtor(void *arg)
 {
+	mblk_t *mp;
+	overlay_target_entry_t *ote = arg;
+
+	ote->ote_flags = 0;
+	bzero(ote->ote_addr, ETHERADDRL);
+	ote->ote_ott = NULL;
+	ote->ote_odd = NULL;
+	freemsgchain(ote->ote_chead);
+	ote->ote_chead = ote->ote_ctail = NULL;
+	ote->ote_mbsize = 0;
+	ote->ote_vtime = 0;
+	kmem_cache_free(overlay_entry_cache, ote);
 }
 
 static int
@@ -202,6 +217,29 @@ overlay_target_free(overlay_dev_t *odd)
 	if (odd->odd_target == NULL)
 		return;
 
+	if (odd->odd_target->ott_mode == OVERLAY_TARGET_DYNAMIC) {
+		refhash_t *rp = odd->odd_target->ott_u.ott_dyn.ott_dhash;
+		avl_tree_t *ap = &odd->odd_target->ott_u.ott_dyn.ott_tree;
+		overlay_target_entry_t *ote;
+
+		/*
+		 * Our AVL tree and hashtable contain the same elements,
+		 * therefore we should just remove it from the tree, but then
+		 * delete the entries when we remove them from the hash table
+		 * (which happens through the refhash dtor).
+		 */
+		while ((ote = avl_first(ap)) != NULL)
+			avl_remove(ap, ote);
+
+		avl_destroy(ap);
+		for (ote = refhash_first(rp); ote != NULL;
+		    ote = refhash_next(rp, ote)) {
+			refhash_remove(rp, ote);
+		}
+		refhash_destroy(rp);
+	}
+
+	ASSERT(odd->odd_target->ott_ocount == 0);
 	kmem_cache_free(overlay_target_cache, odd->odd_target);
 }
 
@@ -221,9 +259,29 @@ static void
 overlay_target_queue(overlay_target_entry_t *entry)
 {
 	mutex_enter(&overlay_target_lock);
+	mutex_enter(&entry->ote_ott->ott_lock);
+	if (entry->ote_ott->ott_flags & OVERLAY_T_TEARDOWN) {
+		mutex_exit(&entry->ote_ott->ott_lock);
+		mutex_exit(&overlay_target_lock);
+		return;
+	}
+	entry->ote_ott->ott_ocount++;
+	mutex_exit(&entry->ote_ott->ott_lock);
 	list_insert_tail(&overlay_target_list, entry);
 	cv_signal(&overlay_target_condvar);
 	mutex_exit(&overlay_target_lock);
+}
+
+void
+overlay_target_quiesce(overlay_target_t *ott)
+{
+	if (ott == NULL)
+		return;
+	mutex_enter(&ott->ott_lock);
+	ott->ott_flags |= OVERLAY_T_TEARDOWN;
+	while (ott->ott_ocount != 0)
+		cv_wait(&ott->ott_cond, &ott->ott_lock);
+	mutex_exit(&ott->ott_lock);
 }
 
 /*
@@ -402,6 +460,8 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 	}
 
 	ott = kmem_cache_alloc(overlay_target_cache, KM_SLEEP);
+	ott->ott_flags = 0;
+	ott->ott_ocount = 0;
 	ott->ott_mode = ota->ota_mode;
 	ott->ott_dest = ota->ota_provides;
 	ott->ott_id = ota->ota_id;
@@ -573,6 +633,11 @@ overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 	mp = overlay_m_tx(entry->ote_odd, mp);
 	freemsgchain(mp);
 
+	mutex_enter(&entry->ote_ott->ott_lock);
+	entry->ote_ott->ott_ocount--;
+	cv_signal(&entry->ote_ott->ott_cond);
+	mutex_exit(&entry->ote_ott->ott_lock);
+
 	return (0);
 }
 
@@ -615,6 +680,11 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 	if (queue == B_TRUE)
 		overlay_target_queue(entry);
 	freemsg(mp);
+
+	mutex_enter(&entry->ote_ott->ott_lock);
+	entry->ote_ott->ott_ocount--;
+	cv_signal(&entry->ote_ott->ott_cond);
+	mutex_exit(&entry->ote_ott->ott_lock);
 
 	return (0);
 }
@@ -1453,7 +1523,8 @@ overlay_target_close(dev_t dev, int flags, int otype, cred_t *credp)
 	list_remove(&overlay_thdl_list, thdl);
 	mutex_enter(&thdl->oth_lock);
 	while ((entry = list_remove_head(&thdl->oth_outstanding)) != NULL)
-		list_insert_tail(&overlay_thdl_list, entry);
+		list_insert_tail(&overlay_target_list, entry);
+	cv_signal(&overlay_target_condvar);
 	mutex_exit(&thdl->oth_lock);
 	mutex_exit(&overlay_target_lock);
 

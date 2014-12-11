@@ -192,14 +192,13 @@ varpd_files_start(void *arg)
 	return (ret);
 }
 
-static int
+static void
 varpd_files_stop(void *arg)
 {
 	varpd_files_t *vaf = arg;
 
 	nvlist_free(vaf->vaf_nvl);
 	vaf->vaf_nvl = NULL;
-	return (0);
 }
 
 static void

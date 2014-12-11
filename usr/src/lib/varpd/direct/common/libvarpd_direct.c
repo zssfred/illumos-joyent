@@ -99,10 +99,9 @@ varpd_direct_start(void *arg)
 	return (0);
 }
 
-static int
+static void
 varpd_direct_stop(void *arg)
 {
-	return (0);
 }
 
 static void

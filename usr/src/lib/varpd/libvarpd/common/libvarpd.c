@@ -242,10 +242,50 @@ libvarpd_instance_lookup_by_dlid(varpd_impl_t *vip, datalink_id_t linkid)
 	return (retp);
 }
 
+/*
+ * When an instance is being destroyed, that means we should deactivate it, as
+ * well as clean it up. That means here, the proper order is calling the plug-in
+ * stop.
+ */
 void
 libvarpd_instance_destroy(varpd_instance_handle_t ihp)
 {
-	abort();
+	varpd_instance_t *inst = (varpd_instance_t *)ihp;
+	varpd_impl_t *vip = inst->vri_impl;
+
+	/*
+	 * First things first, remove it from global visibility.
+	 */
+	mutex_lock(&vip->vdi_lock);
+	avl_remove(&vip->vdi_instances, inst);
+	avl_remove(&vip->vdi_linstances, inst);
+	mutex_unlock(&vip->vdi_lock);
+
+	/*
+	 * XXX We probably need a reference counting strategy here so we know
+	 * it's safe to remove.
+	 */
+	mutex_lock(&inst->vri_lock);
+
+	/*
+	 * We need to clean up this instance, that means remove it from
+	 * persistence and stopping it. Then finally we'll have to clean it up
+	 * entirely.
+	 */
+	if (inst->vri_flags & VARPD_INSTANCE_F_ACTIVATED) {
+		inst->vri_flags &= ~VARPD_INSTANCE_F_ACTIVATED;
+		libvarpd_torch_instance(vip, inst);
+		inst->vri_plugin->vpp_ops->vpo_stop(inst->vri_private);
+		inst->vri_plugin->vpp_ops->vpo_destroy(inst->vri_private);
+		inst->vri_private = NULL;
+	}
+	mutex_unlock(&inst->vri_lock);
+
+	/* Do the full clean up of the instance */
+	if (mutex_destroy(&inst->vri_lock) != 0)
+		libvarpd_panic("failed to destroy instance vri_lock");
+	id_free(vip->vdi_idspace, inst->vri_id);
+	umem_free(inst, sizeof (varpd_instance_t));
 }
 
 int

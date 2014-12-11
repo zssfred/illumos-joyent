@@ -713,6 +713,8 @@ overlay_i_delete(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 		return (ret);
 	}
 
+	overlay_target_quiesce(odd->odd_target);
+
 	mutex_enter(&overlay_dev_lock);
 	list_remove(&overlay_dev_list, odd);
 	mutex_exit(&overlay_dev_lock);

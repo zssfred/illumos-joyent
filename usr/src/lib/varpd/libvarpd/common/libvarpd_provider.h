@@ -55,7 +55,7 @@ typedef int (*varpd_plugin_start_f)(void *);
 /*
  * Upon the entry of this function, the lookup function will not be called.
  */
-typedef int (*varpd_plugin_stop_f)(void *);
+typedef void (*varpd_plugin_stop_f)(void *);
 
 /*
  * Destroy an instance of a plugin.

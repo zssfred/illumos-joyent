@@ -245,6 +245,38 @@ out:
 	return (err);
 }
 
+void
+libvarpd_torch_instance(varpd_impl_t *vip, varpd_instance_t *inst)
+{
+	char buf[32];
+	int ret;
+
+	rw_rdlock(&vip->vdi_pfdlock);
+	if (vip->vdi_persistfd == -1) {
+		rw_unlock(&vip->vdi_pfdlock);
+		return;
+	}
+
+	if (snprintf(buf, sizeof (buf), "%lld.varpd", inst->vri_id) >= 32)
+		libvarpd_panic("somehow exceeded static value for "
+		    "libvarpd_torch_instance buffer");
+
+	do {
+		ret = unlinkat(vip->vdi_persistfd, buf, 0);
+	} while (ret == -1 && errno == EINTR);
+	if (ret != 0) {
+		switch (errno) {
+		case ENOENT:
+			break;
+		default:
+			libvarpd_panic("failed to unlinkat %d`%s: %s",
+			    vip->vdi_persistfd, buf, strerror(errno));
+		}
+	}
+
+	rw_unlock(&vip->vdi_pfdlock);
+}
+
 static int
 libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 {

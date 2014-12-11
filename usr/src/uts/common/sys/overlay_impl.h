@@ -68,11 +68,18 @@ typedef struct overlay_mux {
 	avl_tree_t		omux_devices;	/* Tree of devices */
 } overlay_mux_t;
 
+typedef enum overlay_target_flag {
+	OVERLAY_T_TEARDOWN	= 0x1
+} overlay_target_flag_t;
+
 typedef struct overlay_target {
 	kmutex_t		ott_lock;
+	kcondvar_t		ott_cond;
 	overlay_target_mode_t	ott_mode;	/* RO */
 	overlay_plugin_dest_t	ott_dest;	/* RO */
 	uint64_t		ott_id;		/* RO */
+	overlay_target_flag_t	ott_flags;	/* ott_lock */
+	uint_t			ott_ocount;	/* ott_lock */
 	union {					/* ott_lock */
 		overlay_target_point_t	ott_point;
 		struct overlay_target_dyn {
@@ -182,6 +189,7 @@ extern void overlay_target_free(overlay_dev_t *);
 #define	OVERLAY_TARGET_ASYNC	2
 extern int overlay_target_lookup(overlay_dev_t *, mblk_t *, struct sockaddr *,
     socklen_t *);
+extern void overlay_target_quiesce(overlay_target_t *);
 extern void overlay_target_fini(void);
 
 extern void overlay_fm_init(void);
