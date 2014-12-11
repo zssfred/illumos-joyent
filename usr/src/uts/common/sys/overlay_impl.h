@@ -89,6 +89,7 @@ typedef enum overlay_dev_flag {
 	OVERLAY_F_IN_RX		= 0x08, /* Currently doing rx */
 	OVERLAY_F_IOMASK	= 0x0c,	/* A mask for rx and tx */
 	OVERLAY_F_MDDROP	= 0x10,	/* Drop traffic for metadata update */
+	OVERLAY_F_STOPMASK	= 0x1e,	/* None set when stopping */
 	OVERLAY_F_VARPD		= 0x20,	/* varpd plugin exists */
 	OVERLAY_F_DEGRADED	= 0x40,	/* device is degraded */
 	OVERLAY_F_MASK		= 0x7f	/* mask of everything */

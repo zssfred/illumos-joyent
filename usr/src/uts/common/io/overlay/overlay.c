@@ -239,7 +239,7 @@ overlay_m_stop(void *arg)
 	mutex_enter(&odd->odd_lock);
 	odd->odd_flags &= ~OVERLAY_F_IN_MUX;
 	odd->odd_flags &= ~OVERLAY_F_MDDROP;
-	VERIFY(odd->odd_flags == 0);
+	VERIFY((odd->odd_flags & OVERLAY_F_STOPMASK) == 0);
 	mutex_exit(&odd->odd_lock);
 }
 
