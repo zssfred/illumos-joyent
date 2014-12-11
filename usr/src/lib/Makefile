@@ -673,7 +673,8 @@ libvscan: 	libm
 
 
 $(INTEL_BUILD)libdiskmgt:libfdisk
-varpd:		libavl libidspace libumem libnsl libnvpair libmd5 librename
+varpd:		libavl libidspace libumem libnsl libnvpair libmd5 librename \
+		libbunyan
 
 #
 # The reason this rule checks for the existence of the
