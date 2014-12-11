@@ -48,6 +48,7 @@
 #include <sys/lx_thunk_server.h>
 #include <sys/lx_fcntl.h>
 #include <sys/inotify.h>
+#include <sys/eventfd.h>
 #include <thread.h>
 #include <unistd.h>
 #include <libintl.h>
@@ -697,7 +698,7 @@ lx_sysinfo32(uintptr_t arg)
 	struct lx_sysinfo sil;
 	int i;
 
-	if (lx_sysinfo(&sil) != 0)
+	if (syscall(SYS_brand, B_IKE_SYSCALL + LX_EMUL_sysinfo, &sil) != 0)
 		return (-errno);
 
 	si.si_uptime = sil.si_uptime;
@@ -1095,4 +1096,31 @@ lx_yield(void)
 
 	yield();
 	return (0);
+}
+
+long
+lx_vhangup(void)
+{
+	if (geteuid() != 0)
+		return (-EPERM);
+
+	vhangup();
+
+	return (0);
+}
+
+long
+lx_eventfd(unsigned int initval)
+{
+	int r = eventfd(initval, 0);
+
+	return (r == -1 ? -errno : r);
+}
+
+long
+lx_eventfd2(unsigned int initval, int flags)
+{
+	int r = eventfd(initval, flags);
+
+	return (r == -1 ? -errno : r);
 }

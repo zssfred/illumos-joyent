@@ -42,9 +42,11 @@
 #include <sys/lx_impl.h>
 #include <sys/machbrand.h>
 #include <sys/lx_syscalls.h>
+#include <sys/lx_misc.h>
 #include <sys/lx_pid.h>
 #include <sys/lx_futex.h>
 #include <sys/lx_brand.h>
+#include <sys/param.h>
 #include <sys/termios.h>
 #include <sys/sunddi.h>
 #include <sys/ddi.h>
@@ -70,24 +72,18 @@ void	lx_setbrand(proc_t *);
 int	lx_getattr(zone_t *, int, void *, size_t *);
 int	lx_setattr(zone_t *, int, void *, size_t);
 int	lx_brandsys(int, int64_t *, uintptr_t, uintptr_t, uintptr_t,
-		uintptr_t, uintptr_t, uintptr_t);
+		uintptr_t, uintptr_t);
 void	lx_set_kern_version(zone_t *, char *);
 void	lx_copy_procdata(proc_t *, proc_t *);
 
 extern int getsetcontext(int, void *);
 
-extern void lx_setrval(klwp_t *, int, int);
 extern void lx_proc_exit(proc_t *, klwp_t *);
-extern void lx_exec();
-extern int lx_initlwp(klwp_t *);
-extern void lx_forklwp(klwp_t *, klwp_t *);
-extern void lx_exitlwp(klwp_t *);
-extern void lx_freelwp(klwp_t *);
-extern void lx_exit_with_sig(proc_t *, sigqueue_t *, void *);
 static void lx_psig_to_proc(proc_t *, kthread_t *, int);
-extern boolean_t lx_wait_filter(proc_t *, proc_t *);
-extern greg_t lx_fixsegreg(greg_t, model_t);
 extern int lx_sched_affinity(int, uintptr_t, int, uintptr_t, int64_t *);
+
+extern void lx_ioctl_init();
+extern void lx_ioctl_fini();
 
 int lx_systrace_brand_enabled;
 
@@ -96,12 +92,22 @@ lx_systrace_f *lx_systrace_return_ptr;
 
 static int lx_systrace_enabled;
 
+/*
+ * While this is effectively mmu.hole_start - PAGESIZE, we don't particularly
+ * want an MMU dependency here (and should there be a microprocessor without
+ * a hole, we don't want to start allocating from the top of the VA range).
+ */
+#define	LX_MAXSTACK64	0x7ffffff00000
+
+uint64_t lx_maxstack64 = LX_MAXSTACK64;
+
 static int lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
     struct intpdata *idata, int level, long *execsz, int setid,
     caddr_t exec_file, struct cred *cred, int brand_action);
 
 static boolean_t lx_native_exec(uint8_t, const char **);
 static void lx_ptrace_exectrap(proc_t *);
+static uint32_t lx_map32limit(proc_t *);
 
 /* lx brand */
 struct brand_ops lx_brops = {
@@ -127,7 +133,8 @@ struct brand_ops lx_brops = {
 	lx_exit_with_sig,
 	lx_wait_filter,
 	lx_native_exec,
-	lx_ptrace_exectrap
+	lx_ptrace_exectrap,
+	lx_map32limit
 };
 
 struct brand_mach_ops lx_mops = {
@@ -490,6 +497,23 @@ lx_ptrace_exectrap(proc_t *p)
 	}
 }
 
+uint32_t
+lx_map32limit(proc_t *p)
+{
+	/*
+	 * To be bug-for-bug compatible with Linux, we have MAP_32BIT only
+	 * allow mappings in the first 31 bits.  This was a nuance in the
+	 * original Linux implementation circa 2002, and applications have
+	 * come to depend on its behavior.
+	 *
+	 * This is only relevant for 64-bit processes.
+	 */
+	if (p->p_model == DATAMODEL_LP64)
+		return (1 << 31);
+
+	return ((uint32_t)USERLIMIT32);
+}
+
 void
 lx_brand_systrace_enable(void)
 {
@@ -652,7 +676,7 @@ lx_unsupported(char *dmsg)
  */
 int
 lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
-    uintptr_t arg3, uintptr_t arg4, uintptr_t arg5, uintptr_t arg6)
+    uintptr_t arg3, uintptr_t arg4, uintptr_t arg5)
 {
 	kthread_t *t = curthread;
 	proc_t *p = ttoproc(t);
@@ -1090,11 +1114,43 @@ lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
 #endif
 		return (0);
 
+	case B_EXIT_AS_SIG:
+		exit(CLD_KILLED, (int)arg1);
+		/* NOTREACHED */
+		break;
+
+	case B_IKE_SYSCALL:
+		if (arg1 > LX_N_IKE_FUNCS)
+			return (EINVAL);
+
+		if (get_udatamodel() == DATAMODEL_NATIVE) {
+			uintptr_t a[6];
+
+			if (copyin((void *)arg2, a, sizeof (a)) != 0)
+				return (EFAULT);
+
+			*rval = lx_emulate_syscall(arg1, a[0], a[1],
+			    a[2], a[3], a[4], a[5]);
+#if defined(_LP64)
+		} else {
+			/* 32-bit userland on 64-bit kernel */
+			uint32_t a[6];
+
+			if (copyin((void *)arg2, a, sizeof (a)) != 0)
+				return (EFAULT);
+
+			*rval = lx_emulate_syscall(arg1, a[0], a[1],
+			    a[2], a[3], a[4], a[5]);
+#endif
+		}
+
+		return (0);
+
 	default:
 		ike_call = cmd - B_IKE_SYSCALL;
 		if (ike_call > 0 && ike_call <= LX_N_IKE_FUNCS) {
 			*rval = lx_emulate_syscall(ike_call, arg1, arg2,
-			    arg3, arg4, arg5, arg6);
+			    arg3, arg4, arg5, 0xbadbeef);
 			return (0);
 		}
 	}
@@ -1217,6 +1273,22 @@ lx_elfexec(struct vnode *vp, struct execa *uap, struct uarg *args,
 	 */
 	args->brandname = LX_BRANDNAME;
 	args->emulator = lib_path;
+
+#if defined(_LP64)
+	/*
+	 * To conform with the way Linux lays out the address space, we clamp
+	 * the stack to be the top of the lower region of the x86-64 canonical
+	 * form address space -- which has the side-effect of laying out the
+	 * entire address space in that lower region.  Note that this only
+	 * matters on 64-bit processes (this value will always be greater than
+	 * the size of a 32-bit address space) and doesn't actually affect
+	 * USERLIMIT:  if a Linux-branded processes wishes to map something
+	 * into the top half of the address space, it can do so -- but with
+	 * the user stack starting at the top of the bottom region, those high
+	 * virtual addresses won't be used unless explicitly directed.
+	 */
+	args->maxstack = lx_maxstack64;
+#endif
 
 	/*
 	 * We will first exec the brand library, then map in the linux
@@ -1536,8 +1608,12 @@ _init(void)
 	/* pid/tid conversion hash tables */
 	lx_pid_init();
 
+	/* for lx_ioctl() */
+	lx_ioctl_init();
+
 	/* for lx_futex() */
 	lx_futex_init();
+
 
 	err = mod_install(&modlinkage);
 	if (err != 0) {
@@ -1551,6 +1627,7 @@ _init(void)
 		 * thus no way for these data structures to be modified.
 		 */
 		lx_pid_fini();
+		lx_ioctl_fini();
 		if (lx_futex_fini())
 			panic("lx brand module cannot be loaded or unloaded.");
 	}
@@ -1577,6 +1654,7 @@ _fini(void)
 		return (EBUSY);
 
 	lx_pid_fini();
+	lx_ioctl_fini();
 
 	if ((err = lx_futex_fini()) != 0)
 		goto done;

@@ -114,6 +114,7 @@ extern long lx_select(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_pselect6(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
     uintptr_t, uintptr_t);
 extern long lx_poll(uintptr_t, uintptr_t, uintptr_t);
+extern long lx_ppoll(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_epoll_ctl(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_oldgetrlimit(uintptr_t, uintptr_t);
 extern long lx_getrlimit(uintptr_t, uintptr_t);
@@ -165,6 +166,12 @@ extern long lx_clock_getres(int, struct timespec *);
 extern long lx_clock_nanosleep(int, int flags, struct timespec *,
     struct timespec *);
 extern long lx_adjtimex(void *);
+extern long lx_timer_create(int, struct sigevent *, timer_t *);
+extern long lx_timer_settime(timer_t, int, struct itimerspec *,
+    struct itimerspec *);
+extern long lx_timer_gettime(timer_t, struct itimerspec *);
+extern long lx_timer_getoverrun(timer_t);
+extern long lx_timer_delete(timer_t);
 
 extern long lx_truncate(uintptr_t, uintptr_t);
 extern long lx_ftruncate(uintptr_t, uintptr_t);
@@ -314,6 +321,8 @@ extern long lx_epoll_pwait(int, void *, int, int, const sigset_t *);
 extern long lx_epoll_create(int);
 extern long lx_epoll_create1(int);
 extern long lx_epoll_wait(int, void *, int, int);
+extern long lx_eventfd(unsigned int);
+extern long lx_eventfd2(unsigned int, int);
 extern long lx_fchdir(int);
 extern long lx_fchmod(int, mode_t);
 extern long lx_getgid(void);
@@ -377,7 +386,8 @@ extern long lx_yield(void);
 #define	LX_EMUL_rt_tgsigqueueinfo	25
 #define	LX_EMUL_arch_prctl		26
 #define	LX_EMUL_tgkill			27
-#define	LX_EMUL_read			LX_N_IKE_FUNCS
+#define	LX_EMUL_read			28
+#define	LX_EMUL_ioctl			LX_N_IKE_FUNCS
 
 /* Note: adjust LX_N_IKE_FUNCS when adding new in-kernel functions */
 

@@ -39,6 +39,7 @@
 #include <sys/lx_syscalls.h>
 #include <sys/lx_brand.h>
 #include <sys/lx_impl.h>
+#include <sys/lx_misc.h>
 
 /*
  * Some system calls return either a 32-bit or a 64-bit value, depending
@@ -64,7 +65,6 @@
 #define	LX_CI(name, call, narg)      \
 	{ SE_32RVAL1, (name), (llfcn_t)(call), (narg) }
 
-extern longlong_t lx_nosys(void);
 #define	LX_NOSYS(name)			\
 	{SE_64RVAL, (name), (llfcn_t)lx_nosys, 0}
 
@@ -114,6 +114,7 @@ static lx_ike_t lx_ike_ent[] =
 	LX_CL("arch_prctl",		lx_arch_prctl,		2),
 	LX_CL("tgkill",			lx_tgkill,		3),
 	LX_CL("read",			lx_read,		3),
+	LX_CL("ioctl",			lx_ioctl,		3),
 };
 
 int64_t

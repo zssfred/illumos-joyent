@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2014, Joyent, Inc. All rights reserved.
  */
 
 /* Portions Copyright 2010 Robert Milkowski */
@@ -181,7 +182,7 @@ zil_read_log_block(zilog_t *zilog, const blkptr_t *bp, blkptr_t *nbp, void *dst,
     char **end)
 {
 	enum zio_flag zio_flags = ZIO_FLAG_CANFAIL;
-	uint32_t aflags = ARC_WAIT;
+	arc_flags_t aflags = ARC_FLAG_WAIT;
 	arc_buf_t *abuf = NULL;
 	zbookmark_phys_t zb;
 	int error;
@@ -257,7 +258,7 @@ zil_read_log_data(zilog_t *zilog, const lr_write_t *lr, void *wbuf)
 {
 	enum zio_flag zio_flags = ZIO_FLAG_CANFAIL;
 	const blkptr_t *bp = &lr->lr_blkptr;
-	uint32_t aflags = ARC_WAIT;
+	arc_flags_t aflags = ARC_FLAG_WAIT;
 	arc_buf_t *abuf = NULL;
 	zbookmark_phys_t zb;
 	int error;
@@ -1802,9 +1803,18 @@ zil_close(zilog_t *zilog)
 	if (lwb != NULL)
 		txg = lwb->lwb_max_txg;
 	mutex_exit(&zilog->zl_lock);
-	if (txg)
+
+	if (zilog_is_dirty(zilog)) {
+		/*
+		 * If we're dirty, always wait for the current transaction --
+		 * our lwb_max_txg may be in the past.
+		 */
+		txg_wait_synced(zilog->zl_dmu_pool, 0);
+	} else if (txg) {
 		txg_wait_synced(zilog->zl_dmu_pool, txg);
-	ASSERT(!zilog_is_dirty(zilog));
+	}
+
+	VERIFY(!zilog_is_dirty(zilog));
 
 	taskq_destroy(zilog->zl_clean_taskq);
 	zilog->zl_clean_taskq = NULL;
