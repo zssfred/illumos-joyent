@@ -197,7 +197,7 @@ extern varpd_plugin_t *libvarpd_plugin_lookup(varpd_impl_t *, const char *);
 extern varpd_instance_t *libvarpd_instance_lookup_by_dlid(varpd_impl_t *,
     datalink_id_t);
 
-extern void libvarpd_prop_door_convert(const varpd_prop_handle_t,
+extern void libvarpd_prop_door_convert(const varpd_prop_handle_t *,
     varpd_client_propinfo_arg_t *);
 
 extern const char *libvarpd_isaext(void);

@@ -49,7 +49,7 @@
 #define	VARPD_RUNDIR	"/var/run/varpd"
 #define	VARPD_DEFAULT_DOOR	"/var/run/varpd/varpd.door"
 
-static varpd_handle_t varpd_handle;
+static varpd_handle_t *varpd_handle;
 static const char *varpd_pname;
 static volatile boolean_t varpd_exit = B_FALSE;
 
@@ -131,7 +131,7 @@ varpd_dfatal(int dfd, const char *fmt, ...)
 }
 
 static int
-varpd_plugin_walk_cb(varpd_handle_t vph, const char *name, void *unused)
+varpd_plugin_walk_cb(varpd_handle_t *vph, const char *name, void *unused)
 {
 	printf("loaded %s!\n", name);
 	return (0);
@@ -272,7 +272,7 @@ varpd_setup_lookup_threads(void)
 
 		ret = thr_create(NULL, 0,
 		    (void *(*)(void *))libvarpd_overlay_lookup_run,
-		    (void *)varpd_handle, THR_DETACHED | THR_DAEMON, &thr);
+		    varpd_handle, THR_DETACHED | THR_DAEMON, &thr);
 		if (ret != 0)
 			return (ret);
 	}

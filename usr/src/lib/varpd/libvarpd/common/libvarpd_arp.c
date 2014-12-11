@@ -40,7 +40,7 @@ typedef struct varpd_arp_query {
 	struct sockaddr_storage		vaq_sock;
 	varpd_instance_t		*vaq_inst;
 	struct ether_arp		*vaq_ea;
-	varpd_query_handle_t		vaq_query;
+	varpd_query_handle_t		*vaq_query;
 	const overlay_targ_lookup_t	*vaq_otl;
 	ip6_t				*vaq_ip6;
 	nd_neighbor_solicit_t 		*vaq_ns;
@@ -52,7 +52,7 @@ typedef struct varpd_dhcp_query {
 	uint8_t				vdq_lookup[ETHERADDRL];
 	const overlay_targ_lookup_t	*vdq_otl;
 	varpd_instance_t		*vdq_inst;
-	varpd_query_handle_t		vdq_query;
+	varpd_query_handle_t		*vdq_query;
 	struct ether_header		*vdq_ether;
 } varpd_dhcp_query_t;
 
@@ -60,8 +60,8 @@ static const uint8_t libvarpd_arp_bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff,
 	    0xff };
 
 void
-libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
-    const overlay_targ_lookup_t *otl)
+libvarpd_plugin_proxy_arp(varpd_provider_handle_t *hdl,
+    varpd_query_handle_t *vqh, const overlay_targ_lookup_t *otl)
 {
 	varpd_arp_query_t *vaq;
 	varpd_instance_t *inst = (varpd_instance_t *)hdl;
@@ -146,7 +146,7 @@ libvarpd_plugin_proxy_arp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
 		    inst->vri_plugin->vpp_name);
 
 	inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
-	    (varpd_arp_handle_t)vaq, VARPD_QTYPE_ETHERNET,
+	    (varpd_arp_handle_t *)vaq, VARPD_QTYPE_ETHERNET,
 	    (struct sockaddr *)ip, vaq->vaq_lookup);
 }
 
@@ -224,8 +224,8 @@ libvarpd_icmpv6_checksum(const ip6_t *v6hdr, const uint16_t *buf, uint16_t mlen)
  * it.
  */
 void
-libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
-    const overlay_targ_lookup_t *otl)
+libvarpd_plugin_proxy_ndp(varpd_provider_handle_t *hdl,
+    varpd_query_handle_t *vqh, const overlay_targ_lookup_t *otl)
 {
 	size_t bsize, plen;
 	varpd_arp_query_t *vaq;
@@ -382,7 +382,7 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t hdl, varpd_query_handle_t vqh,
 	vaq->vaq_ns = ns;
 	vaq->vaq_ip6 = v6hdr;
 	inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
-	    (varpd_arp_handle_t)vaq,  VARPD_QTYPE_ETHERNET,
+	    (varpd_arp_handle_t *)vaq,  VARPD_QTYPE_ETHERNET,
 	    (struct sockaddr *)s6, vaq->vaq_lookup);
 }
 
@@ -454,7 +454,7 @@ libvarpd_proxy_ndp_fini(varpd_arp_query_t *vaq)
 }
 
 void
-libvarpd_plugin_arp_reply(varpd_arp_handle_t vah, int action)
+libvarpd_plugin_arp_reply(varpd_arp_handle_t *vah, int action)
 {
 	varpd_arp_query_t *vaq = (varpd_arp_query_t *)vah;
 
@@ -484,8 +484,8 @@ libvarpd_plugin_arp_reply(varpd_arp_handle_t vah, int action)
 }
 
 void
-libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
-    varpd_query_handle_t vqh, const overlay_targ_lookup_t *otl)
+libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t *hdl,
+    varpd_query_handle_t *vqh, const overlay_targ_lookup_t *otl)
 {
 	varpd_dhcp_query_t *vdq;
 	struct ether_header *ether;
@@ -570,12 +570,12 @@ libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t hdl,
 		    inst->vri_plugin->vpp_name);
 
 	inst->vri_plugin->vpp_ops->vpo_dhcp(inst->vri_private,
-	    (varpd_dhcp_handle_t)vdq, VARPD_QTYPE_ETHERNET, otl,
+	    (varpd_dhcp_handle_t *)vdq, VARPD_QTYPE_ETHERNET, otl,
 	    vdq->vdq_lookup);
 }
 
 void
-libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t vdh, int action)
+libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t *vdh, int action)
 {
 	varpd_dhcp_query_t *vdq = (varpd_dhcp_query_t *)vdh;
 
@@ -603,7 +603,7 @@ libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t vdh, int action)
  * Inject a gratuitious ARP packet to the specified mac address.
  */
 void
-libvarpd_inject_arp(varpd_provider_handle_t vph, const uint16_t vlan,
+libvarpd_inject_arp(varpd_provider_handle_t *vph, const uint16_t vlan,
     const uint8_t *srcmac, const struct in_addr *srcip, const uint8_t *dstmac)
 {
 	char buf[1500];

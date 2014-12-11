@@ -59,7 +59,7 @@ libvarpd_instance_lcomparator(const void *lp, const void *rp)
 
 
 int
-libvarpd_create(varpd_handle_t *vphp)
+libvarpd_create(varpd_handle_t **vphp)
 {
 	int ret;
 	varpd_impl_t *vip;
@@ -121,12 +121,12 @@ libvarpd_create(varpd_handle_t *vphp)
 		libvarpd_panic("failed to create mutex: %d", errno);
 
 	vip->vdi_doorfd = -1;
-	*vphp = (varpd_handle_t)vip;
+	*vphp = (varpd_handle_t *)vip;
 	return (0);
 }
 
 void
-libvarpd_destroy(varpd_handle_t vhp)
+libvarpd_destroy(varpd_handle_t *vhp)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 
@@ -140,8 +140,8 @@ libvarpd_destroy(varpd_handle_t vhp)
 }
 
 int
-libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
-    const char *pname, varpd_instance_handle_t *outp)
+libvarpd_instance_create(varpd_handle_t *vhp, datalink_id_t linkid,
+    const char *pname, varpd_instance_handle_t **outp)
 {
 	int ret;
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
@@ -173,7 +173,7 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 	inst->vri_plugin = plugin;
 	inst->vri_impl = vip;
 	inst->vri_flags = 0;
-	if ((ret = plugin->vpp_ops->vpo_create((varpd_provider_handle_t)inst,
+	if ((ret = plugin->vpp_ops->vpo_create((varpd_provider_handle_t *)inst,
 	    &inst->vri_private, dest)) != 0) {
 		id_free(vip->vdi_idspace, inst->vri_id);
 		umem_free(inst, sizeof (varpd_instance_t));
@@ -195,26 +195,26 @@ libvarpd_instance_create(varpd_handle_t vhp, datalink_id_t linkid,
 		    lookup.vri_linkid);
 	avl_add(&vip->vdi_linstances, inst);
 	mutex_unlock(&vip->vdi_lock);
-	*outp = (varpd_instance_handle_t)inst;
+	*outp = (varpd_instance_handle_t *)inst;
 	return (0);
 }
 
 uint64_t
-libvarpd_instance_id(varpd_instance_handle_t ihp)
+libvarpd_instance_id(varpd_instance_handle_t *ihp)
 {
 	varpd_instance_t *inst = (varpd_instance_t *)ihp;
 	return (inst->vri_id);
 }
 
 uint64_t
-libvarpd_plugin_vnetid(varpd_provider_handle_t vhp)
+libvarpd_plugin_vnetid(varpd_provider_handle_t *vhp)
 {
 	varpd_instance_t *inst = (varpd_instance_t *)vhp;
 	return (inst->vri_vnetid);
 }
 
-varpd_instance_handle_t
-libvarpd_instance_lookup(varpd_handle_t vhp, uint64_t id)
+varpd_instance_handle_t *
+libvarpd_instance_lookup(varpd_handle_t *vhp, uint64_t id)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 	varpd_instance_t lookup, *retp;
@@ -223,7 +223,7 @@ libvarpd_instance_lookup(varpd_handle_t vhp, uint64_t id)
 	mutex_lock(&vip->vdi_lock);
 	retp = avl_find(&vip->vdi_instances, &lookup, NULL);
 	mutex_unlock(&vip->vdi_lock);
-	return ((varpd_instance_handle_t)retp);
+	return ((varpd_instance_handle_t *)retp);
 }
 
 /*
@@ -248,7 +248,7 @@ libvarpd_instance_lookup_by_dlid(varpd_impl_t *vip, datalink_id_t linkid)
  * stop.
  */
 void
-libvarpd_instance_destroy(varpd_instance_handle_t ihp)
+libvarpd_instance_destroy(varpd_instance_handle_t *ihp)
 {
 	varpd_instance_t *inst = (varpd_instance_t *)ihp;
 	varpd_impl_t *vip = inst->vri_impl;
@@ -289,7 +289,7 @@ libvarpd_instance_destroy(varpd_instance_handle_t ihp)
 }
 
 int
-libvarpd_instance_activate(varpd_instance_handle_t ihp)
+libvarpd_instance_activate(varpd_instance_handle_t *ihp)
 {
 	int ret;
 	varpd_instance_t *inst = (varpd_instance_t *)ihp;
@@ -320,7 +320,7 @@ out:
 }
 
 const bunyan_logger_t *
-libvarpd_plugin_bunyan(varpd_provider_handle_t vhp)
+libvarpd_plugin_bunyan(varpd_provider_handle_t *vhp)
 {
 	varpd_instance_t *inst = (varpd_instance_t *)vhp;
 	return (inst->vri_impl->vdi_bunyan);

@@ -78,7 +78,7 @@ libvarpd_persist_fini(varpd_impl_t *vip)
 }
 
 int
-libvarpd_persist_enable(varpd_handle_t vhp, const char *rootdir)
+libvarpd_persist_enable(varpd_handle_t *vhp, const char *rootdir)
 {
 	int fd;
 	struct stat st;
@@ -337,7 +337,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	inst->vri_plugin = plugin;
 	inst->vri_impl = vip;
 	inst->vri_flags = 0;
-	if (plugin->vpp_ops->vpo_restore(pvl, (varpd_provider_handle_t)inst,
+	if (plugin->vpp_ops->vpo_restore(pvl, (varpd_provider_handle_t *)inst,
 	    dest, &inst->vri_private) != 0) {
 		id_free(vip->vdi_idspace, id);
 		umem_free(inst, sizeof (varpd_instance_t));
@@ -361,7 +361,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	mutex_unlock(&vip->vdi_lock);
 
 	if (plugin->vpp_ops->vpo_start(inst->vri_private) != 0) {
-		libvarpd_instance_destroy((varpd_instance_handle_t)inst);
+		libvarpd_instance_destroy((varpd_instance_handle_t *)inst);
 		return (EINVAL);
 	}
 
@@ -369,7 +369,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 		libvarpd_overlay_disassociate(inst);
 
 	if (libvarpd_overlay_associate(inst) != 0) {
-		libvarpd_instance_destroy((varpd_instance_handle_t)inst);
+		libvarpd_instance_destroy((varpd_instance_handle_t *)inst);
 		return (EINVAL);
 	}
 
@@ -474,7 +474,7 @@ libvarpd_check_degrade(varpd_impl_t *vip)
  * about as degraded.
  */
 int
-libvarpd_persist_restore(varpd_handle_t vhp)
+libvarpd_persist_restore(varpd_handle_t *vhp)
 {
 	int dirfd;
 	int ret = 0;
@@ -571,7 +571,7 @@ out:
 }
 
 int
-libvarpd_persist_disable(varpd_handle_t vhp)
+libvarpd_persist_disable(varpd_handle_t *vhp)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 

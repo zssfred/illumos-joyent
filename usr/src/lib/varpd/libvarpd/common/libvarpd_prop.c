@@ -36,28 +36,28 @@ typedef struct varpd_prop_info {
 } varpd_prop_info_t;
 
 void
-libvarpd_prop_set_name(varpd_prop_handle_t phdl, const char *name)
+libvarpd_prop_set_name(varpd_prop_handle_t *phdl, const char *name)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 	(void) strlcpy(infop->vprop_name, name, OVERLAY_PROP_NAMELEN);
 }
 
 void
-libvarpd_prop_set_prot(varpd_prop_handle_t phdl, overlay_prop_prot_t perm)
+libvarpd_prop_set_prot(varpd_prop_handle_t *phdl, overlay_prop_prot_t perm)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 	infop->vprop_prot = perm;
 }
 
 void
-libvarpd_prop_set_type(varpd_prop_handle_t phdl, overlay_prop_type_t type)
+libvarpd_prop_set_type(varpd_prop_handle_t *phdl, overlay_prop_type_t type)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 	infop->vprop_type = type;
 }
 
 int
-libvarpd_prop_set_default(varpd_prop_handle_t phdl, void *buf, ssize_t len)
+libvarpd_prop_set_default(varpd_prop_handle_t *phdl, void *buf, ssize_t len)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 
@@ -73,7 +73,7 @@ libvarpd_prop_set_default(varpd_prop_handle_t phdl, void *buf, ssize_t len)
 }
 
 void
-libvarpd_prop_set_nodefault(varpd_prop_handle_t phdl)
+libvarpd_prop_set_nodefault(varpd_prop_handle_t *phdl)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 
@@ -82,7 +82,7 @@ libvarpd_prop_set_nodefault(varpd_prop_handle_t phdl)
 }
 
 void
-libvarpd_prop_set_range_uint32(varpd_prop_handle_t phdl, uint32_t min,
+libvarpd_prop_set_range_uint32(varpd_prop_handle_t *phdl, uint32_t min,
     uint32_t max)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
@@ -105,7 +105,7 @@ libvarpd_prop_set_range_uint32(varpd_prop_handle_t phdl, uint32_t min,
 }
 
 void
-libvarpd_prop_set_range_str(varpd_prop_handle_t phdl, const char *str)
+libvarpd_prop_set_range_str(varpd_prop_handle_t *phdl, const char *str)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 	size_t len = strlen(str) + 1; /* Account for a null terminator */
@@ -129,8 +129,8 @@ libvarpd_prop_set_range_str(varpd_prop_handle_t phdl, const char *str)
 }
 
 int
-libvarpd_prop_handle_alloc(varpd_handle_t vph, varpd_instance_handle_t inst,
-    varpd_prop_handle_t *phdlp)
+libvarpd_prop_handle_alloc(varpd_handle_t *vph, varpd_instance_handle_t *inst,
+    varpd_prop_handle_t **phdlp)
 {
 	varpd_prop_info_t *infop;
 
@@ -142,18 +142,18 @@ libvarpd_prop_handle_alloc(varpd_handle_t vph, varpd_instance_handle_t inst,
 	infop->vprop_vip = (varpd_impl_t *)vph;
 	infop->vprop_instance = (varpd_instance_t *)inst;
 
-	*phdlp = (varpd_prop_handle_t)infop;
+	*phdlp = (varpd_prop_handle_t *)infop;
 	return (0);
 }
 
 void
-libvarpd_prop_handle_free(varpd_prop_handle_t phdl)
+libvarpd_prop_handle_free(varpd_prop_handle_t *phdl)
 {
 	umem_free(phdl, sizeof (varpd_prop_info_t));
 }
 
 int
-libvarpd_prop_nprops(varpd_instance_handle_t ihdl, uint_t *np)
+libvarpd_prop_nprops(varpd_instance_handle_t *ihdl, uint_t *np)
 {
 	varpd_instance_t *instp = (varpd_instance_t *)ihdl;
 
@@ -161,7 +161,7 @@ libvarpd_prop_nprops(varpd_instance_handle_t ihdl, uint_t *np)
 }
 
 int
-libvarpd_prop_info_fill(varpd_prop_handle_t phdl, uint_t propid)
+libvarpd_prop_info_fill(varpd_prop_handle_t *phdl, uint_t propid)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 	varpd_instance_t *instp = infop->vprop_instance;
@@ -174,7 +174,7 @@ libvarpd_prop_info_fill(varpd_prop_handle_t phdl, uint_t propid)
 }
 
 int
-libvarpd_prop_info(varpd_prop_handle_t phdl, const char **namep,
+libvarpd_prop_info(varpd_prop_handle_t *phdl, const char **namep,
     uint_t *typep, uint_t *protp, const void **defp, uint32_t *sizep,
     const mac_propval_range_t **possp)
 {
@@ -195,7 +195,7 @@ libvarpd_prop_info(varpd_prop_handle_t phdl, const char **namep,
 }
 
 int
-libvarpd_prop_get(varpd_prop_handle_t phdl, void *buf, uint32_t *sizep)
+libvarpd_prop_get(varpd_prop_handle_t *phdl, void *buf, uint32_t *sizep)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 	varpd_instance_t *instp = infop->vprop_instance;
@@ -209,7 +209,7 @@ libvarpd_prop_get(varpd_prop_handle_t phdl, void *buf, uint32_t *sizep)
 }
 
 int
-libvarpd_prop_set(varpd_prop_handle_t phdl, const void *buf, uint32_t size)
+libvarpd_prop_set(varpd_prop_handle_t *phdl, const void *buf, uint32_t size)
 {
 	varpd_prop_info_t *infop = (varpd_prop_info_t *)phdl;
 	varpd_instance_t *instp = infop->vprop_instance;
@@ -223,7 +223,7 @@ libvarpd_prop_set(varpd_prop_handle_t phdl, const void *buf, uint32_t size)
 }
 
 void
-libvarpd_prop_door_convert(const varpd_prop_handle_t phdl,
+libvarpd_prop_door_convert(const varpd_prop_handle_t *phdl,
     varpd_client_propinfo_arg_t *vcfap)
 {
 	const varpd_prop_info_t *infop = (const varpd_prop_info_t *)phdl;

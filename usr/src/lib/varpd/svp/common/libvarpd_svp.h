@@ -294,7 +294,7 @@ typedef struct svp_cb {
  */
 struct svp {
 	overlay_plugin_dest_t	svp_dest;	/* RO */
-	varpd_provider_handle_t	svp_hdl;	/* RO */
+	varpd_provider_handle_t	*svp_hdl;	/* RO */
 	svp_cb_t		svp_cb;		/* RO */
 	uint64_t		svp_vid;	/* RO? */
 	avl_node_t 		svp_rlink;	/* Owned by svp_remote */

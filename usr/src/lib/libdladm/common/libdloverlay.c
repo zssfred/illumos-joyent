@@ -35,7 +35,7 @@ typedef struct dladm_overlay_propinfo {
 	boolean_t dop_isvarpd;
 	union {
 		overlay_ioc_propinfo_t *dop_overlay;
-		varpd_client_prop_handle_t dop_varpd;
+		varpd_client_prop_handle_t *dop_varpd;
 	} dop_un;
 } dladm_overlay_propinfo_t;
 
@@ -132,14 +132,14 @@ dladm_overlay_parse_prop(overlay_prop_type_t type, void *buf, uint32_t *sizep,
 	return (DLADM_STATUS_OK);
 }
 
-dladm_status_t
-dladm_overlay_varpd_setprop(dladm_handle_t handle, varpd_client_handle_t chdl,
+static dladm_status_t
+dladm_overlay_varpd_setprop(dladm_handle_t handle, varpd_client_handle_t *chdl,
     uint64_t inst, const char *name, char *const *valp, uint_t cnt)
 {
 	int ret;
 	uint32_t size;
 	uint8_t buf[LIBVARPD_PROP_SIZEMAX];
-	varpd_client_prop_handle_t phdl;
+	varpd_client_prop_handle_t *phdl;
 	uint_t type;
 	dladm_status_t status;
 
@@ -256,7 +256,7 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 	overlay_ioc_create_t oic;
 	overlay_ioc_activate_t oia;
 	size_t slen;
-	varpd_client_handle_t vch;
+	varpd_client_handle_t *vch;
 	uint64_t id;
 
 	status = dladm_create_datalink_id(handle, name, DATALINK_CLASS_OVERLAY,
@@ -377,7 +377,7 @@ dladm_overlay_delete(dladm_handle_t handle, datalink_id_t linkid)
 {
 	datalink_class_t class;
 	overlay_ioc_delete_t oid;
-	varpd_client_handle_t chdl;
+	varpd_client_handle_t *chdl;
 	int ret;
 	uint32_t flags;
 	uint64_t varpdid;
@@ -451,8 +451,8 @@ dladm_overlay_walk_varpd_prop(dladm_handle_t handle, datalink_id_t linkid,
     uint64_t varpdid, dladm_overlay_prop_f func, void *arg)
 {
 	int ret, i;
-	varpd_client_handle_t chdl;
-	varpd_client_prop_handle_t phdl;
+	varpd_client_handle_t *chdl;
+	varpd_client_prop_handle_t *phdl;
 	uint_t nprops;
 	dladm_status_t status;
 
@@ -571,8 +571,8 @@ typedef struct overlay_walk_cb {
 	uint_t			owc_dest;
 } overlay_walk_cb_t;
 
-int
-dladm_overlay_walk_cache_cb(varpd_client_handle_t chdl, uint64_t varpdid,
+static int
+dladm_overlay_walk_cache_cb(varpd_client_handle_t *chdl, uint64_t varpdid,
     const struct ether_addr *key, const varpd_client_cache_entry_t *entry,
     void *arg)
 {
@@ -602,7 +602,7 @@ dladm_overlay_walk_cache(dladm_handle_t handle, datalink_id_t linkid,
 	int ret;
 	uint_t mode, dest;
 	uint64_t varpdid;
-	varpd_client_handle_t chdl;
+	varpd_client_handle_t *chdl;
 	overlay_walk_cb_t cbarg;
 
 	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
@@ -637,7 +637,7 @@ dladm_overlay_cache_flush(dladm_handle_t handle, datalink_id_t linkid)
 {
 	int ret;
 	uint64_t varpdid;
-	varpd_client_handle_t chdl;
+	varpd_client_handle_t *chdl;
 
 	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
 		return (dladm_errno2status(ret));
@@ -659,7 +659,7 @@ dladm_overlay_cache_delete(dladm_handle_t handle, datalink_id_t linkid,
 {
 	int ret;
 	uint64_t varpdid;
-	varpd_client_handle_t chdl;
+	varpd_client_handle_t *chdl;
 
 	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
 		return (dladm_errno2status(ret));
@@ -683,7 +683,7 @@ dladm_overlay_cache_set(dladm_handle_t handle, datalink_id_t linkid,
 	uint_t dest;
 	uint64_t varpdid;
 	char *ip, *port = NULL;
-	varpd_client_handle_t chdl;
+	varpd_client_handle_t *chdl;
 	varpd_client_cache_entry_t vcp;
 
 
@@ -795,7 +795,7 @@ dladm_overlay_cache_get(dladm_handle_t handle, datalink_id_t linkid,
 	int ret;
 	uint_t dest, mode;
 	uint64_t varpdid;
-	varpd_client_handle_t chdl;
+	varpd_client_handle_t *chdl;
 	varpd_client_cache_entry_t entry;
 
 	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)

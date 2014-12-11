@@ -58,7 +58,7 @@ varpd_direct_valid_dest(overlay_plugin_dest_t dest)
 }
 
 static int
-varpd_direct_create(varpd_provider_handle_t hdl, void **outp,
+varpd_direct_create(varpd_provider_handle_t *hdl, void **outp,
     overlay_plugin_dest_t dest)
 {
 	int ret;
@@ -148,7 +148,7 @@ varpd_direct_nprops(void *arg, uint_t *nprops)
 }
 
 static int
-varpd_direct_propinfo(void *arg, uint_t propid, varpd_prop_handle_t vph)
+varpd_direct_propinfo(void *arg, uint_t propid, varpd_prop_handle_t *vph)
 {
 	varpd_direct_t *vdp = arg;
 
@@ -295,7 +295,7 @@ varpd_direct_save(void *arg, nvlist_t *nvp)
 }
 
 static int
-varpd_direct_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
+varpd_direct_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
     overlay_plugin_dest_t dest, void **outp)
 {
 	int ret;

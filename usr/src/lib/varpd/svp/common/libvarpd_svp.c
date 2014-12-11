@@ -50,11 +50,11 @@ typedef struct svp_lookup {
 	int svl_type;
 	union {
 		struct svl_lookup_vl2 {
-			varpd_query_handle_t	svl_handle;
+			varpd_query_handle_t	*svl_handle;
 			overlay_target_point_t	*svl_point;
 		} svl_vl2;
 		struct svl_lookup_vl3 {
-			varpd_arp_handle_t	svl_vah;
+			varpd_arp_handle_t	*svl_vah;
 			uint8_t			*svl_out;
 		} svl_vl3;
 	} svl_u;
@@ -180,7 +180,7 @@ varpd_svp_valid_dest(overlay_plugin_dest_t dest)
 }
 
 static int
-varpd_svp_create(varpd_provider_handle_t hdl, void **outp,
+varpd_svp_create(varpd_provider_handle_t *hdl, void **outp,
     overlay_plugin_dest_t dest)
 {
 	int ret;
@@ -256,7 +256,7 @@ varpd_svp_destroy(void *arg)
 }
 
 static void
-varpd_svp_lookup(void *arg, varpd_query_handle_t vqh,
+varpd_svp_lookup(void *arg, varpd_query_handle_t *vqh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
 {
 	svp_lookup_t *slp;
@@ -307,7 +307,7 @@ varpd_svp_nprops(void *arg, uint_t *nprops)
 }
 
 static int
-varpd_svp_propinfo(void *arg, uint_t propid, varpd_prop_handle_t vph)
+varpd_svp_propinfo(void *arg, uint_t propid, varpd_prop_handle_t *vph)
 {
 	switch (propid) {
 	case 0:
@@ -556,7 +556,7 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 }
 
 static int
-varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
+varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
     overlay_plugin_dest_t dest, void **outp)
 {
 	int ret;
@@ -629,7 +629,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 }
 
 static void
-varpd_svp_arp(void *arg, varpd_arp_handle_t vah, int type,
+varpd_svp_arp(void *arg, varpd_arp_handle_t *vah, int type,
     const struct sockaddr *sock, uint8_t *out)
 {
 	svp_t *svp = arg;

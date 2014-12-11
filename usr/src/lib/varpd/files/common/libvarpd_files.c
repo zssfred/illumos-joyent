@@ -54,7 +54,7 @@
 
 typedef struct varpd_files {
 	overlay_plugin_dest_t	vaf_dest;	/* RO */
-	varpd_provider_handle_t	vaf_hdl;	/* RO */
+	varpd_provider_handle_t	*vaf_hdl;	/* RO */
 	char			*vaf_path;	/* WO */
 	nvlist_t		*vaf_nvl;	/* WO */
 	uint64_t		vaf_nmisses;	/* Atomic */
@@ -78,7 +78,7 @@ varpd_files_valid_dest(overlay_plugin_dest_t dest)
 }
 
 static int
-varpd_files_create(varpd_provider_handle_t hdl, void **outp,
+varpd_files_create(varpd_provider_handle_t *hdl, void **outp,
     overlay_plugin_dest_t dest)
 {
 	varpd_files_t *vaf;
@@ -215,7 +215,7 @@ varpd_files_destroy(void *arg)
 }
 
 static void
-varpd_files_lookup(void *arg, varpd_query_handle_t qh,
+varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
 {
 	char macstr[ETHERADDRSTRL], *ipstr;
@@ -325,7 +325,7 @@ varpd_files_nprops(void *arg, uint_t *nprops)
 }
 
 static int
-varpd_files_propinfo(void *arg, uint_t propid, varpd_prop_handle_t vph)
+varpd_files_propinfo(void *arg, uint_t propid, varpd_prop_handle_t *vph)
 {
 	if (propid != 0)
 		return (EINVAL);
@@ -399,7 +399,7 @@ varpd_files_save(void *arg, nvlist_t *nvp)
 }
 
 static int
-varpd_files_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
+varpd_files_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
     overlay_plugin_dest_t dest, void **outp)
 {
 	varpd_files_t *vaf;
@@ -443,7 +443,7 @@ varpd_files_restore(nvlist_t *nvp, varpd_provider_handle_t hdl,
 }
 
 static void
-varpd_files_proxy_arp(void *arg, varpd_arp_handle_t vah, int kind,
+varpd_files_proxy_arp(void *arg, varpd_arp_handle_t *vah, int kind,
     const struct sockaddr *sock, uint8_t *out)
 {
 	varpd_files_t *vaf = arg;
@@ -517,7 +517,7 @@ varpd_files_proxy_arp(void *arg, varpd_arp_handle_t vah, int kind,
 }
 
 static void
-varpd_files_proxy_dhcp(void *arg, varpd_dhcp_handle_t vdh, int type,
+varpd_files_proxy_dhcp(void *arg, varpd_dhcp_handle_t *vdh, int type,
     const overlay_targ_lookup_t *otl, uint8_t *out)
 {
 	varpd_files_t *vaf = arg;

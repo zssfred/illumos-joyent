@@ -86,7 +86,7 @@ libvarpd_c_door_call(varpd_client_t *client, varpd_client_arg_t *argp,
 }
 
 int
-libvarpd_c_create(varpd_client_handle_t *chpp, const char *doorname)
+libvarpd_c_create(varpd_client_handle_t **chpp, const char *doorname)
 {
 	varpd_client_t *client;
 
@@ -101,24 +101,24 @@ libvarpd_c_create(varpd_client_handle_t *chpp, const char *doorname)
 		return (ret);
 	}
 
-	*chpp = (varpd_client_handle_t)client;
+	*chpp = (varpd_client_handle_t *)client;
 	return (0);
 }
 
 int
-libvarpd_c_destroy(varpd_client_handle_t chp)
+libvarpd_c_destroy(varpd_client_handle_t *chp)
 {
 	varpd_client_t *client = (varpd_client_t *)chp;
 	if (close(client->vcl_doorfd) != 0)
 		libvarpd_panic("failed to close door fd %d: %d",
 		    client->vcl_doorfd, errno);
 
-	umem_free(chp, sizeof (varpd_client_handle_t));
+	umem_free(chp, sizeof (varpd_client_handle_t *));
 	return (0);
 }
 
 int
-libvarpd_c_instance_create(varpd_client_handle_t chp, datalink_id_t linkid,
+libvarpd_c_instance_create(varpd_client_handle_t *chp, datalink_id_t linkid,
     const char *search, uint64_t *cidp)
 {
 	int ret;
@@ -146,7 +146,7 @@ libvarpd_c_instance_create(varpd_client_handle_t chp, datalink_id_t linkid,
 }
 
 int
-libvarpd_c_instance_activate(varpd_client_handle_t chp, uint64_t cid)
+libvarpd_c_instance_activate(varpd_client_handle_t *chp, uint64_t cid)
 {
 	int ret;
 	varpd_client_t *client = (varpd_client_t *)chp;
@@ -168,7 +168,7 @@ libvarpd_c_instance_activate(varpd_client_handle_t chp, uint64_t cid)
 }
 
 int
-libvarpd_c_instance_destroy(varpd_client_handle_t chp, uint64_t cid)
+libvarpd_c_instance_destroy(varpd_client_handle_t *chp, uint64_t cid)
 {
 	int ret;
 	varpd_client_t *client = (varpd_client_t *)chp;
@@ -190,7 +190,7 @@ libvarpd_c_instance_destroy(varpd_client_handle_t chp, uint64_t cid)
 }
 
 int
-libvarpd_c_prop_nprops(varpd_client_handle_t chp, uint64_t cid, uint_t *nprops)
+libvarpd_c_prop_nprops(varpd_client_handle_t *chp, uint64_t cid, uint_t *nprops)
 {
 	int ret;
 	varpd_client_t *client = (varpd_client_t *)chp;
@@ -213,8 +213,8 @@ libvarpd_c_prop_nprops(varpd_client_handle_t chp, uint64_t cid, uint_t *nprops)
 }
 
 int
-libvarpd_c_prop_handle_alloc(varpd_client_handle_t chp, uint64_t cid,
-    varpd_client_prop_handle_t *phdlp)
+libvarpd_c_prop_handle_alloc(varpd_client_handle_t *chp, uint64_t cid,
+    varpd_client_prop_handle_t **phdlp)
 {
 	varpd_client_prop_info_t *infop;
 
@@ -226,12 +226,12 @@ libvarpd_c_prop_handle_alloc(varpd_client_handle_t chp, uint64_t cid,
 	infop->vcprop_client = (varpd_client_t *)chp;
 	infop->vcprop_instance = cid;
 	infop->vcprop_propid = UINT_MAX;
-	*phdlp = (varpd_client_prop_handle_t)infop;
+	*phdlp = (varpd_client_prop_handle_t *)infop;
 	return (0);
 }
 
 void
-libvarpd_c_prop_handle_free(varpd_client_prop_handle_t phdl)
+libvarpd_c_prop_handle_free(varpd_client_prop_handle_t *phdl)
 {
 	umem_free(phdl, sizeof (varpd_client_prop_info_t));
 	phdl = NULL;
@@ -253,7 +253,7 @@ libvarpd_c_prop_info_from_door(varpd_client_prop_info_t *infop,
 }
 
 int
-libvarpd_c_prop_info_fill_by_name(varpd_client_prop_handle_t phdl,
+libvarpd_c_prop_info_fill_by_name(varpd_client_prop_handle_t *phdl,
     const char *name)
 {
 	int ret;
@@ -282,7 +282,7 @@ libvarpd_c_prop_info_fill_by_name(varpd_client_prop_handle_t phdl,
 }
 
 int
-libvarpd_c_prop_info_fill(varpd_client_prop_handle_t phdl, uint_t propid)
+libvarpd_c_prop_info_fill(varpd_client_prop_handle_t *phdl, uint_t propid)
 {
 	int ret;
 	varpd_client_arg_t carg;
@@ -307,7 +307,7 @@ libvarpd_c_prop_info_fill(varpd_client_prop_handle_t phdl, uint_t propid)
 }
 
 int
-libvarpd_c_prop_info(varpd_client_prop_handle_t phdl, const char **namep,
+libvarpd_c_prop_info(varpd_client_prop_handle_t *phdl, const char **namep,
     uint_t *typep, uint_t *protp, const void **defp, uint32_t *defsizep,
     const mac_propval_range_t **possp)
 {
@@ -331,7 +331,7 @@ libvarpd_c_prop_info(varpd_client_prop_handle_t phdl, const char **namep,
 }
 
 int
-libvarpd_c_prop_get(varpd_client_prop_handle_t phdl, void *buf, uint32_t *len)
+libvarpd_c_prop_get(varpd_client_prop_handle_t *phdl, void *buf, uint32_t *len)
 {
 	int ret;
 	varpd_client_arg_t carg;
@@ -370,7 +370,7 @@ libvarpd_c_prop_get(varpd_client_prop_handle_t phdl, void *buf, uint32_t *len)
 }
 
 int
-libvarpd_c_prop_set(varpd_client_prop_handle_t phdl, const void *buf,
+libvarpd_c_prop_set(varpd_client_prop_handle_t *phdl, const void *buf,
     uint32_t len)
 {
 	int ret;
@@ -401,7 +401,7 @@ libvarpd_c_prop_set(varpd_client_prop_handle_t phdl, const void *buf,
 }
 
 int
-libvarpd_c_instance_lookup(varpd_client_handle_t chp, datalink_id_t linkid,
+libvarpd_c_instance_lookup(varpd_client_handle_t *chp, datalink_id_t linkid,
     uint64_t *instp)
 {
 	int ret;
@@ -425,7 +425,7 @@ libvarpd_c_instance_lookup(varpd_client_handle_t chp, datalink_id_t linkid,
 }
 
 int
-libvarpd_c_instance_target_mode(varpd_client_handle_t chp, uint64_t cid,
+libvarpd_c_instance_target_mode(varpd_client_handle_t *chp, uint64_t cid,
     uint_t *dtype, uint_t *mtype)
 {
 	int ret;
@@ -453,7 +453,7 @@ libvarpd_c_instance_target_mode(varpd_client_handle_t chp, uint64_t cid,
 }
 
 int
-libvarpd_c_instance_cache_flush(varpd_client_handle_t chp, uint64_t cid)
+libvarpd_c_instance_cache_flush(varpd_client_handle_t *chp, uint64_t cid)
 {
 	int ret;
 	varpd_client_arg_t carg;
@@ -475,7 +475,7 @@ libvarpd_c_instance_cache_flush(varpd_client_handle_t chp, uint64_t cid)
 }
 
 int
-libvarpd_c_instance_cache_delete(varpd_client_handle_t chp, uint64_t cid,
+libvarpd_c_instance_cache_delete(varpd_client_handle_t *chp, uint64_t cid,
     const struct ether_addr *key)
 {
 	int ret;
@@ -502,7 +502,7 @@ libvarpd_c_instance_cache_delete(varpd_client_handle_t chp, uint64_t cid,
 }
 
 int
-libvarpd_c_instance_cache_get(varpd_client_handle_t chp, uint64_t cid,
+libvarpd_c_instance_cache_get(varpd_client_handle_t *chp, uint64_t cid,
     const struct ether_addr *key, varpd_client_cache_entry_t *entry)
 {
 	int ret;
@@ -531,7 +531,7 @@ libvarpd_c_instance_cache_get(varpd_client_handle_t chp, uint64_t cid,
 }
 
 int
-libvarpd_c_instance_cache_set(varpd_client_handle_t chp, uint64_t cid,
+libvarpd_c_instance_cache_set(varpd_client_handle_t *chp, uint64_t cid,
     const struct ether_addr *key, const varpd_client_cache_entry_t *entry)
 {
 	int ret;
@@ -559,7 +559,7 @@ libvarpd_c_instance_cache_set(varpd_client_handle_t chp, uint64_t cid,
 }
 
 int
-libvarpd_c_instance_cache_walk(varpd_client_handle_t chp, uint64_t cid,
+libvarpd_c_instance_cache_walk(varpd_client_handle_t *chp, uint64_t cid,
     varpd_client_cache_f func, void *arg)
 {
 	int ret = 0;

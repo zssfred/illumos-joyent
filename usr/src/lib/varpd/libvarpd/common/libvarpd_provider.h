@@ -36,15 +36,15 @@ extern "C" {
 #define	VARPD_VERSION_ONE	1
 #define	VARPD_CURRENT_VERSION	VARPD_VERSION_ONE
 
-typedef struct __varpd_provier_handle *varpd_provider_handle_t;
-typedef struct __varpd_query_handle *varpd_query_handle_t;
-typedef struct __varpd_arp_handle *varpd_arp_handle_t;
-typedef struct __varpd_dhcp_handle *varpd_dhcp_handle_t;
+typedef struct __varpd_provier_handle varpd_provider_handle_t;
+typedef struct __varpd_query_handle varpd_query_handle_t;
+typedef struct __varpd_arp_handle varpd_arp_handle_t;
+typedef struct __varpd_dhcp_handle varpd_dhcp_handle_t;
 
 /*
  * Create a new instance of a plugin.
  */
-typedef int (*varpd_plugin_create_f)(varpd_provider_handle_t, void **,
+typedef int (*varpd_plugin_create_f)(varpd_provider_handle_t *, void **,
     overlay_plugin_dest_t);
 
 /*
@@ -85,17 +85,17 @@ typedef void (*varpd_plugin_destroy_f)(void *);
 #define	VARPD_LOOKUP_OK		(0)
 #define	VARPD_LOOKUP_DROP	(-1)
 typedef int (*varpd_plugin_default_f)(void *, overlay_target_point_t *);
-typedef void (*varpd_plugin_lookup_f)(void *, varpd_query_handle_t,
+typedef void (*varpd_plugin_lookup_f)(void *, varpd_query_handle_t *,
     const overlay_targ_lookup_t *, overlay_target_point_t *);
 
 /*
  * Do a proxy ARP/NDP lookup.
  */
 #define	VARPD_QTYPE_ETHERNET	0x0
-typedef void (*varpd_plugin_arp_f)(void *, varpd_arp_handle_t, int,
+typedef void (*varpd_plugin_arp_f)(void *, varpd_arp_handle_t *, int,
     const struct sockaddr *, uint8_t *);
 
-typedef void (*varpd_plugin_dhcp_f)(void *, varpd_dhcp_handle_t, int,
+typedef void (*varpd_plugin_dhcp_f)(void *, varpd_dhcp_handle_t *, int,
     const overlay_targ_lookup_t *, uint8_t *);
 
 /*
@@ -116,7 +116,7 @@ typedef int (*varpd_plugin_nprops_f)(void *, uint_t *);
  * Obtain information about a property.
  */
 typedef int (*varpd_plugin_propinfo_f)(void *, const uint_t,
-    varpd_prop_handle_t);
+    varpd_prop_handle_t *);
 
 /*
  * Get the value for a single property.
@@ -137,7 +137,7 @@ typedef int (*varpd_plugin_save_f)(void *, nvlist_t *);
 /*
  * Restore a plugin's private data to an nvlist.
  */
-typedef int (*varpd_plugin_restore_f)(nvlist_t *, varpd_provider_handle_t,
+typedef int (*varpd_plugin_restore_f)(nvlist_t *, varpd_provider_handle_t *,
     overlay_plugin_dest_t, void **);
 
 typedef struct varpd_plugin_ops {
@@ -173,50 +173,50 @@ extern int libvarpd_plugin_register(varpd_plugin_register_t *);
  * Blowing up and logging
  */
 extern void libvarpd_panic(const char *, ...) __NORETURN;
-extern const bunyan_logger_t *libvarpd_plugin_bunyan(varpd_provider_handle_t);
+extern const bunyan_logger_t *libvarpd_plugin_bunyan(varpd_provider_handle_t *);
 
 /*
  * Misc. Information APIs
  */
-extern uint64_t libvarpd_plugin_vnetid(varpd_provider_handle_t);
+extern uint64_t libvarpd_plugin_vnetid(varpd_provider_handle_t *);
 
 /*
  * Lookup Replying query and proxying
  */
-extern void libvarpd_plugin_query_reply(varpd_query_handle_t, int);
+extern void libvarpd_plugin_query_reply(varpd_query_handle_t *, int);
 
-extern void libvarpd_plugin_proxy_arp(varpd_provider_handle_t,
-    varpd_query_handle_t, const overlay_targ_lookup_t *);
-extern void libvarpd_plugin_proxy_ndp(varpd_provider_handle_t,
-    varpd_query_handle_t, const overlay_targ_lookup_t *);
-extern void libvarpd_plugin_arp_reply(varpd_arp_handle_t, int);
+extern void libvarpd_plugin_proxy_arp(varpd_provider_handle_t *,
+    varpd_query_handle_t *, const overlay_targ_lookup_t *);
+extern void libvarpd_plugin_proxy_ndp(varpd_provider_handle_t *,
+    varpd_query_handle_t *, const overlay_targ_lookup_t *);
+extern void libvarpd_plugin_arp_reply(varpd_arp_handle_t *, int);
 
-extern void libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t,
-    varpd_query_handle_t, const overlay_targ_lookup_t *);
-extern void libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t, int);
+extern void libvarpd_plugin_proxy_dhcp(varpd_provider_handle_t *,
+    varpd_query_handle_t *, const overlay_targ_lookup_t *);
+extern void libvarpd_plugin_dhcp_reply(varpd_dhcp_handle_t *, int);
 
 
 /*
  * Property information callbacks
  */
-extern void libvarpd_prop_set_name(varpd_prop_handle_t, const char *);
-extern void libvarpd_prop_set_prot(varpd_prop_handle_t, overlay_prop_prot_t);
-extern void libvarpd_prop_set_type(varpd_prop_handle_t, overlay_prop_type_t);
-extern int libvarpd_prop_set_default(varpd_prop_handle_t, void *, ssize_t);
-extern void libvarpd_prop_set_nodefault(varpd_prop_handle_t);
-extern void libvarpd_prop_set_range_uint32(varpd_prop_handle_t, uint32_t,
+extern void libvarpd_prop_set_name(varpd_prop_handle_t *, const char *);
+extern void libvarpd_prop_set_prot(varpd_prop_handle_t *, overlay_prop_prot_t);
+extern void libvarpd_prop_set_type(varpd_prop_handle_t *, overlay_prop_type_t);
+extern int libvarpd_prop_set_default(varpd_prop_handle_t *, void *, ssize_t);
+extern void libvarpd_prop_set_nodefault(varpd_prop_handle_t *);
+extern void libvarpd_prop_set_range_uint32(varpd_prop_handle_t *, uint32_t,
     uint32_t);
-extern void libvarpd_prop_set_range_str(varpd_prop_handle_t, const char *);
+extern void libvarpd_prop_set_range_str(varpd_prop_handle_t *, const char *);
 
 /*
  * Various injecting and invalidation routines
  */
-extern void libvarpd_inject_varp(varpd_provider_handle_t, const uint8_t *,
+extern void libvarpd_inject_varp(varpd_provider_handle_t *, const uint8_t *,
     const overlay_target_point_t *);
-extern void libvarpd_inject_arp(varpd_provider_handle_t, const uint16_t,
+extern void libvarpd_inject_arp(varpd_provider_handle_t *, const uint16_t,
     const uint8_t *, const struct in_addr *, const uint8_t *);
-extern void libvarpd_fma_degrade(varpd_provider_handle_t, const char *);
-extern void libvarpd_fma_restore(varpd_provider_handle_t);
+extern void libvarpd_fma_degrade(varpd_provider_handle_t *, const char *);
+extern void libvarpd_fma_restore(varpd_provider_handle_t *);
 /* TODO NDP */
 
 #ifdef __cplusplus

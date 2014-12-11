@@ -152,7 +152,7 @@ libvarpd_plugin_load_cb(varpd_impl_t *vip, const char *path, void *unused)
 }
 
 int
-libvarpd_plugin_load(varpd_handle_t vph, const char *path)
+libvarpd_plugin_load(varpd_handle_t *vph, const char *path)
 {
 	int ret = 0;
 	varpd_impl_t *vip = (varpd_impl_t *)vph;
@@ -176,7 +176,8 @@ libvarpd_plugin_load(varpd_handle_t vph, const char *path)
 }
 
 int
-libvarpd_plugin_walk(varpd_handle_t vph, libvarpd_plugin_walk_f func, void *arg)
+libvarpd_plugin_walk(varpd_handle_t *vph, libvarpd_plugin_walk_f func,
+    void *arg)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vph;
 	varpd_plugin_t *vpp;

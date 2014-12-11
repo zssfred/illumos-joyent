@@ -231,7 +231,7 @@ libvarpd_overlay_lookup_reply(varpd_impl_t *vip,
 	} while (ret != 0 && errno == EINTR);
 	/* XXX abort feels wrong here */
 	if (ret != 0)
-		libvarpd_panic("receieved bad errno from lookup_reply: %d\n",	
+		libvarpd_panic("receieved bad errno from lookup_reply: %d\n",
 		    errno);
 }
 
@@ -264,8 +264,8 @@ libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 		return;
 	}
 
-	inst = (varpd_instance_t *)libvarpd_instance_lookup((varpd_handle_t)vip,
-	    otl->otl_varpdid);
+	inst = (varpd_instance_t *)libvarpd_instance_lookup(
+	    (varpd_handle_t *)vip, otl->otl_varpdid);
 	if (inst == NULL) {
 		libvarpd_overlay_lookup_reply(vip, otl, otr,
 		    OVERLAY_TARG_DROP);
@@ -275,11 +275,11 @@ libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 	vqp->vq_instance = inst;
 
 	inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private,
-	    (varpd_query_handle_t)vqp, otl, &otr->otr_answer);
+	    (varpd_query_handle_t *)vqp, otl, &otr->otr_answer);
 }
 
 void
-libvarpd_overlay_lookup_run(varpd_handle_t vhp)
+libvarpd_overlay_lookup_run(varpd_handle_t *vhp)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 
@@ -304,7 +304,7 @@ libvarpd_overlay_lookup_run(varpd_handle_t vhp)
 }
 
 void
-libvarpd_overlay_lookup_quiesce(varpd_handle_t vhp)
+libvarpd_overlay_lookup_quiesce(varpd_handle_t *vhp)
 {
 	varpd_impl_t *vip = (varpd_impl_t *)vhp;
 
@@ -492,7 +492,7 @@ out:
 }
 
 void
-libvarpd_plugin_query_reply(varpd_query_handle_t vqh, int action)
+libvarpd_plugin_query_reply(varpd_query_handle_t *vqh, int action)
 {
 	varpd_query_t *vqp = (varpd_query_t *)vqh;
 
@@ -512,7 +512,7 @@ libvarpd_plugin_query_reply(varpd_query_handle_t vqh, int action)
 }
 
 void
-libvarpd_inject_varp(varpd_provider_handle_t vph, const uint8_t *mac,
+libvarpd_inject_varp(varpd_provider_handle_t *vph, const uint8_t *mac,
     const overlay_target_point_t *otp)
 {
 	int ret;
@@ -540,7 +540,7 @@ libvarpd_inject_varp(varpd_provider_handle_t vph, const uint8_t *mac,
 }
 
 void
-libvarpd_fma_degrade(varpd_provider_handle_t vph, const char *msg)
+libvarpd_fma_degrade(varpd_provider_handle_t *vph, const char *msg)
 {
 	int ret;
 	varpd_instance_t *inst = (varpd_instance_t *)vph;
@@ -557,7 +557,7 @@ libvarpd_fma_degrade(varpd_provider_handle_t vph, const char *msg)
 }
 
 void
-libvarpd_fma_restore(varpd_provider_handle_t vph)
+libvarpd_fma_restore(varpd_provider_handle_t *vph)
 {
 	int ret;
 	varpd_instance_t *inst = (varpd_instance_t *)vph;
