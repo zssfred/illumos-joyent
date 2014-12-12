@@ -36,8 +36,8 @@
 #include "libvarpd_svp.h"
 
 bunyan_logger_t *svp_bunyan;
-static int svp_defport = 169;
-static int svp_defuport = 1690;
+static int svp_defport = 1296;
+static int svp_defuport = 1339;
 static umem_cache_t *svp_lookup_cache;
 
 typedef enum svp_lookup_type {
