@@ -679,8 +679,8 @@ svp_conn_handler(port_event_t *pe, void *arg)
 				scp->sc_error = SVP_CE_ASSOCIATE;
 				scp->sc_errno = ret;
 				scp->sc_cstate = SVP_CS_ERROR;
+				ret = SVP_RA_DEGRADE;
 			}
-			ret = SVP_RA_DEGRADE;
 		}
 		break;
 	default:
