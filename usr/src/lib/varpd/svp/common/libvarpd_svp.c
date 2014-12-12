@@ -119,7 +119,7 @@ svp_vl3_lookup_cb(svp_t *svp, svp_status_t status, const uint8_t *vl2mac,
 	if (status != SVP_S_OK) {
 		libvarpd_plugin_arp_reply(svl->svl_u.svl_vl3.svl_vah,
 		    VARPD_LOOKUP_DROP);
-		umem_cache_free(svp_lookup_cache, svp);
+		umem_cache_free(svp_lookup_cache, svl);
 		return;
 	}
 
