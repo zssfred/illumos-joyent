@@ -17,6 +17,7 @@ LIBRARY =	libvarpd_svp.a
 VERS =		.1
 OBJECTS =	libvarpd_svp.o \
 		libvarpd_svp_conn.o \
+		libvarpd_svp_crc.o \
 		libvarpd_svp_host.o \
 		libvarpd_svp_loop.o \
 		libvarpd_svp_remote.o \

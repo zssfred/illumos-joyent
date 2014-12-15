@@ -334,6 +334,7 @@ svp_conn_pollout(svp_conn_t *scp)
 		scp->sc_output.sco_query = sqp;
 		scp->sc_output.sco_offset = 0;
 		sqp->sq_state = SVP_QUERY_WRITING;
+		svp_query_crc32(&sqp->sq_header, sqp->sq_rdata, sqp->sq_rsize);
 	}
 
 	sqp = scp->sc_output.sco_query;
@@ -469,6 +470,7 @@ svp_conn_pollin(svp_conn_t *scp)
 	size_t off, total;
 	ssize_t ret;
 	svp_query_t *sqp;
+	uint32_t crc;
 
 	assert(MUTEX_HELD(&scp->sc_lock));
 
@@ -546,7 +548,26 @@ svp_conn_pollin(svp_conn_t *scp)
 		return (SVP_RA_NONE);
 	}
 
-	/* XXX Validate crc32 */
+	crc = scp->sc_input.sci_req.svp_crc32;
+	svp_query_crc32(&scp->sc_input.sci_req, sqp->sq_wdata, total);
+	if (crc != scp->sc_input.sci_req.svp_crc32) {
+		bunyan_info(svp_bunyan, "crc32 mismatch",
+		    BUNYAN_T_IP, "remote ip", &scp->sc_addr,
+		    BUNYAN_T_INT32, "remote port", scp->sc_remote->sr_rport,
+		    BUNYAN_T_INT32, "version",
+		    ntohs(scp->sc_input.sci_req.svp_ver),
+		    BUNYAN_T_INT32, "operation",
+		    ntohs(scp->sc_input.sci_req.svp_op),
+		    BUNYAN_T_INT32, "response id",
+		    ntohl(scp->sc_input.sci_req.svp_id),
+		    BUNYAN_T_INT32, "query state", sqp->sq_state,
+		    BUNYAN_T_UINT32, "msg_crc", ntohl(crc),
+		    BUNYAN_T_UINT32, "calc_crc",
+		    ntohl(scp->sc_input.sci_req.svp_crc32),
+		    BUNYAN_T_END);
+		return (SVP_RA_ERROR);
+	}
+	/* XXX Here we would check if the crc's match and if not error */
 	scp->sc_input.sci_query = NULL;
 	scp->sc_input.sci_offset = 0;
 
@@ -594,6 +615,8 @@ svp_conn_reset(svp_conn_t *scp)
 		    errno);
 	scp->sc_socket = -1;
 	scp->sc_cstate = SVP_CS_INITIAL;
+	scp->sc_input.sci_query = NULL;
+	scp->sc_output.sco_query = NULL;
 
 	svp_remote_reassign(srp, scp);
 

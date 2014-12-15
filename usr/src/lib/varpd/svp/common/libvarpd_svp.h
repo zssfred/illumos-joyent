@@ -368,6 +368,7 @@ extern void svp_remote_reassign(svp_remote_t *, svp_conn_t *);
 extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
 extern void svp_host_queue(svp_remote_t *);
 extern void svp_query_release(svp_query_t *);
+extern void svp_query_crc32(svp_req_t *, void *, size_t);
 
 #ifdef __cplusplus
 }
