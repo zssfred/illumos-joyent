@@ -13,8 +13,6 @@
 # Copyright (c) 2014 Joyent, Inc. All rights reserved.
 #
 
-include		../../Makefile.lib
-
 LIBRARY =	libbunyan.a
 VERS =		.1
 OBJECTS =	bunyan.o
