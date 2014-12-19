@@ -471,6 +471,7 @@ svp_conn_pollin(svp_conn_t *scp)
 	ssize_t ret;
 	svp_query_t *sqp;
 	uint32_t crc;
+	uint16_t nop;
 
 	assert(MUTEX_HELD(&scp->sc_lock));
 
@@ -548,6 +549,7 @@ svp_conn_pollin(svp_conn_t *scp)
 		return (SVP_RA_NONE);
 	}
 
+	nop = ntohs(scp->sc_input.sci_req.svp_op);
 	crc = scp->sc_input.sci_req.svp_crc32;
 	svp_query_crc32(&scp->sc_input.sci_req, sqp->sq_wdata, total);
 	if (crc != scp->sc_input.sci_req.svp_crc32) {
@@ -556,8 +558,7 @@ svp_conn_pollin(svp_conn_t *scp)
 		    BUNYAN_T_INT32, "remote port", scp->sc_remote->sr_rport,
 		    BUNYAN_T_INT32, "version",
 		    ntohs(scp->sc_input.sci_req.svp_ver),
-		    BUNYAN_T_INT32, "operation",
-		    ntohs(scp->sc_input.sci_req.svp_op),
+		    BUNYAN_T_INT32, "operation", nop,
 		    BUNYAN_T_INT32, "response id",
 		    ntohl(scp->sc_input.sci_req.svp_id),
 		    BUNYAN_T_INT32, "query state", sqp->sq_state,
@@ -567,18 +568,17 @@ svp_conn_pollin(svp_conn_t *scp)
 		    BUNYAN_T_END);
 		return (SVP_RA_ERROR);
 	}
-	/* XXX Here we would check if the crc's match and if not error */
 	scp->sc_input.sci_query = NULL;
 	scp->sc_input.sci_offset = 0;
 
-	if (scp->sc_input.sci_req.svp_op == SVP_R_VL2_ACK) {
+	if (nop == SVP_R_VL2_ACK) {
 		svp_vl2_ack_t *sl2a = sqp->sq_wdata;
-		sqp->sq_status = ntohl(sl2a->sl2a_status);
-	} else if (scp->sc_input.sci_req.svp_op == SVP_R_VL3_ACK) {
+		sqp->sq_status = ntohs(sl2a->sl2a_status);
+	} else if (nop == SVP_R_VL3_ACK) {
 		svp_vl3_ack_t *sl3a = sqp->sq_wdata;
-		sqp->sq_status = ntohl(sl3a->sl3a_status);
+		sqp->sq_status = ntohs(sl3a->sl3a_status);
 	} else {
-		sqp->sq_status = SVP_S_OK;
+		libvarpd_panic("unhandled nop: %d", nop);
 	}
 
 	/*
