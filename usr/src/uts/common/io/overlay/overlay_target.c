@@ -554,6 +554,7 @@ overlay_target_lookup_request(overlay_target_hdl_t *thdl, void *arg)
 	mac_header_info_t mhi;
 
 	timeout = ddi_get_lbolt() + drv_usectohz(MICROSEC);
+again:
 	mutex_enter(&overlay_target_lock);
 	while (list_is_empty(&overlay_target_list)) {
 		ret = cv_timedwait(&overlay_target_condvar,
@@ -566,7 +567,11 @@ overlay_target_lookup_request(overlay_target_hdl_t *thdl, void *arg)
 	entry = list_remove_head(&overlay_target_list);
 	mutex_exit(&overlay_target_lock);
 	mutex_enter(&entry->ote_lock);
-	ASSERT(!(entry->ote_flags & OVERLAY_ENTRY_F_VALID));
+	if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
+		ASSERT(entry->ote_chead == NULL);
+		mutex_exit(&entry->ote_lock);
+		goto again;
+	}
 	ASSERT(entry->ote_chead != NULL);
 
 	/* XXX We probably shouldn't assume it's valid */
