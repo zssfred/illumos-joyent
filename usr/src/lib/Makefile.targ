@@ -82,13 +82,6 @@ objs/%.o pics/%.o: $(SRCDIR)/%.cc
 	$(COMPILE.cc) -o $@ $<
 	$(POST_PROCESS_O)
 
-pics/%.o: $(SRCDIR)/%.d
-	$(COMPILE.d) -o $@ -s $< $(USDT_G_PICS)
-	$(POST_PROCESS_O)
-
-%_impl.h: $(SRCDIR)/%.d
-	$(DTRACE) -h -o $@ -s $<
-
 objs pics:
 	-@mkdir -p $@
 

@@ -33,3 +33,4 @@ all:	$(LIBS)
 lint:	lintcheck
 
 include ../../Makefile.targ
+include ../../Makefile.usdt
