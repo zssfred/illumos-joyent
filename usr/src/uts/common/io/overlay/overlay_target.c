@@ -41,6 +41,7 @@
 #include <sys/sunddi.h>
 
 #include <sys/overlay_impl.h>
+#include <sys/sdt.h>
 
 /*
  * XXX This is total straw man, but at least it's a prime number. Here we're
@@ -669,13 +670,23 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 	mutex_exit(&thdl->oth_lock);
 
 	mutex_enter(&entry->ote_lock);
+
+	/* Safeguard against a confused varpd */
+	if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
+		DTRACE_PROBE1(overlay__target__valid__drop,
+		    overlay_target_entry_t *, entry);
+		mutex_exit(&entry->ote_lock);
+		goto done;
+	}
+
 	mp = entry->ote_chead;
-	ASSERT(mp != NULL);
-	entry->ote_chead = mp->b_next;
-	mp->b_next = NULL;
-	if (entry->ote_ctail == mp)
-		entry->ote_ctail = entry->ote_chead;
-	entry->ote_mbsize -= msgsize(mp);
+	if (mp != NULL) {
+		entry->ote_chead = mp->b_next;
+		mp->b_next = NULL;
+		if (entry->ote_ctail == mp)
+			entry->ote_ctail = entry->ote_chead;
+		entry->ote_mbsize -= msgsize(mp);
+	}
 	if (entry->ote_chead != NULL)
 		queue = B_TRUE;
 	else
@@ -686,6 +697,7 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 		overlay_target_queue(entry);
 	freemsg(mp);
 
+done:
 	mutex_enter(&entry->ote_ott->ott_lock);
 	entry->ote_ott->ott_ocount--;
 	cv_signal(&entry->ote_ott->ott_cond);
@@ -767,6 +779,8 @@ overlay_target_packet(overlay_target_hdl_t *thdl, void *arg)
 	mutex_enter(&entry->ote_lock);
 	mutex_exit(&thdl->oth_lock);
 	mp = entry->ote_chead;
+	/* XXX We should protect against a rouge varpd, don't assert */
+	ASSERT(mp != NULL);
 	mlen = MIN(msgsize(mp), pkt->otp_size);
 	pkt->otp_size = mlen;
 	boff = 0;
@@ -1050,6 +1064,7 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 	overlay_target_t *ott;
 	overlay_target_entry_t *ote;
 	overlay_targ_cache_t *otc = arg;
+	mblk_t *mp = NULL;
 
 	if (otc->otc_entry.otce_flags & ~OVERLAY_TARGET_CACHE_DROP)
 		return (EINVAL);
@@ -1089,15 +1104,26 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 		mutex_enter(&ote->ote_lock);
 	}
 	if (otc->otc_entry.otce_flags & OVERLAY_TARGET_CACHE_DROP) {
-		ote->ote_flags = OVERLAY_ENTRY_F_DROP;
+		ote->ote_flags |= OVERLAY_ENTRY_F_DROP;
 	} else {
-		ote->ote_flags = OVERLAY_ENTRY_F_VALID;
+		ote->ote_flags |= OVERLAY_ENTRY_F_VALID;
 		bcopy(&otc->otc_entry.otce_dest, &ote->ote_dest,
 		    sizeof (overlay_target_point_t));
+		mp = ote->ote_chead;
+		ote->ote_chead = NULL;
+		ote->ote_ctail = NULL;
+		ote->ote_mbsize = 0;
+		ote->ote_vtime = gethrtime();
 	}
 
 	mutex_exit(&ote->ote_lock);
 	mutex_exit(&ott->ott_lock);
+
+	if (mp != NULL) {
+		mp = overlay_m_tx(ote->ote_odd, mp);
+		freemsgchain(mp);
+	}
+
 	overlay_hold_rele(odd);
 
 	return (0);
