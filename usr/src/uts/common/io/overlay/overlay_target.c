@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.
+ * Copyright (c) 2015 Joyent, Inc.
  */
 
 /*
@@ -295,6 +295,8 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 	int ret;
 	struct sockaddr_in6 *v6;
 	overlay_target_t *ott;
+	mac_header_info_t mhi;
+	overlay_target_entry_t *entry;
 
 	ASSERT(odd->odd_target != NULL);
 
@@ -314,79 +316,81 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 		v6->sin6_port = htons(ott->ott_u.ott_point.otp_port);
 		mutex_exit(&ott->ott_lock);
 		*slenp = sizeof (struct sockaddr_in6);
+
+		return (OVERLAY_TARGET_OK);
+	}
+
+	ASSERT(ott->ott_mode == OVERLAY_TARGET_DYNAMIC);
+	if (mac_header_info(odd->odd_mh, mp, &mhi) != 0)
+		return (OVERLAY_TARGET_DROP);
+	mutex_enter(&ott->ott_lock);
+	entry = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    mhi.mhi_daddr);
+	if (entry == NULL) {
+		/*
+		 * XXX Create a new entry here and send it off to lookup
+		 */
+		entry = kmem_cache_alloc(overlay_entry_cache,
+		    KM_NOSLEEP | KM_NORMALPRI);
+		if (entry == NULL) {
+			mutex_exit(&ott->ott_lock);
+			return (OVERLAY_TARGET_DROP);
+		}
+		bcopy(mhi.mhi_daddr, entry->ote_addr, ETHERADDRL);
+		entry->ote_chead = entry->ote_ctail = mp;
+		entry->ote_mbsize = msgsize(mp);
+		entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
+		entry->ote_ott = ott;
+		entry->ote_odd = odd;
+		refhash_insert(ott->ott_u.ott_dyn.ott_dhash, entry);
+		avl_add(&ott->ott_u.ott_dyn.ott_tree, entry);
+		mutex_exit(&ott->ott_lock);
+		overlay_target_queue(entry);
+		return (OVERLAY_TARGET_ASYNC);
+	}
+	refhash_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
+	mutex_exit(&ott->ott_lock);
+
+	mutex_enter(&entry->ote_lock);
+	if (entry->ote_flags & OVERLAY_ENTRY_F_DROP) {
+		ret = OVERLAY_TARGET_DROP;
+	} else if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
+		/* XXX Check valid expiration at some point */
+		bcopy(&entry->ote_dest.otp_ip, &v6->sin6_addr,
+		    sizeof (struct in6_addr));
+		v6->sin6_port = htons(entry->ote_dest.otp_port);
+		*slenp = sizeof (struct sockaddr_in6);
 		ret = OVERLAY_TARGET_OK;
 	} else {
-		mac_header_info_t mhi;
-		overlay_target_entry_t *entry;
+		size_t mlen = msgsize(mp);
 
-		ASSERT(ott->ott_mode == OVERLAY_TARGET_DYNAMIC);
-		if (mac_header_info(odd->odd_mh, mp, &mhi) != 0)
-			return (OVERLAY_TARGET_DROP);
-		mutex_enter(&ott->ott_lock);
-		entry = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-		    mhi.mhi_daddr);
-		if (entry == NULL) {
-			/*
-			 * XXX Create a new entry here and send it off to lookup
-			 */
-			entry = kmem_cache_alloc(overlay_entry_cache,
-			    KM_NOSLEEP | KM_NORMALPRI);
-			if (entry == NULL) {
-				mutex_exit(&ott->ott_lock);
-				return (OVERLAY_TARGET_DROP);
-			}
-			bcopy(mhi.mhi_daddr, entry->ote_addr, ETHERADDRL);
-			entry->ote_chead = entry->ote_ctail = mp;
-			entry->ote_mbsize = msgsize(mp);
-			entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
-			entry->ote_ott = ott;
-			entry->ote_odd = odd;
-			refhash_insert(ott->ott_u.ott_dyn.ott_dhash, entry);
-			avl_add(&ott->ott_u.ott_dyn.ott_tree, entry);
-			mutex_exit(&ott->ott_lock);
-			overlay_target_queue(entry);
-			return (OVERLAY_TARGET_ASYNC);
-		}
-		refhash_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
-		mutex_exit(&ott->ott_lock);
-
-		mutex_enter(&entry->ote_lock);
-		if (entry->ote_flags & OVERLAY_ENTRY_F_DROP) {
+		if (mlen + entry->ote_mbsize > 1024 * 1024) {
 			ret = OVERLAY_TARGET_DROP;
-		} else if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
-			/* XXX Check valid expiration at some point */
-			bcopy(&entry->ote_dest.otp_ip, &v6->sin6_addr,
-			    sizeof (struct in6_addr));
-			v6->sin6_port = htons(entry->ote_dest.otp_port);
-			*slenp = sizeof (struct sockaddr_in6);
-			ret = OVERLAY_TARGET_OK;
 		} else {
-			size_t mlen = msgsize(mp);
-
-			if (mlen + entry->ote_mbsize > 1024 * 1024) {
-				ret = OVERLAY_TARGET_DROP;
-			} else if (entry->ote_flags &
-			    OVERLAY_ENTRY_F_PENDING) {
-				ASSERT(entry->ote_ctail->b_next == NULL);
+			if (entry->ote_ctail != NULL) {
+				ASSERT(entry->ote_ctail->b_next ==
+				    NULL);
 				entry->ote_ctail->b_next = mp;
 				entry->ote_ctail = mp;
-				entry->ote_mbsize += mlen;
-				ret = OVERLAY_TARGET_ASYNC;
 			} else {
 				entry->ote_chead = mp;
 				entry->ote_ctail = mp;
-				entry->ote_mbsize += mlen;
-				entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
-				overlay_target_queue(entry);
-				ret = OVERLAY_TARGET_ASYNC;
 			}
+			entry->ote_mbsize += mlen;
+			if ((entry->ote_flags &
+			    OVERLAY_ENTRY_F_PENDING) == 0) {
+				entry->ote_flags |=
+				    OVERLAY_ENTRY_F_PENDING;
+				overlay_target_queue(entry);
+			}
+			ret = OVERLAY_TARGET_ASYNC;
 		}
-		mutex_exit(&entry->ote_lock);
-
-		mutex_enter(&ott->ott_lock);
-		refhash_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
-		mutex_exit(&ott->ott_lock);
 	}
+	mutex_exit(&entry->ote_lock);
+
+	mutex_enter(&ott->ott_lock);
+	refhash_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
+	mutex_exit(&ott->ott_lock);
 
 	return (ret);
 }
@@ -673,6 +677,7 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 
 	/* Safeguard against a confused varpd */
 	if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
+		entry->ote_flags &= ~OVERLAY_ENTRY_F_PENDING;
 		DTRACE_PROBE1(overlay__target__valid__drop,
 		    overlay_target_entry_t *, entry);
 		mutex_exit(&entry->ote_lock);
@@ -687,10 +692,12 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 			entry->ote_ctail = entry->ote_chead;
 		entry->ote_mbsize -= msgsize(mp);
 	}
-	if (entry->ote_chead != NULL)
+	if (entry->ote_chead != NULL) {
 		queue = B_TRUE;
-	else
+		entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
+	} else {
 		entry->ote_flags &= ~OVERLAY_ENTRY_F_PENDING;
+	}
 	mutex_exit(&entry->ote_lock);
 
 	if (queue == B_TRUE)
@@ -1103,6 +1110,7 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 	} else {
 		mutex_enter(&ote->ote_lock);
 	}
+
 	if (otc->otc_entry.otce_flags & OVERLAY_TARGET_CACHE_DROP) {
 		ote->ote_flags |= OVERLAY_ENTRY_F_DROP;
 	} else {

@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.
+ * Copyright (c) 2015 Joyent, Inc.
  */
 
 /*
@@ -230,9 +230,9 @@ libvarpd_overlay_lookup_reply(varpd_impl_t *vip,
 		ret = ioctl(vip->vdi_overlayfd, cmd, otr);
 	} while (ret != 0 && errno == EINTR);
 	/* XXX abort feels wrong here */
-	if (ret != 0)
-		libvarpd_panic("receieved bad errno from lookup_reply: %d\n",
-		    errno);
+	if (ret != 0 && errno != EINVAL)
+		libvarpd_panic("receieved bad errno from lookup_reply "
+		    "(cmd %d): %d\n", cmd, errno);
 }
 
 static void
