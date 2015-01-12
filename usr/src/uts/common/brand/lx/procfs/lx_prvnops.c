@@ -21,7 +21,7 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- * Copyright 2014 Joyent, Inc.  All rights reserved.
+ * Copyright 2015 Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -70,6 +70,10 @@
 #include <sys/rctl.h>
 #include <sys/kstat.h>
 #include <sys/lx_misc.h>
+#include <inet/ip.h>
+#include <inet/ip_ire.h>
+#include <inet/ip6.h>
+#include <inet/ip_if.h>
 
 /* Dependent on procfs */
 extern kthread_t *prchoose(proc_t *);
@@ -149,6 +153,7 @@ static void lxpr_read_pid_status(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_arp(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_dev(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_dev_mcast(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_net_if_inet6(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_igmp(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_ip_mr_cache(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_net_ip_mr_vif(lxpr_node_t *, lxpr_uiobuf_t *);
@@ -297,6 +302,7 @@ static lxpr_dirent_t netdir[] = {
 	{ LXPR_NET_ARP,		"arp" },
 	{ LXPR_NET_DEV,		"dev" },
 	{ LXPR_NET_DEV_MCAST,	"dev_mcast" },
+	{ LXPR_NET_IF_INET6,	"if_inet6" },
 	{ LXPR_NET_IGMP,	"igmp" },
 	{ LXPR_NET_IP_MR_CACHE,	"ip_mr_cache" },
 	{ LXPR_NET_IP_MR_VIF,	"ip_mr_vif" },
@@ -476,6 +482,7 @@ static void (*lxpr_read_function[LXPR_NFILES])() = {
 	lxpr_read_net_arp,		/* /proc/net/arp	*/
 	lxpr_read_net_dev,		/* /proc/net/dev	*/
 	lxpr_read_net_dev_mcast,	/* /proc/net/dev_mcast	*/
+	lxpr_read_net_if_inet6,		/* /proc/net/if_inet6	*/
 	lxpr_read_net_igmp,		/* /proc/net/igmp	*/
 	lxpr_read_net_ip_mr_cache,	/* /proc/net/ip_mr_cache */
 	lxpr_read_net_ip_mr_vif,	/* /proc/net/ip_mr_vif	*/
@@ -550,6 +557,7 @@ static vnode_t *(*lxpr_lookup_function[LXPR_NFILES])() = {
 	lxpr_lookup_not_a_dir,		/* /proc/net/arp	*/
 	lxpr_lookup_not_a_dir,		/* /proc/net/dev	*/
 	lxpr_lookup_not_a_dir,		/* /proc/net/dev_mcast	*/
+	lxpr_lookup_not_a_dir,		/* /proc/net/if_inet6	*/
 	lxpr_lookup_not_a_dir,		/* /proc/net/igmp	*/
 	lxpr_lookup_not_a_dir,		/* /proc/net/ip_mr_cache */
 	lxpr_lookup_not_a_dir,		/* /proc/net/ip_mr_vif	*/
@@ -624,6 +632,7 @@ static int (*lxpr_readdir_function[LXPR_NFILES])() = {
 	lxpr_readdir_not_a_dir,		/* /proc/net/arp	*/
 	lxpr_readdir_not_a_dir,		/* /proc/net/dev	*/
 	lxpr_readdir_not_a_dir,		/* /proc/net/dev_mcast	*/
+	lxpr_readdir_not_a_dir,		/* /proc/net/if_inet6	*/
 	lxpr_readdir_not_a_dir,		/* /proc/net/igmp	*/
 	lxpr_readdir_not_a_dir,		/* /proc/net/ip_mr_cache */
 	lxpr_readdir_not_a_dir,		/* /proc/net/ip_mr_vif	*/
@@ -1248,11 +1257,14 @@ lxpr_read_pid_status(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 
 	/*
 	 * Convert pid to the Linux default of 1 if we're the zone's init
-	 * process
+	 * process or if we're the zone's zsched the pid is 0.
 	 */
 	if (pid == curproc->p_zone->zone_proc_initpid) {
 		pid = 1;
 		ppid = 0;	/* parent pid for init is 0 */
+	} else if (pid == curproc->p_zone->zone_zsched->p_pid) {
+		pid = 0;	/* zsched is pid 0 */
+		ppid = 0;	/* parent pid for zsched is itself */
 	} else {
 		/*
 		 * Make sure not to reference parent PIDs that reside outside
@@ -1440,6 +1452,13 @@ lxpr_read_pid_stat(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 		psgid = (gid_t)-1;	/* credential GID for init is -1 */
 		spid = 0;		/* session id for init is 0 */
 		psdev = 0;		/* session device for init is 0 */
+	} else if (pid == curproc->p_zone->zone_zsched->p_pid) {
+		pid = 0;		/* PID for zsched */
+		ppid = 0;		/* parent PID for zsched is 0 */
+		pgpid = 0;		/* process group for zsched is 0 */
+		psgid = (gid_t)-1;	/* credential GID for zsched is -1 */
+		spid = 0;		/* session id for zsched is 0 */
+		psdev = 0;		/* session device for zsched is 0 */
 	} else {
 		/*
 		 * Make sure not to reference parent PIDs that reside outside
@@ -1563,18 +1582,26 @@ struct lxpr_ifstat {
 };
 
 static void *
-lxpr_kstat_read(kid_t kid, size_t *size, int *num)
+lxpr_kstat_read(kstat_t *kn, boolean_t byname, size_t *size, int *num)
 {
 	kstat_t *kp;
 	int i, nrec = 0;
 	size_t bufsize;
 	void *buf = NULL;
 
-	kp = kstat_hold_bykid(kid, getzoneid());
+	if (byname == B_TRUE)
+		kp = kstat_hold_byname(kn->ks_module, kn->ks_instance,
+		    kn->ks_name, getzoneid());
+	else
+		kp = kstat_hold_bykid(kn->ks_kid, getzoneid());
 	if (kp == NULL)
 		return (NULL);
+	if (kp->ks_flags & KSTAT_FLAG_INVALID) {
+		kstat_rele(kp);
+		return (NULL);
+	}
 
-	bufsize = kp->ks_data_size;
+	bufsize = kp->ks_data_size + 1;
 	kstat_rele(kp);
 
 	/*
@@ -1584,25 +1611,31 @@ lxpr_kstat_read(kid_t kid, size_t *size, int *num)
 	 * enough, the alloc and check are repeated up to three times.
 	 */
 	for (i = 0; i < 2; i++) {
-		buf = kmem_alloc(bufsize + 1, KM_SLEEP);
+		buf = kmem_alloc(bufsize, KM_SLEEP);
 
 		/* Check if bufsize still appropriate */
-		kp = kstat_hold_bykid(kid, getzoneid());
-		if (kp == NULL) {
-			kmem_free(buf, bufsize + 1);
+		if (byname == B_TRUE)
+			kp = kstat_hold_byname(kn->ks_module, kn->ks_instance,
+			    kn->ks_name, getzoneid());
+		else
+			kp = kstat_hold_bykid(kn->ks_kid, getzoneid());
+		if (kp == NULL || kp->ks_flags & KSTAT_FLAG_INVALID) {
+			if (kp != NULL)
+				kstat_rele(kp);
+			kmem_free(buf, bufsize);
 			return (NULL);
 		}
 		KSTAT_ENTER(kp);
+		(void) KSTAT_UPDATE(kp, KSTAT_READ);
 		if (bufsize < kp->ks_data_size) {
-			kmem_free(buf, bufsize + 1);
-			bufsize = kp->ks_data_size;
+			kmem_free(buf, bufsize);
+			bufsize = kp->ks_data_size + 1;
 			KSTAT_EXIT(kp);
 			kstat_rele(kp);
 			continue;
 		} else {
-			(void) KSTAT_UPDATE(kp, KSTAT_READ);
 			if (KSTAT_SNAPSHOT(kp, buf, KSTAT_READ) != 0) {
-				kmem_free(buf, bufsize + 1);
+				kmem_free(buf, bufsize);
 				buf = NULL;
 			}
 			nrec = kp->ks_ndata;
@@ -1613,21 +1646,25 @@ lxpr_kstat_read(kid_t kid, size_t *size, int *num)
 	}
 
 	if (buf != NULL) {
-		*size = bufsize + 1;
+		*size = bufsize;
 		*num = nrec;
 	}
 	return (buf);
 }
 
 static int
-lxpr_kstat_ifstat(kid_t kid, struct lxpr_ifstat *ifs)
+lxpr_kstat_ifstat(kstat_t *kn, struct lxpr_ifstat *ifs)
 {
 	kstat_named_t *kp;
 	int i, num;
 	size_t size;
 
+	/*
+	 * Search by name instead of by kid since there's a small window to
+	 * race against kstats being added/removed.
+	 */
 	bzero(ifs, sizeof (*ifs));
-	kp = (kstat_named_t *)lxpr_kstat_read(kid, &size, &num);
+	kp = (kstat_named_t *)lxpr_kstat_read(kn, B_TRUE, &size, &num);
 	if (kp == NULL)
 		return (-1);
 	for (i = 0; i < num; i++) {
@@ -1661,6 +1698,7 @@ static void
 lxpr_read_net_dev(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 {
 	kstat_t *ksr;
+	kstat_t ks0;
 	int i, nidx;
 	size_t sidx;
 	struct lxpr_ifstat ifs;
@@ -1671,14 +1709,15 @@ lxpr_read_net_dev(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 	    " frame compressed multicast|bytes    packets errs drop fifo"
 	    " colls carrier compressed\n");
 
-	ksr = (kstat_t *)lxpr_kstat_read(0, &sidx, &nidx);
+	ks0.ks_kid = 0;
+	ksr = (kstat_t *)lxpr_kstat_read(&ks0, B_FALSE, &sidx, &nidx);
 	if (ksr == NULL)
 		return;
 
 	for (i = 1; i < nidx; i++) {
 		if (strncmp(ksr[i].ks_module, "link", KSTAT_STRLEN) == 0 ||
 		    strncmp(ksr[i].ks_module, "lo", KSTAT_STRLEN) == 0) {
-			if (lxpr_kstat_ifstat(ksr[i].ks_kid, &ifs) != 0)
+			if (lxpr_kstat_ifstat(&ksr[i], &ifs) != 0)
 				continue;
 
 			/* Overwriting the name is ok in the local snapshot */
@@ -1703,6 +1742,62 @@ lxpr_read_net_dev(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 static void
 lxpr_read_net_dev_mcast(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 {
+}
+
+static void
+lxpr_inet6_out(in6_addr_t addr, char buf[33])
+{
+	uint8_t *ip = addr.s6_addr;
+	char digits[] = "0123456789abcdef";
+	int i;
+	for (i = 0; i < 16; i++) {
+		buf[2 * i] = digits[ip[i] >> 4];
+		buf[2 * i + 1] = digits[ip[i] & 0xf];
+	}
+	buf[32] = '\0';
+}
+
+/* ARGSUSED */
+static void
+lxpr_read_net_if_inet6(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	netstack_t *ns;
+	ip_stack_t *ipst;
+	ill_t *ill;
+	ipif_t *ipif;
+	ill_walk_context_t	ctx;
+	char ifname[LIFNAMSIZ], ip6out[33];
+
+	ns = netstack_get_current();
+	if (ns == NULL)
+		return;
+	ipst = ns->netstack_ip;
+
+	rw_enter(&ipst->ips_ill_g_lock, RW_READER);
+	ill = ILL_START_WALK_V6(&ctx, ipst);
+
+	for (; ill != NULL; ill = ill_next(&ctx, ill)) {
+		for (ipif = ill->ill_ipif; ipif != NULL;
+		    ipif = ipif->ipif_next) {
+			uint_t index = ill->ill_phyint->phyint_ifindex;
+			int plen = ip_mask_to_plen_v6(&ipif->ipif_v6net_mask);
+			in6addr_scope_t scope = ip_addr_scope_v6(
+			    &ipif->ipif_v6lcl_addr);
+			/* Always report PERMANENT flag */
+			int flag = 0x80;
+
+			ipif_get_name(ipif, ifname, sizeof (ifname));
+			lx_ifname_convert(ifname, LX_IFNAME_FROMNATIVE);
+			lxpr_inet6_out(ipif->ipif_v6lcl_addr, ip6out);
+			/* Scope output is shifted on Linux */
+			scope = scope << 4;
+
+			lxpr_uiobuf_printf(uiobuf, "%32s %02x %02x %02x %02x"
+			    " %8s\n", ip6out, index, plen, scope, flag, ifname);
+		}
+	}
+	rw_exit(&ipst->ips_ill_g_lock);
+	netstack_rele(ns);
 }
 
 /* ARGSUSED */
@@ -3427,11 +3522,16 @@ lxpr_readdir_procdir(lxpr_node_t *lxpnp, uio_t *uiop, int *eofp)
 
 		/*
 		 * Convert pid to the Linux default of 1 if we're the zone's
-		 * init process, otherwise use the value from the proc
-		 * structure
+		 * init process, or 0 if zsched, otherwise use the value from
+		 * the proc structure
 		 */
-		pid = ((p->p_pid != curproc->p_zone->zone_proc_initpid) ?
-		    p->p_pid : 1);
+		if (p->p_pid == curproc->p_zone->zone_proc_initpid) {
+			pid = 1;
+		} else if (p->p_pid == curproc->p_zone->zone_zsched->p_pid) {
+			pid = 0;
+		} else {
+			pid = p->p_pid;
+		}
 
 		/*
 		 * If this /proc was mounted in the global zone, view
@@ -3491,14 +3591,21 @@ static int
 lxpr_readdir_piddir(lxpr_node_t *lxpnp, uio_t *uiop, int *eofp)
 {
 	proc_t *p;
+	pid_t find_pid;
 
 	ASSERT(lxpnp->lxpr_type == LXPR_PIDDIR);
 
 	/* can't read its contents if it died */
 	mutex_enter(&pidlock);
 
-	p = prfind((lxpnp->lxpr_pid == 1) ?
-	    curproc->p_zone->zone_proc_initpid : lxpnp->lxpr_pid);
+	if (lxpnp->lxpr_pid == 1) {
+		find_pid = curproc->p_zone->zone_proc_initpid;
+	} else if (lxpnp->lxpr_pid == 0) {
+		find_pid = curproc->p_zone->zone_zsched->p_pid;
+	} else {
+		find_pid = lxpnp->lxpr_pid;
+	}
+	p = prfind(find_pid);
 
 	if (p == NULL || p->p_stat == SIDL) {
 		mutex_exit(&pidlock);
@@ -3686,11 +3793,17 @@ lxpr_readlink(vnode_t *vp, uio_t *uiop, cred_t *cr, caller_context_t *ct)
 		case LXPR_SELF:
 			/*
 			 * Convert pid to the Linux default of 1 if we're the
-			 * zone's init process
+			 * zone's init process or 0 if zsched.
 			 */
-			pid = ((curproc->p_pid !=
-			    curproc->p_zone->zone_proc_initpid)
-			    ? curproc->p_pid : 1);
+			if (curproc->p_pid ==
+			    curproc->p_zone->zone_proc_initpid) {
+				pid = 1;
+			} else if (curproc->p_pid ==
+			    curproc->p_zone->zone_zsched->p_pid) {
+				pid = 0;
+			} else {
+				pid = curproc->p_pid;
+			}
 
 			/*
 			 * Don't need to check result as every possible int
