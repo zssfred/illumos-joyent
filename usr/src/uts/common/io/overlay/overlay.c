@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -58,13 +58,30 @@ typedef enum overlay_dev_prop {
 	OVERLAY_DEV_P_VARPDID
 } overlay_dev_prop_t;
 
+#define	OVERLAY_DEV_NPROPS	4
 static const char *overlay_dev_props[] = {
 	"mtu",
 	"vnetid",
 	"encap",
 	"varpd/id"
 };
-#define	OVERLAY_DEV_NPROPS	4
+
+/*
+ * XXX Dear Future rm, these are obviously kind of janky values, going from the
+ * minimum size an IP implementation can handle to 100 less than MTU. While
+ * having a default of 1400 is a bit unfortunate, it really does help things.
+ * However, we should determine the largest MTU in a given netstack and use that
+ * to bracket these. eg. min should be min(576, max(netstack mtus)-100) and max
+ * should be max(netstack mtus) - 100).
+ *
+ * There are also some open questions on how we should handle interacting with
+ * PMTU. I'd suggest that in general, we set the don't fragment bit on our
+ * selves, or make that a property of a given protocol and then always ensure
+ * that we listen for errors and emit them in a form of FMA ireport/erprort.
+ */
+#define	OVERLAY_MTU_MIN	576
+#define	OVERLAY_MTU_DEF	1400
+#define	OVERLAY_MTU_MAX	8900
 
 overlay_dev_t *
 overlay_hold_by_dlid(datalink_id_t id)
@@ -355,9 +372,32 @@ static int
 overlay_m_setprop(void *arg, const char *pr_name, mac_prop_id_t pr_num,
     uint_t pr_valsize, const void *pr_val)
 {
-	return (ENOTSUP);
+	uint32_t mtu, old;
+	int err;
+	overlay_dev_t *odd = arg;
+
+	if (pr_num != MAC_PROP_MTU)
+		return (ENOTSUP);
+
+	bcopy(pr_val, &mtu, sizeof (mtu));
+	if (mtu < OVERLAY_MTU_MIN || mtu > OVERLAY_MTU_MAX)
+		return (EINVAL);
+
+	mutex_enter(&odd->odd_lock);
+	old = odd->odd_mtu;
+	odd->odd_mtu = mtu;
+	err = mac_maxsdu_update(odd->odd_mh, mtu);
+	if (err != 0)
+		odd->odd_mtu = old;
+	mutex_exit(&odd->odd_lock);
+
+	return (err);
 }
 
+/*
+ * XXX Come back and figure out what other properties to emulate. Don't forget,
+ * MAC handles a bunch of these for us.
+ */
 static int
 overlay_m_getprop(void *arg, const char *pr_name, mac_prop_id_t pr_num,
     uint_t pr_valsize, void *pr_val)
@@ -369,6 +409,11 @@ static void
 overlay_m_propinfo(void *arg, const char *pr_name, mac_prop_id_t pr_num,
     mac_prop_info_handle_t prh)
 {
+	if (pr_num != MAC_PROP_MTU)
+		return;
+
+	mac_prop_info_set_default_uint32(prh, OVERLAY_MTU_DEF);
+	mac_prop_info_set_range_uint32(prh, OVERLAY_MTU_MIN, OVERLAY_MTU_MAX);
 }
 
 static mac_callbacks_t overlay_m_callbacks = {
@@ -775,6 +820,34 @@ overlay_i_name_to_propid(overlay_dev_t *odd, const char *name, uint_t *id)
 	return (ENOENT);
 }
 
+static void
+overlay_i_propinfo_mtu(overlay_dev_t *odd, overlay_prop_handle_t phdl)
+{
+	uint32_t def;
+	mac_propval_range_t range;
+	uint_t perm;
+
+	ASSERT(MAC_PERIM_HELD(odd->odd_mh));
+
+	bzero(&range, sizeof (mac_propval_range_t));
+	range.mpr_count = 1;
+	if (mac_prop_info(odd->odd_mh, MAC_PROP_MTU, "mtu", &def,
+	    sizeof (def), &range, &perm) != 0)
+		return;
+
+	if (perm == MAC_PROP_PERM_READ)
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_READ);
+	else if (perm == MAC_PROP_PERM_WRITE)
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_WRITE);
+	else if (perm == MAC_PROP_PERM_RW)
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+
+	overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+	overlay_prop_set_default(phdl, &def, sizeof (def));
+	overlay_prop_set_range_uint32(phdl, range.mpr_range_uint32[0].mpur_min,
+	    range.mpr_range_uint32[0].mpur_max);
+}
+
 static int
 overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
     int *rvalp)
@@ -850,9 +923,7 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 
 	switch (propid) {
 	case OVERLAY_DEV_P_MTU:
-		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
-		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
-		overlay_prop_set_nodefault(phdl);
+		overlay_i_propinfo_mtu(odd, phdl);
 		break;
 	case OVERLAY_DEV_P_VNETID:
 		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
@@ -889,7 +960,7 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	overlay_dev_t *odd;
 	mac_perim_handle_t mph;
 	overlay_ioc_prop_t *oip = karg;
-	uint_t propid;
+	uint_t propid, mtu;
 
 	odd = overlay_hold_by_dlid(oip->oip_linkid);
 	if (odd == NULL)
@@ -942,10 +1013,15 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	ret = 0;
 	switch (propid) {
 	case OVERLAY_DEV_P_MTU:
-		mutex_enter(&odd->odd_lock);
-		bcopy(&odd->odd_mtu, oip->oip_value, sizeof (uint_t));
+		/*
+		 * The MTU is always set and retrieved through MAC, to allow for
+		 * MAC to do whatever it wants, as really that property belongs
+		 * to MAC. This is important for things where vnics have hold on
+		 * the MTU.
+		 */
+		mac_sdu_get(odd->odd_mh, NULL, &mtu);
+		bcopy(&mtu, oip->oip_value, sizeof (uint_t));
 		oip->oip_size = sizeof (uint_t);
-		mutex_exit(&odd->odd_lock);
 		break;
 	case OVERLAY_DEV_P_VNETID:
 		/*
@@ -1085,7 +1161,8 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	ret = 0;
 	switch (propid) {
 	case OVERLAY_DEV_P_MTU:
-		ret = EPERM;
+		ret = mac_set_prop(odd->odd_mh, MAC_PROP_MTU, "mtu",
+		    oip->oip_value, oip->oip_size);
 		break;
 	case OVERLAY_DEV_P_VNETID:
 		if (oip->oip_size != sizeof (uint64_t)) {
