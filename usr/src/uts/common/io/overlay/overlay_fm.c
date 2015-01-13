@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -40,8 +40,6 @@ overlay_fm_fini(void)
 void
 overlay_fm_degrade(overlay_dev_t *odd, const char *msg)
 {
-	int impact = DDI_SERVICE_DEGRADED;
-
 	mutex_enter(&overlay_fm_lock);
 	mutex_enter(&odd->odd_lock);
 
@@ -53,8 +51,10 @@ overlay_fm_degrade(overlay_dev_t *odd, const char *msg)
 
 	odd->odd_flags |= OVERLAY_F_DEGRADED;
 	overlay_fm_count++;
-	if (overlay_fm_count == 1)
-		ddi_fm_service_impact(overlay_dip, impact);
+	if (overlay_fm_count == 1) {
+		ddi_fm_service_impact(overlay_dip, DDI_SERVICE_DEGRADED);
+		mac_link_update(odd->odd_mh, LINK_STATE_DOWN);
+	}
 out:
 	mutex_exit(&odd->odd_lock);
 	mutex_exit(&overlay_fm_lock);
@@ -63,8 +63,6 @@ out:
 void
 overlay_fm_restore(overlay_dev_t *odd)
 {
-	int impact = DDI_SERVICE_RESTORED;
-
 	mutex_enter(&overlay_fm_lock);
 	mutex_enter(&odd->odd_lock);
 	if (!(odd->odd_flags & OVERLAY_F_DEGRADED))
@@ -72,8 +70,10 @@ overlay_fm_restore(overlay_dev_t *odd)
 
 	odd->odd_flags &= ~OVERLAY_F_DEGRADED;
 	overlay_fm_count--;
-	if (overlay_fm_count == 0)
-		ddi_fm_service_impact(overlay_dip, impact);
+	if (overlay_fm_count == 0) {
+		ddi_fm_service_impact(overlay_dip, DDI_SERVICE_RESTORED);
+		mac_link_update(odd->odd_mh, LINK_STATE_UP);
+	}
 out:
 	mutex_exit(&odd->odd_lock);
 	mutex_exit(&overlay_fm_lock);
