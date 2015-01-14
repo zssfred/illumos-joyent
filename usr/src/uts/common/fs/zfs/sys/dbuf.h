@@ -22,6 +22,7 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
+ * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  */
 
 #ifndef	_SYS_DBUF_H
@@ -66,8 +67,13 @@ extern "C" {
  *		|			 |
  *		|			 |
  *		+--------> NOFILL -------+
+ *
+ * DB_SEARCH is an invalid state for a dbuf. It is used by dbuf_free_range
+ * to find all dbufs in a range of a dnode and must be less than any other
+ * dbuf_states_t (see comment on dn_dbufs in dnode.h).
  */
 typedef enum dbuf_states {
+	DB_SEARCH = -1,
 	DB_UNCACHED,
 	DB_FILL,
 	DB_NOFILL,
@@ -213,9 +219,6 @@ typedef struct dmu_buf_impl {
 	/* pointer to most recent dirty record for this buffer */
 	dbuf_dirty_record_t *db_last_dirty;
 
-	/* Creation time of dbuf (see comment in dbuf_compare). */
-	hrtime_t db_creation;
-
 	/*
 	 * Our link on the owner dnodes's dn_dbufs list.
 	 * Protected by its dn_dbufs_mtx.
@@ -224,10 +227,8 @@ typedef struct dmu_buf_impl {
 
 	/* Data which is unique to data (leaf) blocks: */
 
-	/* stuff we store for the user (see dmu_buf_set_user) */
-	void *db_user_ptr;
-	void **db_user_data_ptr_ptr;
-	dmu_buf_evict_func_t *db_evict_func;
+	/* User callback information. */
+	dmu_buf_user_t *db_user;
 
 	uint8_t db_immediate_evict;
 	uint8_t db_freed_in_flight;

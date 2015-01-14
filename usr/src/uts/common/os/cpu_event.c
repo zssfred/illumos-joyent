@@ -406,7 +406,7 @@ cpu_idle_insert_callback(cpu_idle_cb_impl_t *cip)
 	 * after pause_cpus().
 	 */
 	if (!cpus_paused()) {
-		pause_cpus(NULL);
+		pause_cpus(NULL, NULL);
 		unpause = 1;
 	}
 
@@ -472,7 +472,7 @@ cpu_idle_remove_callback(cpu_idle_cb_impl_t *cip)
 	 * after pause_cpus().
 	 */
 	if (!cpus_paused()) {
-		pause_cpus(NULL);
+		pause_cpus(NULL, NULL);
 		unpause = 1;
 	}
 

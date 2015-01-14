@@ -24,8 +24,9 @@
  * Use is subject to license terms.
  */
 /*
- * Copyright 2013 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2012, Joyent, Inc.  All rights reserved.
+ * Copyright 2014 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -194,22 +195,6 @@ mdb_amd64_printregs(const mdb_tgt_gregset_t *gregs)
 	mdb_printf("   %%err = 0x%x\n", kregs[KREG_ERR]);
 }
 
-/*
- * We expect all proper Solaris core files to have STACK_ALIGN-aligned stacks.
- * Hence the name.  However, if the core file resulted from a
- * hypervisor-initiated panic, the hypervisor's frames may only be 64-bit
- * aligned instead of 128.
- */
-static int
-fp_is_aligned(uintptr_t fp, int xpv_panic)
-{
-	if (!xpv_panic && (fp & (STACK_ALIGN -1)))
-		return (0);
-	if ((fp & sizeof (uintptr_t) - 1))
-		return (0);
-	return (1);
-}
-
 int
 mdb_amd64_kvm_stack_iter(mdb_tgt_t *t, const mdb_tgt_gregset_t *gsp,
     mdb_tgt_stack_f *func, void *arg)
@@ -220,6 +205,7 @@ mdb_amd64_kvm_stack_iter(mdb_tgt_t *t, const mdb_tgt_gregset_t *gsp,
 	uint_t argc, reg_argc;
 	long fr_argv[32];
 	int start_index; /* index to save_instr where to start comparison */
+	int err;
 	int i;
 
 	struct {
@@ -229,7 +215,7 @@ mdb_amd64_kvm_stack_iter(mdb_tgt_t *t, const mdb_tgt_gregset_t *gsp,
 
 	uintptr_t fp = gsp->kregs[KREG_RBP];
 	uintptr_t pc = gsp->kregs[KREG_RIP];
-	uintptr_t lastfp;
+	uintptr_t lastfp = 0;
 
 	ssize_t size;
 	ssize_t insnsize;
@@ -251,11 +237,18 @@ mdb_amd64_kvm_stack_iter(mdb_tgt_t *t, const mdb_tgt_gregset_t *gsp,
 	while (fp != 0) {
 		int args_style = 0;
 
-		if (!fp_is_aligned(fp, xpv_panic))
-			return (set_errno(EMDB_STKALIGN));
-
-		if (mdb_tgt_vread(t, &fr, sizeof (fr), fp) != sizeof (fr))
-			return (-1);	/* errno has been set for us */
+		/*
+		 * Ensure progress (increasing fp), and prevent
+		 * endless loop with the same FP.
+		 */
+		if (fp <= lastfp) {
+			err = EMDB_STKFRAME;
+			goto badfp;
+		}
+		if (mdb_tgt_vread(t, &fr, sizeof (fr), fp) != sizeof (fr)) {
+			err = EMDB_NOMAP;
+			goto badfp;
+		}
 
 		if ((mdb_tgt_lookup_by_addr(t, pc, MDB_TGT_SYM_FUZZY,
 		    NULL, 0, &s, &sip) == 0) &&
@@ -384,6 +377,10 @@ mdb_amd64_kvm_stack_iter(mdb_tgt_t *t, const mdb_tgt_gregset_t *gsp,
 	}
 
 	return (0);
+
+badfp:
+	mdb_printf("%p [%s]", fp, mdb_strerror(err));
+	return (set_errno(err));
 }
 
 /*
