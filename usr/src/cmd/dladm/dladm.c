@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2014 Joyent, Inc. All rights reserved.
+ * Copyright (c) 2015 Joyent, Inc. All rights reserved.
  */
 
 #include <stdio.h>
@@ -76,6 +76,7 @@
 #include <stddef.h>
 #include <stp_in.h>
 #include <ofmt.h>
+#include <libcmdutils.h>
 
 #define	MAXPORT			256
 #define	MAXVNIC			256
@@ -195,7 +196,7 @@ static ofmt_cb_t print_lacp_cb, print_phys_one_mac_cb;
 static ofmt_cb_t print_xaggr_cb, print_aggr_stats_cb;
 static ofmt_cb_t print_phys_one_hwgrp_cb, print_wlan_attr_cb;
 static ofmt_cb_t print_wifi_status_cb, print_link_attr_cb;
-static ofmt_cb_t print_overlay_cb;
+static ofmt_cb_t print_overlay_cb, print_overlay_fma_cb, print_overlay_targ_cb;
 static void dladm_ofmt_check(ofmt_status_t, boolean_t, ofmt_handle_t);
 
 typedef void cmdfunc_t(int, char **, const char *);
@@ -1471,6 +1472,31 @@ static const ofmt_field_t overlay_fields[] = {
 { NULL,		0,	0,	NULL }
 };
 
+typedef enum {
+	OVERLAY_FMA_LINK,
+	OVERLAY_FMA_STATUS,
+	OVERLAY_FMA_DETAILS
+} overlay_fma_field_index_t;
+
+static const ofmt_field_t overlay_fma_fields[] = {
+{ "LINK",	14,	OVERLAY_FMA_LINK,	print_overlay_fma_cb },
+{ "STATUS",	8,	OVERLAY_FMA_STATUS,	print_overlay_fma_cb },
+{ "DETAILS",	58,	OVERLAY_FMA_DETAILS,	print_overlay_fma_cb },
+{ NULL,		0,	0,			NULL }
+};
+
+typedef enum {
+	OVERLAY_TARG_LINK,
+	OVERLAY_TARG_TARGET,
+	OVERLAY_TARG_DEST
+} overlay_targ_field_index_t;
+
+static const ofmt_field_t overlay_targ_fields[] = {
+{ "LINK",		14,	OVERLAY_TARG_LINK,	print_overlay_targ_cb },
+{ "TARGET",		8,	OVERLAY_TARG_TARGET,	print_overlay_targ_cb },
+{ "DESTINATION",	58,	OVERLAY_TARG_DEST,	print_overlay_targ_cb },
+{ NULL,			0,	0,			NULL }
+};
 
 static char *progname;
 static sig_atomic_t signalled;
@@ -9909,6 +9935,19 @@ typedef struct showoverlay_state {
 	uint32_t		sho_size;
 } showoverlay_state_t;
 
+typedef struct showoverlay_fma_state {
+	ofmt_handle_t		shof_ofmt;
+	const char		*shof_linkname;
+	dladm_overlay_status_t	*shof_status;
+} showoverlay_fma_state_t;
+
+typedef struct showoverlay_targ_state {
+	ofmt_handle_t			shot_ofmt;
+	const char			*shot_linkname;
+	const struct ether_addr		*shot_key;
+	const dladm_overlay_point_t	*shot_point;
+} showoverlay_targ_state_t;
+
 static void
 print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, const void *pbuf,
     const size_t psize)
@@ -10102,7 +10141,6 @@ show_one_overlay(dladm_handle_t hdl, datalink_id_t linkid, void *arg)
 {
 	char			buf[MAXLINKNAMELEN];
 	showoverlay_state_t	state;
-	ofmt_status_t		oferr;
 	datalink_class_t	class;
 
 	if (dladm_datalink_id2info(hdl, linkid, NULL, &class, NULL, buf,
@@ -10111,8 +10149,7 @@ show_one_overlay(dladm_handle_t hdl, datalink_id_t linkid, void *arg)
 		return (DLADM_WALK_CONTINUE);
 
 	state.sho_linkname = buf;
-	oferr = ofmt_open(NULL, overlay_fields, OFMT_WRAP, 0, &state.sho_ofmt);
-	dladm_ofmt_check(oferr, B_FALSE, state.sho_ofmt);
+	state.sho_ofmt = arg;
 
 	(void) dladm_overlay_walk_prop(handle, linkid, dladm_overlay_show_one,
 	    &state);
@@ -10120,82 +10157,92 @@ show_one_overlay(dladm_handle_t hdl, datalink_id_t linkid, void *arg)
 	return (DLADM_WALK_CONTINUE);
 }
 
-/*
- * XXX May want to rewrite this in terms of ofmt to deal with parseable, etc.
- */
+static boolean_t
+print_overlay_targ_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
+{
+	char				keybuf[ETHERADDRSTRL];
+	const showoverlay_targ_state_t	*shot = ofarg->ofmt_cbarg;
+	const dladm_overlay_point_t	*point = shot->shot_point;
+	char				macbuf[ETHERADDRSTRL];
+	char				ipbuf[INET6_ADDRSTRLEN];
+	custr_t				*cus;
+
+	switch (ofarg->ofmt_id) {
+	case OVERLAY_TARG_LINK:
+		snprintf(buf, bufsize, shot->shot_linkname);
+		break;
+	case OVERLAY_TARG_TARGET:
+		if ((point->dop_flags & DLADM_OVERLAY_F_DEFAULT) != 0) {
+			(void) snprintf(buf, bufsize, "*:*:*:*:*:*");
+		} else {
+			if (ether_ntoa_r(shot->shot_key, keybuf) == NULL) {
+				warn("encountered malformed mac address key\n");
+				return (B_FALSE);
+			}
+			snprintf(buf, bufsize, "%s", keybuf);
+		}
+		break;
+	case OVERLAY_TARG_DEST:
+		if (custr_alloc_buf(&cus, buf, bufsize) != 0) {
+			die("ran out of memory for printing the overlay "
+			    "target destination");
+		}
+
+		if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET) {
+			if (ether_ntoa_r(&point->dop_mac, macbuf) == NULL) {
+				warn("encountered malformed mac address target "
+				    "for key %s\n", keybuf);
+				return (B_FALSE);
+			}
+			(void) custr_append(cus, macbuf);
+		}
+
+		if (point->dop_dest & OVERLAY_PLUGIN_D_IP) {
+			if (IN6_IS_ADDR_V4MAPPED(&point->dop_ip)) {
+				struct in_addr v4;
+				IN6_V4MAPPED_TO_INADDR(&point->dop_ip, &v4);
+				if (inet_ntop(AF_INET, &v4, ipbuf,
+				    sizeof (ipbuf)) == NULL)
+					abort();
+			} else if (inet_ntop(AF_INET6, &point->dop_ip, ipbuf,
+			    sizeof (ipbuf)) == NULL) {
+				/*
+				 * The only failrues we should get are EAFNOSUPPORT and
+				 * ENOSPC because of buffer exhaustion. In either of
+				 * these cases, that means something has gone horribly
+				 * wrong.
+				 */
+				abort();
+			}
+			if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET)
+				(void) custr_appendc(cus, ',');
+			(void) custr_append(cus, ipbuf);
+		}
+
+		if (point->dop_dest & OVERLAY_PLUGIN_D_PORT) {
+			if (point->dop_dest & OVERLAY_PLUGIN_D_IP)
+				(void) custr_appendc(cus, ':');
+			else if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET)
+				(void) custr_appendc(cus, ',');
+			(void) custr_append_printf(cus, "%u", point->dop_port);
+		}
+
+		custr_free(cus);
+
+		break;
+	}
+	return (B_TRUE);
+}
+
 static int
 show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
     const struct ether_addr *key, const dladm_overlay_point_t *point, void *arg)
 {
-	char			linkbuf[MAXLINKNAMELEN];
-	char			keybuf[ETHERADDRSTRL];
-	char			macbuf[ETHERADDRSTRL];
-	char			ipbuf[INET6_ADDRSTRLEN];
-	datalink_class_t	class;
+	showoverlay_targ_state_t	*shot = arg;
 
-	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL, linkbuf,
-	    MAXLINKNAMELEN) != DLADM_STATUS_OK ||
-	    class != DATALINK_CLASS_OVERLAY)
-		return (DLADM_WALK_CONTINUE);
-
-
-	if ((point->dop_flags & DLADM_OVERLAY_F_DEFAULT) != 0) {
-		(void) snprintf(keybuf, sizeof (keybuf), "*:*:*:*:*:*");
-	} else {
-		if (ether_ntoa_r(key, keybuf) == NULL) {
-			warn("encountered malformed mac address key\n");
-			return (DLADM_WALK_CONTINUE);
-		}
-	}
-
-	printf("%-14s %-18s ", linkbuf, keybuf);
-
-	if (point->dop_flags & DLADM_OVERLAY_F_DROP) {
-		printf("DROP\n");
-		return (DLADM_WALK_CONTINUE);
-	}
-
-	if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET) {
-		if (ether_ntoa_r(&point->dop_mac, macbuf) == NULL) {
-			warn("encountered malformed mac address target "
-			    "for key %s\n", keybuf);
-			return (DLADM_WALK_CONTINUE);
-		}
-		printf("%s", macbuf);
-	}
-
-	if (point->dop_dest & OVERLAY_PLUGIN_D_IP) {
-		if (IN6_IS_ADDR_V4MAPPED(&point->dop_ip)) {
-			struct in_addr v4;
-			IN6_V4MAPPED_TO_INADDR(&point->dop_ip, &v4);
-			if (inet_ntop(AF_INET, &v4, ipbuf,
-			    sizeof (ipbuf)) == NULL)
-				abort();
-		} else if (inet_ntop(AF_INET6, &point->dop_ip, ipbuf,
-		    sizeof (ipbuf)) == NULL) {
-			/*
-			 * The only failrues we should get are EAFNOSUPPORT and
-			 * ENOSPC because of buffer exhaustion. In either of
-			 * these cases, that means something has gone horribly
-			 * wrong.
-			 */
-			abort();
-		}
-
-		if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET)
-			putc(',', stdout);
-		printf("%s", ipbuf);
-	}
-
-	if (point->dop_dest & OVERLAY_PLUGIN_D_PORT) {
-		if (point->dop_dest & OVERLAY_PLUGIN_D_IP)
-			putc(':', stdout);
-		else if (point->dop_dest & OVERLAY_PLUGIN_D_ETHERNET)
-			putc(',', stdout);
-		printf("%u", point->dop_port);
-	}
-
-	putc('\n', stdout);
+	shot->shot_key = key;
+	shot->shot_point = point;
+	ofmt_print(shot->shot_ofmt, shot);
 
 	return (DLADM_WALK_CONTINUE);
 }
@@ -10204,27 +10251,58 @@ show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
 static int
 show_one_overlay_table(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 {
-	int ret;
-	(void) printf("%-14s %-18s %s\n", "LINK", "TARGET", "DESTINATION");
+	char				linkbuf[MAXLINKNAMELEN];
+	int				ret;
+	showoverlay_targ_state_t	shot;
+	datalink_class_t		class;
+
+	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL, linkbuf,
+	    MAXLINKNAMELEN) != DLADM_STATUS_OK ||
+	    class != DATALINK_CLASS_OVERLAY)
+		return (DLADM_WALK_CONTINUE);
+
+	shot.shot_ofmt = arg;
+	shot.shot_linkname = linkbuf;
+
 	ret = dladm_overlay_walk_cache(handle, linkid,
-	    show_one_overlay_table_entry, arg);
-	(void) fflush(stdout);
-	return (ret == 0 ? DLADM_WALK_CONTINUE : DLADM_WALK_TERMINATE);
+	    show_one_overlay_table_entry, &shot);
+
+	return (DLADM_WALK_CONTINUE);
+}
+
+static boolean_t
+print_overlay_fma_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
+{
+	showoverlay_fma_state_t	*shof = ofarg->ofmt_cbarg;
+	dladm_overlay_status_t	*st = shof->shof_status;
+
+	switch (ofarg->ofmt_id) {
+	case OVERLAY_FMA_LINK:
+		snprintf(buf, bufsize, "%s", shof->shof_linkname);
+		break;
+	case OVERLAY_FMA_STATUS:
+		snprintf(buf, bufsize, st->dos_degraded == B_TRUE ?
+		    "DEGRADED": "ONLINE");
+		break;
+	case OVERLAY_FMA_DETAILS:
+		snprintf(buf, bufsize, "%s", st->dos_degraded == B_TRUE ?
+		    st->dos_fmamsg : "-");
+		break;
+	default:
+		abort();
+	}
+	return (B_TRUE);
 }
 
 static void
 show_one_overlay_fma_cb(dladm_handle_t handle, datalink_id_t linkid,
     dladm_overlay_status_t *stat, void *arg)
 {
-	const char *linkname = arg;
+	showoverlay_fma_state_t	*shof = arg;
 
-	if (stat->dos_degraded == B_TRUE) {
-		printf("%-14s %-8s %s\n", linkname, "DEGRADED",
-		    stat->dos_fmamsg);
-	} else {
-		printf("%-14s %-8s -\n", linkname, "ONLINE");
-	}
+	ofmt_print(shof->shof_ofmt, arg);
 }
+
 
 /* XXX Should be done in terms of ofmt */
 static int
@@ -10233,6 +10311,7 @@ show_one_overlay_fma(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 	dladm_status_t		status;
 	char			linkbuf[MAXLINKNAMELEN];
 	datalink_class_t	class;
+	showoverlay_fma_state_t	shof;
 
 	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL, linkbuf,
 	    MAXLINKNAMELEN) != DLADM_STATUS_OK ||
@@ -10240,9 +10319,11 @@ show_one_overlay_fma(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 		die("datalink %s is not an overlay device\n", linkbuf);
 	}
 
-	(void) printf("%-14s %-8s %s\n", "LINK", "STATUS", "DETAILS");
+	shof.shof_ofmt = arg;
+	shof.shof_linkname = linkbuf;
+
 	status = dladm_overlay_status(handle, linkid,
-	    show_one_overlay_fma_cb, linkbuf);
+	    show_one_overlay_fma_cb, &shof);
 	if (status != DLADM_STATUS_OK)
 		die_dlerr(status, "failed to obtain device status for %s",
 		    linkbuf);
@@ -10258,21 +10339,45 @@ do_show_overlay(int argc, char *argv[], const char *use)
 	datalink_id_t		linkid = DATALINK_ALL_LINKID;
 	dladm_status_t		status;
 	int 			(*funcp)(dladm_handle_t, datalink_id_t, void *);
+	char			*fields_str = NULL;
+	const ofmt_field_t	*fieldsp;
+	ofmt_status_t		oferr;
+	boolean_t		parse;
+	ofmt_handle_t		ofmt;
+	uint_t			ofmtflags;
 
 
 	funcp = show_one_overlay;
-	while ((opt = getopt(argc, argv, ":ft")) != -1) {
+	fieldsp = overlay_fields;
+	parse = B_FALSE;
+	ofmtflags = OFMT_WRAP;
+	while ((opt = getopt(argc, argv, ":o:pft")) != -1) {
 		switch (opt) {
 		case 'f':
 			funcp = show_one_overlay_fma;
+			fieldsp = overlay_fma_fields;
+			break;
+		case 'o':
+			fields_str = optarg;
+			break;
+		case 'p':
+			parse = B_TRUE;
+			ofmtflags = OFMT_PARSABLE;
 			break;
 		case 't':
 			funcp = show_one_overlay_table;
+			fieldsp = overlay_targ_fields;
 			break;
 		default:
 			die_opterr(optopt, opt, use);
 		}
 	}
+
+	if (fields_str != NULL && strcasecmp(fields_str, "all") == 0)
+		fields_str = NULL;
+
+	oferr = ofmt_open(fields_str, fieldsp, ofmtflags, 0, &ofmt);
+	dladm_ofmt_check(oferr, parse, ofmt);
 
 	if (argc > optind) {
 		for (i = optind; i < argc; i++) {
@@ -10283,13 +10388,14 @@ do_show_overlay(int argc, char *argv[], const char *use)
 				    argv[i]);
 				continue;
 			}
-			funcp(handle, linkid, NULL);
+			funcp(handle, linkid, ofmt);
 		}
 	} else {
-		(void) dladm_walk_datalink_id(funcp, handle, NULL,
+		(void) dladm_walk_datalink_id(funcp, handle, ofmt,
 		    DATALINK_CLASS_OVERLAY, DATALINK_ANY_MEDIATYPE,
 		    DLADM_OPT_ACTIVE);
 	}
+	ofmt_close(ofmt);
 }
 
 static void
