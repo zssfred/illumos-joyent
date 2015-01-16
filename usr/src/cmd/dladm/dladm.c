@@ -9839,6 +9839,7 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	uint64_t		vid;
 	boolean_t		havevid = B_FALSE;
 	char			propstr[DLADM_STRSIZE];
+	dladm_arg_list_t	badprops;
 	dladm_arg_list_t	*proplist = NULL;
 
 	bzero(propstr, sizeof (propstr));
@@ -9895,13 +9896,13 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	if (strlen(search) + 1 > MAXLINKNAMELEN)
 		die("search plugin name too long '%s'", encap);
 
-	/* XXX we probably shouldn't use the same thing here... */
 	if (dladm_parse_link_props(propstr, &proplist, B_FALSE)
 	    != DLADM_STATUS_OK)
 		die("invalid overlay property");
 
+	bzero(&badprops, sizeof (badprops));
 	status = dladm_overlay_create(handle, name, encap, search, vid,
-	    proplist, flags);
+	    proplist, &badprops, flags);
 	dladm_free_props(proplist);
 	if (status != DLADM_STATUS_OK) {
 		die_dlerr(status, "overlay creation failed");
@@ -9948,6 +9949,10 @@ typedef struct showoverlay_targ_state {
 	const dladm_overlay_point_t	*shot_point;
 } showoverlay_targ_state_t;
 
+/*
+ * TODO This uses the OVERLAY_PROP_ macros and the like from the kernel. Is it
+ * all right to expose them?
+ */
 static void
 print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, const void *pbuf,
     const size_t psize)
@@ -9957,7 +9962,6 @@ print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, const void *pbuf,
 
 	switch (type) {
 	case OVERLAY_PROP_T_INT:
-		/* XXX Is ? really the right thing... */
 		if (psize != 1 && psize != 2 && psize != 4 && psize != 8) {
 			snprintf(outbuf, bufsize, "?");
 			break;
@@ -10037,7 +10041,6 @@ print_overlay_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
 	if ((status = dladm_overlay_prop_info(infop, &pname, &type, &prot, &def,
 	    &defsize, &rangep)) != DLADM_STATUS_OK) {
 		warn_dlerr(status, "failed to get get property info");
-		/* XXX check whether this makes sense */
 		return (B_TRUE);
 	}
 
@@ -10118,7 +10121,6 @@ print_overlay_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
 	return (B_TRUE);
 }
 
-/* XXX Exposing ioctl structures */
 static int
 dladm_overlay_show_one(dladm_handle_t handle, datalink_id_t linkid,
     dladm_overlay_propinfo_handle_t phdl, void *arg)
@@ -10126,7 +10128,6 @@ dladm_overlay_show_one(dladm_handle_t handle, datalink_id_t linkid,
 	showoverlay_state_t *sp = arg;
 	sp->sho_info = phdl;
 
-	/* XXX Show error somehow? */
 	sp->sho_size = sizeof (sp->sho_value);
 	if (dladm_overlay_get_prop(handle, linkid, phdl, &sp->sho_value,
 	    &sp->sho_size) != DLADM_STATUS_OK)
@@ -10207,10 +10208,10 @@ print_overlay_targ_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
 			} else if (inet_ntop(AF_INET6, &point->dop_ip, ipbuf,
 			    sizeof (ipbuf)) == NULL) {
 				/*
-				 * The only failrues we should get are EAFNOSUPPORT and
-				 * ENOSPC because of buffer exhaustion. In either of
-				 * these cases, that means something has gone horribly
-				 * wrong.
+				 * The only failrues we should get are
+				 * EAFNOSUPPORT and ENOSPC because of buffer
+				 * exhaustion. In either of these cases, that
+				 * means something has gone horribly wrong.
 				 */
 				abort();
 			}
@@ -10247,7 +10248,6 @@ show_one_overlay_table_entry(dladm_handle_t handle, datalink_id_t linkid,
 	return (DLADM_WALK_CONTINUE);
 }
 
-/* XXX Should be done in terms of ofmt */
 static int
 show_one_overlay_table(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 {
@@ -10304,7 +10304,6 @@ show_one_overlay_fma_cb(dladm_handle_t handle, datalink_id_t linkid,
 }
 
 
-/* XXX Should be done in terms of ofmt */
 static int
 show_one_overlay_fma(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 {
@@ -10331,7 +10330,7 @@ show_one_overlay_fma(dladm_handle_t handle, datalink_id_t linkid, void *arg)
 	return (DLADM_WALK_CONTINUE);
 }
 
-/* XXX Needs all the parseable, selectable options, etc. */
+/* TODO Do we want to be able to select on properties here? */
 static void
 do_show_overlay(int argc, char *argv[], const char *use)
 {
@@ -10345,6 +10344,7 @@ do_show_overlay(int argc, char *argv[], const char *use)
 	boolean_t		parse;
 	ofmt_handle_t		ofmt;
 	uint_t			ofmtflags;
+	int			err;
 
 
 	funcp = show_one_overlay;
@@ -10379,6 +10379,7 @@ do_show_overlay(int argc, char *argv[], const char *use)
 	oferr = ofmt_open(fields_str, fieldsp, ofmtflags, 0, &ofmt);
 	dladm_ofmt_check(oferr, parse, ofmt);
 
+	err = 0;
 	if (argc > optind) {
 		for (i = optind; i < argc; i++) {
 			status = dladm_name2info(handle, argv[i], &linkid,
@@ -10386,6 +10387,7 @@ do_show_overlay(int argc, char *argv[], const char *use)
 			if (status != DLADM_STATUS_OK) {
 				warn_dlerr(status, "failed to find %s",
 				    argv[i]);
+				err = 1;
 				continue;
 			}
 			funcp(handle, linkid, ofmt);
@@ -10396,6 +10398,8 @@ do_show_overlay(int argc, char *argv[], const char *use)
 		    DLADM_OPT_ACTIVE);
 	}
 	ofmt_close(ofmt);
+
+	exit(err);
 }
 
 static void

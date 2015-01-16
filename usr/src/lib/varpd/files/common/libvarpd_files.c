@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015, Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -340,18 +340,21 @@ varpd_files_propinfo(void *arg, uint_t propid, varpd_prop_handle_t *vph)
 static int
 varpd_files_getprop(void *arg, const char *pname, void *buf, uint32_t *sizep)
 {
-	size_t len;
 	varpd_files_t *vaf = arg;
 
 	if (strcmp(pname, varpd_files_props[0]) != 0)
 		return (EINVAL);
 
-	len = strlen(vaf->vaf_path) + 1;
-	if (*sizep < len)
-		return (EOVERFLOW);
+	if (vaf->vaf_path != NULL) {
+		size_t len = strlen(vaf->vaf_path) + 1;
+		if (*sizep < len)
+			return (EOVERFLOW);
+		*sizep = len;
+		(void) strlcpy(buf, vaf->vaf_path, *sizep);
 
-	*sizep = len;
-	(void) strlcpy(buf, vaf->vaf_path, *sizep);
+	} else {
+		*sizep = 0;
+	}
 
 	return (0);
 }

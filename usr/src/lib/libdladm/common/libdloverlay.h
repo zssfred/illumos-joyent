@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Joyent, Inc.  All rights reserved.
  */
 
 #ifndef _LIBDLOVERLAY_H
@@ -23,7 +23,6 @@
 #include <libdladm.h>
 #include <libdladm_impl.h>
 #include <sys/overlay.h>
-#include <sys/overlay_target.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,7 +45,8 @@ typedef struct dladm_overlay_status {
 } dladm_overlay_status_t;
 
 extern dladm_status_t dladm_overlay_create(dladm_handle_t, const char *,
-    const char *, const char *, uint64_t, dladm_arg_list_t *, uint32_t);
+    const char *, const char *, uint64_t, dladm_arg_list_t *,
+    dladm_arg_list_t *, uint32_t);
 extern dladm_status_t dladm_overlay_delete(dladm_handle_t, datalink_id_t);
 
 /*

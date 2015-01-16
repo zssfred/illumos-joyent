@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Joyent, Inc.  All rights reserved.
  */
 
 #include <libdladm_impl.h>
@@ -225,7 +225,7 @@ dladm_overlay_activate_cb(dladm_handle_t handle, datalink_id_t linkid,
 	dladm_status_t status;
 	uint8_t buf[DLADM_OVERLAY_PROP_SIZEMAX];
 	uint_t prot;
-	size_t size;
+	size_t size = sizeof (buf);
 	const char *name;
 
 	if ((status = dladm_overlay_prop_info(phdl, &name, NULL, &prot, NULL,
@@ -243,6 +243,210 @@ dladm_overlay_activate_cb(dladm_handle_t handle, datalink_id_t linkid,
 		fprintf(stderr, "unset required propety: %s\n", name);
 
 	return (DLADM_WALK_CONTINUE);
+}
+
+/*
+ * We need to clean up the world here. The problem is that we may or may not
+ * actually have everything created. While in the normal case, we'd always have
+ * an overlay device, assigned datalink id, and a varpd instance, we might not
+ * have any of those, except for the datalink instance. Therefore, as long as
+ * the id refers to a valid overlay, we should try to clean up as much of the
+ * state as possible and most importantly, we need to make sure we delete the
+ * datalink id. If we fail to do that, then that name will become lost to time.
+ */
+dladm_status_t
+dladm_overlay_delete(dladm_handle_t handle, datalink_id_t linkid)
+{
+	datalink_class_t class;
+	overlay_ioc_delete_t oid;
+	varpd_client_handle_t *chdl;
+	int ret, rval = 0;
+	uint32_t flags;
+	uint64_t varpdid;
+
+	if (dladm_datalink_id2info(handle, linkid, &flags, &class, NULL,
+	    NULL, 0) != DLADM_STATUS_OK)
+		return (DLADM_STATUS_BADARG);
+
+	if (class != DATALINK_CLASS_OVERLAY)
+		return (DLADM_STATUS_BADARG);
+
+	oid.oid_linkid = linkid;
+	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_DELETE, &oid);
+	if (ret != 0)
+		rval = dladm_errno2status(errno);
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0) {
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
+		if (ret == ENOENT) {
+			goto finish;
+		}
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	ret = libvarpd_c_instance_destroy(chdl, varpdid);
+finish:
+	libvarpd_c_destroy(chdl);
+	(void) dladm_destroy_datalink_id(handle, linkid, flags);
+
+	return (dladm_errno2status(ret));
+}
+
+dladm_status_t
+dladm_overlay_get_prop(dladm_handle_t handle, datalink_id_t linkid,
+    dladm_overlay_propinfo_handle_t infohdl, void *buf, size_t *sizep)
+{
+	int ret;
+	overlay_ioc_prop_t oip;
+	dladm_overlay_propinfo_t *infop = (dladm_overlay_propinfo_t *)infohdl;
+
+	/* XXX Better errno */
+	if (*sizep < DLADM_OVERLAY_PROP_SIZEMAX)
+		return (dladm_errno2status(ERANGE));
+
+	if (infop->dop_isvarpd == B_FALSE) {
+		bzero(&oip, sizeof (overlay_ioc_prop_t));
+		oip.oip_linkid = linkid;
+		oip.oip_id = infop->dop_un.dop_overlay->oipi_id;
+		ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_GETPROP, &oip);
+		if (ret != 0)
+			return (dladm_errno2status(errno));
+		bcopy(oip.oip_value, buf, DLADM_OVERLAY_PROP_SIZEMAX);
+		*sizep = oip.oip_size;
+	} else {
+		uint32_t size = *sizep;
+
+		ret = libvarpd_c_prop_get(infop->dop_un.dop_varpd, buf, &size);
+		if (ret != 0)
+			return (dladm_errno2status(errno));
+		*sizep = size;
+	}
+
+	return (DLADM_STATUS_OK);
+}
+
+static dladm_status_t
+dladm_overlay_walk_varpd_prop(dladm_handle_t handle, datalink_id_t linkid,
+    uint64_t varpdid, dladm_overlay_prop_f func, void *arg)
+{
+	int ret, i;
+	varpd_client_handle_t *chdl;
+	varpd_client_prop_handle_t *phdl;
+	uint_t nprops;
+	dladm_status_t status;
+
+	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
+		return (dladm_errno2status(ret));
+
+	if ((ret = libvarpd_c_prop_handle_alloc(chdl, varpdid, &phdl)) != 0) {
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+	if ((ret = libvarpd_c_prop_nprops(chdl, varpdid, &nprops)) != 0) {
+		libvarpd_c_prop_handle_free(phdl);
+		libvarpd_c_destroy(chdl);
+		return (dladm_errno2status(ret));
+	}
+
+#if 0
+	printf("got n props: %d\n", nprops);
+#endif
+
+	status = DLADM_STATUS_OK;
+	for (i = 0; i < nprops; i++) {
+		dladm_overlay_propinfo_t dop;
+
+		bzero(&dop, sizeof (dop));
+		dop.dop_isvarpd = B_TRUE;
+		dop.dop_un.dop_varpd = phdl;
+
+		if ((ret = libvarpd_c_prop_info_fill(phdl, i)) != 0) {
+			status = dladm_errno2status(ret);
+			break;
+		}
+
+		ret = func(handle, linkid,
+		    (dladm_overlay_propinfo_handle_t)&dop, arg);
+		if (ret == DLADM_WALK_TERMINATE)
+			break;
+	}
+
+	libvarpd_c_prop_handle_free(phdl);
+	libvarpd_c_destroy(chdl);
+
+	return (status);
+}
+
+dladm_status_t
+dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
+    dladm_overlay_prop_f func, void *arg)
+{
+	int i, ret;
+	dladm_status_t status;
+	datalink_class_t class;
+	overlay_ioc_nprops_t oin;
+	overlay_ioc_propinfo_t oipi;
+	dladm_overlay_propinfo_t dop;
+	uint64_t varpdid = UINT64_MAX;
+
+	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL,
+	    NULL, 0) != DLADM_STATUS_OK)
+		return (DLADM_STATUS_BADARG);
+
+	if (class != DATALINK_CLASS_OVERLAY)
+		return (DLADM_STATUS_BADARG);
+
+	bzero(&oin, sizeof (overlay_ioc_nprops_t));
+	status = DLADM_STATUS_OK;
+	oin.oipn_linkid = linkid;
+	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_NPROPS, &oin);
+	if (ret != 0)
+		return (dladm_errno2status(errno));
+
+	for (i = 0; i < oin.oipn_nprops; i++) {
+		bzero(&dop, sizeof (dladm_overlay_propinfo_t));
+		bzero(&oipi, sizeof (overlay_ioc_propinfo_t));
+		oipi.oipi_linkid = linkid;
+		oipi.oipi_id = i;
+		ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_PROPINFO, &oipi);
+		if (ret != 0) {
+			fprintf(stderr, "failed to get propinfo %d\n", i);
+			return (dladm_errno2status(errno));
+		}
+
+		dop.dop_isvarpd = B_FALSE;
+		dop.dop_un.dop_overlay = &oipi;
+		ret = func(handle, linkid,
+		    (dladm_overlay_propinfo_handle_t)&dop, arg);
+		if (ret == DLADM_WALK_TERMINATE)
+			break;
+
+		if (strcmp(oipi.oipi_name, VARPD_PROPERTY_NAME) == 0) {
+			uint8_t buf[DLADM_OVERLAY_PROP_SIZEMAX];
+			size_t bufsize = sizeof (buf);
+			uint64_t *vp;
+
+			if ((status = dladm_overlay_get_prop(handle, linkid,
+			    (dladm_overlay_propinfo_handle_t)&dop, buf,
+			    &bufsize)) != DLADM_STATUS_OK)
+				continue;
+
+			vp = (uint64_t *)buf;
+			varpdid = *vp;
+		}
+	}
+
+	/* Should this really be possible? */
+	if (varpdid == UINT64_MAX)
+		return (DLADM_STATUS_OK);
+
+	return (dladm_overlay_walk_varpd_prop(handle, linkid, varpdid, func,
+	    arg));
 }
 
 dladm_status_t
@@ -344,7 +548,8 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 
 	if ((ret = libvarpd_c_instance_activate(vch, id)) != 0) {
 		fprintf(stderr, "failed to activate varpd instance: %d\n", ret);
-		/* XXX Need to clean up instance, but we don't support that */
+		dladm_overlay_walk_varpd_prop(handle, linkid, id,
+		    dladm_overlay_activate_cb, NULL);
 		libvarpd_c_destroy(vch);
 		(void) dladm_overlay_delete(handle, linkid);
 		return (dladm_errno2status(ret));
@@ -362,7 +567,7 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 		dladm_overlay_walk_prop(handle, linkid,
 		    dladm_overlay_activate_cb, NULL);
 		status = dladm_errno2status(ret);
-		/* XXX Clean up varpd instance */
+		(void) libvarpd_c_instance_destroy(vch, id);
 	}
 
 	libvarpd_c_destroy(vch);
@@ -372,195 +577,7 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 	return (status);
 }
 
-dladm_status_t
-dladm_overlay_delete(dladm_handle_t handle, datalink_id_t linkid)
-{
-	datalink_class_t class;
-	overlay_ioc_delete_t oid;
-	varpd_client_handle_t *chdl;
-	int ret;
-	uint32_t flags;
-	uint64_t varpdid;
 
-	if (dladm_datalink_id2info(handle, linkid, &flags, &class, NULL,
-	    NULL, 0) != DLADM_STATUS_OK)
-		return (DLADM_STATUS_BADARG);
-
-	if (class != DATALINK_CLASS_OVERLAY)
-		return (DLADM_STATUS_BADARG);
-
-	oid.oid_linkid = linkid;
-	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_DELETE, &oid);
-	if (ret != 0)
-		return (dladm_errno2status(errno));
-
-	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
-		return (dladm_errno2status(ret));
-
-	if ((ret = libvarpd_c_instance_lookup(chdl, linkid, &varpdid)) != 0) {
-		libvarpd_c_destroy(chdl);
-		return (dladm_errno2status(ret));
-	}
-
-	if ((ret = libvarpd_c_instance_destroy(chdl, varpdid)) != 0) {
-		libvarpd_c_destroy(chdl);
-		return (dladm_errno2status(ret));
-	}
-	libvarpd_c_destroy(chdl);
-
-	(void) dladm_destroy_datalink_id(handle, linkid, flags);
-
-	return (DLADM_STATUS_OK);
-}
-
-dladm_status_t
-dladm_overlay_get_prop(dladm_handle_t handle, datalink_id_t linkid,
-    dladm_overlay_propinfo_handle_t infohdl, void *buf, size_t *sizep)
-{
-	int ret;
-	overlay_ioc_prop_t oip;
-	dladm_overlay_propinfo_t *infop = (dladm_overlay_propinfo_t *)infohdl;
-
-	/* XXX Better errno */
-	if (*sizep < DLADM_OVERLAY_PROP_SIZEMAX)
-		return (dladm_errno2status(ERANGE));
-
-	if (infop->dop_isvarpd == B_FALSE) {
-		bzero(&oip, sizeof (overlay_ioc_prop_t));
-		oip.oip_linkid = linkid;
-		oip.oip_id = infop->dop_un.dop_overlay->oipi_id;
-		ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_GETPROP, &oip);
-		if (ret != 0)
-			return (dladm_errno2status(errno));
-		bcopy(oip.oip_value, buf, DLADM_OVERLAY_PROP_SIZEMAX);
-		*sizep = oip.oip_size;
-	} else {
-		uint32_t size = *sizep;
-
-		ret = libvarpd_c_prop_get(infop->dop_un.dop_varpd, buf, &size);
-		if (ret != 0)
-			return (dladm_errno2status(errno));
-		*sizep = size;
-	}
-
-	return (DLADM_STATUS_OK);
-}
-
-static dladm_status_t
-dladm_overlay_walk_varpd_prop(dladm_handle_t handle, datalink_id_t linkid,
-    uint64_t varpdid, dladm_overlay_prop_f func, void *arg)
-{
-	int ret, i;
-	varpd_client_handle_t *chdl;
-	varpd_client_prop_handle_t *phdl;
-	uint_t nprops;
-	dladm_status_t status;
-
-	if ((ret = libvarpd_c_create(&chdl, dladm_overlay_doorpath)) != 0)
-		return (dladm_errno2status(ret));
-
-	if ((ret = libvarpd_c_prop_handle_alloc(chdl, varpdid, &phdl)) != 0) {
-		libvarpd_c_destroy(chdl);
-		return (dladm_errno2status(ret));
-	}
-
-	if ((ret = libvarpd_c_prop_nprops(chdl, varpdid, &nprops)) != 0) {
-		libvarpd_c_prop_handle_free(phdl);
-		libvarpd_c_destroy(chdl);
-		return (dladm_errno2status(ret));
-	}
-
-	status = DLADM_STATUS_OK;
-	for (i = 0; i < nprops; i++) {
-		dladm_overlay_propinfo_t dop;
-
-		bzero(&dop, sizeof (dop));
-		dop.dop_isvarpd = B_TRUE;
-		dop.dop_un.dop_varpd = phdl;
-
-		if ((ret = libvarpd_c_prop_info_fill(phdl, i)) != 0) {
-			status = dladm_errno2status(ret);
-			break;
-		}
-
-		ret = func(handle, linkid,
-		    (dladm_overlay_propinfo_handle_t)&dop, arg);
-		if (ret == DLADM_WALK_TERMINATE)
-			break;
-	}
-
-	libvarpd_c_prop_handle_free(phdl);
-	libvarpd_c_destroy(chdl);
-
-	return (status);
-}
-
-dladm_status_t
-dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
-    dladm_overlay_prop_f func, void *arg)
-{
-	int i, ret;
-	dladm_status_t status;
-	datalink_class_t class;
-	overlay_ioc_nprops_t oin;
-	overlay_ioc_propinfo_t oipi;
-	dladm_overlay_propinfo_t dop;
-	uint64_t varpdid = UINT64_MAX;
-
-	if (dladm_datalink_id2info(handle, linkid, NULL, &class, NULL,
-	    NULL, 0) != DLADM_STATUS_OK)
-		return (DLADM_STATUS_BADARG);
-
-	if (class != DATALINK_CLASS_OVERLAY)
-		return (DLADM_STATUS_BADARG);
-
-	bzero(&oin, sizeof (overlay_ioc_nprops_t));
-	status = DLADM_STATUS_OK;
-	oin.oipn_linkid = linkid;
-	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_NPROPS, &oin);
-	if (ret != 0)
-		return (dladm_errno2status(errno));
-
-	for (i = 0; i < oin.oipn_nprops; i++) {
-		bzero(&dop, sizeof (dladm_overlay_propinfo_t));
-		bzero(&oipi, sizeof (overlay_ioc_propinfo_t));
-		oipi.oipi_linkid = linkid;
-		oipi.oipi_id = i;
-		ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_PROPINFO, &oipi);
-		if (ret != 0) {
-			fprintf(stderr, "failed to get propinfo %d\n", i);
-			return (dladm_errno2status(errno));
-		}
-
-		dop.dop_isvarpd = B_FALSE;
-		dop.dop_un.dop_overlay = &oipi;
-		ret = func(handle, linkid,
-		    (dladm_overlay_propinfo_handle_t)&dop, arg);
-		if (ret == DLADM_WALK_TERMINATE)
-			break;
-
-		if (strcmp(oipi.oipi_name, VARPD_PROPERTY_NAME) == 0) {
-			uint8_t buf[DLADM_OVERLAY_PROP_SIZEMAX];
-			size_t bufsize = sizeof (buf);
-			uint64_t *vp;
-
-			if ((status = dladm_overlay_get_prop(handle, linkid,
-			    (dladm_overlay_propinfo_handle_t)&dop, buf,
-			    &bufsize)) != DLADM_STATUS_OK)
-				continue;
-
-			vp = (uint64_t *)buf;
-			varpdid = *vp;
-		}
-	}
-
-	/* Should this really be possible? */
-	if (varpdid == UINT64_MAX)
-		return (DLADM_STATUS_OK);
-
-	return (dladm_overlay_walk_varpd_prop(handle, linkid, varpdid, func,
-	    arg));
-}
 
 typedef struct overlay_walk_cb {
 	dladm_handle_t		owc_handle;
