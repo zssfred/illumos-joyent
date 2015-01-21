@@ -9839,7 +9839,6 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	uint64_t		vid;
 	boolean_t		havevid = B_FALSE;
 	char			propstr[DLADM_STRSIZE];
-	dladm_arg_list_t	badprops;
 	dladm_arg_list_t	*proplist = NULL;
 
 	bzero(propstr, sizeof (propstr));
@@ -9900,9 +9899,8 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	    != DLADM_STATUS_OK)
 		die("invalid overlay property");
 
-	bzero(&badprops, sizeof (badprops));
 	status = dladm_overlay_create(handle, name, encap, search, vid,
-	    proplist, &badprops, flags);
+	    proplist, flags);
 	dladm_free_props(proplist);
 	if (status != DLADM_STATUS_OK) {
 		die_dlerr(status, "overlay creation failed");

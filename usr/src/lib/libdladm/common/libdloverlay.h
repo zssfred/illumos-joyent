@@ -46,7 +46,7 @@ typedef struct dladm_overlay_status {
 
 extern dladm_status_t dladm_overlay_create(dladm_handle_t, const char *,
     const char *, const char *, uint64_t, dladm_arg_list_t *,
-    dladm_arg_list_t *, uint32_t);
+    uint32_t);
 extern dladm_status_t dladm_overlay_delete(dladm_handle_t, datalink_id_t);
 
 /*
