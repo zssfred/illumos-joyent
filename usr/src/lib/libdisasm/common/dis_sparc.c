@@ -277,7 +277,7 @@ dis_sparc_disassemble(dis_handle_t *dhp, uint64_t addr, char *buf,
 
 error:
 
-	(void) snprintf(buf, buflen,
+	(void) dis_snprintf(buf, buflen,
 	    ((dhp->dh_flags & DIS_OCTAL) != 0) ? "0%011lo" : "0x%08lx",
 	    instr);
 

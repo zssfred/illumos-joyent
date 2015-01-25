@@ -49,8 +49,6 @@ extern int strcmp(const char *, const char *);
 extern int strncmp(const char *, const char *, size_t);
 extern size_t strlcat(char *, const char *, size_t);
 extern size_t strlcpy(char *, const char *, size_t);
-extern int snprintf(char *, size_t, const char *, ...);
-extern int vsnprintf(char *, size_t, const char *, va_list);
 
 /*
  * This file has the functions that do all the dirty work of outputting the
@@ -863,7 +861,7 @@ fmt_branch(dis_handle_t *dhp, uint32_t instr, const inst_t *inp, int idx)
 		}
 	}
 
-	(void) snprintf(buf, sizeof (buf), "%s%s%s", name, annul, pred);
+	(void) dis_snprintf(buf, sizeof (buf), "%s%s%s", name, annul, pred);
 	prt_name(dhp, buf, 1);
 
 
@@ -2768,7 +2766,7 @@ bprintf(dis_handle_t *dhp, const char *fmt, ...)
 	curlen = strlen(dhx->dhx_buf);
 
 	va_start(ap, fmt);
-	(void) vsnprintf(dhx->dhx_buf + curlen, dhx->dhx_buflen - curlen, fmt,
-	    ap);
+	(void) dis_vsnprintf(dhx->dhx_buf + curlen, dhx->dhx_buflen -
+	    curlen, fmt, ap);
 	va_end(ap);
 }

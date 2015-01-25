@@ -23,12 +23,17 @@
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2012 Joshua M. Clulow <josh@sysmgr.org>
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <libdisasm.h>
 #include <stdlib.h>
 #ifdef DIS_STANDALONE
 #include <mdb/mdb_modapi.h>
+#define	_MDB
+#include <mdb/mdb_io.h>
+#else
+#include <stdio.h>
 #endif
 
 #include "libdisasm_impl.h"
@@ -47,7 +52,6 @@ extern dis_arch_t dis_arch_i386;
 #if !defined(DIS_STANDALONE) || defined(__sparc)
 extern dis_arch_t dis_arch_sparc;
 #endif
-
 #if !defined(DIS_STANDALONE) || defined(__arm)
 extern dis_arch_t dis_arch_arm;
 #endif
@@ -220,4 +224,27 @@ int
 dis_instrlen(dis_handle_t *dhp, uint64_t pc)
 {
 	return (dhp->dh_arch->da_instrlen(dhp, pc));
+}
+
+int
+dis_vsnprintf(char *restrict s, size_t n, const char *restrict format,
+    va_list args)
+{
+#ifdef DIS_STANDALONE
+	return (mdb_iob_vsnprintf(s, n, format, args));
+#else
+	return (vsnprintf(s, n, format, args));
+#endif
+}
+
+int
+dis_snprintf(char *restrict s, size_t n, const char *restrict format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	n = dis_vsnprintf(s, n, format, args);
+	va_end(args);
+
+	return (n);
 }

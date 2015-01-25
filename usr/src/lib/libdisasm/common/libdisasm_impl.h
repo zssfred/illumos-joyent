@@ -23,10 +23,14 @@
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2012 Joshua M. Clulow <josh@sysmgr.org>
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_LIBDISASM_IMPL_H
 #define	_LIBDISASM_IMPL_H
+
+#include <stdarg.h>
+#include <sys/sysmacros.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -58,6 +62,8 @@ extern int dis_seterrno(int);
 
 extern void *dis_zalloc(size_t);
 extern void dis_free(void *, size_t);
+extern int dis_vsnprintf(char *restrict, size_t, const char *restrict, va_list);
+extern int dis_snprintf(char *restrict, size_t, const char *restrict, ...);
 
 #ifdef	__cplusplus
 }

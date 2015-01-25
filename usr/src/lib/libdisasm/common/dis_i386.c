@@ -23,11 +23,10 @@
  * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2012 Joshua M. Clulow <josh@sysmgr.org>
+ * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #include <libdisasm.h>
-#include <stdlib.h>
-#include <stdio.h>
 
 #include "dis_tables.h"
 #include "libdisasm_impl.h"
@@ -126,7 +125,7 @@ dis_i386_handle_attach(dis_handle_t *dhp)
 	if (dhp->dh_flags & DIS_OCTAL)
 		dhx->dhx_dis.d86_flags = DIS_F_OCTAL;
 
-	dhx->dhx_dis.d86_sprintf_func = snprintf;
+	dhx->dhx_dis.d86_sprintf_func = dis_snprintf;
 	dhx->dhx_dis.d86_get_byte = get_byte;
 	dhx->dhx_dis.d86_sym_lookup = do_lookup;
 	dhx->dhx_dis.d86_check_func = check_func;
@@ -172,8 +171,6 @@ dis_i386_min_instrlen(dis_handle_t *dhp)
 {
 	return (1);
 }
-
-#define	MIN(a, b)	((a) < (b) ? (a) : (b))
 
 /*
  * Return the previous instruction.  On x86, we have no choice except to

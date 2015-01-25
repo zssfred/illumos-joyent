@@ -22,6 +22,7 @@
 # Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 # Copyright 2012 Joshua M. Clulow <josh@sysmgr.org>
+# Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
 #
 
 #
@@ -124,13 +125,7 @@ CERRWARN +=	-_gcc=-Wno-uninitialized
 # doesn't get it.
 DTS_ERRNO=
 
-# We need to rename some standard functions so we can easily implement them 
-# in consumers.
-STAND_RENAMED_FUNCS= \
-	snprintf
-
-CPPFLAGS_standalone = -DDIS_STANDALONE $(STAND_RENAMED_FUNCS:%=-D%=mdb_%) \
-	-Dvsnprintf=mdb_iob_vsnprintf -I$(SRC)/cmd/mdb/common
+CPPFLAGS_standalone = -DDIS_STANDALONE -I$(SRC)/cmd/mdb/common
 CPPFLAGS_library = -D_REENTRANT
 CPPFLAGS +=	-I$(COMDIR) $(CPPFLAGS_$(CURTYPE))
 
