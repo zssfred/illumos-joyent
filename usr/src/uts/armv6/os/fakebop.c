@@ -356,14 +356,28 @@ fakebop_getatags(void *tagstart)
 	atag_header_t *ahp = tagstart;
 	atag_illumos_status_t *aisp;
 	bootinfo_t *bp = &bootinfo;
+	boolean_t got_mem = B_FALSE;
 
 	bp->bi_flags = 0;
 	while (ahp != NULL) {
 		switch (ahp->ah_tag) {
 		case ATAG_MEM:
 			amp = (atag_mem_t *)ahp;
+			/*
+			 * We may actually get more than one ATAG_MEM if the
+			 * system has discontiguous physical memory
+			 */
+			if (got_mem) {
+				bop_printf(NULL, "found multiple ATAG_MEM\n");
+				bop_printf(NULL, "ignoring: %#x - %#x\n",
+				    amp->am_start, amp->am_start +
+				    amp->am_size - 1);
+				break;
+			}
+
 			bp->bi_memsize = amp->am_size;
 			bp->bi_memstart = amp->am_start;
+			got_mem = B_TRUE;
 			break;
 		case ATAG_CMDLINE:
 			alp = (atag_cmdline_t *)ahp;
