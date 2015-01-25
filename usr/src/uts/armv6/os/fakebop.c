@@ -221,6 +221,8 @@ fakebop_dump_tags(void *tagstart)
 	atag_mem_t *amp;
 	atag_cmdline_t *alp;
 	atag_initrd_t *aip;
+	atag_illumos_status_t *aisp;
+	atag_illumos_mapping_t *aimp;
 	const char *tname;
 	int i;
 	char *c;
@@ -259,6 +261,12 @@ fakebop_dump_tags(void *tagstart)
 			break;
 		case ATAG_CMDLINE:
 			tname = "ATAG_CMDLINE";
+			break;
+		case ATAG_ILLUMOS_STATUS:
+			tname = "ATAG_ILLUMOS_STATUS";
+			break;
+		case ATAG_ILLUMOS_MAPPING:
+			tname = "ATAG_ILLUMOS_MAPPING";
 			break;
 		default:
 			tname = fakebop_hack_ultostr(h->ah_tag,
@@ -309,6 +317,29 @@ fakebop_dump_tags(void *tagstart)
 				}
 			}
 			bcons_puts("\n");
+			break;
+		case ATAG_ILLUMOS_STATUS:
+			aisp = (atag_illumos_status_t *)h;
+			DUMP_ATAG_VAL("version", aisp->ais_version);
+			DUMP_ATAG_VAL("ptbase", aisp->ais_ptbase);
+			DUMP_ATAG_VAL("freemem", aisp->ais_freemem);
+			DUMP_ATAG_VAL("freeused", aisp->ais_freeused);
+			DUMP_ATAG_VAL("archive", aisp->ais_archive);
+			DUMP_ATAG_VAL("archivelen", aisp->ais_archivelen);
+			DUMP_ATAG_VAL("pt_arena", aisp->ais_pt_arena);
+			DUMP_ATAG_VAL("pt_arena_max", aisp->ais_pt_arena_max);
+			DUMP_ATAG_VAL("stext", aisp->ais_stext);
+			DUMP_ATAG_VAL("etext", aisp->ais_etext);
+			DUMP_ATAG_VAL("sdata", aisp->ais_sdata);
+			DUMP_ATAG_VAL("edata", aisp->ais_edata);
+			break;
+		case ATAG_ILLUMOS_MAPPING:
+			aimp = (atag_illumos_mapping_t *)h;
+			DUMP_ATAG_VAL("paddr", aimp->aim_paddr);
+			DUMP_ATAG_VAL("plen", aimp->aim_plen);
+			DUMP_ATAG_VAL("vaddr", aimp->aim_vaddr);
+			DUMP_ATAG_VAL("vlen", aimp->aim_vlen);
+			DUMP_ATAG_VAL("mapflags", aimp->aim_mapflags);
 			break;
 		default:
 			break;
