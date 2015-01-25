@@ -78,7 +78,7 @@ typedef struct atag_serial {
 
 typedef struct atag_cmdline {
 	atag_header_t	al_header;
-	char 		al_cmdline[1];
+	char		al_cmdline[1];
 } atag_cmdline_t;
 
 typedef struct atag_illumos_status {
