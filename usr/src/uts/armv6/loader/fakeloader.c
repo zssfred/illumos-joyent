@@ -11,6 +11,7 @@
 
 /*
  * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 #include "fakeloader.h"
@@ -707,6 +708,6 @@ fakeload_init(void *ident, void *ident2, void *atag)
 	armv6_icache_enable();
 
 	/* we should never come back */
-	fakeload_exec(unix_start);
+	fakeload_exec(ident, ident2, chain, unix_start);
 	fakeload_panic("hit the end of the world\n");
 }

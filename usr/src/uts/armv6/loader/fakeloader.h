@@ -11,6 +11,7 @@
 
 /*
  * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 #ifndef _FAKELOADER_H
@@ -53,7 +54,7 @@ extern void fakeload_backend_addmaps(atag_header_t *);
 extern void fakeload_unaligned_enable(void);
 extern void fakeload_mmu_enable(void);
 extern void fakeload_pt_setup(uintptr_t);
-extern void fakeload_exec(uintptr_t);
+extern void fakeload_exec(void *, void *, atag_header_t *, uintptr_t);
 
 extern void armv6_dcache_disable(void);
 extern void armv6_dcache_enable(void);
