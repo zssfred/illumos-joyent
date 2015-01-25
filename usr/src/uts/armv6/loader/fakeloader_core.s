@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2013 (c) Joyent, Inc. All rights reserved.
+ * Copyright 2015 (c) Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 /*
@@ -19,7 +20,15 @@
 
 #include <sys/asm_linkage.h>
 
-	ENTRY(_start)
+/*
+ * We put _start into the .text.init section so we can more easily shove it
+ * at the front of the .text.
+ */
+	.section .text.init
+	.align	4
+	.globl	_start
+	.type	_start, %function
+_start:
 	mov	sp, #0x8000
 	/*
 	 * XXX manually fix up the tag start

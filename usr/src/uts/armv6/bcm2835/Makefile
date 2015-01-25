@@ -11,6 +11,7 @@
 
 #
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+# Copyright (c) 2015, Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
 #
 
 UTSBASE = ../..
@@ -37,10 +38,11 @@ check		:=	TARGET= check
 #
 .KEEP_STATE:
 
-def all clean clobber clean.lint: unix .WAIT \
+def all clean clobber clean.lint: unix loader .WAIT \
 		$(BCM2835_CPU_KMODS) $(BCM2835_KMODS)
 
 modlist:	unix \
+		loader \
 		$(BCM2835_CPU_KMODS) $(BCM2835_KMODS)
 
 IMPLEMENTED_PLATFORM = Raspberry,Pi
@@ -51,9 +53,9 @@ install: $(ROOT_BCM2835_DIR) $(USR_BCM2835_DIR) \
 	$(USR_BCM2835_LIB_DIR) \
 	$(BCM2835_CRYPTO_LINKS) \
 	unix .WAIT $(BCM2835_CPU_KMODS) \
-	$(BCM2835_KMODS)
+	$(BCM2835_KMODS) loader
 
-unix $(BCM2835_KMODS) $(BCM2835_CPU_KMODS): FRC
+unix loader $(BCM2835_KMODS) $(BCM2835_CPU_KMODS): FRC
 	@cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET)
 
 install_h check:	FRC
