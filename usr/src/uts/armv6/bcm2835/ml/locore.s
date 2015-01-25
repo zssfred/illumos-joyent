@@ -107,13 +107,6 @@
 	orr	r0, #0x00500000
 	mcr	p15, 0, r0, c1, c0, 2
 
-	/*
-	 * XXX Currently we're using u-boot to allow us to make forward progress
-	 * while the .data section is a bit tumultuous. It loads that, but we
-	 * can say for certain that it does not correctly pass in the machid and
-	 * tagstart. Since we know what it is, we manually fix it up here.
-	 */
-	mov r2,#0x100
 	bl _fakebop_start
 	SET_SIZE(_start)
 
