@@ -23,7 +23,12 @@ find /opt/armtc
 
 Fun way:
 
-Clone this repository again and do a normal i386 on i386 build.
+Using a normal i386 on i386 build:
+cd usr/src
+dmake setup
+cd cmd/sgs
+dmake install
+
 mkdir -p /opt/armtc/lib/amd64 /opt/armtc/usr/bin/amd64
 cd /opt/armtc/lib/
 ln -s amd64 64
