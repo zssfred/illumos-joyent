@@ -9,6 +9,7 @@
  */
 /*
  * Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 /*
@@ -808,11 +809,20 @@ arm_dis_dpi(uint32_t in, arm_cond_code_t cond, char *buf, size_t buflen)
 	 * Print the shifter as appropriate
 	 */
 	switch (dpi_inst.dpii_stype) {
-	case ARM_DPI_SHIFTER_IMM32:
-		len = snprintf(buf, buflen, ", #%d, %d",
-		    dpi_inst.dpii_un.dpii_im.dpisi_imm,
-		    dpi_inst.dpii_un.dpii_im.dpisi_rot);
+	case ARM_DPI_SHIFTER_IMM32: {
+		uint32_t rawimm, imm;
+		int rawrot, rot;
+
+		rawimm = dpi_inst.dpii_un.dpii_im.dpisi_imm;
+		rawrot = dpi_inst.dpii_un.dpii_im.dpisi_rot;
+
+		rot = rawrot * 2;
+		imm = (rawimm << (32 - rot)) | (rawimm >> rot);
+
+		len = snprintf(buf, buflen, ", #%u, %d ; 0x%08x", rawimm,
+		    rawrot, imm);
 		break;
+	}
 	case ARM_DPI_SHIFTER_SIMM:
 		if (dpi_inst.dpii_un.dpii_si.dpiss_code == DPI_S_NONE) {
 			len = snprintf(buf, buflen, ", %s",
