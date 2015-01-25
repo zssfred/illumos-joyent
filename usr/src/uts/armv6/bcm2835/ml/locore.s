@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2013 (c) Joyent, Inc. All rights reserved.
+ * Copyright 2015 (c) Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 #include <sys/asm_linkage.h>
@@ -100,6 +101,11 @@
 	mrc	p15, 0, r3, c1, c0, 0
 	bic	r3, r3, #2
 	mcr	p15, 0, r3, c1, c0, 0
+
+	/* Enable access to p10 and p11 (privileged mode only) */
+	mrc	p15, 0, r0, c1, c0, 2
+	orr	r0, #0x00500000
+	mcr	p15, 0, r0, c1, c0, 2
 
 	/*
 	 * XXX Currently we're using u-boot to allow us to make forward progress
