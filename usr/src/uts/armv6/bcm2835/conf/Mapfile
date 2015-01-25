@@ -16,11 +16,12 @@
 $mapfile_version 2
 
 # NB: Order matters for name-based entry!
+
 LOAD_SEGMENT exception_vector {
 	FLAGS = READ EXECUTE;
 	NOHDR;
-	PADDR = 0xFFFF0000;
 	VADDR = 0xFFFF0000;
+	ALIGN = 0x1000;
 	OS_ORDER = .exception_vector;
 	ASSIGN_SECTION { IS_NAME = .exception_vector };
 };
@@ -28,10 +29,7 @@ LOAD_SEGMENT exception_vector {
 LOAD_SEGMENT text {
 	FLAGS = READ EXECUTE;
 	NOHDR;
-#	PADDR = 0x8080;
-#	VADDR = 0x8080;
-	PADDR = 0x0c100000;
-	VADDR = 0x0c100000;
+	VADDR = 0xFE800000;
 	OS_ORDER = .text;
 	ASSIGN_SECTION {
 		TYPE = PROGBITS;
@@ -39,13 +37,13 @@ LOAD_SEGMENT text {
 	};
 };
 
+#
+# start the data segment on a new 4MB page boundary
+#
 LOAD_SEGMENT data {
 	FLAGS = READ WRITE EXECUTE;
 	NOHDR;
-#	PADDR = 0x80000;
-#	VADDR = 0x80000;
-	PADDR = 0x0c200000;
-	VADDR = 0x0c200000;
+	VADDR = 0xFEC00000;
 	OS_ORDER = .data;
 	ASSIGN_SECTION {
 		TYPE = PROGBITS;
