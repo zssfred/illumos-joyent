@@ -11,6 +11,7 @@
 
 /*
  * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 /*
@@ -204,6 +205,14 @@ fakebop_alloc_init(atag_header_t *chain)
 	bop_alloc_plast = pmax;
 }
 
+#define DUMP_ATAG_VAL(name, val)					\
+	do {								\
+		DBG_MSG("\t" name ":");					\
+		bcons_puts("\t");					\
+		DBG_MSG(fakebop_hack_ultostr((val),			\
+		    &buffer[BUFFERSIZE-1]));				\
+	} while (0)
+
 static void
 fakebop_dump_tags(void *tagstart)
 {
@@ -268,41 +277,20 @@ fakebop_dump_tags(void *tagstart)
 				DBG_MSG("ATAG_CORE has no extra information");
 			} else {
 				acp = (atag_core_t *)h;
-				DBG_MSG("\tflags:");
-				bcons_puts("\t");
-				DBG_MSG(fakebop_hack_ultostr(acp->ac_flags,
-				    &buffer[BUFFERSIZE-1]));
-				DBG_MSG("\tpage:");
-				bcons_puts("\t");
-				DBG_MSG(fakebop_hack_ultostr(acp->ac_pagesize,
-				    &buffer[BUFFERSIZE-1]));
-				DBG_MSG("\troot:");
-				bcons_puts("\t");
-				DBG_MSG(fakebop_hack_ultostr(acp->ac_rootdev,
-				    &buffer[BUFFERSIZE-1]));
+				DUMP_ATAG_VAL("flags", acp->ac_flags);
+				DUMP_ATAG_VAL("pagesize", acp->ac_pagesize);
+				DUMP_ATAG_VAL("rootdev", acp->ac_rootdev);
 			}
 			break;
 		case ATAG_MEM:
 			amp = (atag_mem_t *)h;
-			DBG_MSG("\tsize:");
-			bcons_puts("\t");
-			DBG_MSG(fakebop_hack_ultostr(amp->am_size,
-			    &buffer[BUFFERSIZE-1]));
-			DBG_MSG("\tstart:");
-			bcons_puts("\t");
-			DBG_MSG(fakebop_hack_ultostr(amp->am_start,
-			    &buffer[BUFFERSIZE-1]));
+			DUMP_ATAG_VAL("size", amp->am_size);
+			DUMP_ATAG_VAL("start", amp->am_start);
 			break;
 		case ATAG_INITRD2:
 			aip = (atag_initrd_t *)h;
-			DBG_MSG("\tsize:");
-			bcons_puts("\t");
-			DBG_MSG(fakebop_hack_ultostr(aip->ai_size,
-			    &buffer[BUFFERSIZE-1]));
-			DBG_MSG("\tstart:");
-			bcons_puts("\t");
-			DBG_MSG(fakebop_hack_ultostr(aip->ai_start,
-			    &buffer[BUFFERSIZE-1]));
+			DUMP_ATAG_VAL("size", aip->ai_size);
+			DUMP_ATAG_VAL("start", aip->ai_start);
 			break;
 		case ATAG_CMDLINE:
 			alp = (atag_cmdline_t *)h;
