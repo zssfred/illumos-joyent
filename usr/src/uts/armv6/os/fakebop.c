@@ -88,8 +88,6 @@ static uintptr_t bop_alloc_plast;		/* cross this paddr and panic */
  */
 typedef struct bootinfo {
 	uint_t		bi_flags;
-	uint32_t	bi_memsize;
-	uint32_t	bi_memstart;
 	char 		*bi_cmdline;
 	uint32_t	bi_ramdisk;
 	uint32_t	bi_ramsize;
@@ -375,8 +373,10 @@ fakebop_getatags(void *tagstart)
 				break;
 			}
 
-			bp->bi_memsize = amp->am_size;
-			bp->bi_memstart = amp->am_start;
+			bootop.boot_mem.physinstalled.ml_address = amp->am_start;
+			bootop.boot_mem.physinstalled.ml_size = amp->am_size;
+			bootop.boot_mem.physinstalled.ml_prev = NULL;
+			bootop.boot_mem.physinstalled.ml_next = NULL;
 			got_mem = B_TRUE;
 			break;
 		case ATAG_CMDLINE:

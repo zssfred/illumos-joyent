@@ -11,6 +11,7 @@
 
 /*
  * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2015 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 
@@ -37,10 +38,15 @@ extern "C" {
 #define	BO_NO_ALIGN	0x00001000
 #define	BO_ALIGN_DONTCARE	-1
 
+struct bsys_mem {
+	struct memlist	physinstalled;
+};
+
 #define	BO_VERSION	1	/* bootops interface revision */
 
 typedef struct bootops {
 	uint_t	bsys_version;
+	struct bsys_mem	boot_mem;
 	caddr_t	(*bsys_alloc)(struct bootops *, caddr_t, size_t, int);
 	void	(*bsys_free)(struct bootops *, caddr_t, size_t);
 	int	(*bsys_getproplen)(struct bootops *, const char *);
