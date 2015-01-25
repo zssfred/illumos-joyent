@@ -11,6 +11,7 @@
 
 /*
  * Copyright 2013 (c) Joyent, Inc. All rights reserved.
+ * Copyright (c) 2015 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
 #include <sys/asm_linkage.h>
@@ -123,13 +124,18 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	mcr	p15, 0, r0, c1, c0, 0
 
 	/*
-	 * mlsetup() takes the struct regs as an argument. main doesn't take any
-	 * and should never return. After the push below, we should have a
-	 * 8-byte aligned stack pointer. This is why we subtracted four earlier
-	 * on if we were 8-byte aligned.
+	 * mlsetup() takes the struct regs as an argument. main doesn't take
+	 * any and should never return. Currently, we have an 8-byte aligned
+	 * stack.  We want to push a zero frame pointer to terminate any
+	 * stack walking, but that would cause us to end up with only a
+	 * 4-byte aligned stack.  So, to keep things nice and correct, we
+	 * push a zero value twice - it's similar to a typical function
+	 * entry:
+	 * 	push { r9, lr }
 	 */
 	mov	r9,#0
-	push	{ r9 }
+	push	{ r9 }		/* link register */
+	push	{ r9 }		/* frame pointer */
 	mov	r0, sp
 	bl	mlsetup
 	bl	main
