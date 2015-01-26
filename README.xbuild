@@ -124,9 +124,54 @@ Following this, you can build the kernel as far as we have it for ARM
 
 cd uts; dmake install
 
-You now have a lovely unix and boot_archive pair in bcm2835/unix (raspberry
-pi) and qvpb/unix (qemu versatilepb).  These should be booted with a kernel
-command line mimicing that of the boot_archive (regardless of the path of the
-unix you actually provide).  For example: kernel /platform/bcm2835/kernel/unix
--Bconsole=text
+You now have a lovely unix and boot_archive pair in bcm2835/unix (Raspberry
+Pi) and qvpb/unix (qemu versatilepb).
 
+Step 4) Boot
+
+Now that you have the gate built, you can try to boot the kernel.  This is
+where things diverge between qemu and the Raspberry Pi.
+
+Booting qemu is very easy:
+
+qemu-system-arm \
+	-kernel $PROTO/platform/qvpb/kernel/loader \
+	-initrd $PROTO/platform/qvpb/kernel/initrd \
+	-machine versatilepb \
+	-cpu arm1176 \
+	-m 512 \
+	-no-reboot \
+	-nographic \
+	-append 'kernel /platform/qvpb/kernel/unix -Bconsole=uart'
+
+The loader and kernel messages should appear in the same terminal.
+
+Booting on real hardware is a bit more involved.
+
+  a) Create a FAT16 or FAT32 partition on the SD card.  You'll want it to be
+     at least 40 MB.
+
+  b) Create a config.txt on the partition:
+
+	gpu_mem=64
+	kernel=loader
+	initramfs initrd 0x00800000
+
+  c) Create a cmdline.txt on the partition:
+
+	kernel /platform/bcm2835/kernel/unix -Bconsole=uart
+
+  d) Place Raspberry Pi firmware onto the partition.  You can download
+     latest firmware from
+     https://github.com/raspberrypi/firmware/tree/master/boot. The firmware
+     from January 24th, 2015 is known to work.
+
+	0e52c8cdbfd21631746d6fcdc8f2750af39f4287  bootcode.bin
+	aba25d795eaddafd5c8ece3de18873b9928eb6f7  fixup_cd.dat
+	38e55d60f896738eec30d0ca4f62b68e48e99184  fixup.dat
+	4867e6eab84bb4138e812993112b6a05b7930b89  fixup_x.dat
+	fa993851acba366d9e37d59a1d9e9de84b19173f  start_cd.elf
+	356060e0f44742d8835294a211b812efcac29f66  start.elf
+	b7f01f90d995a36c9d765fd1f4d95a5fcdfd7e41  start_x.elf
+
+  e) Copy $PROTO/platform/bcm2835/kernel/{loader,initrd} onto the partition.
