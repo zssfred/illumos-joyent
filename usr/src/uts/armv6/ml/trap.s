@@ -16,8 +16,7 @@
 
 /*
  * Create a section into which to place the exception vector, such that we can
- * force it to be mapped where it needs to be.  Currently at 0x0, since
- * we don't set the high vector bit (SCTLR.V)
+ * force it to be mapped where it needs to be.
  *
  * Each instruction in the vector jumps to its own address + 24, which is the
  * matching entry in exception_table.  We do this to insure that we get
