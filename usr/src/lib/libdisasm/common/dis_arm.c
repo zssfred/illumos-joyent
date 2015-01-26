@@ -444,7 +444,7 @@ static const char *arm_reg_names[] = {
 	"r6",
 	"r7",
 	"r8",
-	"r9",
+	"fp",	/* Alt for r9 */
 	"r10",
 	"r11",
 	"ip",	/* Alt for r12 */
