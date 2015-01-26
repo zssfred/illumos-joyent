@@ -393,20 +393,20 @@ extern size_t strlcat(char *, const char *, size_t);
  * them.
  */
 static const char *arm_cond_names[] = {
-	"EQ",		/* Equal */
-	"NE",		/* Not Equal */
-	"CS/HS",	/* Carry set/unsigned higher or same */
-	"CC/LO",	/* Carry clear/unsigned lower */
-	"MI",		/* Minus/negative */
-	"PL",		/* Plus/positive or zero */
-	"VS",		/* Overflow */
-	"VC",		/* No overflow */
-	"HI",		/* Unsigned higher */
-	"LS",		/* Unsigned lower or same */
-	"GE",		/* Signed greater than or equal */
-	"LT",		/* Signed less than */
-	"GT",		/* Signed greater than */
-	"LE",		/* Signed less than or equal */
+	"eq",		/* Equal */
+	"ne",		/* Not Equal */
+	"cs/hs",	/* Carry set/unsigned higher or same */
+	"cc/lo",	/* Carry clear/unsigned lower */
+	"mi",		/* Minus/negative */
+	"pl",		/* Plus/positive or zero */
+	"vs",		/* Overflow */
+	"vc",		/* No overflow */
+	"hi",		/* Unsigned higher */
+	"ls",		/* Unsigned lower or same */
+	"ge",		/* Signed greater than or equal */
+	"lt",		/* Signed less than */
+	"gt",		/* Signed greater than */
+	"le",		/* Signed less than or equal */
 	"",		/* AL - Always (unconditional) */
 	NULL		/* Not a condition code */
 };
@@ -435,22 +435,22 @@ typedef enum arm_cond_code {
  * which register in question we're working with.
  */
 static const char *arm_reg_names[] = {
-	"R0",
-	"R1",
-	"R2",
-	"R3",
-	"R4",
-	"R5",
-	"R6",
-	"R7",
-	"R8",
-	"R9",
-	"R10",
-	"R11",
-	"IP",	/* Alt for R12 */
-	"SP",	/* Alt for R13 */
-	"LR",	/* Alt for R14 */
-	"PC"	/* Alt for R15 */
+	"r0",
+	"r1",
+	"r2",
+	"r3",
+	"r4",
+	"r5",
+	"r6",
+	"r7",
+	"r8",
+	"r9",
+	"r10",
+	"r11",
+	"ip",	/* Alt for r12 */
+	"sp",	/* Alt for r13 */
+	"lr",	/* Alt for r14 */
+	"pc"	/* Alt for r15 */
 };
 
 typedef enum arm_reg {
@@ -499,22 +499,22 @@ static const char *arm_coproc_names[] = {
  * processing instructions.
  */
 static const char *arm_dpi_opnames[] = {
-	"AND",	/* Logical AND */
-	"EOR",	/* Logical Exclusive OR */
-	"SUB",	/* Subtract */
-	"RSB",	/* Reverse Subtract */
-	"ADD",	/* Add */
-	"ADC",	/* Add with Carry */
-	"SBC",	/* Subtract with Carry */
-	"RSC",	/* Reverse Subtract with Carry */
-	"TST",	/* Test */
-	"TEQ",	/* Test Equivalence */
-	"CMP",	/* Compare */
-	"CMN",	/* Compare negated */
-	"ORR",	/* Logical (inclusive) OR */
-	"MOV",	/* Move */
-	"BIC",	/* Bit clear */
-	"MVN"	/* Move not */
+	"and",	/* Logical AND */
+	"eor",	/* Logical Exclusive OR */
+	"sub",	/* Subtract */
+	"rsb",	/* Reverse Subtract */
+	"add",	/* Add */
+	"adc",	/* Add with Carry */
+	"sbc",	/* Subtract with Carry */
+	"rsc",	/* Reverse Subtract with Carry */
+	"tst",	/* Test */
+	"teq",	/* Test Equivalence */
+	"cmp",	/* Compare */
+	"cmn",	/* Compare negated */
+	"orr",	/* Logical (inclusive) OR */
+	"mov",	/* Move */
+	"bic",	/* Bit clear */
+	"mvn"	/* Move not */
 };
 
 typedef enum arm_dpi_opcode {
@@ -537,11 +537,11 @@ typedef enum arm_dpi_opcode {
 } arm_dpi_opcode_t;
 
 const char *arm_dpi_shifts[] = {
-	"LSL",	/* Logical shift left */
-	"LSR",	/* Logical shift right */
-	"ASR",	/* Arithmetic shift right */
-	"ROR",	/* Rotate right */
-	"RRX"	/* Rotate right with extend. This is a special case of ROR */
+	"lsl",	/* Logical shift left */
+	"lsr",	/* Logical shift right */
+	"asr",	/* Arithmetic shift right */
+	"ror",	/* Rotate right */
+	"rrx"	/* Rotate right with extend. This is a special case of ror */
 };
 
 typedef enum arm_dpi_shift_code {
@@ -549,7 +549,7 @@ typedef enum arm_dpi_shift_code {
 	DPI_S_LSR,	/* Logical shift right */
 	DPI_S_ASR,	/* Arithmetic shift right */
 	DPI_S_ROR,	/* Rotate right */
-	DPI_S_RRX,	/* Rotate right with extend. Special case of ROR */
+	DPI_S_RRX,	/* Rotate right with extend. Special case of ror */
 	DPI_S_NONE	/* No shift code */
 } arm_dpi_shift_code_t;
 
@@ -594,10 +594,10 @@ typedef struct arm_dpi_inst {
  * do this by doing P << 1 | U.
  */
 static const char *arm_lsm_mode_names[] = {
-	"DA",
-	"IA",
-	"DB",
-	"IB"
+	"da",
+	"ia",
+	"db",
+	"ib"
 };
 
 /*
@@ -629,39 +629,39 @@ static const char *arm_cdsp_msr_field_names[] = {
  * extended control and dsp instructino section.
  */
 static const char *arm_cdsp_sat_opnames[] = {
-	"ADD",
-	"SUB",
-	"DADD",
-	"DSUB"
+	"add",
+	"sub",
+	"dadd",
+	"dsub"
 };
 
 static const char *arm_padd_p_names[] = {
 	NULL,	/* 000 */
-	"S",	/* 001 */
-	"Q",	/* 010 */
-	"SH",	/* 011 */
+	"s",	/* 001 */
+	"q",	/* 010 */
+	"sh",	/* 011 */
 	NULL,	/* 100 */
-	"U",	/* 101 */
-	"UQ",	/* 110 */
-	"UH",	/* 111 */
+	"u",	/* 101 */
+	"uq",	/* 110 */
+	"uh",	/* 111 */
 };
 
 static const char *arm_padd_i_names[] = {
-	"ADD16",	/* 000 */
-	"ADDSUBX",	/* 001 */
-	"SUBADDX",	/* 010 */
-	"SUB16",	/* 011 */
-	"ADD8",		/* 100 */
+	"add16",	/* 000 */
+	"addsubx",	/* 001 */
+	"subaddx",	/* 010 */
+	"sub16",	/* 011 */
+	"add8",		/* 100 */
 	NULL,		/* 101 */
 	NULL,		/* 110 */
-	"SUB8",		/* 111 */
+	"sub8",		/* 111 */
 };
 
 static const char *arm_extend_rot_names[] = {
 	"",		/* 0b00, ROR #0 */
-	", ROR #8",	/* 0b01 */
-	", ROR #16",	/* 0b10 */
-	", ROR #24"	/* 0b11 */
+	", ror #8",	/* 0b01 */
+	", ror #16",	/* 0b10 */
+	", ror #24"	/* 0b11 */
 };
 
 /*
@@ -778,7 +778,7 @@ arm_dis_dpi(uint32_t in, arm_cond_code_t cond, char *buf, size_t buflen)
 		len = snprintf(buf, buflen, "%s%s%s %s",
 		    arm_dpi_opnames[dpi_inst.dpii_op],
 		    arm_cond_names[dpi_inst.dpii_cond],
-		    dpi_inst.dpii_sbit != 0 ? "S" : "",
+		    dpi_inst.dpii_sbit != 0 ? "s" : "",
 		    arm_reg_names[dpi_inst.dpii_rd]);
 		break;
 	case DPI_OP_CMP:
@@ -794,7 +794,7 @@ arm_dis_dpi(uint32_t in, arm_cond_code_t cond, char *buf, size_t buflen)
 		len = snprintf(buf, buflen,
 		    "%s%s%s %s, %s", arm_dpi_opnames[dpi_inst.dpii_op],
 		    arm_cond_names[dpi_inst.dpii_cond],
-		    dpi_inst.dpii_sbit != 0 ? "S" : "",
+		    dpi_inst.dpii_sbit != 0 ? "s" : "",
 		    arm_reg_names[dpi_inst.dpii_rd],
 		    arm_reg_names[dpi_inst.dpii_rn]);
 		break;
@@ -830,7 +830,7 @@ arm_dis_dpi(uint32_t in, arm_cond_code_t cond, char *buf, size_t buflen)
 			break;
 		}
 		if (dpi_inst.dpii_un.dpii_si.dpiss_code == DPI_S_RRX) {
-			len = snprintf(buf, buflen, ", %s RRX",
+			len = snprintf(buf, buflen, ", %s rrx",
 			    arm_reg_names[dpi_inst.dpii_un.dpii_si.dpiss_targ]);
 			break;
 		}
@@ -900,9 +900,9 @@ arm_dis_ldstr(uint32_t in, char *buf, size_t buflen)
 	rd = (in & ARM_LS_RD_MASK) >> ARM_LS_RD_SHIFT;
 	rn = (in & ARM_LS_RN_MASK) >> ARM_LS_RN_SHIFT;
 
-	len = snprintf(buf, buflen, "%s%s%s%s %s, ", lbit != 0 ? "LDR" : "STR",
-	    arm_cond_names[cc], bbit != 0 ? "B" : "",
-	    (pbit == 0 && wbit != 0) ? "T" : "",
+	len = snprintf(buf, buflen, "%s%s%s%s %s, ", lbit != 0 ? "ldr" : "str",
+	    arm_cond_names[cc], bbit != 0 ? "b" : "",
+	    (pbit == 0 && wbit != 0) ? "t" : "",
 	    arm_reg_names[rd]);
 	if (len >= buflen)
 		return (-1);
@@ -1052,7 +1052,7 @@ arm_dis_ldstr_multi(uint32_t in, char *buf, size_t buflen)
 	addr_mode = (in & ARM_LSM_ADDR_MASK) >> ARM_LSM_ADDR_SHIFT;
 
 	len = snprintf(buf, buflen, "%s%s%s %s%s, { ",
-	    lbit != 0 ? "LDM" : "STM",
+	    lbit != 0 ? "ldm" : "stm",
 	    arm_cond_names[cc],
 	    arm_lsm_mode_names[addr_mode],
 	    arm_reg_names[rn],
@@ -1075,7 +1075,7 @@ arm_dis_ldstr_multi(uint32_t in, char *buf, size_t buflen)
 }
 
 /*
- * Here we need to handle miscillaneous loads and stores. This is used to load
+ * Here we need to handle miscellaneous loads and stores. This is used to load
  * and store signed and unsigned half words. To load a signed byte. And to load
  * and store double words. There is no specific store routines for signed bytes
  * and halfwords as they are supposed to use the SRB and STRH. There are two
@@ -1128,18 +1128,18 @@ arm_dis_els(uint32_t in, char *buf, size_t buflen)
 	hbit = in & ARM_ELS_SBIT_MASK;
 
 	if (lbit || (sbit && hbit == 0))
-		iname = "LDR";
+		iname = "ldr";
 	else
-		iname = "STR";
+		iname = "str";
 
 	if (sbit == 0 && hbit)
-		suffix = "H";
+		suffix = "h";
 	else if (lbit == 0)
-		suffix = "D";
+		suffix = "d";
 	else if (sbit && hbit == 0)
-		suffix = "SB";
+		suffix = "sb";
 	else if (sbit && hbit)
-		suffix = "SH";
+		suffix = "sh";
 
 	cc = (in & ARM_CC_MASK) >> ARM_CC_SHIFT;
 	rn = (in & ARM_ELS_RN_MASK) >> ARM_ELS_RN_SHIFT;
@@ -1202,9 +1202,9 @@ arm_dis_swap(uint32_t in, char *buf, size_t buflen)
 	rd = (in & ARM_ELS_RD_MASK) >> ARM_ELS_RD_SHIFT;
 	rm = in & ARM_ELS_RN_MASK;
 
-	if (snprintf(buf, buflen, "SWP%s%s %s, %s, [%s]",
+	if (snprintf(buf, buflen, "swp%s%s %s, %s, [%s]",
 	    arm_cond_names[cc],
-	    (in & ARM_ELS_SWAP_BYTE_MASK) ? "B" : "",
+	    (in & ARM_ELS_SWAP_BYTE_MASK) ? "b" : "",
 	    arm_reg_names[rd], arm_reg_names[rm], arm_reg_names[rn]) >=
 	    buflen)
 		return (-1);
@@ -1229,8 +1229,8 @@ arm_dis_lsexcl(uint32_t in, char *buf, size_t buflen)
 	rm = in & ARM_ELS_RN_MASK;
 	lbit = in & ARM_ELS_LBIT_MASK;
 
-	len = snprintf(buf, buflen, "%s%sEX %s, ",
-	    lbit != 0 ? "LDR" : "STR",
+	len = snprintf(buf, buflen, "%s%sex %s, ",
+	    lbit != 0 ? "ldr" : "str",
 	    arm_cond_names[cc], arm_reg_names[rd]);
 	if (len >= buflen)
 		return (-1);
@@ -1292,29 +1292,29 @@ arm_dis_extmul(uint32_t in, char *buf, size_t buflen)
 
 	if ((in & ARM_EMULT_MA_MASK) == 0) {
 		if (in & ARM_EMULT_ABIT_MASK) {
-			len = snprintf(buf, buflen, "MLA%s%s %s, %s, %s, %s",
+			len = snprintf(buf, buflen, "mla%s%s %s, %s, %s, %s",
 			    arm_cond_names[cc],
-			    (in & ARM_EMULT_SBIT_MASK) ? "S" : "",
+			    (in & ARM_EMULT_SBIT_MASK) ? "s" : "",
 			    arm_reg_names[rd], arm_reg_names[rm],
 			    arm_reg_names[rs], arm_reg_names[rs]);
 		} else {
-			len = snprintf(buf, buflen, "MUL%s%s %s, %s, %s",
+			len = snprintf(buf, buflen, "mul%s%s %s, %s, %s",
 			    arm_cond_names[cc],
-			    (in & ARM_EMULT_SBIT_MASK) ? "S" : "",
+			    (in & ARM_EMULT_SBIT_MASK) ? "s" : "",
 			    arm_reg_names[rd], arm_reg_names[rm],
 			    arm_reg_names[rs]);
 
 		}
 	} else if ((in & ARM_EMULT_UMA_MASK) == ARM_EMULT_UMA_TARG) {
-		len = snprintf(buf, buflen, "UMAAL%s %s, %s, %s, %s",
+		len = snprintf(buf, buflen, "umaal%s %s, %s, %s, %s",
 		    arm_cond_names[cc], arm_reg_names[rn], arm_reg_names[rd],
 		    arm_reg_names[rm], arm_reg_names[rs]);
 	} else if ((in & ARM_EMULT_MAL_MASK) == ARM_EMULT_MAL_TARG) {
 		len = snprintf(buf, buflen, "%s%s%s%s %s, %s, %s, %s",
-		    (in & ARM_EMULT_UNBIT_MASK) ? "S" : "U",
-		    (in & ARM_EMULT_ABIT_MASK) ? "MLAL" : "MULL",
+		    (in & ARM_EMULT_UNBIT_MASK) ? "s" : "u",
+		    (in & ARM_EMULT_ABIT_MASK) ? "mlal" : "mull",
 		    arm_cond_names[cc],
-		    (in & ARM_EMULT_SBIT_MASK) ? "S" : "",
+		    (in & ARM_EMULT_SBIT_MASK) ? "s" : "",
 		    arm_reg_names[rn], arm_reg_names[rd], arm_reg_names[rm],
 		    arm_reg_names[rs]);
 	} else {
@@ -1341,17 +1341,17 @@ arm_dis_status_regs(uint32_t in, char *buf, size_t buflen)
 
 	if ((in & ARM_CDSP_MRS_MASK) == ARM_CDSP_MRS_TARG) {
 		rd = (in & ARM_CDSP_RD_MASK) >> ARM_CDSP_RD_SHIFT;
-		if (snprintf(buf, buflen, "MRS%s %s, %s", arm_cond_names[cc],
+		if (snprintf(buf, buflen, "mrs%s %s, %s", arm_cond_names[cc],
 		    arm_reg_names[rd],
-		    (in & ARM_CDSP_STATUS_RBIT) != 0 ? "SPSR" : "CPSR") >=
+		    (in & ARM_CDSP_STATUS_RBIT) != 0 ? "spsr" : "cpsr") >=
 		    buflen)
 			return (-1);
 		return (0);
 	}
 
 	field = (in & ARM_CDSP_MSR_F_MASK) >> ARM_CDSP_MSR_F_SHIFT;
-	len = snprintf(buf, buflen, "MSR%s %s_%s, ", arm_cond_names[cc],
-	    (in & ARM_CDSP_STATUS_RBIT) != 0 ? "SPSR" : "CPSR",
+	len = snprintf(buf, buflen, "msr%s %s_%s, ", arm_cond_names[cc],
+	    (in & ARM_CDSP_STATUS_RBIT) != 0 ? "spsr" : "cpsr",
 	    arm_cdsp_msr_field_names[field]);
 	if (len >= buflen)
 		return (-1);
@@ -1402,9 +1402,9 @@ arm_dis_cdsp_ext(uint32_t in, char *buf, size_t buflen)
 	    (in & ARM_CDSP_BEX_LOW_MASK) != ARM_CDSP_BEX_NLOW_TARG) {
 		rm = in & ARM_CDSP_RM_MASK;
 		imm = (in & ARM_CDSP_BEX_TYPE_MASK) >> ARM_CDSP_BEX_TYPE_SHIFT;
-		if (snprintf(buf, buflen, "B%s%s %s",
-		    imm == ARM_CDSP_BEX_TYPE_X ? "X" :
-		    imm == ARM_CDSP_BEX_TYPE_J ? "XJ" : "LX",
+		if (snprintf(buf, buflen, "b%s%s %s",
+		    imm == ARM_CDSP_BEX_TYPE_X ? "x" :
+		    imm == ARM_CDSP_BEX_TYPE_J ? "xj" : "lx",
 		    arm_cond_names[cc], arm_reg_names[rm]) >= buflen)
 			return (-1);
 		return (0);
@@ -1414,7 +1414,7 @@ arm_dis_cdsp_ext(uint32_t in, char *buf, size_t buflen)
 	if ((in & ARM_CDSP_CLZ_MASK) == ARM_CDSP_CLZ_TARG) {
 		rd = (in & ARM_CDSP_RD_MASK) >> ARM_CDSP_RD_SHIFT;
 		rm = in & ARM_CDSP_RM_MASK;
-		if (snprintf(buf, buflen, "CLZ%s %s, %s", arm_cond_names[cc],
+		if (snprintf(buf, buflen, "clz%s %s, %s", arm_cond_names[cc],
 		    arm_reg_names[rd], arm_reg_names[rm]) >= buflen)
 			return (-1);
 		return (0);
@@ -1425,7 +1425,7 @@ arm_dis_cdsp_ext(uint32_t in, char *buf, size_t buflen)
 		rn = (in & ARM_CDSP_RN_MASK) >> ARM_CDSP_RN_SHIFT;
 		rm = in & ARM_CDSP_RM_MASK;
 		imm = (in & ARM_CDSP_SAT_OP_MASK) >> ARM_CDSP_SAT_OP_SHIFT;
-		if (snprintf(buf, buflen, "Q%s%s %s, %s, %s",
+		if (snprintf(buf, buflen, "q%s%s %s, %s, %s",
 		    arm_cdsp_sat_opnames[imm], arm_cond_names[cc],
 		    arm_reg_names[rd], arm_reg_names[rm],
 		    arm_reg_names[rn]) >= buflen)
@@ -1447,7 +1447,7 @@ arm_dis_cdsp_ext(uint32_t in, char *buf, size_t buflen)
 		    ARM_CDSP_BKPT_UIMM_SHIFT;
 		imm <<= 4;
 		imm |= (in & ARM_CDSP_BKPT_LIMM_MASK);
-		if (snprintf(buf, buflen, "BKPT %d", imm) >= buflen)
+		if (snprintf(buf, buflen, "bkpt %d", imm) >= buflen)
 			return (1);
 		return (0);
 	}
@@ -1479,9 +1479,9 @@ arm_dis_cdsp_ext(uint32_t in, char *buf, size_t buflen)
 
 		switch (op) {
 		case 0:
-			len = snprintf(buf, buflen, "SMLA%s%s%s %s, %s, %s, %s",
-			    (in & ARM_CDSP_SMUL_X_MASK) != 0 ? "T" : "B",
-			    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "T" : "B",
+			len = snprintf(buf, buflen, "smla%s%s%s %s, %s, %s, %s",
+			    (in & ARM_CDSP_SMUL_X_MASK) != 0 ? "t" : "b",
+			    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "t" : "b",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rm], arm_reg_names[rs],
 			    arm_reg_names[rn]);
@@ -1489,32 +1489,32 @@ arm_dis_cdsp_ext(uint32_t in, char *buf, size_t buflen)
 		case 1:
 			if (in & ARM_CDSP_SMUL_X_MASK) {
 				len = snprintf(buf, buflen,
-				    "SMULW%s%s %s, %s, %s",
-				    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "T" :
-				    "B", arm_cond_names[cc], arm_reg_names[rd],
+				    "smulw%s%s %s, %s, %s",
+				    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "t" :
+				    "b", arm_cond_names[cc], arm_reg_names[rd],
 				    arm_reg_names[rm], arm_reg_names[rs]);
 			} else {
 				len = snprintf(buf, buflen,
-				    "SMLAW%s%s %s, %s, %s %s",
-				    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "T" :
-				    "B", arm_cond_names[cc], arm_reg_names[rd],
+				    "smlaw%s%s %s, %s, %s %s",
+				    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "t" :
+				    "b", arm_cond_names[cc], arm_reg_names[rd],
 				    arm_reg_names[rm], arm_reg_names[rs],
 				    arm_reg_names[rn]);
 			}
 			break;
 		case 2:
 			len = snprintf(buf, buflen,
-			    "SMLAL%s%s%s %s, %s, %s, %s",
-			    (in & ARM_CDSP_SMUL_X_MASK) != 0 ? "T" : "B",
-			    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "T" : "B",
+			    "smlal%s%s%s %s, %s, %s, %s",
+			    (in & ARM_CDSP_SMUL_X_MASK) != 0 ? "t" : "b",
+			    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "t" : "b",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rn], arm_reg_names[rm],
 			    arm_reg_names[rs]);
 			break;
 		case 3:
-			len = snprintf(buf, buflen, "SMUL%s%s%s %s, %s, %s",
-			    (in & ARM_CDSP_SMUL_X_MASK) != 0 ? "T" : "B",
-			    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "T" : "B",
+			len = snprintf(buf, buflen, "smul%s%s%s %s, %s, %s",
+			    (in & ARM_CDSP_SMUL_X_MASK) != 0 ? "t" : "b",
+			    (in & ARM_CDSP_SMUL_Y_MASK) != 0 ? "t" : "b",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rm], arm_reg_names[rs]);
 			break;
@@ -1564,8 +1564,8 @@ arm_dis_coproc_drt(uint32_t in, char *buf, size_t buflen)
 	else
 		ccn = arm_cond_names[cc];
 
-	len = snprintf(buf, buflen, "%s%s %s, #%d, %s, %s, C%s",
-	    (in & ARM_COPROC_DRT_DIR_MASK) != 0 ? "MRRC" : "MCRR",
+	len = snprintf(buf, buflen, "%s%s %s, #%d, %s, %s, c%s",
+	    (in & ARM_COPROC_DRT_DIR_MASK) != 0 ? "mrrc" : "mcrr",
 	    ccn, arm_coproc_names[coproc], op, arm_reg_names[rd],
 	    arm_reg_names[rn], arm_reg_names[rm]);
 	return (len >= buflen ? -1 : 0);
@@ -1630,8 +1630,8 @@ arm_dis_coproc_lsdrt(uint32_t in, char *buf, size_t buflen)
 	else
 		ccn = arm_cond_names[cc];
 
-	len = snprintf(buf, buflen, "%s%s%s %s, C%s, ",
-	    lbit != 0 ? "LDC" : "STC", ccn, nbit != 0 ? "L" : "",
+	len = snprintf(buf, buflen, "%s%s%s %s, c%s, ",
+	    lbit != 0 ? "ldc" : "stc", ccn, nbit != 0 ? "l" : "",
 	    arm_coproc_names[coproc], arm_reg_names[rd]);
 	if (len >= buflen)
 		return (-1);
@@ -1685,7 +1685,7 @@ arm_dis_coproc_dp(uint32_t in, char *buf, size_t buflen)
 	else
 		ccn = arm_cond_names[cc];
 
-	if (snprintf(buf, buflen, "CDP%s %s, #%d, C%s, C%s, C%s, #%d", ccn,
+	if (snprintf(buf, buflen, "cdp%s %s, #%d, c%s, c%s, c%s, #%d", ccn,
 	    arm_coproc_names[coproc], op1, arm_reg_names[rd],
 	    arm_reg_names[rn], arm_reg_names[rm], op2) >= buflen)
 		return (-1);
@@ -1726,8 +1726,8 @@ arm_dis_coproc_rt(uint32_t in, char *buf, size_t buflen)
 	else
 		ccn = arm_cond_names[cc];
 
-	len = snprintf(buf, buflen, "%s%s %s, #%d, %s, C%s, C%s",
-	    (in & ARM_COPROC_CRT_DIR_MASK) != 0 ? "MRC" : "MCR", ccn,
+	len = snprintf(buf, buflen, "%s%s %s, #%d, %s, c%s, c%s",
+	    (in & ARM_COPROC_CRT_DIR_MASK) != 0 ? "mrc" : "mcr", ccn,
 	    arm_coproc_names[coproc], op1, arm_reg_names[rd],
 	    arm_reg_names[rn], arm_reg_names[rm]);
 	if (len >= buflen)
@@ -1781,14 +1781,14 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
 			return (-1);
 
 		if (imm != 0)
-			len = snprintf(buf, buflen, "CPS%s %s%s%s%s",
-			    imm == 2 ? "IE" : "ID",
+			len = snprintf(buf, buflen, "cps%s %s%s%s%s",
+			    imm == 2 ? "ie" : "id",
 			    (in & ARM_UNI_CPS_A_MASK) ? "a" : "",
 			    (in & ARM_UNI_CPS_I_MASK) ? "i" : "",
 			    (in & ARM_UNI_CPS_F_MASK) ? "f" : "",
 			    (in & ARM_UNI_CPS_MMOD_MASK) ? " ," : "");
 		else
-			len = snprintf(buf, buflen, "CPS ");
+			len = snprintf(buf, buflen, "cps ");
 		if (len >= buflen)
 			return (-1);
 
@@ -1801,7 +1801,7 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
 
 	if ((in & ARM_UNI_SE_MASK) == ARM_UNI_SE_TARG) {
 		if (snprintf(buf, buflen, "SETEND %s",
-		    (in & ARM_UNI_SE_BE_MASK) ? "BE" : "LE") >= buflen)
+		    (in & ARM_UNI_SE_BE_MASK) ? "be" : "le") >= buflen)
 			return (-1);
 		return (0);
 	}
@@ -1816,7 +1816,7 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
 	if ((in & ARM_UNI_PLD_MASK) == ARM_UNI_PLD_TARG) {
 		rn = (in & ARM_LS_RN_MASK) >> ARM_LS_RN_SHIFT;
 		if ((in & ARM_LS_IBIT_MASK) == 0) {
-			if (snprintf(buf, buflen, "PLD [%s, #%s%d",
+			if (snprintf(buf, buflen, "pld [%s, #%s%d",
 			    arm_reg_names[rn],
 			    (in & ARM_LS_UBIT_MASK) != 0 ? "" : "-",
 			    in & ARM_LS_IMM_MASK) >= buflen)
@@ -1825,7 +1825,7 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
 		}
 
 		rm = in & ARM_LS_REG_RM_MASK;
-		len = snprintf(buf, buflen, "PLD [%s, %s%s", arm_reg_names[rn],
+		len = snprintf(buf, buflen, "pld [%s, %s%s", arm_reg_names[rn],
 		    (in & ARM_LS_UBIT_MASK) != 0 ? "" : "-",
 		    arm_reg_names[rm]);
 		if (len >= buflen)
@@ -1861,7 +1861,7 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
 	 */
 	if ((in & ARM_UNI_SRS_MASK) == ARM_UNI_SRS_TARG) {
 		imm = (in & ARM_LSM_ADDR_MASK) >> ARM_LSM_ADDR_SHIFT;
-		if (snprintf(buf, buflen, "SRS%s #%d%s",
+		if (snprintf(buf, buflen, "srs%s #%d%s",
 		    arm_lsm_mode_names[imm],
 		    in & ARM_UNI_SRS_MODE_MASK,
 		    (in & ARM_UNI_SRS_WBIT_MASK) != 0 ? "!" : "") >= buflen)
@@ -1876,7 +1876,7 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
 	if ((in & ARM_UNI_RFE_MASK) == ARM_UNI_RFE_TARG) {
 		imm = (in & ARM_LSM_ADDR_MASK) >> ARM_LSM_ADDR_SHIFT;
 		rn = (in & ARM_LS_RN_MASK) >> ARM_LS_RN_SHIFT;
-		if (snprintf(buf, buflen, "RFE%s %s%s", arm_lsm_mode_names[imm],
+		if (snprintf(buf, buflen, "rfe%s %s%s", arm_lsm_mode_names[imm],
 		    arm_reg_names[rn],
 		    (in & ARM_UNI_RFE_WBIT_MASK) != 0 ? "!" : "") >= buflen)
 			return (-1);
@@ -1884,7 +1884,7 @@ arm_dis_uncond_insn(uint32_t in, char *buf, size_t buflen)
 	}
 
 	if ((in & ARM_UNI_BLX_MASK) == ARM_UNI_BLX_TARG) {
-		if (snprintf(buf, buflen, "BLX %d",
+		if (snprintf(buf, buflen, "blx %d",
 		    in & ARM_UNI_BLX_IMM_MASK) >= buflen)
 			return (-1);
 		return (0);
@@ -1929,8 +1929,8 @@ arm_dis_branch(dis_handle_t *dhp, uint32_t in, char *buf, size_t buflen)
 	else
 		addr &= ARM_BRANCH_POS_SIGN;
 	addr <<= 2;
-	if ((len = snprintf(buf, buflen, "B%s%s %d",
-	    (in & ARM_BRANCH_LBIT_MASK) != 0 ? "L" : "",
+	if ((len = snprintf(buf, buflen, "b%s%s %d",
+	    (in & ARM_BRANCH_LBIT_MASK) != 0 ? "l" : "",
 	    arm_cond_names[cc], (int)addr)) >= buflen)
 		return (-1);
 
@@ -2031,13 +2031,13 @@ arm_dis_extend(uint32_t in, char *buf, size_t buflen)
 
 	switch (op) {
 	case 0x0:
-		opn = rn == ARM_REG_R15 ? "XTAB16" : "XTB16";
+		opn = rn == ARM_REG_R15 ? "xtab16" : "xtb16";
 		break;
 	case 0x2:
-		opn = rn == ARM_REG_R15 ? "XTAB" : "XTB";
+		opn = rn == ARM_REG_R15 ? "xtab" : "xtb";
 		break;
 	case 0x3:
-		opn = rn == ARM_REG_R15 ? "XTAH" : "XTH";
+		opn = rn == ARM_REG_R15 ? "xtah" : "xth";
 		break;
 	default:
 		return (-1);
@@ -2046,12 +2046,12 @@ arm_dis_extend(uint32_t in, char *buf, size_t buflen)
 
 	if (rn == ARM_REG_R15) {
 		len = snprintf(buf, buflen, "%s%s%s %s, %s",
-		    sbit != 0 ? "U" : "S",
+		    sbit != 0 ? "u" : "s",
 		    opn, arm_cond_names[cc], arm_reg_names[rd],
 		    arm_reg_names[rn]);
 	} else {
 		len = snprintf(buf, buflen, "%s%s%s %s, %s, %s",
-		    sbit != 0 ? "U" : "S",
+		    sbit != 0 ? "u" : "s",
 		    opn, arm_cond_names[cc], arm_reg_names[rd],
 		    arm_reg_names[rn], arm_reg_names[rm]);
 	}
@@ -2094,7 +2094,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 			    ARM_MEDIA_HPACK_SHIFT_IMM;
 			len = snprintf(buf, buflen, "%s%s %s, %s, %s",
 			    (in & ARM_MEDIA_HPACK_OP_MASK) != 0 ?
-			    "PKHTB" : "PKHBT", arm_cond_names[cc],
+			    "pkhtb" : "pkhbt", arm_cond_names[cc],
 			    arm_reg_names[rd], arm_reg_names[rn],
 			    arm_reg_names[rd]);
 			if (len >= buflen)
@@ -2103,10 +2103,10 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 			if (op1 != 0) {
 				if (in & ARM_MEDIA_HPACK_OP_MASK)
 					len += snprintf(buf + len, buflen - len,
-					    ", ASR %d", op1);
+					    ", asr %d", op1);
 				else
 					len += snprintf(buf + len, buflen - len,
-					    ", LSL %d", op1);
+					    ", lsl %d", op1);
 			}
 			return (len >= buflen ? -1 : 0);
 		}
@@ -2119,7 +2119,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 			op2 = (in & ARM_MEDIA_SAT_SHI_MASK) >>
 			    ARM_MEDIA_SAT_SHI_SHIFT;
 			len = snprintf(buf, buflen, "%s%s %s, #%d, %s",
-			    (in & ARM_MEDIA_SAT_U_MASK) != 0 ? "USAT" : "SSAT",
+			    (in & ARM_MEDIA_SAT_U_MASK) != 0 ? "usat" : "ssat",
 			    arm_cond_names[cc], arm_reg_names[rd], op1,
 			    arm_reg_names[rm]);
 
@@ -2137,7 +2137,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 				if (snprintf(buf + len, buflen - len,
 				    ", %s #%d",
 				    (in & ARM_MEDIA_SAT_STYPE_MASK) != 0 ?
-				    "ASR" : "LSL", op2) >= buflen - len)
+				    "asr" : "lsl", op2) >= buflen - len)
 					return (-1);
 			}
 			return (0);
@@ -2149,7 +2149,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 			op1 = (in & ARM_MEDIA_RN_MASK) >> ARM_MEDIA_RN_SHIFT;
 			if (snprintf(buf, buflen, "%s%s %s, #%d, %s",
 			    (in & ARM_MEDIA_SAT_U_MASK) != 0 ?
-			    "USAT16" : "SSAT16",
+			    "usat16" : "ssat16",
 			    arm_cond_names[cc], arm_reg_names[rd], op1,
 			    arm_reg_names[rm]) >= buflen)
 				return (-1);
@@ -2159,7 +2159,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 		if ((in & ARM_MEDIA_REV_MASK) == ARM_MEDIA_REV_TARG) {
 			rd = (in & ARM_MEDIA_RD_MASK) >> ARM_MEDIA_RD_SHIFT;
 			rm = in & ARM_MEDIA_RM_MASK;
-			if (snprintf(buf, buflen, "REV%s %s, %s",
+			if (snprintf(buf, buflen, "rev%s %s, %s",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rd]) >= buflen)
 				return (-1);
@@ -2169,7 +2169,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 		if ((in & ARM_MEDIA_BRPH_MASK) == ARM_MEDIA_BRPH_TARG) {
 			rd = (in & ARM_MEDIA_RD_MASK) >> ARM_MEDIA_RD_SHIFT;
 			rm = in & ARM_MEDIA_RM_MASK;
-			if (snprintf(buf, buflen, "REV16%s %s, %s",
+			if (snprintf(buf, buflen, "rev16%s %s, %s",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rd]) >= buflen)
 				return (-1);
@@ -2179,7 +2179,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 		if ((in & ARM_MEDIA_BRSH_MASK) == ARM_MEDIA_BRSH_TARG) {
 			rd = (in & ARM_MEDIA_RD_MASK) >> ARM_MEDIA_RD_SHIFT;
 			rm = in & ARM_MEDIA_RM_MASK;
-			if (snprintf(buf, buflen, "REVSH%s %s, %s",
+			if (snprintf(buf, buflen, "revsh%s %s, %s",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rd]) >= buflen)
 				return (-1);
@@ -2190,7 +2190,7 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 			rn = (in & ARM_MEDIA_RN_MASK) >> ARM_MEDIA_RN_SHIFT;
 			rd = (in & ARM_MEDIA_RD_MASK) >> ARM_MEDIA_RD_SHIFT;
 			rm = in & ARM_MEDIA_RM_MASK;
-			if (snprintf(buf, buflen, "SEL%s %s, %s, %s",
+			if (snprintf(buf, buflen, "sel%s %s, %s, %s",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rn], arm_reg_names[rm]) >= buflen)
 				return (-1);
@@ -2226,15 +2226,15 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 				return (-1);
 			if (rn == ARM_REG_R15) {
 				len = snprintf(buf, buflen, "%s%s%s %s, %s, %s",
-				    op2 != 0 ? "SMUSD" : "SMUAD",
-				    xbit != 0 ? "X" : "X",
+				    op2 != 0 ? "smusd" : "smuad",
+				    xbit != 0 ? "x" : "x",
 				    arm_cond_names[cc], arm_reg_names[rd],
 				    arm_reg_names[rm], arm_reg_names[rs]);
 			} else {
 				len = snprintf(buf, buflen,
 				    "%s%s%s %s, %s, %s, %s",
-				    op2 != 0 ? "SMLSD" : "SMLAD",
-				    xbit != 0 ? "X" : "",
+				    op2 != 0 ? "smlsd" : "smlad",
+				    xbit != 0 ? "x" : "",
 				    arm_cond_names[cc], arm_reg_names[rd],
 				    arm_reg_names[rm], arm_reg_names[rs],
 				    arm_reg_names[rn]);
@@ -2243,8 +2243,8 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 		} else if (op1 == 0x8) {
 			if (op2 != 0x0)
 				return (-1);
-			len = snprintf(buf, buflen, "SMLALD%s%s %s, %s, %s, %s",
-			    xbit != 0 ? "X" : "",
+			len = snprintf(buf, buflen, "smlald%s%s %s, %s, %s, %s",
+			    xbit != 0 ? "x" : "",
 			    arm_cond_names[cc], arm_reg_names[rn],
 			    arm_reg_names[rd], arm_reg_names[rm],
 			    arm_reg_names[rs]);
@@ -2271,12 +2271,12 @@ arm_dis_media(uint32_t in, char *buf, size_t buflen)
 		rm = in & ARM_MEDIA_RM_MASK;
 
 		if (rn != ARM_REG_R15)
-			len = snprintf(buf, buflen, "USADA8%s %s, %s, %s, %s",
+			len = snprintf(buf, buflen, "usada8%s %s, %s, %s, %s",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rm], arm_reg_names[rs],
 			    arm_reg_names[rn]);
 		else
-			len = snprintf(buf, buflen, "USAD8%s %s, %s, %s",
+			len = snprintf(buf, buflen, "usad8%s %s, %s, %s",
 			    arm_cond_names[cc], arm_reg_names[rd],
 			    arm_reg_names[rm], arm_reg_names[rs]);
 		return (len >= buflen ? -1 : 0);
@@ -2449,7 +2449,7 @@ arm_dis(dis_handle_t *dhp, uint32_t in, char *buf, size_t buflen)
 			 * lower 24 bits are the interrupt number. It's also
 			 * valid for it to run with a condition code.
 			 */
-			if (snprintf(buf, buflen, "SWI%s %d",
+			if (snprintf(buf, buflen, "swi%s %d",
 			    arm_cond_names[cc],
 			    in & ARM_SWI_IMM_MASK) >= buflen)
 				return (-1);
