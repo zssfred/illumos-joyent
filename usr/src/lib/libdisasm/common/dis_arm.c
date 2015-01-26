@@ -25,6 +25,7 @@
 
 #include "libdisasm_impl.h"
 
+extern size_t strlen(const char *);
 extern size_t strlcat(char *, const char *, size_t);
 
 /*
@@ -988,6 +989,66 @@ arm_dis_ldstr(uint32_t in, char *buf, size_t buflen)
 	return (len < buflen ? 0 : -1);
 }
 
+static void
+print_range(char **bufp, size_t *buflenp, uint16_t regs, uint16_t precede)
+{
+	char *buf = *bufp;
+	size_t buflen = *buflenp;
+	boolean_t cont = B_FALSE;
+	int minreg = -1;
+	int i;
+
+	*buf = '\0';
+
+	if (precede && regs)
+		strlcat(buf, ", ", buflen);
+
+	for (i = 0; i < 16; i++) {
+		boolean_t present = (regs & (1 << i)) != 0;
+		boolean_t lastreg = (regs & (2 << i)) == 0;
+
+		if (!present)
+			continue;
+
+		if (minreg == -1) {
+			if (cont)
+				strlcat(buf, ", ", buflen);
+
+			strlcat(buf, arm_reg_names[i], buflen);
+
+			if (!lastreg)
+				minreg = i;
+		} else {
+			if (lastreg) {
+				strlcat(buf, "-", buflen);
+				strlcat(buf, arm_reg_names[i], buflen);
+				minreg = -1;
+			}
+		}
+
+		cont = B_TRUE;
+	}
+
+	*bufp += strlen(buf);
+	*buflenp -= strlen(buf);
+}
+
+static size_t
+print_reg_list(char *buf, size_t buflen, uint16_t regs)
+{
+	char *save = buf;
+
+	print_range(&buf, &buflen, regs & 0x01ff, 0);
+	print_range(&buf, &buflen, regs & 0x0200, regs & 0x01ff); /* fp */
+	print_range(&buf, &buflen, regs & 0x0c00, regs & 0x03ff);
+	print_range(&buf, &buflen, regs & 0x1000, regs & 0x0fff); /* ip */
+	print_range(&buf, &buflen, regs & 0x2000, regs & 0x1fff); /* sp */
+	print_range(&buf, &buflen, regs & 0x4000, regs & 0x3fff); /* lr */
+	print_range(&buf, &buflen, regs & 0x8000, regs & 0x7fff); /* pc */
+
+	return (strlen(save));
+}
+
 /*
  * This handles load and store multiple instructions. The general format is as
  * follows:
@@ -1037,7 +1098,7 @@ arm_dis_ldstr(uint32_t in, char *buf, size_t buflen)
 static int
 arm_dis_ldstr_multi(uint32_t in, char *buf, size_t buflen)
 {
-	int sbit, wbit, lbit, ii, cont;
+	int sbit, wbit, lbit;
 	uint16_t regs, addr_mode;
 	arm_reg_t rn;
 	arm_cond_code_t cc;
@@ -1064,17 +1125,7 @@ arm_dis_ldstr_multi(uint32_t in, char *buf, size_t buflen)
 		    arm_reg_names[rn],
 		    wbit != 0 ? "!" : "");
 
-	cont = 0;
-	for (ii = 0; ii < 16; ii++) {
-		if (!(regs & (1 << ii)))
-			continue;
-
-		len += snprintf(buf + len, buflen - len, "%s%s",
-		    cont > 0 ? ", " : "", arm_reg_names[ii]);
-		if (len >= buflen)
-			return (-1);
-		cont++;
-	}
+	len += print_reg_list(buf + len, buflen - len, regs);
 
 	len += snprintf(buf + len, buflen - len, " }%s", sbit != 0 ? "^" : "");
 	return (len >= buflen ? -1 : 0);
