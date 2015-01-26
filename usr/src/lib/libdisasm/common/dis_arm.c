@@ -1051,12 +1051,18 @@ arm_dis_ldstr_multi(uint32_t in, char *buf, size_t buflen)
 	regs = in & ARM_LSM_RLIST_MASK;
 	addr_mode = (in & ARM_LSM_ADDR_MASK) >> ARM_LSM_ADDR_SHIFT;
 
-	len = snprintf(buf, buflen, "%s%s%s %s%s, { ",
-	    lbit != 0 ? "ldm" : "stm",
-	    arm_cond_names[cc],
-	    arm_lsm_mode_names[addr_mode],
-	    arm_reg_names[rn],
-	    wbit != 0 ? "!" : "");
+	if ((lbit == 0 && addr_mode == 2 && rn == ARM_REG_R13 && wbit != 0) ||
+	    (lbit != 0 && addr_mode == 1 && rn == ARM_REG_R13 && wbit != 0))
+		len = snprintf(buf, buflen, "%s%s { ",
+		    lbit != 0 ? "pop" : "push",
+		    arm_cond_names[cc]);
+	else
+		len = snprintf(buf, buflen, "%s%s%s %s%s, { ",
+		    lbit != 0 ? "ldm" : "stm",
+		    arm_cond_names[cc],
+		    arm_lsm_mode_names[addr_mode],
+		    arm_reg_names[rn],
+		    wbit != 0 ? "!" : "");
 
 	cont = 0;
 	for (ii = 0; ii < 16; ii++) {
