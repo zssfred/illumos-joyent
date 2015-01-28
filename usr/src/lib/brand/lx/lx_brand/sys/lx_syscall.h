@@ -25,7 +25,7 @@
  */
 
 /*
- * Copyright 2014 Joyent, Inc. All rights reserved.
+ * Copyright 2015 Joyent, Inc. All rights reserved.
  */
 
 #ifndef _SYS_LX_SYSCALL_H
@@ -87,6 +87,8 @@ extern long lx_readv(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_writev(uintptr_t, uintptr_t, uintptr_t);
 extern long lx_pread(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_pwrite(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+extern long lx_preadv(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+extern long lx_pwritev(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 extern long lx_pread64(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
     uintptr_t);
 extern long lx_pwrite64(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
@@ -310,6 +312,7 @@ extern long lx_shmat(int, void *, int);
 extern long lx_shmctl(int, int, void *);
 
 extern long lx_prctl(int, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+extern long lx_arch_prctl(int, uintptr_t);
 
 extern long lx_alarm(unsigned int);
 extern long lx_close(int);
@@ -390,6 +393,14 @@ extern long lx_yield(void);
 #define	LX_EMUL_ioctl			LX_N_IKE_FUNCS
 
 /* Note: adjust LX_N_IKE_FUNCS when adding new in-kernel functions */
+
+/* Linux vsyscall addresses */
+
+#if defined(_LP64)
+#define	LX_VSYS_gettimeofday	(uintptr_t)0xffffffffff600000
+#define	LX_VSYS_time		(uintptr_t)0xffffffffff600400
+#define	LX_VSYS_getcpu		(uintptr_t)0xffffffffff600800
+#endif
 
 #ifdef	__cplusplus
 }

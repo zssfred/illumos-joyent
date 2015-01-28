@@ -25,7 +25,7 @@
  */
 
 /*
- * Copyright 2014 Joyent, Inc. All rights reserved.
+ * Copyright 2015 Joyent, Inc. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -73,6 +73,7 @@
 #include <sys/lx_syscall.h>
 #include <sys/lx_thread.h>
 #include <sys/lx_thunk_server.h>
+#include <sys/lx_aio.h>
 
 /*
  * General emulation guidelines.
@@ -871,17 +872,6 @@ lx_init(int argc, char *argv[], char *envp[])
 		    strerror(err));
 
 	/*
-	 * Ubuntu init will fail if its TERM environment variable is not set
-	 * so if we are running init, and TERM is not set, we set term and
-	 * reexec so that the new environment variable is propagated to the
-	 * linux application stack.
-	 */
-	if ((getpid() == zoneinit_pid) && (getenv("TERM") == NULL)) {
-		if (setenv("TERM", "vt100", 1) < 0 || execv(argv[0], argv) < 0)
-			lx_err_fatal("failed to set TERM");
-	}
-
-	/*
 	 * Upload data about the lx executable from the kernel.
 	 */
 	if (syscall(SYS_brand, B_ELFDATA, (void *)&edp))
@@ -1251,7 +1241,7 @@ static struct lx_sysent sysents[] = {
 	{"pivot_root",	NULL,			NOSYS_KERNEL,	0}, /* 155 */
 	{"sysctl",	lx_sysctl,		0,		1}, /* 156 */
 	{"prctl",	lx_prctl,		0,		5}, /* 157 */
-	{"arch_prctl",	LX_IKE(arch_prctl),	LX_SYS_IKE,	2}, /* 158 */
+	{"arch_prctl",	lx_arch_prctl,		0,		2}, /* 158 */
 	{"adjtimex",	lx_adjtimex,		0,		1}, /* 159 */
 	{"setrlimit",	lx_setrlimit,		0,		2}, /* 160 */
 	{"chroot",	lx_chroot,		0,		1}, /* 161 */
@@ -1299,11 +1289,11 @@ static struct lx_sysent sysents[] = {
 	{"sched_setaffinity", lx_sched_setaffinity, 0,		3}, /* 203 */
 	{"sched_getaffinity", lx_sched_getaffinity, 0,		3}, /* 204 */
 	{"set_thread_area", LX_IKE(set_thread_area), LX_SYS_IKE, 1}, /* 205 */
-	{"io_setup",	NULL,			NOSYS_NO_EQUIV,	0}, /* 206 */
-	{"io_destroy",	NULL,			NOSYS_NO_EQUIV,	0}, /* 207 */
-	{"io_getevents", NULL,			NOSYS_NO_EQUIV,	0}, /* 208 */
-	{"io_submit",	NULL,			NOSYS_NO_EQUIV,	0}, /* 209 */
-	{"io_cancel",	NULL,			NOSYS_NO_EQUIV,	0}, /* 210 */
+	{"io_setup",	lx_io_setup,		0,		2}, /* 206 */
+	{"io_destroy",	lx_io_destroy,		0,		1}, /* 207 */
+	{"io_getevents", lx_io_getevents,	0,		5}, /* 208 */
+	{"io_submit",	lx_io_submit,		0,		3}, /* 209 */
+	{"io_cancel",	lx_io_cancel,		0,		3}, /* 210 */
 	{"get_thread_area", LX_IKE(get_thread_area), LX_SYS_IKE, 1}, /* 211 */
 	{"lookup_dcookie", NULL,		NOSYS_NO_EQUIV,	0}, /* 212 */
 	{"epoll_create", lx_epoll_create,	0,		1}, /* 213 */
@@ -1388,8 +1378,8 @@ static struct lx_sysent sysents[] = {
 	{"dup3",	lx_dup3,		0,		3}, /* 292 */
 	{"pipe2",	lx_pipe2,		0,		2}, /* 293 */
 	{"inotify_init1", lx_inotify_init1,	0,		1}, /* 294 */
-	{"preadv",	NULL,			NOSYS_NULL,	0}, /* 295 */
-	{"pwritev",	NULL,			NOSYS_NULL,	0}, /* 296 */
+	{"preadv",	lx_preadv,		0,		4}, /* 295 */
+	{"pwritev",	lx_pwritev,		0,		4}, /* 296 */
 	{"rt_tgsigqueueinfo", lx_rt_tgsigqueueinfo, 0,		4}, /* 297 */
 	{"perf_event_open", NULL,		NOSYS_NULL,	0}, /* 298 */
 	{"recvmmsg",	NULL,			NOSYS_NULL,	0}, /* 299 */
@@ -1663,11 +1653,11 @@ static struct lx_sysent sysents[] = {
 	{"sched_getaffinity", lx_sched_getaffinity, 0,	3},	/* 242 */
 	{"set_thread_area", LX_IKE(set_thread_area), LX_SYS_IKE, 1}, /* 243 */
 	{"get_thread_area", LX_IKE(get_thread_area), LX_SYS_IKE, 1}, /* 244 */
-	{"io_setup",	NULL,		NOSYS_NO_EQUIV,	0},	/* 245 */
-	{"io_destroy",	NULL,		NOSYS_NO_EQUIV,	0},	/* 246 */
-	{"io_getevents", NULL,		NOSYS_NO_EQUIV,	0},	/* 247 */
-	{"io_submit",	NULL,		NOSYS_NO_EQUIV,	0},	/* 248 */
-	{"io_cancel",	NULL,		NOSYS_NO_EQUIV,	0},	/* 249 */
+	{"io_setup",	lx_io_setup,	0,		2},	/* 245 */
+	{"io_destroy",	lx_io_destroy,	0,		1},	/* 246 */
+	{"io_getevents", lx_io_getevents, 0,		5},	/* 247 */
+	{"io_submit",	lx_io_submit,	0,		3},	/* 248 */
+	{"io_cancel",	lx_io_cancel,	0,		3},	/* 249 */
 	{"fadvise64",	lx_fadvise64,	0,		4},	/* 250 */
 	{"nosys",	NULL,		0,		0},	/* 251 */
 	{"group_exit",	lx_group_exit,	0,		1},	/* 252 */
@@ -1753,8 +1743,8 @@ static struct lx_sysent sysents[] = {
 	{"dup3",	lx_dup3,	0,		3},	/* 330 */
 	{"pipe2",	lx_pipe2,	0,		2},	/* 331 */
 	{"inotify_init1", lx_inotify_init1, 0,		1},	/* 332 */
-	{"preadv",	NULL,		NOSYS_NULL,	0},	/* 333 */
-	{"pwritev",	NULL,		NOSYS_NULL,	0},	/* 334 */
+	{"preadv",	lx_preadv,	0,		4},	/* 333 */
+	{"pwritev",	lx_pwritev,	0,		4},	/* 334 */
 	{"rt_tgsigqueueinfo", lx_rt_tgsigqueueinfo, 0,	4},	/* 335 */
 	{"perf_event_open", NULL,	NOSYS_NULL,	0},	/* 336 */
 	{"recvmmsg",	NULL,		NOSYS_NULL,	0},	/* 337 */
