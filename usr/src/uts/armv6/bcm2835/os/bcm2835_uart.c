@@ -10,12 +10,19 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
- * Copyright (c) 2015 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
+ * Copyright 2013 (c) Joyent, Inc.  All rights reserved.
+ * Copyright 2015 (c) Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
-#include <sys/elf.h>
-#include <sys/atag.h>
+/*
+ * A simple uart driver for the RPi.
+ */
+#include <sys/types.h>
+
+#include "bcm2835_uart.h"
+
+extern uint32_t arm_reg_read(uint32_t);
+extern void arm_reg_write(uint32_t, uint32_t);
 
 /*
  * The primary serial console that we end up using is the normal UART, not
@@ -60,42 +67,17 @@
 #define	GPIO_PUD_DISABLE	0x0
 #define	GPIO_PUDCLK_UART	0x0000c000
 
-static __GNU_INLINE uint32_t arm_reg_read(uint32_t reg)
-{
-	volatile uint32_t *ptr = (volatile uint32_t *)reg;
-
-	return *ptr;
-}
-
-static __GNU_INLINE void arm_reg_write(uint32_t reg, uint32_t val)
-{
-	volatile uint32_t *ptr = (volatile uint32_t *)reg;
-
-	*ptr = val;
-}
-
 /*
  * A simple nop
  */
 static void
-uart_nop(void)
+bcm2835_uart_nop(void)
 {
 	__asm__ volatile("mov r0, r0\n" : : :);
 }
 
-void fakeload_backend_putc(int);
-
-static void
-fakeload_puts(const char *str)
-{
-	while (*str != '\0') {
-		fakeload_backend_putc(*str);
-		str++;
-	}
-}
-
 void
-fakeload_backend_init(void)
+bcm2835_uart_init(void)
 {
 	uint32_t v;
 	int i;
@@ -112,10 +94,10 @@ fakeload_backend_init(void)
 
 	arm_reg_write(GPIO_BASE + GPIO_PUD, GPIO_PUD_DISABLE);
 	for (i = 0; i < 150; i++)
-		uart_nop();
+		bcm2835_uart_nop();
 	arm_reg_write(GPIO_BASE + GPIO_PUDCLK0, GPIO_PUDCLK_UART);
 	for (i = 0; i < 150; i++)
-		uart_nop();
+		bcm2835_uart_nop();
 	arm_reg_write(GPIO_BASE + GPIO_PUDCLK0, 0);
 
 	/* clear all interrupts */
@@ -134,41 +116,25 @@ fakeload_backend_init(void)
 }
 
 void
-fakeload_backend_putc(int c)
+bcm2835_uart_putc(uint8_t c)
 {
-	if (c == '\n')
-		fakeload_backend_putc('\r');
-
 	while (arm_reg_read(UART_BASE + UART_FR) & UART_FR_TXFF)
 		;
 	arm_reg_write(UART_BASE + UART_DR, c & 0x7f);
 	if (c == '\n')
-		fakeload_backend_putc('\r');
+		bcm2835_uart_putc('\r');
 }
 
-/*
- * Add a map for the uart.
- */
-void
-fakeload_backend_addmaps(atag_header_t *chain)
+uint8_t
+bcm2835_uart_getc(void)
 {
-	atag_illumos_mapping_t aim;
+	while (arm_reg_read(UART_BASE + UART_FR) & UART_FR_RXFE)
+		;
+	return (arm_reg_read(UART_BASE + UART_DR) & 0x7f);
+}
 
-	aim.aim_header.ah_size = ATAG_ILLUMOS_MAPPING_SIZE;
-	aim.aim_header.ah_tag = ATAG_ILLUMOS_MAPPING;
-	aim.aim_paddr = GPIO_BASE;
-	aim.aim_vaddr = GPIO_BASE;
-	aim.aim_vlen = 0x1000;
-	aim.aim_plen = 0x1000;
-	aim.aim_mapflags = PF_R | PF_W | PF_NORELOC | PF_DEVICE;
-	atag_append(chain, &aim.aim_header);
-
-	aim.aim_header.ah_size = ATAG_ILLUMOS_MAPPING_SIZE;
-	aim.aim_header.ah_tag = ATAG_ILLUMOS_MAPPING;
-	aim.aim_paddr = UART_BASE;
-	aim.aim_vaddr = UART_BASE;
-	aim.aim_vlen = 0x1000;
-	aim.aim_plen = 0x1000;
-	aim.aim_mapflags = PF_R | PF_W | PF_NORELOC | PF_DEVICE;
-	atag_append(chain, &aim.aim_header);
+int
+bcm2835_uart_isc(void)
+{
+	return ((arm_reg_read(UART_BASE + UART_FR) & UART_FR_RXFE) == 0);
 }

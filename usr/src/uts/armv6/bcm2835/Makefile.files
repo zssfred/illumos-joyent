@@ -16,9 +16,9 @@
 
 BCM2835_OBJS =			\
 	bcm2835_bsmdep.o	\
+	bcm2835_uart.o		\
 	boot_console.o		\
-	locore.o		\
-	miniuart.o
+	locore.o
 
 BCM2835_LOADER_OBJS = \
 	bcm2835_ldep.o	

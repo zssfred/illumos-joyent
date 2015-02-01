@@ -17,12 +17,12 @@
  * bcm2835 boot console implementation
  */
 
-#include "miniuart.h"
+#include "bcm2835_uart.h"
 
 /*
  * There are a few different potential boot consoles that we could have on the
  * bcm2835. There is both a mini uart and a full functioning uart. Generally,
- * people will use the mini uart, but we want to support both. As such we have a
+ * people will use one of them, but we want to support both. As such we have a
  * single global ops vector that we set once during bcons_init and never again.
  */
 #define	BMC2835_CONSNAME_MAX	24
@@ -36,15 +36,15 @@ typedef struct bcm2835_consops {
 static bcm2835_consops_t consops;
 
 /*
- * For now, we only support the mini uart.
+ * For now, we only support the real uart.
  */
 void
 bcons_init(char *bstr)
 {
-	bcm2835_miniuart_init();
-	consops.bco_putc = bcm2835_miniuart_putc;
-	consops.bco_getc = bcm2835_miniuart_getc;
-	consops.bco_isc = bcm2835_miniuart_isc;
+	bcm2835_uart_init();
+	consops.bco_putc = bcm2835_uart_putc;
+	consops.bco_getc = bcm2835_uart_getc;
+	consops.bco_isc = bcm2835_uart_isc;
 }
 
 void

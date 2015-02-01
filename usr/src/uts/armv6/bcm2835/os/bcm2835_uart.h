@@ -11,13 +11,14 @@
 
 /*
  * Copyright 2013 (c) Joyent, Inc.  All rights reserved.
+ * Copyright 2015 (c) Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
  */
 
-#ifndef _BCM2835_MINIUART_H
-#define	_BCM2835_MINIUART_H
+#ifndef _BCM2835_UART_H
+#define	_BCM2835_UART_H
 
 /*
- * Interface to the BCM2835's miniuart.
+ * Interface to the BCM2835's uart.
  */
 
 #ifdef __cplusplus
@@ -26,13 +27,13 @@ extern "C" {
 
 #include <sys/types.h>
 
-void bcm2835_miniuart_init(void);
-void bcm2835_miniuart_putc(uint8_t);
-uint8_t bcm2835_miniuart_getc(void);
-int bcm2835_miniuart_isc(void);
+void bcm2835_uart_init(void);
+void bcm2835_uart_putc(uint8_t);
+uint8_t bcm2835_uart_getc(void);
+int bcm2835_uart_isc(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _BCM2835_MINIUART_H */
+#endif /* _BCM2835_UART_H */
