@@ -86,9 +86,7 @@
 
 	/* Enable highvecs (moves the base of the exception vector) */
 	mrc	p15, 0, r3, c1, c0, 0
-	mov	r4, #1
-	lsl	r4, r4, #13
-	orr	r3, r3, r4
+	orr	r3, r3, #(1 << 13)
 	mcr	p15, 0, r3, c1, c0, 0
 
 	/* invoke machine specific setup */
