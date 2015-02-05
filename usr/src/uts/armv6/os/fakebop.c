@@ -34,6 +34,7 @@
 #include <sys/cpu_asm.h>
 #include <sys/boot_mmu.h>
 #include <sys/elf.h>
+#include <sys/archsystm.h>
 
 static bootops_t bootop;
 
@@ -113,10 +114,41 @@ typedef struct bootprop {
 
 static bootprop_t *bprops = NULL;
 
+static void
+hexdump_stack()
+{
+	extern char t0stack[];
+
+	uint8_t *start = (uint8_t *)t0stack;
+	uint8_t *end = start + DEFAULTSTKSZ;
+	uint8_t *ptr;
+	int i;
+
+	bop_printf(NULL, "stack (fp = %x):\n", getfp());
+
+	ptr = (uint8_t *)(getfp() & ~0xf);
+	if (ptr <= start || ptr >= end)
+		ptr = start;
+
+	while (ptr < end) {
+		uint32_t *tmp = (uint32_t *)ptr;
+
+		bop_printf(NULL, "%p: %08x %08x %08x %08x\n", ptr,
+		    tmp[0], tmp[1], tmp[2], tmp[3]);
+
+		ptr += 16;
+	}
+
+}
+
 void
 bop_panic(const char *msg)
 {
-	bop_printf(NULL, "ARM bop_panic:\n%s\nSpinning Forever...", msg);
+	bop_printf(NULL, "ARM bop_panic:\n%s\n", msg);
+
+	hexdump_stack();
+
+	bop_printf(NULL, "Spinning Forever...", msg);
 	for (;;)
 		;
 }
