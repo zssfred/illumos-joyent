@@ -18,99 +18,11 @@
 #include <sys/machparam.h>
 #include <sys/cpu_asm.h>
 
-/*
- * Every story needs a beginning. This is ours.
- */
-
-/*
- * We are in a primordial world here. The BMC2835 is going to come along and
- * boot us at _start. Normally we would go ahead and use a main() function, but
- * for now, we'll do that ourselves. As we've started the world, we also need to
- * set up a few things about us, for example our stack pointer. To help us out,
- * it's useful to remember the rough memory map. Remember, this is for physcial
- * addresses. There is no virtual memory here. These sizes are often manipulated
- * by the 'configuration' in the bootloader.
- *
- * +----------------+ <---- Max physical memory
- * |                |
- * |                |
- * |                |
- * +----------------+
- * |                |
- * |      I/O       |
- * |  Peripherals   |
- * |                |
- * +----------------+ <---- I/O base 0x20000000 (corresponds to 0x7E000000)
- * |                |
- * |     Main       |
- * |    Memory      |
- * |                |
- * +----------------+ <---- Top of SDRAM
- * |                |
- * |       VC       |
- * |     SDRAM      |
- * |                |
- * +----------------+ <---- Split determined by bootloader config
- * |                |
- * |      ARM       |
- * |     SDRAM      |
- * |                |
- * +----------------+ <---- Bottom of physical memory 0x00000000
- *
- * With the Raspberry Pi Model B, we have 512 MB of SDRAM. That means we have a
- * range of addresses from [0, 0x20000000). If we assume that the minimum amount
- * of DRAM is given to the GPU - 32 MB, that means we really have the following
- * range: [0, 0x1e000000).
- *
- * By default, this binary will be loaded into 0x8000. For now, that means we
- * will set our initial stack to 0x10000000.
- */
-
-/*
- * Recall that _start is the traditional entry point for an ELF binary.
- */
-	ENTRY(_start)
-	ldr sp, =t0stack
-	ldr r4, =DEFAULTSTKSZ
-	add sp, r4
-	bic sp, sp, #0xff
-
-	/*
-	 * establish bogus stacks for exceptional CPU states, our exception
-	 * code should never make use of these, and we want loud and violent
-	 * failure should we accidentally try.
-	 */
-	cps #(CPU_MODE_UND)
-	mov sp, #-1
-	cps #(CPU_MODE_ABT)
-	mov sp, #-1
-	cps #(CPU_MODE_FIQ)
-	mov sp, #-1
-	cps #(CPU_MODE_IRQ)
-	mov sp, #-1
-	cps #(CPU_MODE_SVC)
-
-	/* Enable highvecs (moves the base of the exception vector) */
-	mrc	p15, 0, r3, c1, c0, 0
-	mov	r4, #1
-	lsl	r4, r4, #13
-	orr	r3, r3, r4
-	mcr	p15, 0, r3, c1, c0, 0
-
+	ENTRY(_mach_start)
 	/* Enable access to p10 and p11 (privileged mode only) */
 	mrc	p15, 0, r0, c1, c0, 2
 	orr	r0, #0x00500000
 	mcr	p15, 0, r0, c1, c0, 2
 
-	bl _fakebop_start
-	SET_SIZE(_start)
-
-	ENTRY(arm_reg_read)
-	ldr r0, [r0]
-	bx lr
-	SET_SIZE(arm_reg_read)
-
-	ENTRY(arm_reg_write)
-	str r1, [r0]
-	bx lr
-	SET_SIZE(arm_reg_write)
+	bx	r14
+	SET_SIZE(_mach_start)

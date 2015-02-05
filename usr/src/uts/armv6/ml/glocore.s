@@ -20,14 +20,29 @@
 
 #include "assym.h"
 
-#if defined(__lint)
-
-#endif
+/*
+ * Every story needs a beginning. This is ours.
+ */
 
 /*
  * Each of the different machines has its own locore.s to take care of getting
- * us into fakebop for the first time. After that, they all return here to a
- * generic locore to take us into mlsetup and then to main forever more.
+ * the machine specific setup done.  Just before jumping into fakebop the
+ * first time, we call this machine specific code.
+ */
+
+/*
+ * We are in a primordial world here. The loader is going to come along and
+ * boot us at _start. As we've started the world, we also need to set up a
+ * few things about us, for example our stack pointer. To help us out, it's
+ * useful to remember what the loader set up for us:
+ *
+ * - unaligned access are allowed (A = 0, U = 1)
+ * - virtual memory is enabled
+ *   - we (unix) are mapped right were we want to be
+ *   - a UART has been enabled & any memory mapped registers have been 1:1
+ *     mapped
+ *   - ATAGs have been updated to tell us what the mappings are
+ * - I/D L1 caches have been enabled
  */
 
 	/*
@@ -43,6 +58,45 @@
 	.data
 	.comm	t0stack, DEFAULTSTKSZ, 32
 	.comm	t0, 4094, 32
+
+
+/*
+ * Recall that _start is the traditional entry point for an ELF binary.
+ */
+	ENTRY(_start)
+	ldr	sp, =t0stack
+	ldr	r4, =DEFAULTSTKSZ
+	add	sp, r4
+	bic	sp, sp, #0xff
+
+	/*
+	 * establish bogus stacks for exceptional CPU states, our exception
+	 * code should never make use of these, and we want loud and violent
+	 * failure should we accidentally try.
+	 */
+	cps	#(CPU_MODE_UND)
+	mov	sp, #-1
+	cps	#(CPU_MODE_ABT)
+	mov	sp, #-1
+	cps	#(CPU_MODE_FIQ)
+	mov	sp, #-1
+	cps	#(CPU_MODE_IRQ)
+	mov	sp, #-1
+	cps	#(CPU_MODE_SVC)
+
+	/* Enable highvecs (moves the base of the exception vector) */
+	mrc	p15, 0, r3, c1, c0, 0
+	mov	r4, #1
+	lsl	r4, r4, #13
+	orr	r3, r3, r4
+	mcr	p15, 0, r3, c1, c0, 0
+
+	/* invoke machine specific setup */
+	bl	_mach_start
+
+	bl	_fakebop_start
+	SET_SIZE(_start)
+
 
 #if defined(__lint)
 
@@ -142,3 +196,13 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 __return_from_main:
 	.string "main() returned"
 #endif	/* __lint */
+
+	ENTRY(arm_reg_read)
+	ldr r0, [r0]
+	bx lr
+	SET_SIZE(arm_reg_read)
+
+	ENTRY(arm_reg_write)
+	str r1, [r0]
+	bx lr
+	SET_SIZE(arm_reg_write)
