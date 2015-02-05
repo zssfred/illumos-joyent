@@ -1276,28 +1276,52 @@ static int
 arm_dis_lsexcl(uint32_t in, char *buf, size_t buflen)
 {
 	arm_cond_code_t cc;
-	arm_reg_t rn, rd, rm;
+	arm_reg_t rx, ry, rz;
 	int lbit;
 	size_t len;
 
+	/*
+	 * To make things confusing enough, the names of bitfields between
+	 * ldrex and strex are not totally consistent.  Specifically,
+	 *    STREX rd, rt, [rn]
+	 *       rn = 19:16
+	 *       rd = 15:12
+	 *       rt = 3:0
+	 *
+	 *    LDREX rt, [rn]
+	 *       rn = 19:16
+	 *       rt = 15:12
+	 *
+	 * To avoid having to do too many mental gymnastics, let's just
+	 * think of the bitfields as:
+	 *
+	 *       rx = 19:16
+	 *       ry = 15:12
+	 *       rz = 3:0
+	 *
+	 * And so we print the instructions as:
+	 *    STREX ry, rz, [rx]
+	 *    LDREX ry, [rx]
+	 */
+
 	cc = (in & ARM_CC_MASK) >> ARM_CC_SHIFT;
-	rn = (in & ARM_ELS_RN_MASK) >> ARM_ELS_RN_SHIFT;
-	rd = (in & ARM_ELS_RD_MASK) >> ARM_ELS_RD_SHIFT;
-	rm = in & ARM_ELS_RN_MASK;
+	rx = (in & ARM_ELS_RN_MASK) >> ARM_ELS_RN_SHIFT;
+	ry = (in & ARM_ELS_RD_MASK) >> ARM_ELS_RD_SHIFT;
+	rz = (in & ARM_ELS_LOW_AM_MASK);
 	lbit = in & ARM_ELS_LBIT_MASK;
 
 	len = snprintf(buf, buflen, "%s%sex %s, ",
 	    lbit != 0 ? "ldr" : "str",
-	    arm_cond_names[cc], arm_reg_names[rd]);
+	    arm_cond_names[cc], arm_reg_names[ry]);
 	if (len >= buflen)
 		return (-1);
 
 	if (lbit)
 		len += snprintf(buf + len, buflen - len, "[%s]",
-		    arm_reg_names[rn]);
+		    arm_reg_names[rx]);
 	else
 		len += snprintf(buf + len, buflen - len, "%s, [%s]",
-		    arm_reg_names[rm], arm_reg_names[rn]);
+		    arm_reg_names[rz], arm_reg_names[rx]);
 	return (len >= buflen ? -1 : 0);
 }
 
