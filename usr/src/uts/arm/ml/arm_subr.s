@@ -61,3 +61,8 @@ arm_smt_pause(void)
 	SET_SIZE(arm_smt_pause)
 
 #endif	/* __lint */
+
+	ENTRY(getfp)
+	mov	r0, r9
+	bx	lr
+	SET_SIZE(getfp)
