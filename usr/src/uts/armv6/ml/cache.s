@@ -172,7 +172,7 @@ armv6_text_flush(void)
 
 	ENTRY(armv6_dcache_enable)
 	mrc	p15, 0, r0, c1, c0, 0
-	orr	r0, #0x2
+	orr	r0, #0x4
 	mcr	p15, 0, r0, c1, c0, 0
 	SET_SIZE(armv6_dcache_enable)
 
@@ -184,7 +184,7 @@ armv6_text_flush(void)
 
 	ENTRY(armv6_dcache_disable)
 	mrc	p15, 0, r0, c1, c0, 0
-	bic	r0, #0x2
+	bic	r0, #0x4
 	mcr	p15, 0, r0, c1, c0, 0
 	SET_SIZE(armv6_dcache_disable)
 

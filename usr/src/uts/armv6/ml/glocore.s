@@ -59,7 +59,6 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	 * then main. We're never going back so we shouldn't feel compelled to
 	 * preserve any registers.
 	 *
-	 *  o Enable unaligned access
 	 *  o Enable our I/D-caches
 	 *  o Save the boot syscalls and bootops for later
 	 *  o Set up our stack to be the real stack of t0stack.
@@ -111,16 +110,11 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	mcr	p15, 0, r0, c13, c0, 4
 
 	/*
-	 * Go ahead now and enable unaligned access, the L1 I/D caches.
-	 *
-	 * Bit 2 is for the D cache
-	 * Bit 12 is for the I cache
-	 * Bit 22 is for unaligned access
+	 * Go ahead now and enable the L1 I/D caches.  
 	 */
 	mrc	p15, 0, r0, c1, c0, 0
-	orr	r0, #0x02
-	orr	r0, #0x1000
-	orr	r0, #0x400000
+	orr	r0, #0x04	/* D-cache */
+	orr	r0, #0x1000	/* I-cache */
 	mcr	p15, 0, r0, c1, c0, 0
 
 	/*
