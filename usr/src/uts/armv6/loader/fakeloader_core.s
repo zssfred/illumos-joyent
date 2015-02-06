@@ -101,10 +101,8 @@ fakeload_mmu_enable(void)
 	 */
 	ENTRY(fakeload_mmu_enable)
 	mrc	p15, 0, r0, c1, c0, 0
-	orr	r0, #0x800000
-	mcr	p15, 0, r0, c1, c0, 0
-	mrc	p15, 0, r0, c1, c0, 0
-	orr	r0, #0x1
+	orr	r0, #0x800000		/* enable ARMv6 pages */
+	orr	r0, #0x1		/* enable MMU */
 	mcr	p15, 0, r0, c1, c0, 0
 	bx	lr
 	SET_SIZE(fakeload_mmu_enable)
