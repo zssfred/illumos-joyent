@@ -75,11 +75,18 @@ fakeload_pt_setup(uintptr_t ptroot)
 	 * o Program the Page table root
 	 */
 	ENTRY(fakeload_pt_setup)
+	/* use TTBR0 only (should already be true) */
 	mov	r1, #0
 	mcr	p15, 0, r1, c2, c0, 2
+
+	/* set domain 0 to manager mode */
 	mov	r1, #3
 	mcr	p15, 0, r1, c3, c0, 0
-	orr	r0, r0, #0x1b
+
+	/* set TTBR0 to page table root */
+	orr	r0, r0, #0x18		/* Outer WB, no WA Cachable */
+	orr	r0, r0, #0x2		/* Sharable */
+	orr	r0, r0, #0x1		/* Inner Cachable */
 	mcr	p15, 0, r0, c2, c0, 0
 	bx	lr
 	SET_SIZE(fakeload_pt_setup)
