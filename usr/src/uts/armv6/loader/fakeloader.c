@@ -163,11 +163,18 @@ fakeload_map_1mb(uintptr_t pa, uintptr_t va, int prot)
 	l1e = (arm_l1s_t *)pte;
 	*pte = 0;
 	l1e->al_type = ARMPT_L1_TYPE_SECT;
-	/* Assume it's not device memory */
-	l1e->al_bbit = 1;
-	l1e->al_cbit = 1;
-	l1e->al_tex = 1;
-	l1e->al_sbit = 1;
+
+	if (prot & PF_DEVICE) {
+		l1e->al_bbit = 1;
+		l1e->al_cbit = 0;
+		l1e->al_tex = 0;
+		l1e->al_sbit = 1;
+	} else {
+		l1e->al_bbit = 1;
+		l1e->al_cbit = 1;
+		l1e->al_tex = 1;
+		l1e->al_sbit = 1;
+	}
 
 	if (!(prot & PF_X))
 		l1e->al_xn = 1;
