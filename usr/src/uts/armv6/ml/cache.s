@@ -189,17 +189,20 @@ armv6_text_flush(void)
 	SET_SIZE(armv6_dcache_disable)
 
 	ENTRY(armv6_icache_inval)
+	mov	r0, #0
 	mcr	p15, 0, r0, c7, c5, 0		@ Invalidate i-cache
 	bx	lr
 	SET_SIZE(armv6_icache_inval)
 
 	ENTRY(armv6_dcache_inval)
+	mov	r0, #0
 	mcr	p15, 0, r0, c7, c6, 0		@ Invalidate d-cache
 	ARM_DSB_INSTR(r2)
 	bx	lr
 	SET_SIZE(armv6_dcache_inval)
 
 	ENTRY(armv6_dcache_flush)
+	mov	r0, #0
 	mcr	p15, 0, r0, c7, c10, 4		@ Flush d-cache
 	ARM_DSB_INSTR(r2)
 	bx	lr
@@ -216,6 +219,7 @@ armv6_text_flush(void)
 	SET_SIZE(armv6_text_flush_range)
 
 	ENTRY(armv6_text_flush)
+	mov	r0, #0
 	mcr	p15, 0, r0, c7, c5, 0		@ Invalidate i-cache
 	mcr	p15, 0, r0, c7, c10, 4		@ Flush d-cache
 	ARM_DSB_INSTR(r2)
