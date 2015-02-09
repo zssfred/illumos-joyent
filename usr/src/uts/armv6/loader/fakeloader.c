@@ -446,7 +446,7 @@ fakeload_map(armpte_t *pt, uintptr_t pstart, uintptr_t vstart, size_t len,
 
 			if (!(vstart & MMU_PAGEOFFSET1M) &&
 			    !(pstart & MMU_PAGEOFFSET1M) &&
-			    len == MMU_PAGESIZE1M) {
+			    len >= MMU_PAGESIZE1M) {
 				fakeload_map_1mb(pstart, vstart, prot);
 				vstart += MMU_PAGESIZE1M;
 				pstart += MMU_PAGESIZE1M;
