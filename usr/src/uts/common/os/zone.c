@@ -2624,6 +2624,7 @@ zone_init(void)
 	zone0.zone_ntasks = 1;
 	mutex_exit(&p0.p_lock);
 	zone0.zone_restart_init = B_TRUE;
+	zone0.zone_reboot_on_init_exit = B_FALSE;
 	zone0.zone_init_status = -1;
 	zone0.zone_brand = &native_brand;
 	rctl_prealloc_destroy(gp);
@@ -4669,8 +4670,9 @@ parse_rctls(caddr_t ubuf, size_t buflen, nvlist_t **nvlp)
 
 		error = EINVAL;
 		name = nvpair_name(nvp);
-		if (strncmp(nvpair_name(nvp), "zone.", sizeof ("zone.") - 1)
-		    != 0 || nvpair_type(nvp) != DATA_TYPE_NVLIST_ARRAY) {
+		if ((strncmp(name, "zone.", sizeof ("zone.") - 1) != 0 &&
+		    strncmp(name, "project.", sizeof ("project.") - 1) != 0) ||
+		    nvpair_type(nvp) != DATA_TYPE_NVLIST_ARRAY) {
 			goto out;
 		}
 		if ((hndl = rctl_hndl_lookup(name)) == -1) {
@@ -4819,6 +4821,7 @@ zone_create(const char *zone_name, const char *zone_root,
 	zone->zone_ncpus = 0;
 	zone->zone_ncpus_online = 0;
 	zone->zone_restart_init = B_TRUE;
+	zone->zone_reboot_on_init_exit = B_FALSE;
 	zone->zone_init_status = -1;
 	zone->zone_brand = &native_brand;
 	zone->zone_initname = NULL;
@@ -5045,8 +5048,8 @@ zone_create(const char *zone_name, const char *zone_root,
 	/*
 	 * The process, task, and project rctls are probably wrong;
 	 * we need an interface to get the default values of all rctls,
-	 * and initialize zsched appropriately.  I'm not sure that that
-	 * makes much of a difference, though.
+	 * and initialize zsched appropriately. However, we allow zoneadmd
+	 * to pass down both zone and project rctls for the zone's init.
 	 */
 	error = newproc(zsched, (void *)&zarg, syscid, minclsyspri, NULL, 0);
 	if (error != 0) {
