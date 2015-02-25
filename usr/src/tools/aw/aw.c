@@ -760,8 +760,8 @@ main(int argc, char *argv[])
 	if (as64) {
 		return (error("no 64-bit aw target for arm"));
 	} else {
-		newae(as, "-march=armv6k");
-		newae(as, "-mfpu=vfpv2");
+		newae(as, "-march=armv7-a");
+		newae(as, "-mfpu=vfpv3-d16");
 		newae(as, "-mfloat-abi=hard");
 	}
 #endif
