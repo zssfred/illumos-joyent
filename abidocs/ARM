@@ -31,6 +31,8 @@ inspired and based on it as well.
 +---------+-------------+------------------+
 | 0.0.1   | 24 Aug 2013 | First Pass       |
 +---------+-------------+------------------+
+| 0.0.2   | 15 Feb 2015 | Deprecate ARMv6  |
++---------+-------------+------------------+
 
 ## Comments ##
 
@@ -43,8 +45,8 @@ Mustacchi <rm@fingolfin.org>.
 This document applies to all 32-bit (AARCH32) compatible ARM environments.
 Compatible ARM chips will have the following features at a minimum:
 
-  o ARMv6 architecture support
-  o VFP v2 co-processor
+  o ARMv7 architecture support
+  o VFPv3 co-processor with 16 64-bit registers
   o Support for unaligned memory access
   o Support for Thread and Context ID registers in CP15
 
