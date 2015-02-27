@@ -28,20 +28,6 @@
  * point.
  */
 
-#if defined(_KERNEL)
-	/*
-	 * Legacy kernel interfaces; they will go away (eventually).
-	 */
-	ANSI_PRAGMA_WEAK2(cas8,atomic_cas_8,function)
-	ANSI_PRAGMA_WEAK2(cas32,atomic_cas_32,function)
-	ANSI_PRAGMA_WEAK2(cas64,atomic_cas_64,function)
-	ANSI_PRAGMA_WEAK2(caslong,atomic_cas_ulong,function)
-	ANSI_PRAGMA_WEAK2(casptr,atomic_cas_ptr,function)
-	ANSI_PRAGMA_WEAK2(atomic_and_long,atomic_and_ulong,function)
-	ANSI_PRAGMA_WEAK2(atomic_or_long,atomic_or_ulong,function)
-	ANSI_PRAGMA_WEAK2(swapl,atomic_swap_32,function)
-#endif
-
 	/*
 	 * NOTE: If atomic_inc_8 and atomic_inc_8_nv are ever
 	 * separated, you need to also edit the libc arm platform
