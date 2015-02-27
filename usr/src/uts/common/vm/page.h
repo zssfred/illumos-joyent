@@ -95,8 +95,8 @@ typedef int	selock_t;
 #define	VM_STAT_ADD(stat)			(stat)++
 #define	VM_STAT_COND_ADD(cond, stat)		((void) (!(cond) || (stat)++))
 #else
-#define	VM_STAT_ADD(stat)
-#define	VM_STAT_COND_ADD(cond, stat)
+#define	VM_STAT_ADD(stat)			do { } while (0)
+#define	VM_STAT_COND_ADD(cond, stat)		do { } while (0)
 #endif	/* VM_STATS */
 
 #ifdef _KERNEL
