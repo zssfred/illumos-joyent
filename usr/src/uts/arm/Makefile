@@ -64,7 +64,7 @@ $(PRIVS_C): $(PRIVS_AWK) $(PRIVS_DEF)
 # Prerequisites
 #
 # The uts/Makefile defines build parallelism for arm platforms such that
-# armv6, and arm are all built in parallel. This requires building certain
+# armv7, and arm are all built in parallel. This requires building certain
 # parts before the parallel build can start. The uts/Makefile appends the
 # '.prereq' string to the original target and executes this Makefile to build
 # any prerequisites needed before the full parallel build can start. After
@@ -82,7 +82,7 @@ $(PRIVS_C): $(PRIVS_AWK) $(PRIVS_DEF)
 #   prerequisites.
 #
 all.prereq install.prereq def.prereq: genunix FRC
-	@cd ../armv6/genassym; pwd; $(MAKE) $(@:%.prereq=%)
+	@cd ../armv7/genassym; pwd; $(MAKE) $(@:%.prereq=%)
 
 #
 # Nothing to do for any other prerequisite targets.

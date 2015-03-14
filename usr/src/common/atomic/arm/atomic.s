@@ -21,7 +21,6 @@
  */
 
 #include <sys/asm_linkage.h>
-#include <sys/atomic_impl.h>
 
 /*
  * XXX We probably want some kind of backoff built in to these routines at some
@@ -649,22 +648,22 @@
 	 * address for them, allowing more accurate tracing.
 	 */
 	ENTRY(membar_enter)
-	ARM_DMB_INSTR(r0)
+	dmb
 	bx lr
 	SET_SIZE(membar_enter)
 
 	ENTRY(membar_exit)
-	ARM_DMB_INSTR(r0)
+	dmb
 	bx lr
 	SET_SIZE(membar_exit)
 
 	ENTRY(membar_producer)
-	ARM_DMB_INSTR(r0)
+	dmb
 	bx lr
 	SET_SIZE(membar_producer)
 
 	ENTRY(membar_consumer)
-	ARM_DMB_INSTR(r0)
+	dmb
 	bx lr
 	SET_SIZE(membar_consumer)
 

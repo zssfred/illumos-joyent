@@ -83,7 +83,7 @@ CPPFLAGS	+= -I$(SRC)/common
 CPPFLAGS	+= -I$(SRC)/uts/common/fs/zfs
 
 #XXX: If this is necessary, something is wrong surely?
-CPPFLAGS	+= -I$(UTSBASE)/armv6
+CPPFLAGS	+= -I$(UTSBASE)/armv7
 
 CERRWARN	+= -_gcc=-Wno-unused-label
 CERRWARN	+= -_gcc=-Wno-unused-variable
@@ -105,7 +105,7 @@ CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 # Ensure that lint sees 'struct cpu' containing a fully declared
 # embedded 'struct machcpu'
 #
-LINTFLAGS	+= -D_MACHDEP -I../../armv6
+LINTFLAGS	+= -D_MACHDEP -I../../armv7
 
 #
 #	Default build targets.

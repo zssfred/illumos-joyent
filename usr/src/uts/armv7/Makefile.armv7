@@ -14,31 +14,48 @@
 # Copyright (c) 2015, Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
 #
 
+#
+# armv7 common Makefile
+#
+
 UTSTREE=$(UTSBASE)
 
 #
 #	Machine type (implementation architecture):
 #
-PLATFORM	= armv7
+PLATFORM	 = armv7
 
-
-#	Everybody needs to know how to build modstubs.o and to locate unix.o.
-#	Note that unix.o must currently be selected from among the possible
-#	"implementation architectures". Note further, that unix.o is only
-#	used as an optional error check for undefines so (theoretically)
-#	any "implementation architectures" could be used. We choose bcm2835
-#	because it is the reference port. XXX: are these used?
 #
+#	uname -m value
+#
+UNAME_M		= $(PLATFORM)
 
-UNIX_DIR	 = $(UTSBASE)/armv6/bcm2836/unix # XXX: non-existent
-GENLIB_DIR	 = $(UTSBASE)/arm/genunix
-IPDRV_DIR	 = $(UTSBASE)/arm/ip
-MODSTUBS_DIR	 = $(UNIX_DIR)
-DSF_DIR		 = $(UTSBASE)/$(PLATFORM)/genassym
+#
+# Definitions for the platform-specific /platform directories.
+#
+#	We have on IMPLEMENTATION per board that we support. Currently we only
+#	support one real board and the qemu virtualized version of another
+#	board. The requirements for IMPLEMENTATOINS will most likely
+#	change over time.
+#
+IMPLEMENTATIONS = \
+	bcm2836 \
+	qve
 
-UNIX_O		 = $(UNIX_DIR)/$(OBJS_DIR)/unix.o
-GENLIB		 = $(GENLIB_DIR)/$(OBJS_DIR)/libgenunix.so
-MODSTUBS_O	 = $(MODSTUBS_DIR)/$(OBJS_DIR)/modstubs.o
+UNIX_DIR	= $(UTSBASE)/$(PLATFORM)/bcm2836/unix
+GENLIB_DIR	= $(UTSBASE)/arm/genunix
+MODSTUBS_DIR	= $(UNIX_DIR)
+DSF_DIR		= $(UTSBASE)/$(PLATFORM)/genassym
+
+DTRACESTUBS_O	= $(OBJS_DIR)/dtracestubs.o
+DTRACESTUBS	= $(OBJS_DIR)/dtracestubs.so
+
+SYM_MOD		= $(OBJS_DIR)/unix.sym
+
+UNIX_O		= $(UNIX_DIR)/$(OBJS_DIR)/unix.o
+MODSTUB_O	= $(MODSTUBS_DIR)/$(OBJS_DIR)/modstubs.o
+GENLIB		= $(GENLIB_DIR)/$(OBJS_DIR)/libgenunix.so
+
 
 #
 #	Include the makefiles which define build rule templates, the
@@ -51,36 +68,19 @@ MODSTUBS_O	 = $(MODSTUBS_DIR)/$(OBJS_DIR)/modstubs.o
 #	(Such as a machine specific optimization, which preserves the
 #	interfaces.)
 #
+#include $(UTSTREE)/$(PLATFORM)/Makefile.files
 include $(UTSTREE)/arm/Makefile.files
 include $(UTSTREE)/common/Makefile.files
+# XXX: We need this to be included last, too, because we clobber stuff.  When we
+# stop clobbering stuff, remove this one, and uncomment the other.
+include $(UTSTREE)/$(PLATFORM)/Makefile.files
 
-#
-# ----- TRANSITIONAL SECTION --------------------------------------------------
-#
-
-#
-#	Not everything which *should* be a module is a module yet. The
-#	following is a list of such objects which are currently part of
-#	genunix but which might someday become kmods.  This must be
-#	defined before we include Makefile.uts, or else genunix's build
-#	won't be as parallel as we might like.
-#
-NOT_YET_KMODS	 = $(OLDPTY_OBJS) $(PTY_OBJS) $(VCONS_CONF_OBJS) $(MOD_OBJS)
-
-#
-# ----- END OF TRANSITIONAL SECTION -------------------------------------------
 #
 #	Include machine independent rules. Note that this does not imply
 #	that the resulting module from rules in Makefile.uts is	machine
 #	independent. Only that the build rules are machine independent.
 #
 include $(UTSBASE)/Makefile.uts
-
-#
-#	The following must be defined for all implementations:
-#	XXX: Presuming this is truly arm-common is a guess
-#
-MODSTUBS		= $(UTSBASE)/arm/ml/modstubs.s
 
 #
 #	Define supported builds
@@ -112,10 +112,30 @@ ASFLAGS_XARCH		= $(ASFLAGS_XARCH_$(CLASS))
 
 ASFLAGS			+= $(ASFLAGS_XARCH)
 
+AS_INC_PATH		+= -I$(DSF_DIR)/$(OBJS_DIR)
+
 #
-#	Define the base directory for installation.
+#	The following must be defined for all implementations:
 #
-BASE_INS_DIR	= $(ROOT)
+#	MAPFILE:	ld mapfile for the build of kernel/unix.
+#	MODSTUBS:	Module stubs source file.
+#	GENASSYM_SRC:	genassym.c
+#
+
+# XXX: A bunch of this is probably only reasonable because we expect to build
+# a 'unix' here.
+MAPFILE		 = $(UTSBASE)/$(PLATFORM)/bcm2836/conf/Mapfile
+MODSTUBS	 = $(UTSBASE)/arm/ml/modstubs.s
+GENASSYM_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/genassym.c
+OFFSETS_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
+PLATFORM_OFFSETS_32	= $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
+PLATFORM_OFFSETS_SRC	= $(PLATFORM_OFFSETS_$(CLASS))
+KDI_OFFSETS_SRC	 = $(UTSBASE)/arm/kdi/kdi_offsets.in
+
+#
+#	Define the actual specific platforms
+#
+MACHINE_DEFS	 = -D$(PLATFORM) -D_MACHDEP
 
 #
 #	Debugging level
@@ -125,18 +145,42 @@ BASE_INS_DIR	= $(ROOT)
 #
 DEBUG_DEFS_OBJ32	=
 DEBUG_DEFS_DBG32	= -DDEBUG
-DEBUG_DEFS_OBJ64	=
-DEBUG_DEFS_DBG64	= -DDEBUG
 DEBUG_DEFS		= $(DEBUG_DEFS_$(BUILD_TYPE))
 
 DEBUG_COND_OBJ32	:sh = echo \\043
 DEBUG_COND_DBG32	=
+IF_DEBUG_OBJ		= $(DEBUG_COND_$(BUILD_TYPE))$(OBJS_DIR)/
 
 #
 #	Collect the preprocessor definitions to be associated with *all*
 #	files.
 #
-ALL_DEFS	 = $(DEBUG_DEFS) $(OPTION_DEFS)
+ALL_DEFS	 = $(MACHINE_DEFS) $(WORKAROUND_DEFS) $(DEBUG_DEFS) \
+		   $(OPTION_DEFS)
+GENASSYM_DEFS	 = $(MACHINE_DEFS) $(OPTION_DEFS) \
+			-_gcc=-fno-eliminate-unused-debug-symbols \
+			-_gcc=-fno-eliminate-unused-debug-types
+
+#
+# ----- TRANSITIONAL SECTION --------------------------------------------------
+#
+
+#
+#	Not everything which *should* be a module is a module yet. The
+#	following is a list of such objects which are currently part of
+#	the base kernel but should soon become kmods.
+#
+#	XXX: $(KMACCT_OBJS) is neither in the MT kernel nor was it ever
+#	     made into a module. If it is made MT safe before being made
+#	     into a module, it should be added to this list. It was in
+#	     this list pre ON-4.0.
+#
+#
+MACH_NOT_YET_KMODS	= $(AUTOCONF_OBJS)
+
+#
+# ----- END OF TRANSITIONAL SECTION -------------------------------------------
+#
 
 #
 #	The kernels modules which are "implementation architecture"
@@ -144,7 +188,7 @@ ALL_DEFS	 = $(DEBUG_DEFS) $(OPTION_DEFS)
 #	of these modules must exist (in one form or another) for each
 #	architecture.
 #
-#	Common Drivers (usually pseudo drivers) (/kernel/drv)
+#	Machine Specific Driver Modules (/kernel/drv)
 #	DRV_KMODS are built both 32-bit and 64-bit
 #	DRV_KMODS_32 are built only 32-bit
 #	DRV_KMODS_64 are built only 64-bit
@@ -152,79 +196,46 @@ ALL_DEFS	 = $(DEBUG_DEFS) $(OPTION_DEFS)
 DRV_KMODS	+=
 
 #
-#	Brand modules
+#	CPU Modules
 #
-BRAND_KMODS	+= 
+CPU_KMODS	+=
 
 #
 #	Exec Class Modules (/kernel/exec):
 #
-EXEC_KMODS	+= 
+EXEC_KMODS	+=
 
 #
 #	Scheduling Class Modules (/kernel/sched):
 #
-SCHED_KMODS	+= 
+SCHED_KMODS	+=
 
 #
 #	File System Modules (/kernel/fs):
 #
-FS_KMODS	+= 
+FS_KMODS	+=
 
 #
 #	Streams Modules (/kernel/strmod):
 #
-STRMOD_KMODS	+= 
+STRMOD_KMODS	+=
 
 #
 #	'System' Modules (/kernel/sys):
 #
-SYS_KMODS	+= 
+SYS_KMODS	+=
 
 #
-#	'Misc' Modules (/kernel/misc)
-#	MISC_KMODS are built both 32-bit and 64-bit
-#	MISC_KMODS_32 are built only 32-bit
-#	MISC_KMODS_64 are built only 64-bit
+#	'Misc' Modules (/kernel/misc):
 #
-MISC_KMODS	+= 
+MISC_KMODS	+=
 
 #
-#	Software Cryptographic Providers (/kernel/crypto):
-#
-CRYPTO_KMODS	+= 
-
-#
-#	IP Policy Modules (/kernel/ipp)
-#
-IPP_KMODS	+= 
-
-#
-#	generic-unix module (/kernel/genunix):
-#
-GENUNIX_KMODS	+= genunix
-
-#
-#	'Dacf' Modules (/kernel/dacf):
+#	'Dacf' modules (/kernel/dacf)
 #
 DACF_KMODS	+=
 
 #
-#	Performance Counter BackEnd modules (/usr/kernel/pcbe)
+#	'Mach' Modules (/kernel/mach):
 #
-PCBE_KMODS	+= 
-
-#
-#	MAC-Type Plugin Modules (/kernel/mac)
-#
-MAC_KMODS	+= 
-
-#
-# socketmod (kernel/socketmod)
-#
-SOCKET_KMODS	+= 
-
-#
-#	kiconv modules (/kernel/kiconv):
-#
-KICONV_KMODS	+= 
+MACH_KMODS     	+=

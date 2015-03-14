@@ -16,7 +16,7 @@
 	.file	"lock_prim.s"
 
 /*
- * Locking primitives for ARMv6 and above
+ * Locking primitives for ARMv7 and above
  */
 
 #if defined(lint) || defined(__lint)
@@ -29,7 +29,6 @@
 
 #include <sys/asm_linkage.h>
 #include <sys/mutex_impl.h>
-#include <sys/atomic_impl.h>
 
 /*
  * mutex_enter() and mutex_exit().
@@ -115,7 +114,7 @@ mutex_owner_running(mutex_impl_t *lp)
 	strex	r3, r1, [r0]			@ Try to grab it
 	cmp	r3, #0
 	bne	mutex_vector_enter		@ strex failure, bail
-	ARM_DMB_INSTR(r3)			@ membar
+	dmb					@ membar
 	bx	lr
 	SET_SIZE(mutex_enter)
 
@@ -127,7 +126,7 @@ mutex_owner_running(mutex_impl_t *lp)
 	strex	r3, r1, [r0]			@ Grab attempt	
 	cmp	r3, #0
 	bne	mutex_vector_tryenter		@ strex failure, bail
-	ARM_DMB_INSTR(r3)			@ membar
+	dmb					@ membar
 	mov	r0, #1
 	bx	lr
 	SET_SIZE(mutex_tryenter)	
@@ -140,7 +139,7 @@ mutex_owner_running(mutex_impl_t *lp)
 	strex	r3, r1, [r0]			@ Grab attempt	
 	cmp	r3, #0
 	bne	1f				@ strex failure, bail
-	ARM_DMB_INSTR(r3)			@ membar
+	dmb					@ membar
 	mov	r0, #1				@ return success
 	bx	lr
 1:
@@ -152,7 +151,7 @@ mutex_owner_running(mutex_impl_t *lp)
 mutex_exit_critical_start:			@ Interrupts restart here
 	mrc	p15, 0, r1, c13, c0, 4		@ r1 = thread ptr
 	ldr	r2, [r0]			@ Get the owner field
-	ARM_DMB_INSTR(r2)
+	dmb
 	cmp	r1, r2
 	bne	mutex_vector_exit		@ wrong type/owner
 	mov	r2, #0

@@ -39,7 +39,7 @@ sparc_ARCHITECTURES = sun4v sun4u sparc
 
 i386_ARCHITECTURES = i86pc i86xpv intel
 
-arm_ARCHITECTURES = armv6 arm
+arm_ARCHITECTURES = armv7 arm
 
 #
 # For i386 all architectures can be compiled in parallel.
@@ -187,7 +187,7 @@ DYNHDRDIRS =	common/avs \
 
 sparc_HDRDIRS= sun/sys
 i386_HDRDIRS= i86pc/vm i86xpv/vm
-arm_HDRDIRS= armv6/sys
+arm_HDRDIRS= armv7/sys
 
 HDRDIRS= $(COMMON_HDRDIRS) $($(MACH)_HDRDIRS)
 install_h check: $(HDRDIRS) $($(MACH)_ARCHITECTURES)
