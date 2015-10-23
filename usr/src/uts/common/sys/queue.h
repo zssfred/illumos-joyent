@@ -223,6 +223,11 @@ struct {								\
 	_NOTE(CONSTCOND)						\
 } while (0)
 
+#define	SLIST_REMOVE_AFTER(elm, field) do {				\
+	(elm)->field.sle_next = (elm)->field.sle_next->field.sle_next;	\
+	_NOTE(CONSTCOND)						\
+} while (0)
+
 #define	SLIST_REMOVE_HEAD(head, field) do {				\
 	(head)->slh_first = (head)->slh_first->field.sle_next;		\
 	_NOTE(CONSTCOND)						\
