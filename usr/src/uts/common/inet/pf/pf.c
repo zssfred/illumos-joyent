@@ -307,20 +307,10 @@ struct pf_pool_limit pf_pool_limits[PF_LIMIT_MAX] = {
 	} while (0)
 
 static __inline int pf_src_compare(struct pf_src_node *, struct pf_src_node *);
-static __inline int pf_state_compare_key(struct pf_state_key *,
-	struct pf_state_key *);
-static __inline int pf_state_compare_id(struct pf_state *,
-	struct pf_state *);
 
 struct pf_src_tree tree_src_tracking;
 
-struct pf_state_tree_id tree_id;
-struct pf_state_queue state_list;
-
 RB_GENERATE(pf_src_tree, pf_src_node, entry, pf_src_compare);
-RB_GENERATE(pf_state_tree, pf_state_key, entry, pf_state_compare_key);
-RB_GENERATE(pf_state_tree_id, pf_state,
-    entry_id, pf_state_compare_id);
 
 __inline int
 pf_addr_compare(struct pf_addr *a, struct pf_addr *b, sa_family_t af)
@@ -649,9 +639,11 @@ pf_state_rm_src_node(struct pf_state *s, struct pf_src_node *sn)
 
 /* state table stuff */
 
-static __inline int
-pf_state_compare_key(struct pf_state_key *a, struct pf_state_key *b)
+int
+pf_state_compare_key(const void *aa, const void *bb)
 {
+	pf_state_key_t *a = aa;
+	pf_state_key_t *b = bb;
 	int	diff;
 
 	if ((diff = a->proto - b->proto) != 0)
@@ -671,9 +663,12 @@ pf_state_compare_key(struct pf_state_key *a, struct pf_state_key *b)
 	return (0);
 }
 
-static __inline int
-pf_state_compare_id(struct pf_state *a, struct pf_state *b)
+int
+pf_state_compare_id(const void *aa, const void *bb)
 {
+	pf_state_t *a = aa;
+	pf_state_t *b = bb;
+
 	if (a->id > b->id)
 		return (1);
 	if (a->id < b->id)
@@ -978,6 +973,7 @@ pf_state_insert(pf_netstack_t *pfns, struct pfi_kif *kif,
 		pf_detach_state(s);
 		return (-1);
 	}
+	list_insert_tail(&pfns->pfns_state_list, s);
 	TAILQ_INSERT_TAIL(&state_list, s, entry_list);
 	pfns->pfns_status.fcounters[FCNT_STATE_INSERT]++;
 	pfns->pfns_status.states++;
@@ -993,7 +989,7 @@ pf_find_state_byid(pf_netstack_t *pfns, struct pf_state_cmp *key)
 {
 	pfns->pfns_status.fcounters[FCNT_STATE_SEARCH]++;
 
-	return (RB_FIND(pf_state_tree_id, &tree_id, (struct pf_state *)key));
+	return (avl_find(&pfns->pfns_tree_id, key));
 }
 
 int

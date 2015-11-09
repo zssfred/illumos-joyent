@@ -104,7 +104,6 @@ void			 pf_qid2qname(u_int16_t, char *);
 void			 pf_qid_unref(u_int16_t);
 
 struct pf_rule		 pf_default_rule, pf_default_rule_new;
-struct rwlock		 pf_consistency_lock = RWLOCK_INITIALIZER("pfcnslk");
 
 struct {
 	char		statusif[IFNAMSIZ];
@@ -133,6 +132,46 @@ int			 pf_rtlabel_add(struct pf_addr_wrap *);
 void			 pf_rtlabel_remove(struct pf_addr_wrap *);
 void			 pf_rtlabel_copyout(struct pf_addr_wrap *);
 
+/*
+ * XXX Do the things that "pfattach()" did globally:
+ */
+int
+pf_netstack_attach(void)
+{
+	pf_netstack_t *pfns = kmem_zalloc(sizeof (*pfns), KM_SLEEP);
+
+	mutex_init(&pfns->pfns_lock, NULL, MUTEX_DRIVER, NULL);
+
+	/*
+	 * Replacing the global "state_list" and "tree_id":
+	 */
+	list_create(&pfns->pfns_state_list, sizeof (pf_state_t),
+	    offsetof(pf_state_t, entry_list));
+	avl_create(&pfns->pfns_tree_id, pf_state_compare_id,
+	    sizeof (pf_state_t), offsetof(pf_state_t, entry_id));
+
+	/*
+	 * And "pf_statetbl":
+	 */
+	avl_create(&pfns->pfns_statetbl, pf_state_compare_key,
+	    sizeof (pf_state_key_t), offsetof(pf_state_key_t, entry));
+
+	/*
+	 * XXX pf queues... is this a bandwidth limiting / qos thing?
+	 */
+	list_create(&pfns->pfns_queues[0], sizeof (pf_queuespec_t),
+	    offsetof(pf_queuespec_t, entries));
+	list_create(&pfns->pfns_queues[1], sizeof (pf_queuespec_t),
+	    offsetof(pf_queuespec_t, entries));
+	pfns->pfns_queues_active = &pfns->pfns_queues[0];
+	pfns->pfns_queues_inactive = &pfns->pfns_queues[1];
+
+	/*
+	 * XXX Is this lock to be used in a (soft) interrupt handler?
+	 * (see rwlock(9F)).
+	 */
+	rw_init(&pfns->pfns_consistency_lock, NULL, RW_DRIVER, NULL);
+}
 
 void
 pfattach(int num)
@@ -170,10 +209,12 @@ pfattach(int num)
 	RB_INIT(&tree_src_tracking);
 	RB_INIT(&pf_anchors);
 	pf_init_ruleset(&pf_main_ruleset);
+#if 0 /* NOW IN pf_netstack_attach */
 	TAILQ_INIT(&pf_queues[0]);
 	TAILQ_INIT(&pf_queues[1]);
 	pf_queues_active = &pf_queues[0];
 	pf_queues_inactive = &pf_queues[1];
+#endif
 	TAILQ_INIT(&state_list);
 
 	/* default rule should never be garbage collected */
@@ -906,6 +947,9 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			return (EACCES);
 		}
 
+	/*
+	 * XXX these need to operator on "pfns->pfns_consistency_lock".
+	 */
 	if (flags & FWRITE)
 		rw_enter_write(&pf_consistency_lock);
 	else
@@ -2306,6 +2350,9 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 	}
 fail:
 	splx(s);
+	/*
+	 * XXX these need to operator on "pfns->pfns_consistency_lock".
+	 */
 	if (flags & FWRITE)
 		rw_exit_write(&pf_consistency_lock);
 	else

@@ -623,7 +623,7 @@ SLIST_HEAD(pf_rule_slist, pf_rule_item);
 enum pf_sn_types { PF_SN_NONE, PF_SN_NAT, PF_SN_RDR, PF_SN_ROUTE, PF_SN_MAX };
 
 struct pf_src_node {
-	RB_ENTRY(pf_src_node)	 entry;
+	avl_node_t		 entry;
 	struct pf_addr		 addr;
 	struct pf_addr		 raddr;
 	union pf_rule_ptr	 rule;
@@ -684,8 +684,6 @@ struct pf_state_peer {
 	u_int8_t	pad[1];
 };
 
-TAILQ_HEAD(pf_state_queue, pf_state);
-
 /* keep synced with struct pf_state_key, used in RB_FIND */
 struct pf_state_key_cmp {
 	struct pf_addr	 addr[2];
@@ -709,7 +707,7 @@ struct pf_state_key {
 	sa_family_t	 af;
 	u_int8_t	 proto;
 
-	RB_ENTRY(pf_state_key)	 entry;
+	avl_node_t		 entry;
 	struct pf_statelisthead	 states;
 	struct pf_state_key	*reverse;
 	struct inpcb		*inp;
@@ -726,15 +724,21 @@ struct pf_state_cmp {
 	u_int8_t		 pad[3];
 };
 
-struct pf_state {
+typedef struct pf_state {
 	u_int64_t		 id;
 	u_int32_t		 creatorid;
 	u_int8_t		 direction;
 	u_int8_t		 pad[3];
 
-	TAILQ_ENTRY(pf_state)	 sync_list;
-	TAILQ_ENTRY(pf_state)	 entry_list;
-	RB_ENTRY(pf_state)	 entry_id;
+	/*
+	 * XXX this one is for pfsync apparently...
+	 */
+	list_node_t		 sync_list;
+	/*
+	 * This one is for "pfns_state_list":
+	 */
+	list_node_t		 entry_list;
+	avl_node_t		 entry_id;
 	struct pf_state_peer	 src;
 	struct pf_state_peer	 dst;
 	struct pf_rule_slist	 match_rules;
@@ -779,7 +783,7 @@ struct pf_state {
 	u_int16_t		 if_index_in;
 	u_int16_t		 if_index_out;
 	u_int8_t		 pad2[2];
-};
+} pf_state_t;
 
 /*
  * Unified state structures for pulling states out of the kernel
@@ -925,8 +929,8 @@ struct pf_ruleset {
 RB_HEAD(pf_anchor_global, pf_anchor);
 RB_HEAD(pf_anchor_node, pf_anchor);
 struct pf_anchor {
-	RB_ENTRY(pf_anchor)	 entry_global;
-	RB_ENTRY(pf_anchor)	 entry_node;
+	avl_node_t		 entry_global;
+	avl_node_t		 entry_node;
 	struct pf_anchor	*parent;
 	struct pf_anchor_node	 children;
 	char			 name[PF_ANCHOR_NAME_SIZE];
@@ -1089,7 +1093,7 @@ SLIST_HEAD(pfr_ktableworkq, pfr_ktable);
 RB_HEAD(pfr_ktablehead, pfr_ktable);
 struct pfr_ktable {
 	struct pfr_tstats	 pfrkt_ts;
-	RB_ENTRY(pfr_ktable)	 pfrkt_tree;
+	avl_node_t		 pfrkt_tree;
 	SLIST_ENTRY(pfr_ktable)	 pfrkt_workq;
 	struct radix_node_head	*pfrkt_ip4;
 	struct radix_node_head	*pfrkt_ip6;
@@ -1117,17 +1121,11 @@ struct pfr_ktable {
 
 typedef struct pf_state_tree pf_state_tree_t;
 
-RB_HEAD(pf_state_tree, pf_state_key);
-RB_PROTOTYPE(pf_state_tree, pf_state_key, entry, pf_state_compare_key)
-
 RB_HEAD(pf_state_tree_ext_gwy, pf_state_key);
 RB_PROTOTYPE(pf_state_tree_ext_gwy, pf_state_key,
     entry_ext_gwy, pf_state_compare_ext_gwy)
 
 RB_HEAD(pfi_ifhead, pfi_kif);
-
-/* state tables */
-extern struct pf_state_tree	 pf_statetbl;
 
 /* keep synced with pfi_kif, used in RB_FIND */
 struct pfi_kif_cmp {
@@ -1139,7 +1137,7 @@ struct ifg_group;
 
 struct pfi_kif {
 	char				 pfik_name[IFNAMSIZ];
-	RB_ENTRY(pfi_kif)		 pfik_tree;
+	avl_node_t			 pfik_tree;
 	u_int64_t			 pfik_packets[2][2][2];
 	u_int64_t			 pfik_bytes[2][2][2];
 	time_t				 pfik_tzero;
@@ -1379,8 +1377,8 @@ struct pf_queue_scspec {
 	u_int			d;
 };
 
-struct pf_queuespec {
-	TAILQ_ENTRY(pf_queuespec)	 entries;
+typedef struct pf_queuespec {
+	list_node_t			 entries;
 	char				 qname[PF_QNAME_SIZE];
 	char				 parent[PF_QNAME_SIZE];
 	char				 ifname[IFNAMSIZ];
@@ -1392,7 +1390,7 @@ struct pf_queuespec {
 	u_int				 qlimit;
 	u_int32_t			 qid;
 	u_int32_t			 parent_qid;
-};
+} pf_queuespec_t;
 
 struct cbq_opts {
 	u_int		minburst;
@@ -1669,16 +1667,12 @@ RB_HEAD(pf_src_tree, pf_src_node);
 RB_PROTOTYPE(pf_src_tree, pf_src_node, entry, pf_src_compare);
 extern struct pf_src_tree tree_src_tracking;
 
-RB_HEAD(pf_state_tree_id, pf_state);
-RB_PROTOTYPE(pf_state_tree_id, pf_state,
-    entry_id, pf_state_compare_id);
-extern struct pf_state_tree_id tree_id;
-extern struct pf_state_queue state_list;
 
-typedef struct pf_queuehead pf_queuehead_t;
-TAILQ_HEAD(pf_queuehead, pf_queuespec);
-extern struct pf_queuehead		  pf_queues[2];
-extern struct pf_queuehead		 *pf_queues_active, *pf_queues_inactive;
+/*
+ * XXX AVL Comparators:
+ */
+extern int pf_state_compare_id(const void *, const void *);
+extern int pf_state_compare_key(const void *, const void *);
 
 /*
  * Track pf state.  This structure is the per-netstack analogue of various
@@ -1690,11 +1684,44 @@ typedef struct pf_netstack {
 	/*
 	 * Formerly globals in "pf.c":
 	 */
-	pf_state_tree_t pfns_statetbl;
-	pf_queuehead_t pfns_queues[2];
-	pf_queuehead_t *pfns_queues_active;
-	pf_queuehead_t *pfns_queues_inactive;
 	pf_status_t pfns_status;
+
+	/*
+	 * Formerly "struct pf_state_queue state_list", a TAILQ.
+	 */
+	list_t pfns_state_list;
+
+	/*
+	 * Formerly "RB_HEAD(pf_state_tree_id, pf_state)" and
+	 * "RB_PROTOTYPE(pf_state_tree_id, pf_state, entry_id,
+	 * pf_state_compare_id)".  Instantiated as
+	 *
+	 *	struct pf_state_tree_id tree_id;
+	 */
+	avl_tree_t pfns_tree_id;
+
+	/*
+	 * Formerly "RB_HEAD(pf_state_tree, pf_state_key)" and
+	 * "RB_PROTOTYPE(pf_state_tree, pf_state_key, entry,
+	 * pf_state_compare_key)".  Instantiated as
+	 *
+	 * 	extern struct pf_state_tree	 pf_statetbl;
+	 */
+	avl_tree_t pfns_statetbl;
+
+	/*
+	 * Formerly "pf_queues" (also, "pf_queues_active" and
+	 * "pf_queues_inactive")
+	 */
+	list_t pfns_queues[2];
+	list_t *pfns_queues_active;
+	list_t *pfns_queues_inactive;
+
+	/*
+	 * Formerly "pf_consistency_lock" global.
+	 */
+	krwlock_t pfns_consistency_lock;
+
 } pf_netstack_t;
 
 extern u_int32_t		 ticket_pabuf;
@@ -1885,7 +1912,6 @@ int		 pf_addr_compare(struct pf_addr *, struct pf_addr *,
 
 extern struct pf_status	pf_status;
 extern struct pool	pf_frent_pl, pf_frag_pl;
-extern struct rwlock	pf_consistency_lock;
 
 struct pf_pool_limit {
 	void		*pp;
