@@ -661,6 +661,8 @@ typedef struct lx_virt_disk {
 
 extern int lx_kern_release_cmp(zone_t *, const char *);
 
+extern void lx_set_zone_aslr(zone_t *, boolean_t);
+
 extern void lx_lwp_set_native_stack_current(lx_lwp_data_t *, uintptr_t);
 extern void lx_divert(klwp_t *, uintptr_t);
 extern int lx_runexe(klwp_t *, void *);

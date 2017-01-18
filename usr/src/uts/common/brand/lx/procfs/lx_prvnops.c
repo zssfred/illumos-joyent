@@ -79,6 +79,7 @@
 #include <inet/ipclassifier.h>
 #include <sys/socketvar.h>
 #include <fs/sockfs/socktpi.h>
+#include <sys/secflags.h>
 
 /* Dependent on procfs */
 extern kthread_t *prchoose(proc_t *);
@@ -230,6 +231,7 @@ static void lxpr_read_sys_kernel_ngroups_max(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_osrel(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_pid_max(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_rand_bootid(lxpr_node_t *, lxpr_uiobuf_t *);
+static void lxpr_read_sys_kernel_rand_vaspace(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_sem(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_shmall(lxpr_node_t *, lxpr_uiobuf_t *);
 static void lxpr_read_sys_kernel_shmmax(lxpr_node_t *, lxpr_uiobuf_t *);
@@ -273,6 +275,8 @@ static int lxpr_write_sys_net_ipv4_tcp_sack(lxpr_node_t *, uio_t *,
 static int lxpr_write_sys_net_ipv4_tcp_winscale(lxpr_node_t *, uio_t *,
     cred_t *, caller_context_t *);
 static int lxpr_write_sys_kernel_corepatt(lxpr_node_t *, uio_t *, cred_t *,
+    caller_context_t *);
+static int lxpr_write_sys_kernel_rand_vaspace(lxpr_node_t *, uio_t *, cred_t *,
     caller_context_t *);
 
 /*
@@ -523,6 +527,7 @@ static lxpr_dirent_t sys_kerneldir[] = {
 	{ LXPR_SYS_KERNEL_OSREL,	"osrelease" },
 	{ LXPR_SYS_KERNEL_PID_MAX,	"pid_max" },
 	{ LXPR_SYS_KERNEL_RANDDIR,	"random" },
+	{ LXPR_SYS_KERNEL_RAND_VASPACE,	"randomize_va_space" },
 	{ LXPR_SYS_KERNEL_SEM,		"sem" },
 	{ LXPR_SYS_KERNEL_SHMALL,	"shmall" },
 	{ LXPR_SYS_KERNEL_SHMMAX,	"shmmax" },
@@ -615,6 +620,7 @@ static wftab_t wr_tab[] = {
 	{LXPR_PID_TID_OOM_SCR_ADJ, NULL},
 	{LXPR_SYS_FS_FILEMAX, NULL},
 	{LXPR_SYS_KERNEL_COREPATT, lxpr_write_sys_kernel_corepatt},
+	{LXPR_SYS_KERNEL_RAND_VASPACE, lxpr_write_sys_kernel_rand_vaspace},
 	{LXPR_SYS_KERNEL_SHMALL, NULL},
 	{LXPR_SYS_KERNEL_SHMMAX, NULL},
 	{LXPR_SYS_NET_CORE_SOMAXCON, lxpr_write_sys_net_core_somaxc},
@@ -839,6 +845,7 @@ static void (*lxpr_read_function[LXPR_NFILES])() = {
 	lxpr_read_sys_kernel_pid_max,	/* /proc/sys/kernel/pid_max */
 	lxpr_read_invalid,		/* /proc/sys/kernel/random */
 	lxpr_read_sys_kernel_rand_bootid, /* /proc/sys/kernel/random/boot_id */
+	lxpr_read_sys_kernel_rand_vaspace, /* .../kernel/randomize_va_space */
 	lxpr_read_sys_kernel_sem,	/* /proc/sys/kernel/sem */
 	lxpr_read_sys_kernel_shmall,	/* /proc/sys/kernel/shmall */
 	lxpr_read_sys_kernel_shmmax,	/* /proc/sys/kernel/shmmax */
@@ -979,6 +986,7 @@ static vnode_t *(*lxpr_lookup_function[LXPR_NFILES])() = {
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/pid_max */
 	lxpr_lookup_sys_kdir_randdir,	/* /proc/sys/kernel/random */
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/random/boot_id */
+	lxpr_lookup_not_a_dir,		/* .../kernel/randomize_va_space */
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/sem */
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/shmall */
 	lxpr_lookup_not_a_dir,		/* /proc/sys/kernel/shmmax */
@@ -1119,6 +1127,7 @@ static int (*lxpr_readdir_function[LXPR_NFILES])() = {
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/pid_max */
 	lxpr_readdir_sys_kdir_randdir,	/* /proc/sys/kernel/random */
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/random/boot_id */
+	lxpr_readdir_not_a_dir,		/* .../kernel/randomize_va_space */
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/sem */
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/shmall */
 	lxpr_readdir_not_a_dir,		/* /proc/sys/kernel/shmmax */
@@ -4468,6 +4477,28 @@ lxpr_read_sys_kernel_rand_bootid(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
 	lxpr_uiobuf_printf(uiobuf, "%s\n", bootid);
 }
 
+static void
+lxpr_read_sys_kernel_rand_vaspace(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
+{
+	zone_t *zone = LXPTOZ(lxpnp);
+	boolean_t zone_aslr_enabled;
+
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_RAND_VASPACE);
+	ASSERT(zone != NULL);
+	ASSERT(zone->zone_brand == &lx_brand);
+
+	mutex_enter(&zone->zone_lock);
+	zone_aslr_enabled = secflag_isset(zone->zone_secflags.psf_effective,
+	    PROC_SEC_ASLR);
+	mutex_exit(&zone->zone_lock);
+
+	if (zone_aslr_enabled) {
+		lxpr_uiobuf_printf(uiobuf, "%d\n", 2);
+	} else {
+		lxpr_uiobuf_printf(uiobuf, "%d\n", 0);
+	}
+}
+
 /* ARGSUSED */
 static void
 lxpr_read_sys_kernel_sem(lxpr_node_t *lxpnp, lxpr_uiobuf_t *uiobuf)
@@ -7081,6 +7112,63 @@ lxpr_write_sys_kernel_corepatt(lxpr_node_t *lxpnp, struct uio *uio,
 
 	if (rp != NULL)
 		refstr_rele(rp);
+
+	return (0);
+}
+
+/* ARGSUSED */
+static int
+lxpr_write_sys_kernel_rand_vaspace(lxpr_node_t *lxpnp, struct uio *uio,
+    struct cred *cr, caller_context_t *ct)
+{
+	zone_t *zone = LXPTOZ(lxpnp);
+	char val[3];
+	size_t olen;
+	int error;
+
+	ASSERT(lxpnp->lxpr_type == LXPR_SYS_KERNEL_RAND_VASPACE);
+
+	if (uio->uio_loffset != 0)
+		return (EINVAL);
+
+	if (uio->uio_resid == 0)
+		return (0);
+
+	olen = uio->uio_resid;
+	if (olen > sizeof (val) - 1)
+		return (EINVAL);
+
+	bzero(val, sizeof (val));
+	error = uiomove(val, olen, UIO_WRITE, uio);
+	if (error != 0)
+		return (error);
+
+	if (val[olen - 1] == '\n')
+		val[olen - 1] = '\0';
+
+	switch (val[0]) {
+	case '0':
+		lx_set_zone_aslr(zone, B_FALSE);
+
+		break;
+	case '1':
+		/*
+		 * Linux distinguishes between (1) "conservative" and
+		 * (2) "full" ASLR. Illumos does not have the same distinction.
+		 */
+		/* FALLTHROUGH */
+	case '2':
+		lx_set_zone_aslr(zone, B_TRUE);
+
+		break;
+	default:
+		/*
+		 * Linux actually accepts any signed 32-bit value.
+		 * All non-zero values are considered to mean ASLR is enabled.
+		 * However we're just supporting the current documented values.
+		 */
+		return (EINVAL);
+	}
 
 	return (0);
 }

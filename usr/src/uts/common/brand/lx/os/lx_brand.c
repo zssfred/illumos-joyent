@@ -176,6 +176,7 @@
 #include <sys/zfs_ioctl.h>
 #include <inet/tcp_impl.h>
 #include <inet/udp_impl.h>
+#include <sys/secflags.h>
 
 int	lx_debug = 0;
 
@@ -391,6 +392,14 @@ lx_setattr(zone_t *zone, int attr, void *ubuf, size_t ubufsz)
 		(void) strlcpy(lxzd->lxzd_kernel_release, buf,
 		    LX_KERN_RELEASE_MAX);
 		mutex_exit(&lxzd->lxzd_lock);
+
+		/* Linux ASLR level 2 has been the default since 2.6.25 */
+		if (lx_kern_release_cmp(zone, "2.6.25") < 0) {
+			lx_set_zone_aslr(zone, B_FALSE);
+		} else {
+			lx_set_zone_aslr(zone, B_TRUE);
+		}
+
 		return (0);
 	}
 	case LX_ATTR_KERN_VERSION: {
@@ -1799,6 +1808,75 @@ lx_brandsys(int cmd, int64_t *rval, uintptr_t arg1, uintptr_t arg2,
 	}
 
 	return (EINVAL);
+}
+
+void
+lx_set_zone_aslr(zone_t *zone, boolean_t enable)
+{
+	secflagdelta_t sfd;
+	proc_t *p;
+	boolean_t zone_aslr_enabled;
+
+	ASSERT(zone != NULL);
+	ASSERT(zone->zone_brand == &lx_brand);
+
+	mutex_enter(&zone->zone_lock);
+	zone_aslr_enabled = secflag_isset(zone->zone_secflags.psf_effective,
+	    PROC_SEC_ASLR);
+
+	bzero(&sfd, sizeof (sfd));
+
+	if (enable) {
+		/* Don't do anything if ASLR is already on */
+		if (zone_aslr_enabled) {
+			mutex_exit(&zone->zone_lock);
+			return;
+		}
+
+		secflag_set(&sfd.psd_add, PROC_SEC_ASLR);
+	} else {
+		/* Don't do anything if ASLR is already off */
+		if (!zone_aslr_enabled) {
+			mutex_exit(&zone->zone_lock);
+			return;
+		}
+
+		secflag_set(&sfd.psd_rem, PROC_SEC_ASLR);
+	}
+
+	/* Walk all active processes in the zone */
+	mutex_enter(&pidlock);
+	for (p = practive; p != NULL; p = p->p_next) {
+		/* skip kernel processes */
+		if (p->p_exec == NULLVP || p->p_as == &kas ||
+		    (p->p_flag & SSYS))
+			continue;
+		/*
+		 * Only processes in the given zone
+		 * are taken into account
+		 */
+		if (p->p_zone->zone_id == zone->zone_id) {
+			mutex_enter(&p->p_lock);
+			secflags_apply_delta(
+			    &p->p_secflags.psf_effective,
+			    &sfd);
+			secflags_apply_delta(&p->p_secflags.psf_inherit,
+			    &sfd);
+			mutex_exit(&p->p_lock);
+		}
+	}
+	mutex_exit(&pidlock);
+
+	/*
+	 * There isn't a functional reason to replace these
+	 * because secflags work through strict inheritance.
+	 * When the zone is already running, this has no effect.
+	 * Do it anyway to serve as a clear marker of whether ASLR is
+	 * enabled or disabled.
+	 */
+	secflags_apply_delta(&zone->zone_secflags.psf_effective, &sfd);
+	secflags_apply_delta(&zone->zone_secflags.psf_inherit, &sfd);
+	mutex_exit(&zone->zone_lock);
 }
 
 /*
