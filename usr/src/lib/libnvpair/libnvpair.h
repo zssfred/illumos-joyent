@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2000, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 #ifndef	_LIBNVPAIR_H
@@ -48,8 +48,10 @@ extern int nvpair_value_match_regex(nvpair_t *, int, char *, regex_t *,
 
 extern void nvlist_print(FILE *, nvlist_t *);
 extern int nvlist_print_json(FILE *, nvlist_t *);
+extern int nvlist_print_json_pretty(FILE *, nvlist_t *, char *);
 extern void dump_nvlist(nvlist_t *, int);
 extern int nvlist_dump_json(nvlist_t *, char **);
+extern int nvlist_dump_json_pretty(nvlist_t *, char **, char *);
 extern void nvlist_dump_json_free(nvlist_t *, char *);
 
 /*

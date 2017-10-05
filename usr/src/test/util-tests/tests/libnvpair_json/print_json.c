@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2014 Joyent, Inc.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 /*
@@ -786,8 +786,15 @@ unexpected:
 int
 main(int argc, char **argv)
 {
+	boolean_t is_pretty = B_FALSE;
 	int rc = EXIT_FAILURE;
 	list_wrap_t *lw;
+
+	/*
+	 * Output in pretty format if the first argument is "pretty"
+	 */
+	if (argc >= 2 && strcmp(argv[1], "pretty") == 0)
+		is_pretty = B_TRUE;
 
 	/*
 	 * Be locale-aware.  The JSON output functions will process multibyte
@@ -814,9 +821,15 @@ main(int argc, char **argv)
 	/*
 	 * Print the resultant list, and a terminating newline:
 	 */
-	if (nvlist_print_json(stdout, lw->lw_nvl[0]) != 0 ||
-	    fprintf(stdout, "\n") < 0)
-		goto out;
+	if (is_pretty) {
+		if (nvlist_print_json_pretty(stdout, lw->lw_nvl[0], "  ") < 0)
+			goto out;
+	} else {
+		if (nvlist_print_json(stdout, lw->lw_nvl[0]) < 0 ||
+		    fprintf(stdout, "\n") < 0) {
+			goto out;
+		}
+	}
 
 	rc = EXIT_SUCCESS;
 
