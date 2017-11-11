@@ -16372,7 +16372,9 @@ static int mptsas_smp_start(struct smp_pkt *smp_pkt)
 	}
 	/* do passthrough success, check the smp status */
 	if (LE_16(rep.IOCStatus) != MPI2_IOCSTATUS_SUCCESS) {
-		switch (LE_16(rep.IOCStatus)) {
+		uint16_t status = LE_16(rep.IOCStatus) & MPI2_IOCSTATUS_MASK;
+
+		switch (status) {
 		case MPI2_IOCSTATUS_SCSI_DEVICE_NOT_THERE:
 			smp_pkt->smp_pkt_reason = ENODEV;
 			break;
@@ -16383,11 +16385,18 @@ static int mptsas_smp_start(struct smp_pkt *smp_pkt)
 			smp_pkt->smp_pkt_reason = EIO;
 			break;
 		default:
-			mptsas_log(mpt, CE_NOTE, "smp_start: get unknown ioc"
-			    "status:%x", LE_16(rep.IOCStatus));
+			mptsas_log(mpt, CE_NOTE,
+			    "smp_start: get unknown iocstatus: %hx", status);
 			smp_pkt->smp_pkt_reason = EIO;
 			break;
 		}
+
+		if (LE_16(rep.IOCStatus) &
+		    MPI2_IOCSTATUS_FLAG_LOG_INFO_AVAILABLE) {
+			mptsas_log(mpt, CE_NOTE, "smp_start: loginfo %x",
+			    LE_32(rep.IOCLogInfo));
+		}
+
 		return (DDI_FAILURE);
 	}
 	if (rep.SASStatus != MPI2_SASSTATUS_SUCCESS) {
