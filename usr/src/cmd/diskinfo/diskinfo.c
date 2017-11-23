@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent Inc., All rights reserved.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 #include <sys/types.h>
@@ -37,6 +37,28 @@
 #include <sys/fm/protocol.h>
 #include <modules/common/disk/disk.h>
 
+/*
+ * The default output with no flags specified.
+ * TYPE, DISK, VID, PID, SIZE, RMV, SSD
+ */
+#define	FMT_DEFAULT		"%-7s %-22s %-8s %-20s %-13s %-3s %-3s\n"
+#define	FMT_DEFAULT_PARSABLE	"%s\t%s\t%s\t%s\t%s\t%s\t%s\n"
+
+/*
+ * Condensed (compact) output. Lines kept to 80 columns with newlines where
+ * they are necessary.
+ * TYPE, DISK, VID, PID, SERIAL, \n REV, SIZE, FLRS, LOCATION
+ */
+#define	FMT_CONDENSED	"%-7s %-22s %-8s %-20s %-16s\n\t%-8s %-13s %-4s %s\n"
+#define	FMT_CONDENSED_PARSABLE	"%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n"
+
+/*
+ * Physical output mode.
+ * DISK, VID, PID, SERIAL, REV, FLT, LOC, LOCATION
+ */
+#define	FMT_PHYSICAL		"%-22s %-8s %-20s %-16s %-8s %-3s %-3s %s\n"
+#define	FMT_PHYSICAL_PARSABLE	"%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n"
+
 typedef struct di_opts {
 	boolean_t di_scripted;
 	boolean_t di_parseable;
@@ -47,6 +69,7 @@ typedef struct di_opts {
 typedef struct di_phys {
 	const char *dp_dev;
 	const char *dp_serial;
+	const char *dp_fwrev;
 	const char *dp_slotname;
 	int dp_chassis;
 	int dp_slot;
@@ -117,7 +140,7 @@ disk_walker(topo_hdl_t *hp, tnode_t *np, void *arg)
 	int err;
 	topo_led_state_t mode;
 	topo_led_type_t type;
-	char *name, *slotname, *serial;
+	char *name, *slotname, *serial, *fwrev;
 
 	if (strcmp(topo_node_name(np), DISK) != 0)
 		return (TOPO_WALK_NEXT);
@@ -133,6 +156,11 @@ disk_walker(topo_hdl_t *hp, tnode_t *np, void *arg)
 	if (topo_prop_get_string(np, TOPO_PGROUP_STORAGE,
 	    TOPO_STORAGE_SERIAL_NUM, &serial, &err) == 0) {
 		pp->dp_serial = serial;
+	}
+
+	if (topo_prop_get_string(np, TOPO_PGROUP_STORAGE,
+	    TOPO_STORAGE_FIRMWARE_REV, &fwrev, &err) == 0) {
+		pp->dp_fwrev = fwrev;
 	}
 
 	pnp = topo_node_parent(np);
@@ -345,41 +373,42 @@ enumerate_disks(di_opts_t *opts)
 
 		if (opts->di_physical) {
 			if (opts->di_scripted) {
-				printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				printf(FMT_PHYSICAL_PARSABLE,
 				    device, vid, pid,
 				    display_string(phys.dp_serial),
+				    display_string(phys.dp_fwrev),
 				    display_tristate(phys.dp_faulty),
 				    display_tristate(phys.dp_locate), slotname);
 			} else {
-				printf("%-22s  %-8s %-16s "
-				    "%-20s %-3s %-3s %s\n",
+				printf(FMT_PHYSICAL,
 				    device, vid, pid,
 				    display_string(phys.dp_serial),
+				    display_string(phys.dp_fwrev),
 				    display_tristate(phys.dp_faulty),
 				    display_tristate(phys.dp_locate), slotname);
 			}
 		} else if (opts->di_condensed) {
 			if (opts->di_scripted) {
-				printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				printf(FMT_CONDENSED_PARSABLE,
 				    ctype, device, vid, pid,
 				    display_string(phys.dp_serial),
+				    display_string(phys.dp_fwrev),
 				    sizestr, statestr, slotname);
 			} else {
-				printf("%-7s %-22s  %-8s %-16s "
-				    "%-20s\n\t%-13s %-4s %s\n",
+				printf(FMT_CONDENSED,
 				    ctype, device, vid, pid,
 				    display_string(phys.dp_serial),
+				    display_string(phys.dp_fwrev),
 				    sizestr, statestr, slotname);
 			}
 		} else {
 			if (opts->di_scripted) {
-				printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				printf(FMT_DEFAULT_PARSABLE,
 				    ctype, device, vid, pid, sizestr,
 				    display_tristate(removable),
 				    display_tristate(ssd));
 			} else {
-				printf("%-7s %-22s  %-8s %-16s "
-				    "%-13s %-3s %-3s\n", ctype, device,
+				printf(FMT_DEFAULT, ctype, device,
 				    vid, pid, sizestr,
 				    display_tristate(removable),
 				    display_tristate(ssd));
@@ -442,16 +471,16 @@ main(int argc, char *argv[])
 
 	if (!opts.di_scripted) {
 		if (opts.di_physical) {
-			printf("DISK                    VID      PID"
-			    "              SERIAL               FLT LOC"
-			    " LOCATION\n");
+			printf(FMT_PHYSICAL,
+			    "DISK", "VID", "PID", "SERIAL", "REV",
+			    "FLT", "LOC", "LOCATION");
 		} else if (opts.di_condensed) {
-			printf("TYPE    DISK                    VID      PID"
-			    "              SERIAL\n");
-			printf("\tSIZE          FLRS LOCATION\n");
+			printf(FMT_CONDENSED,
+			    "TYPE", "DISK", "VID", "PID", "SERIAL",
+			    "REV", "SIZE", "FLRS", "LOCATION");
 		} else {
-			printf("TYPE    DISK                    VID      PID"
-			    "              SIZE          RMV SSD\n");
+			printf(FMT_DEFAULT, "TYPE", "DISK", "VID", "PID",
+			    "SIZE", "RMV", "SSD");
 		}
 	}
 

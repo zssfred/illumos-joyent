@@ -8,10 +8,10 @@
 .\" source.  A copy of the CDDL is also available via the Internet at
 .\" http://www.illumos.org/license/CDDL.
 .\"
-.\" Copyright 2014 Joyent, Inc.
+.\" Copyright 2017 Joyent, Inc.
 .\" Copyright 2016 Nexenta Systems, Inc.
 .\"
-.Dd July 20, 2016
+.Dd November 22, 2017
 .Dt DISKINFO 1M
 .Os
 .Sh NAME
@@ -48,7 +48,8 @@ In this mode, each line of output likewise describes one disk device; however,
 the fields provided indicate the base name of the device in the
 .Pa /dev/dsk
 directory, the disk's vendor and product identification strings, the serial
-number of the device, whether the device is faulty as diagnosed by
+number of the device, its firmware revision, whether the device is faulty
+as diagnosed by
 .Xr fmd 1M ,
 whether the locate or identification indicator is on for the device
 .Pq if one is present ,
@@ -160,6 +161,8 @@ The serial number of the device.
 The entire serial number is reported if the device and its drivers provide it.
 .Pp
 This field is available in compact and physical output modes.
+.It Sy REV
+The firmware revision of the device.
 .It Sy SIZE
 The device's storage capacity.
 If the
