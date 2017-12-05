@@ -35,9 +35,9 @@ typedef enum ctf_conv_status {
 	CTF_CONV_NOTSUP		= 2
 } ctf_conv_status_t;
 
-typedef ctf_conv_status_t (*ctf_convert_f)(int, Elf *, uint_t, int *,
+typedef ctf_conv_status_t (*ctf_convert_f)(int, Elf *, uint_t, uint_t, int *,
     ctf_file_t **, char *, size_t);
-extern ctf_conv_status_t ctf_dwarf_convert(int, Elf *, uint_t, int *,
+extern ctf_conv_status_t ctf_dwarf_convert(int, Elf *, uint_t, uint_t, int *,
     ctf_file_t **, char *, size_t);
 
 /*

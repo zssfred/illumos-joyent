@@ -252,6 +252,8 @@ typedef struct ctf_dwbitf {
  */
 typedef struct ctf_die {
 	Elf		*cd_elf;	/* shared libelf handle */
+	int		cd_fd;		/* shared file descriptor */
+	int		cd_ndie;	/* DIE index */
 	char		*cd_name;	/* basename of the DIE */
 	ctf_merge_t	*cd_cmh;	/* merge handle */
 	ctf_list_t	cd_vars;	/* List of variables */
@@ -2495,6 +2497,231 @@ ctf_dwarf_conv_weaks(ctf_die_t *cdp)
 	return (ctf_dwarf_symtab_iter(cdp, ctf_dwarf_conv_weaks_cb, NULL));
 }
 
+/*
+ * Note, we expect that if we're returning a ctf_file_t from one of the dies,
+ * say in the single node case, it's been saved and the entry here has been set
+ * to NULL, which ctf_close happily ignores.
+ */
+static void
+ctf_dwarf_free_die(ctf_die_t *cdp)
+{
+	ctf_dwfunc_t *cdf, *ndf;
+	ctf_dwvar_t *cdv, *ndv;
+	ctf_dwbitf_t *cdb, *ndb;
+	ctf_dwmap_t *map;
+	void *cookie;
+
+	ctf_dprintf("Beginning to free die: %p\n", cdp);
+	cdp->cd_elf = NULL;
+	ctf_dprintf("Trying to free name: %p\n", cdp->cd_name);
+	if (cdp->cd_name != NULL)
+		ctf_free(cdp->cd_name, strlen(cdp->cd_name) + 1);
+	ctf_dprintf("Trying to free merge handle: %p\n", cdp->cd_cmh);
+	if (cdp->cd_cmh != NULL) {
+		ctf_merge_fini(cdp->cd_cmh);
+		cdp->cd_cmh = NULL;
+	}
+
+	ctf_dprintf("Trying to free functions\n");
+	for (cdf = ctf_list_next(&cdp->cd_funcs); cdf != NULL; cdf = ndf) {
+		ndf = ctf_list_next(cdf);
+		ctf_free(cdf->cdf_name, strlen(cdf->cdf_name) + 1);
+		if (cdf->cdf_fip.ctc_argc != 0) {
+			ctf_free(cdf->cdf_argv,
+			    sizeof (ctf_id_t) * cdf->cdf_fip.ctc_argc);
+		}
+		ctf_free(cdf, sizeof (ctf_dwfunc_t));
+	}
+
+	ctf_dprintf("Trying to free variables\n");
+	for (cdv = ctf_list_next(&cdp->cd_vars); cdv != NULL; cdv = ndv) {
+		ndv = ctf_list_next(cdv);
+		ctf_free(cdv->cdv_name, strlen(cdv->cdv_name) + 1);
+		ctf_free(cdv, sizeof (ctf_dwvar_t));
+	}
+
+	ctf_dprintf("Trying to free bitfields\n");
+	for (cdb = ctf_list_next(&cdp->cd_bitfields); cdb != NULL; cdb = ndb) {
+		ndb = ctf_list_next(cdb);
+		ctf_free(cdb, sizeof (ctf_dwbitf_t));
+	}
+
+	ctf_close(cdp->cd_ctfp);
+
+	cookie = NULL;
+	while ((map = avl_destroy_nodes(&cdp->cd_map, &cookie)) != NULL) {
+		ctf_free(map, sizeof (ctf_dwmap_t));
+	}
+	avl_destroy(&cdp->cd_map);
+	cdp->cd_errbuf = NULL;
+}
+
+static void
+ctf_dwarf_free_dies(ctf_die_t *cdies, int ndies)
+{
+	int i;
+
+	ctf_dprintf("Beginning to free dies\n");
+	for (i = 0; i < ndies; i++) {
+		ctf_dwarf_free_die(&cdies[i]);
+	}
+
+	ctf_free(cdies, sizeof (ctf_die_t) * ndies);
+}
+
+static int
+ctf_dwarf_count_dies(Dwarf_Debug dw, Dwarf_Error *derr, int *ndies,
+    char *errbuf, size_t errlen)
+{
+	int ret;
+	Dwarf_Half vers;
+	Dwarf_Unsigned nexthdr;
+
+	while ((ret = dwarf_next_cu_header(dw, NULL, &vers, NULL, NULL,
+	    &nexthdr, derr)) != DW_DLV_NO_ENTRY) {
+		if (ret != DW_DLV_OK) {
+			(void) snprintf(errbuf, errlen,
+			    "file does not contain valid DWARF data: %s\n",
+			    dwarf_errmsg(*derr));
+			return (ECTF_CONVBKERR);
+		}
+
+		if (vers != DWARF_VERSION_TWO) {
+			(void) snprintf(errbuf, errlen,
+			    "unsupported DWARF version: %d\n", vers);
+			return (ECTF_CONVBKERR);
+		}
+		*ndies = *ndies + 1;
+	}
+
+	if (*ndies == 0) {
+		(void) snprintf(errbuf, errlen,
+		    "file does not contain valid DWARF data: %s\n",
+		    dwarf_errmsg(*derr));
+		return (ECTF_CONVBKERR);
+	}
+
+	return (0);
+}
+
+/*
+ * Iterate over all of the dies and create a ctf_die_t for each of them. This is
+ * used to determine if we have zero, one, or multiple dies to convert. If we
+ * have zero, that's an error. If there's only one die, that's the simple case.
+ * No merge needed and only a single Dwarf_Debug as well.
+ */
+static int
+ctf_dwarf_init_die(ctf_die_t *cdp)
+{
+	int ret, n;
+	Dwarf_Unsigned hdrlen, abboff, nexthdr;
+	Dwarf_Half addrsz;
+	Dwarf_Unsigned offset = 0;
+	Dwarf_Error derr;
+
+	ret = dwarf_elf_init(cdp->cd_elf, DW_DLC_READ, NULL, NULL,
+	    &cdp->cd_dwarf, &derr);
+        if (ret != DW_DLV_OK) {
+		(void) snprintf(cdp->cd_errbuf, cdp->cd_errlen,
+		    "failed to initialize DWARF: %s\n",
+		    dwarf_errmsg(derr));
+		return (ECTF_CONVBKERR);
+	}
+
+	n = cdp->cd_ndie;
+
+	while ((ret = dwarf_next_cu_header(cdp->cd_dwarf, &hdrlen, NULL,
+	    &abboff, &addrsz, &nexthdr, &derr)) != DW_DLV_NO_ENTRY) {
+		char *name;
+		Dwarf_Die cu, child;
+
+		if (ret != DW_DLV_OK) {
+			(void) snprintf(cdp->cd_errbuf, cdp->cd_errlen,
+			    "failed to read DWARF: %s\n",
+			    dwarf_errmsg(derr));
+			return (ECTF_CONVBKERR);
+		}
+
+		/* Based on the counting above, we should be good to go */
+		VERIFY(ret == DW_DLV_OK);
+		if (n > 0) {
+			n--;
+			offset = nexthdr;
+			continue;
+		}
+
+		/*
+		 * Compilers are apparently inconsistent. Some emit no DWARF for
+		 * empty files and others emit empty compilation unit.
+		 */
+		cdp->cd_voidtid = CTF_ERR;
+		cdp->cd_longtid = CTF_ERR;
+		cdp->cd_maxoff = nexthdr - 1;
+		cdp->cd_ctfp = ctf_fdcreate(cdp->cd_fd, &ret);
+		if (cdp->cd_ctfp == NULL) {
+			ctf_free(cdp, sizeof (ctf_die_t));
+			return (ret);
+		}
+		avl_create(&cdp->cd_map, ctf_dwmap_comp, sizeof (ctf_dwmap_t),
+		    offsetof(ctf_dwmap_t, cdm_avl));
+		bzero(&cdp->cd_vars, sizeof (ctf_list_t));
+		bzero(&cdp->cd_funcs, sizeof (ctf_list_t));
+		bzero(&cdp->cd_bitfields, sizeof (ctf_list_t));
+
+		if ((ret = ctf_dwarf_die_elfenc(cdp->cd_elf, cdp,
+		    cdp->cd_errbuf, cdp->cd_errlen)) != 0) {
+			avl_destroy(&cdp->cd_map);
+			ctf_free(cdp, sizeof (ctf_die_t));
+			return (ret);
+		}
+
+		if ((ret = ctf_dwarf_sib(cdp, NULL, &cu)) != 0) {
+			avl_destroy(&cdp->cd_map);
+			ctf_free(cdp, sizeof (ctf_die_t));
+			return (ret);
+		}
+		if (cu == NULL) {
+			(void) snprintf(cdp->cd_errbuf, cdp->cd_errlen,
+			    "file does not contain DWARF data\n");
+			avl_destroy(&cdp->cd_map);
+			ctf_free(cdp, sizeof (ctf_die_t));
+			return (ECTF_CONVBKERR);
+		}
+
+		if ((ret = ctf_dwarf_child(cdp, cu, &child)) != 0) {
+			avl_destroy(&cdp->cd_map);
+			ctf_free(cdp, sizeof (ctf_die_t));
+			return (ret);
+		}
+		if (child == NULL) {
+			(void) snprintf(cdp->cd_errbuf, cdp->cd_errlen,
+			    "file does not contain DWARF data\n");
+			avl_destroy(&cdp->cd_map);
+			ctf_free(cdp, sizeof (ctf_die_t));
+			return (ECTF_CONVBKERR);
+		}
+
+		cdp->cd_cuoff = offset;
+		cdp->cd_cu = child;
+
+		if ((cdp->cd_cmh = ctf_merge_init(cdp->cd_fd, &ret)) == NULL) {
+			avl_destroy(&cdp->cd_map);
+			ctf_free(cdp, sizeof (ctf_die_t));
+			return (ret);
+		}
+
+		if (ctf_dwarf_string(cdp, cu, DW_AT_name, &name) == 0) {
+			size_t len = strlen(name) + 1;
+			char *b = basename(name);
+			cdp->cd_name = strdup(b);
+			ctf_free(name, len);
+		}
+		break;
+	}
+
+	return (0);
+}
+
 /* ARGSUSED */
 static int
 ctf_dwarf_convert_one(void *arg, void *unused)
@@ -2502,10 +2729,16 @@ ctf_dwarf_convert_one(void *arg, void *unused)
 	int ret;
 	ctf_file_t *dedup;
 	ctf_die_t *cdp = arg;
+	Dwarf_Error derr;
+
+	VERIFY(cdp != NULL);
+
+	if ((ret = ctf_dwarf_init_die(cdp)) != 0) {
+		return (ret);
+	}
 
 	ctf_dprintf("converting die: %s\n", cdp->cd_name);
 	ctf_dprintf("max offset: %x\n", cdp->cd_maxoff);
-	VERIFY(cdp != NULL);
 
 	ret = ctf_dwarf_convert_die(cdp, cdp->cd_cu);
 	ctf_dprintf("ctf_dwarf_convert_die (%s) returned %d\n", cdp->cd_name,
@@ -2575,237 +2808,26 @@ ctf_dwarf_convert_one(void *arg, void *unused)
 		return (ctf_dwarf_error(cdp, NULL, ret,
 		    "failed to deduplicate die"));
 	}
+
+	ctf_dprintf("Trying to clean up dwarf_t: %p\n", cdp->cd_dwarf);
+	if ((ret = dwarf_finish(cdp->cd_dwarf, &derr)) != DW_DLV_OK)
+	    ctf_dprintf("dwarf_finish fail: %s\n", dwarf_errmsg(derr));
+	cdp->cd_dwarf = NULL;
 	ctf_close(cdp->cd_ctfp);
 	cdp->cd_ctfp = dedup;
 
 	return (0);
 }
 
-/*
- * Note, we expect that if we're returning a ctf_file_t from one of the dies,
- * say in the single node case, it's been saved and the entry here has been set
- * to NULL, which ctf_close happily ignores.
- */
-static void
-ctf_dwarf_free_die(ctf_die_t *cdp)
-{
-	ctf_dwfunc_t *cdf, *ndf;
-	ctf_dwvar_t *cdv, *ndv;
-	ctf_dwbitf_t *cdb, *ndb;
-	ctf_dwmap_t *map;
-	void *cookie;
-	Dwarf_Error derr;
-
-	ctf_dprintf("Beginning to free die: %p\n", cdp);
-	cdp->cd_elf = NULL;
-	ctf_dprintf("Trying to free name: %p\n", cdp->cd_name);
-	if (cdp->cd_name != NULL)
-		ctf_free(cdp->cd_name, strlen(cdp->cd_name) + 1);
-	ctf_dprintf("Trying to free merge handle: %p\n", cdp->cd_cmh);
-	if (cdp->cd_cmh != NULL) {
-		ctf_merge_fini(cdp->cd_cmh);
-		cdp->cd_cmh = NULL;
-	}
-
-	ctf_dprintf("Trying to free functions\n");
-	for (cdf = ctf_list_next(&cdp->cd_funcs); cdf != NULL; cdf = ndf) {
-		ndf = ctf_list_next(cdf);
-		ctf_free(cdf->cdf_name, strlen(cdf->cdf_name) + 1);
-		if (cdf->cdf_fip.ctc_argc != 0) {
-			ctf_free(cdf->cdf_argv,
-			    sizeof (ctf_id_t) * cdf->cdf_fip.ctc_argc);
-		}
-		ctf_free(cdf, sizeof (ctf_dwfunc_t));
-	}
-
-	ctf_dprintf("Trying to free variables\n");
-	for (cdv = ctf_list_next(&cdp->cd_vars); cdv != NULL; cdv = ndv) {
-		ndv = ctf_list_next(cdv);
-		ctf_free(cdv->cdv_name, strlen(cdv->cdv_name) + 1);
-		ctf_free(cdv, sizeof (ctf_dwvar_t));
-	}
-
-	ctf_dprintf("Trying to free bitfields\n");
-	for (cdb = ctf_list_next(&cdp->cd_bitfields); cdb != NULL; cdb = ndb) {
-		ndb = ctf_list_next(cdb);
-		ctf_free(cdb, sizeof (ctf_dwbitf_t));
-	}
-
-	/* How do we clean up die usage? */
-	ctf_dprintf("Trying to clean up dwarf_t: %p\n", cdp->cd_dwarf);
-	(void) dwarf_finish(cdp->cd_dwarf, &derr);
-	cdp->cd_dwarf = NULL;
-	ctf_close(cdp->cd_ctfp);
-
-	cookie = NULL;
-	while ((map = avl_destroy_nodes(&cdp->cd_map, &cookie)) != NULL) {
-		ctf_free(map, sizeof (ctf_dwmap_t));
-	}
-	avl_destroy(&cdp->cd_map);
-	cdp->cd_errbuf = NULL;
-}
-
-static void
-ctf_dwarf_free_dies(ctf_die_t *cdies, int ndies)
-{
-	int i;
-
-	ctf_dprintf("Beginning to free dies\n");
-	for (i = 0; i < ndies; i++) {
-		ctf_dwarf_free_die(&cdies[i]);
-	}
-
-	ctf_free(cdies, sizeof (ctf_die_t) * ndies);
-}
-
-static int
-ctf_dwarf_count_dies(Dwarf_Debug dw, Dwarf_Error *derr, int *ndies,
-    char *errbuf, size_t errlen)
-{
-	int ret;
-	Dwarf_Half vers;
-	Dwarf_Unsigned nexthdr;
-
-	while ((ret = dwarf_next_cu_header(dw, NULL, &vers, NULL, NULL,
-	    &nexthdr, derr)) != DW_DLV_NO_ENTRY) {
-		if (ret != DW_DLV_OK) {
-			(void) snprintf(errbuf, errlen,
-			    "file does not contain valid DWARF data: %s\n",
-			    dwarf_errmsg(*derr));
-			return (ECTF_CONVBKERR);
-		}
-
-		if (vers != DWARF_VERSION_TWO) {
-			(void) snprintf(errbuf, errlen,
-			    "unsupported DWARF version: %d\n", vers);
-			return (ECTF_CONVBKERR);
-		}
-		*ndies = *ndies + 1;
-	}
-
-	if (*ndies == 0) {
-		(void) snprintf(errbuf, errlen,
-		    "file does not contain valid DWARF data: %s\n",
-		    dwarf_errmsg(*derr));
-		return (ECTF_CONVBKERR);
-	}
-
-	return (0);
-}
-
-/*
- * Iterate over all of the dies and create a ctf_die_t for each of them. This is
- * used to determine if we have zero, one, or multiple dies to convert. If we
- * have zero, that's an error. If there's only one die, that's the simple case.
- * No merge needed and only a single Dwarf_Debug as well.
- */
-static int
-ctf_dwarf_init_die(int fd, Elf *elf, ctf_die_t *cdp, int ndie, char *errbuf,
-    size_t errlen)
-{
-	int ret;
-	Dwarf_Unsigned hdrlen, abboff, nexthdr;
-	Dwarf_Half addrsz;
-	Dwarf_Unsigned offset = 0;
-	Dwarf_Error derr;
-
-	while ((ret = dwarf_next_cu_header(cdp->cd_dwarf, &hdrlen, NULL,
-	    &abboff, &addrsz, &nexthdr, &derr)) != DW_DLV_NO_ENTRY) {
-		char *name;
-		Dwarf_Die cu, child;
-
-		/* Based on the counting above, we should be good to go */
-		VERIFY(ret == DW_DLV_OK);
-		if (ndie > 0) {
-			ndie--;
-			offset = nexthdr;
-			continue;
-		}
-
-		/*
-		 * Compilers are apparently inconsistent. Some emit no DWARF for
-		 * empty files and others emit empty compilation unit.
-		 */
-		cdp->cd_voidtid = CTF_ERR;
-		cdp->cd_longtid = CTF_ERR;
-		cdp->cd_elf = elf;
-		cdp->cd_maxoff = nexthdr - 1;
-		cdp->cd_ctfp = ctf_fdcreate(fd, &ret);
-		if (cdp->cd_ctfp == NULL) {
-			ctf_free(cdp, sizeof (ctf_die_t));
-			return (ret);
-		}
-		avl_create(&cdp->cd_map, ctf_dwmap_comp, sizeof (ctf_dwmap_t),
-		    offsetof(ctf_dwmap_t, cdm_avl));
-		cdp->cd_errbuf = errbuf;
-		cdp->cd_errlen = errlen;
-		bzero(&cdp->cd_vars, sizeof (ctf_list_t));
-		bzero(&cdp->cd_funcs, sizeof (ctf_list_t));
-		bzero(&cdp->cd_bitfields, sizeof (ctf_list_t));
-
-		if ((ret = ctf_dwarf_die_elfenc(elf, cdp, errbuf,
-		    errlen)) != 0) {
-			avl_destroy(&cdp->cd_map);
-			ctf_free(cdp, sizeof (ctf_die_t));
-			return (ret);
-		}
-
-		if ((ret = ctf_dwarf_sib(cdp, NULL, &cu)) != 0) {
-			avl_destroy(&cdp->cd_map);
-			ctf_free(cdp, sizeof (ctf_die_t));
-			return (ret);
-		}
-		if (cu == NULL) {
-			(void) snprintf(errbuf, errlen,
-			    "file does not contain DWARF data\n");
-			avl_destroy(&cdp->cd_map);
-			ctf_free(cdp, sizeof (ctf_die_t));
-			return (ECTF_CONVBKERR);
-		}
-
-		if ((ret = ctf_dwarf_child(cdp, cu, &child)) != 0) {
-			avl_destroy(&cdp->cd_map);
-			ctf_free(cdp, sizeof (ctf_die_t));
-			return (ret);
-		}
-		if (child == NULL) {
-			(void) snprintf(errbuf, errlen,
-			    "file does not contain DWARF data\n");
-			avl_destroy(&cdp->cd_map);
-			ctf_free(cdp, sizeof (ctf_die_t));
-			return (ECTF_CONVBKERR);
-		}
-
-		cdp->cd_cuoff = offset;
-		cdp->cd_cu = child;
-
-		if ((cdp->cd_cmh = ctf_merge_init(fd, &ret)) == NULL) {
-			avl_destroy(&cdp->cd_map);
-			ctf_free(cdp, sizeof (ctf_die_t));
-			return (ret);
-		}
-
-		if (ctf_dwarf_string(cdp, cu, DW_AT_name, &name) == 0) {
-			size_t len = strlen(name) + 1;
-			char *b = basename(name);
-			cdp->cd_name = strdup(b);
-			ctf_free(name, len);
-		}
-		break;
-	}
-
-	return (0);
-}
-
-
 ctf_conv_status_t
-ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
-    char *errmsg, size_t errlen)
+ctf_dwarf_convert(int fd, Elf *elf, uint_t bsize, uint_t nthrs, int *errp,
+    ctf_file_t **fpp, char *errmsg, size_t errlen)
 {
 	int err, ret, ndies, i;
 	Dwarf_Debug dw;
 	Dwarf_Error derr;
 	ctf_die_t *cdies = NULL, *cdp;
+	ctf_file_t *fpprev;
 	workq_t *wqp = NULL;
 
 	if (errp == NULL)
@@ -2848,65 +2870,72 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 		return (CTF_CONV_ERROR);
 	}
 
+	/*
+	 * Fill out just enough of the ctf_die_t for the conversion process to
+	 * be able to finish the rest in a (potentially) multithreaded context.
+	 */
 	for (i = 0; i < ndies; i++) {
 		cdp = &cdies[i];
-		ret = dwarf_elf_init(elf, DW_DLC_READ, NULL, NULL,
-		    &cdp->cd_dwarf, &derr);
-		if (ret != 0) {
-			ctf_free(cdies, sizeof (ctf_die_t) * ndies);
-			(void) snprintf(errmsg, errlen,
-			    "failed to initialize DWARF: %s\n",
-			    dwarf_errmsg(derr));
-			*errp = ECTF_CONVBKERR;
-			return (CTF_CONV_ERROR);
-		}
-
-		ret = ctf_dwarf_init_die(fd, elf, &cdies[i], i, errmsg, errlen);
-		if (ret != 0) {
-			*errp = ret;
-			goto out;
-		}
+		cdp->cd_elf = elf;
+		cdp->cd_fd = fd;
+		cdp->cd_ndie = i;
+		cdp->cd_errbuf = errmsg;
+		cdp->cd_errlen = errlen;
 		cdp->cd_doweaks = ndies > 1 ? B_FALSE : B_TRUE;
 	}
 
 	ctf_dprintf("found %d DWARF die(s)\n", ndies);
 
 	/*
-	 * If we only have one die, there's no reason to use multiple threads,
-	 * even if the user requested them. After all, they just gave us an
-	 * upper bound.
+	 * There's no need to have either more threads or a batch size larger
+	 * than the total number of dies, even if the user requested them.
+	 * After all, they just gave us an upper bound.
 	 */
-	if (ndies == 1)
-		nthrs = 1;
+	if (nthrs > ndies)
+		nthrs = ndies;
+	if (bsize > ndies)
+		bsize = ndies;
 
 	if (workq_init(&wqp, nthrs) == -1) {
 		*errp = errno;
 		goto out;
 	}
 
-	for (i = 0; i < ndies; i++) {
-		cdp = &cdies[i];
-		ctf_dprintf("adding die %s: %p, %x %x\n", cdp->cd_name,
-		    cdp->cd_cu, cdp->cd_cuoff, cdp->cd_maxoff);
-		if (workq_add(wqp, cdp) == -1) {
+	/*
+	 * In order to avoid exhausting memory limits when converting files
+	 * with a large number of dies, we process them in batches.
+	 */
+	for (i = 0; i < ndies; i += bsize) {
+		ctf_merge_t *cmp;
+		int j;
+
+		ctf_dprintf("adding dies\n");
+		for (j = i; j < ndies; j++) {
+			if (j - i >= bsize)
+				break;
+			cdp = &cdies[j];
+			if (workq_add(wqp, cdp) == -1) {
+				*errp = errno;
+				goto out;
+			}
+		}
+
+		ret = workq_work(wqp, ctf_dwarf_convert_one, NULL, errp);
+		if (ret == WORKQ_ERROR) {
 			*errp = errno;
 			goto out;
+		} else if (ret == WORKQ_UERROR) {
+			ctf_dprintf("internal convert failed: %s\n",
+			    ctf_errmsg(*errp));
+			goto out;
 		}
-	}
 
-	ret = workq_work(wqp, ctf_dwarf_convert_one, NULL, errp);
-	if (ret == WORKQ_ERROR) {
-		*errp = errno;
-		goto out;
-	} else if (ret == WORKQ_UERROR) {
-		ctf_dprintf("internal convert failed: %s\n",
-		    ctf_errmsg(*errp));
-		goto out;
-	}
-
-	ctf_dprintf("Determining next phase: have %d dies\n", ndies);
-	if (ndies != 1) {
-		ctf_merge_t *cmp;
+		/* Only one die, no merge required */
+		if (ndies == 1) {
+			*fpp = cdies->cd_ctfp;
+			cdies->cd_ctfp = NULL;
+			goto success;
+		}
 
 		cmp = ctf_merge_init(fd, &ret);
 		if (cmp == NULL) {
@@ -2921,11 +2950,32 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 			goto out;
 		}
 
-		ctf_dprintf("adding dies\n");
-		for (i = 0; i < ndies; i++) {
-			cdp = &cdies[i];
+		/*
+		 * If we have the result of a previous merge then go ahead and
+		 * add it as an input to the next one, as well as saving the
+		 * ctf_file_t so that it can be freed afterwards when it is no
+		 * longer required.
+		 */
+		fpprev = NULL;
+		if (*fpp) {
+			ctf_dprintf("adding previous merge die\n");
+			fpprev = *fpp;
+			if ((ret = ctf_merge_add(cmp, *fpp)) != 0) {
+				ctf_merge_fini(cmp);
+				*fpp = NULL;
+				*errp = ret;
+				goto out;
+			}
+		}
+
+		ctf_dprintf("adding dies to merge\n");
+		for (j = i; j < ndies; j++) {
+			if (j - i >= bsize)
+				break;
+			cdp = &cdies[j];
 			if ((ret = ctf_merge_add(cmp, cdp->cd_ctfp)) != 0) {
 				ctf_merge_fini(cmp);
+				*fpp = NULL;
 				*errp = ret;
 				goto out;
 			}
@@ -2940,15 +2990,21 @@ ctf_dwarf_convert(int fd, Elf *elf, uint_t nthrs, int *errp, ctf_file_t **fpp,
 			*errp = ret;
 			goto out;
 		}
+
+		ctf_dprintf("freeing dies\n");
+		for (j = i; j < ndies; j++) {
+			if (j - i >= bsize)
+				break;
+			cdp = &cdies[j];
+			ctf_dprintf("freeing die %d\n", j);
+			ctf_dwarf_free_die(cdp);
+		}
+		ctf_close(fpprev);
 		ctf_merge_fini(cmp);
-		*errp = 0;
-		ctf_dprintf("successfully converted!\n");
-	} else {
-		*errp = 0;
-		*fpp = cdies->cd_ctfp;
-		cdies->cd_ctfp = NULL;
-		ctf_dprintf("successfully converted!\n");
 	}
+success:
+	*errp = 0;
+	ctf_dprintf("successfully converted!\n");
 
 out:
 	workq_fini(wqp);

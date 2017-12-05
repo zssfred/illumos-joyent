@@ -77,9 +77,9 @@ extern void ctf_diff_fini(ctf_diff_t *);
 
 #define	CTF_CONVERT_F_IGNNONC	0x01
 extern ctf_file_t *ctf_elfconvert(int, Elf *, const char *, uint_t, uint_t,
+    uint_t, int *, char *, size_t);
+extern ctf_file_t *ctf_fdconvert(int, const char *, uint_t, uint_t, uint_t,
     int *, char *, size_t);
-extern ctf_file_t *ctf_fdconvert(int, const char *, uint_t, uint_t, int *,
-    char *, size_t);
 
 typedef struct ctf_merge_handle ctf_merge_t;
 extern ctf_merge_t *ctf_merge_init(int, int *);

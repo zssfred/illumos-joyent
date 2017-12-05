@@ -102,8 +102,8 @@ ctf_convert_ftypes(Elf *elf, ctf_convert_source_t *types)
 }
 
 ctf_file_t *
-ctf_elfconvert(int fd, Elf *elf, const char *label, uint_t nthrs, uint_t flags,
-    int *errp, char *errbuf, size_t errlen)
+ctf_elfconvert(int fd, Elf *elf, const char *label, uint_t bsize, uint_t nthrs,
+    uint_t flags, int *errp, char *errbuf, size_t errlen)
 {
 	int err, i;
 	ctf_file_t *fp = NULL;
@@ -142,7 +142,7 @@ ctf_elfconvert(int fd, Elf *elf, const char *label, uint_t nthrs, uint_t flags,
 		ctf_conv_status_t cs;
 
 		fp = NULL;
-		cs = ctf_converters[i](fd, elf, nthrs, errp, &fp, errbuf,
+		cs = ctf_converters[i](fd, elf, bsize, nthrs, errp, &fp, errbuf,
 		    errlen);
 		if (cs == CTF_CONV_SUCCESS) {
 			notsup = B_FALSE;
@@ -187,8 +187,8 @@ ctf_elfconvert(int fd, Elf *elf, const char *label, uint_t nthrs, uint_t flags,
 }
 
 ctf_file_t *
-ctf_fdconvert(int fd, const char *label, uint_t nthrs, uint_t flags, int *errp,
-    char *errbuf, size_t errlen)
+ctf_fdconvert(int fd, const char *label, uint_t bsize, uint_t nthrs,
+    uint_t flags, int *errp, char *errbuf, size_t errlen)
 {
 	int err;
 	Elf *elf;
@@ -203,7 +203,8 @@ ctf_fdconvert(int fd, const char *label, uint_t nthrs, uint_t flags, int *errp,
 		return (NULL);
 	}
 
-	fp = ctf_elfconvert(fd, elf, label, nthrs, flags, errp, errbuf, errlen);
+	fp = ctf_elfconvert(fd, elf, label, bsize, nthrs, flags, errp, errbuf,
+	    errlen);
 
 	(void) elf_end(elf);
 	return (fp);
