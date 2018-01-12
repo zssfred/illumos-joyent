@@ -31,7 +31,7 @@ typedef struct bunyan_logger bunyan_logger_t;
 
 typedef enum bunyan_level {
 	BUNYAN_L_TRACE	= 10,
-	BUNYAN_L_DEBUG 	= 20,
+	BUNYAN_L_DEBUG	= 20,
 	BUNYAN_L_INFO	= 30,
 	BUNYAN_L_WARN	= 40,
 	BUNYAN_L_ERROR	= 50,
@@ -51,7 +51,8 @@ typedef enum bunyan_type {
 	BUNYAN_T_UINT64,
 	BUNYAN_T_DOUBLE,
 	BUNYAN_T_INT64STR,
-	BUNYAN_T_UINT64STR
+	BUNYAN_T_UINT64STR,
+	BUNYAN_T_OBJECT
 } bunyan_type_t;
 
 /*

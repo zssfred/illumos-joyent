@@ -33,6 +33,8 @@
 #include <bunyan.h>
 #include <bunyan_provider_impl.h>
 
+#include <stdio.h>
+
 struct bunyan_key;
 struct bunyan_stream;
 struct bunyan;
@@ -50,8 +52,32 @@ typedef struct bunyan_key {
 	struct bunyan_key	*bk_next;
 	char			*bk_name;
 	bunyan_type_t		bk_type;
-	void			*bk_data;
-	size_t			bk_len;
+	union {
+		char			*bku_str;
+		void			*bku_ptr;
+		in_addr_t		bku_ip4;
+		in6_addr_t		*bku_ip6;
+		boolean_t		bku_bool;
+		int32_t			bku_i32;
+		int64_t			bku_i64;
+		uint32_t		bku_u32;
+		uint64_t		bku_u64;
+		double			bku_dbl;
+		struct bunyan_key	*bku_obj;
+	} bk_u;
+#define	bk_str	bk_u.bku_str
+#define	bk_ptr	bk_u.bku_ptr
+#define	bk_data	bk_u.bku_ptr
+#define	bk_ip4	bk_u.bku_ip4
+#define	bk_ip6	bk_u.bku_ip6
+#define	bk_bool	bk_u.bku_bool
+#define	bk_i32	bk_u.bku_i32
+#define	bk_i64	bk_u.bku_i64
+#define	bk_u32	bk_u.bku_u32
+#define	bk_u64	bk_u.bku_u64
+#define	bk_dbl	bk_u.bku_dbl
+#define	bk_obj	bk_u.bku_obj
+	size_t			bk_len;	/* amt of memory allocated for data */
 } bunyan_key_t;
 
 typedef struct bunyan {
@@ -65,11 +91,26 @@ typedef struct bunyan {
 #define	ISO_TIMELEN	25
 static const int bunyan_version = 0;
 
+static int bunyan_key_vadd(bunyan_key_t **, va_list *);
+
 static void
 bunyan_key_fini(bunyan_key_t *bkp)
 {
 	size_t nlen = strlen(bkp->bk_name) + 1;
-	umem_free(bkp->bk_data, bkp->bk_len);
+
+	if (bkp->bk_len > 0) {
+		umem_free(bkp->bk_data, bkp->bk_len);
+	} else if (bkp->bk_type == BUNYAN_T_OBJECT) {
+		bunyan_key_t *cur, *next;
+
+		cur = bkp->bk_obj;
+		while (cur != NULL) {
+			next = cur->bk_next;
+			bunyan_key_fini(cur);
+			cur = next;
+		}
+	}
+
 	umem_free(bkp->bk_name, nlen);
 	umem_free(bkp, sizeof (bunyan_key_t));
 }
@@ -250,16 +291,21 @@ bunyan_stream_remove(bunyan_logger_t *bhp, const char *name)
 }
 
 static int
-bunyan_key_add_one(bunyan_t *b, const char *name, bunyan_type_t type,
-    const void *arg)
+bunyan_key_init(bunyan_key_t **bkpp, const char *name, bunyan_type_t type,
+    va_list *ap)
 {
-	bunyan_key_t *bkp, *cur, *prev;
+	bunyan_key_t *bkp;
 	size_t nlen = strlen(name) + 1;
-	size_t blen;
+	size_t blen = 0;
+	void *arg = NULL;
+	int ret;
 
-	bkp = umem_alloc(sizeof (bunyan_key_t), UMEM_DEFAULT);
+	*bkpp = NULL;
+
+	bkp = umem_zalloc(sizeof (bunyan_key_t), UMEM_DEFAULT);
 	if (bkp == NULL)
 		return (ENOMEM);
+
 	bkp->bk_name = umem_alloc(nlen, UMEM_DEFAULT);
 	if (bkp->bk_name == NULL) {
 		umem_free(bkp, sizeof (bunyan_key_t));
@@ -267,38 +313,49 @@ bunyan_key_add_one(bunyan_t *b, const char *name, bunyan_type_t type,
 	}
 	bcopy(name, bkp->bk_name, nlen);
 
+	bkp->bk_type = type;
+
 	switch (type) {
 	case BUNYAN_T_STRING:
+		arg = va_arg(*ap, char *);
 		blen = strlen(arg) + 1;
 		break;
 	case BUNYAN_T_POINTER:
-		blen = sizeof (uintptr_t);
+		bkp->bk_ptr = va_arg(*ap, void *);
+		break;
+	case BUNYAN_T_OBJECT:
+		if ((ret = bunyan_key_vadd(&bkp->bk_obj, ap)) != 0) {
+			bunyan_key_fini(bkp);
+			return (ret);
+		}
 		break;
 	case BUNYAN_T_IP:
-		blen = sizeof (struct in_addr);
+		arg = va_arg(*ap, void *);
+		bcopy(arg, &bkp->bk_ip4, sizeof (in_addr_t));
 		break;
 	case BUNYAN_T_IP6:
 		blen = sizeof (struct in6_addr);
+		arg = va_arg(*ap, void *);
 		break;
 	case BUNYAN_T_BOOLEAN:
-		blen = sizeof (boolean_t);
+		bkp->bk_bool = va_arg(*ap, boolean_t);
 		break;
 	case BUNYAN_T_INT32:
-		blen = sizeof (int32_t);
+		bkp->bk_i32 = va_arg(*ap, int32_t);
 		break;
 	case BUNYAN_T_INT64:
 	case BUNYAN_T_INT64STR:
-		blen = sizeof (int64_t);
+		bkp->bk_i64 = va_arg(*ap, int64_t);
 		break;
 	case BUNYAN_T_UINT32:
-		blen = sizeof (uint32_t);
+		bkp->bk_u32 = va_arg(*ap, uint32_t);
 		break;
 	case BUNYAN_T_UINT64:
 	case BUNYAN_T_UINT64STR:
-		blen = sizeof (uint64_t);
+		bkp->bk_u64 = va_arg(*ap, uint64_t);
 		break;
 	case BUNYAN_T_DOUBLE:
-		blen = sizeof (double);
+		bkp->bk_dbl = va_arg(*ap, double);
 		break;
 	default:
 		umem_free(bkp->bk_name, nlen);
@@ -306,99 +363,51 @@ bunyan_key_add_one(bunyan_t *b, const char *name, bunyan_type_t type,
 		return (EINVAL);
 	}
 
-	bkp->bk_data = umem_alloc(blen, UMEM_DEFAULT);
-	if (bkp->bk_data == NULL) {
-		umem_free(bkp->bk_name, nlen);
-		umem_free(bkp, sizeof (bunyan_key_t));
-		return (ENOMEM);
+	if (blen > 0) {
+		bkp->bk_data = umem_alloc(blen, UMEM_DEFAULT);
+		if (bkp->bk_data == NULL) {
+			umem_free(bkp->bk_name, nlen);
+			umem_free(bkp, sizeof (bunyan_key_t));
+			return (ENOMEM);
+		}
+		bcopy(arg, bkp->bk_data, blen);
+		bkp->bk_len = blen;
 	}
-	bcopy(arg, bkp->bk_data, blen);
-	bkp->bk_len = blen;
-	bkp->bk_type = type;
 
-	(void) pthread_mutex_lock(&b->bun_lock);
-	prev = NULL;
-	cur = b->bun_keys;
-	while (cur != NULL) {
-		if (strcmp(name, cur->bk_name) == 0)
-			break;
-		prev = cur;
-		cur = cur->bk_next;
-	}
-	if (cur != NULL) {
-		if (prev == NULL)
-			b->bun_keys = cur->bk_next;
-		else
-			prev->bk_next = cur->bk_next;
-		bunyan_key_fini(cur);
-	}
-	bkp->bk_next = b->bun_keys;
-	b->bun_keys = bkp;
-	(void) pthread_mutex_unlock(&b->bun_lock);
+	*bkpp = bkp;
 
 	return (0);
 }
 
 static int
-bunyan_key_vadd(bunyan_t *b, va_list *ap)
+bunyan_key_vadd(bunyan_key_t **bkpp, va_list *ap)
 {
+	bunyan_key_t *bkp, *cur, *prev;
 	int type, ret;
-	void *data;
-	boolean_t bt;
-	int32_t i32;
-	int64_t i64;
-	uint32_t ui32;
-	uint64_t ui64;
-	double d;
-	uintptr_t ptr;
 
 	while ((type = va_arg(*ap, int)) != BUNYAN_T_END) {
 		const char *name = va_arg(*ap, char *);
 
-		switch (type) {
-		case BUNYAN_T_STRING:
-			data = va_arg(*ap, char *);
-			break;
-		case BUNYAN_T_POINTER:
-			ptr = (uintptr_t)va_arg(*ap, void *);
-			data = &ptr;
-			break;
-		case BUNYAN_T_IP:
-		case BUNYAN_T_IP6:
-			data = va_arg(*ap, void *);
-			break;
-		case BUNYAN_T_BOOLEAN:
-			bt  = va_arg(*ap, boolean_t);
-			data = &bt;
-			break;
-		case BUNYAN_T_INT32:
-			i32 = va_arg(*ap, int32_t);
-			data = &i32;
-			break;
-		case BUNYAN_T_INT64:
-		case BUNYAN_T_INT64STR:
-			i64 = va_arg(*ap, int64_t);
-			data = &i64;
-			break;
-		case BUNYAN_T_UINT32:
-			ui32 = va_arg(*ap, uint32_t);
-			data = &ui32;
-			break;
-		case BUNYAN_T_UINT64:
-		case BUNYAN_T_UINT64STR:
-			ui64 = va_arg(*ap, uint64_t);
-			data = &ui64;
-			break;
-		case BUNYAN_T_DOUBLE:
-			d = va_arg(*ap, double);
-			data = &d;
-			break;
-		default:
-			return (EINVAL);
-		}
-
-		if ((ret = bunyan_key_add_one(b, name, type, data)) != 0)
+		if ((ret = bunyan_key_init(&bkp, name, type, ap)) != 0)
 			return (ret);
+
+		prev = NULL;
+		cur = *bkpp;
+		while (cur != NULL) {
+			if (strcmp(name, cur->bk_name) == 0)
+				break;
+			prev = cur;
+			cur = cur->bk_next;
+		}
+		if (cur != NULL) {
+			if (prev == NULL)
+				*bkpp = cur->bk_next;
+			else
+				prev->bk_next = cur->bk_next;
+			bunyan_key_fini(cur);
+		}
+		bkp->bk_next = *bkpp;
+		*bkpp = bkp;
 	}
 
 	return (0);
@@ -411,9 +420,11 @@ bunyan_key_add(bunyan_logger_t *bhp, ...)
 	va_list ap;
 	bunyan_t *b = (bunyan_t *)bhp;
 
+	VERIFY0(pthread_mutex_lock(&b->bun_lock));
 	va_start(ap, bhp);
-	ret = bunyan_key_vadd(b, &ap);
+	ret = bunyan_key_vadd(&b->bun_keys, &ap);
 	va_end(ap);
+	VERIFY0(pthread_mutex_unlock(&b->bun_lock));
 
 	return (ret);
 }
@@ -466,13 +477,33 @@ bunyan_key_dup(const bunyan_key_t *bkp)
 	}
 	bcopy(bkp->bk_name, nkp->bk_name, nlen);
 	nkp->bk_type = bkp->bk_type;
-	nkp->bk_data = umem_alloc(bkp->bk_len, UMEM_DEFAULT);
-	if (nkp->bk_data == NULL) {
-		umem_free(nkp->bk_name, nlen);
-		umem_free(nkp, sizeof (bunyan_key_t));
-		return (NULL);
+
+	if (bkp->bk_len > 0) {
+		nkp->bk_data = umem_alloc(bkp->bk_len, UMEM_DEFAULT);
+		if (nkp->bk_data == NULL) {
+			umem_free(nkp->bk_name, nlen);
+			umem_free(nkp, sizeof (bunyan_key_t));
+			return (NULL);
+		}
+		bcopy(bkp->bk_data, nkp->bk_data, bkp->bk_len);
+	} else if (bkp->bk_type == BUNYAN_T_OBJECT) {
+		bunyan_key_t *curr, **nkpp;
+
+		curr = bkp->bk_obj;
+		nkpp = &nkp->bk_obj;
+		while (curr != NULL) {
+			if ((*nkpp = bunyan_key_dup(curr)) == NULL) {
+				bunyan_key_fini(nkp);
+				return (NULL);
+			}
+
+			curr = curr->bk_next;
+			nkpp = &(*nkpp)->bk_next;
+		}
+	} else {
+		nkp->bk_data = bkp->bk_data;
 	}
-	bcopy(bkp->bk_data, nkp->bk_data, bkp->bk_len);
+
 	nkp->bk_len = bkp->bk_len;
 
 	return (nkp);
@@ -569,7 +600,7 @@ bunyan_child(const bunyan_logger_t *bhp, bunyan_logger_t **outp, ...)
 		return (ENOMEM);
 
 	va_start(ap, outp);
-	ret = bunyan_key_vadd(n, &ap);
+	ret = bunyan_key_vadd(&n->bun_keys, &ap);
 	va_end(ap);
 
 	if (ret != 0)
@@ -625,6 +656,86 @@ bunyan_vlog_defaults(nvlist_t *nvl, bunyan_t *b, bunyan_level_t level,
 		return (ret);
 
 	return (0);
+}
+
+static int
+bunyan_vlog_add_key(nvlist_t *nvl, bunyan_key_t *bkp)
+{
+	const char *key = bkp->bk_name;
+	struct in6_addr *v6;
+	in_addr_t *v4;
+	nvlist_t *obj;
+	bunyan_key_t *cur;
+	int ret;
+
+	/*
+	 * Out buffer needs to hold the string forms of pointers, IPv6 strings,
+	 * etc. INET6_ADDRSTRLEN is large enough for all of these.
+	 */
+	char buf[INET6_ADDRSTRLEN];
+
+	switch (bkp->bk_type) {
+	case BUNYAN_T_STRING:
+		ret = nvlist_add_string(nvl, key, bkp->bk_str);
+		break;
+	case BUNYAN_T_POINTER:
+		(void) snprintf(buf, sizeof (buf), "0x%p", bkp->bk_ptr);
+		ret = nvlist_add_string(nvl, key, buf);
+		break;
+	case BUNYAN_T_IP:
+		v4 = &bkp->bk_ip4;
+		VERIFY(inet_ntop(AF_INET, v4, buf, sizeof (buf)) != NULL);
+		ret = nvlist_add_string(nvl, key, buf);
+		break;
+	case BUNYAN_T_IP6:
+		v6 = bkp->bk_ip6;
+		VERIFY(inet_ntop(AF_INET6, v6, buf, sizeof (buf)) != NULL);
+		ret = nvlist_add_string(nvl, key, buf);
+		break;
+	case BUNYAN_T_BOOLEAN:
+		ret = nvlist_add_boolean_value(nvl, key, bkp->bk_bool);
+		break;
+	case BUNYAN_T_INT32:
+		ret = nvlist_add_int32(nvl, key, bkp->bk_i32);
+		break;
+	case BUNYAN_T_INT64:
+		ret = nvlist_add_int64(nvl, key, bkp->bk_i64);
+		break;
+	case BUNYAN_T_UINT32:
+		ret = nvlist_add_uint32(nvl, key, bkp->bk_u32);
+		break;
+	case BUNYAN_T_UINT64:
+		ret = nvlist_add_uint64(nvl, key, bkp->bk_u64);
+		break;
+	case BUNYAN_T_DOUBLE:
+		ret = nvlist_add_double(nvl, key, bkp->bk_dbl);
+		break;
+	case BUNYAN_T_INT64STR:
+		(void) snprintf(buf, sizeof (buf), "%lld", bkp->bk_i64);
+		ret = nvlist_add_string(nvl, key, buf);
+		break;
+	case BUNYAN_T_UINT64STR:
+		(void) snprintf(buf, sizeof (buf), "%llu", bkp->bk_u64);
+		ret = nvlist_add_string(nvl, key, buf);
+		break;
+	case BUNYAN_T_OBJECT:
+		if ((ret = nvlist_alloc(&obj, NV_UNIQUE_NAME, 0)) != 0)
+			return (ret);
+		cur = bkp->bk_obj;
+		while (cur != NULL) {
+			if ((ret = bunyan_vlog_add_key(obj, cur)) != 0) {
+				nvlist_free(obj);
+				return (ret);
+			}
+			cur = cur->bk_next;
+		}
+		ret = nvlist_add_nvlist(nvl, key, obj);
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	return (ret);
 }
 
 static int
@@ -686,6 +797,9 @@ bunyan_vlog_add(nvlist_t *nvl, const char *key, bunyan_type_t type, void *arg)
 		(void) snprintf(buf, sizeof (buf), "%llu", *(uint64_t *)arg);
 		ret = nvlist_add_string(nvl, key, buf);
 		break;
+	case BUNYAN_T_OBJECT:
+		ret = nvlist_add_nvlist(nvl, key, arg);
+		break;
 	default:
 		ret = EINVAL;
 		break;
@@ -695,39 +809,13 @@ bunyan_vlog_add(nvlist_t *nvl, const char *key, bunyan_type_t type, void *arg)
 }
 
 static int
-bunyan_vlog(bunyan_logger_t *bhp, bunyan_level_t level, const char *msg,
-    va_list *ap)
+bunyan_vlog_arg(nvlist_t *nvl, va_list *ap)
 {
-	nvlist_t *nvl = NULL;
 	int ret, type;
-	bunyan_key_t *bkp;
-	bunyan_stream_t *bsp;
-	char *buf = NULL;
-	bunyan_t *b = (bunyan_t *)bhp;
-
-	if (msg == NULL)
-		return (EINVAL);
-
-	(void) pthread_mutex_lock(&b->bun_lock);
-
-	if ((ret = nvlist_alloc(&nvl, NV_UNIQUE_NAME, 0)) != 0) {
-		(void) pthread_mutex_unlock(&b->bun_lock);
-		return (ret);
-	}
-
-	/*
-	 * We add pre-defined keys, then go through and process the users keys,
-	 * and finally go ahead and our defaults. If all that succeeds, then we
-	 * can go ahead and call all the built-in logs.
-	 */
-	for (bkp = b->bun_keys; bkp != NULL; bkp = bkp->bk_next) {
-		if ((ret = bunyan_vlog_add(nvl, bkp->bk_name, bkp->bk_type,
-		    bkp->bk_data)) != 0)
-			goto out;
-	}
 
 	while ((type = va_arg(*ap, int)) != BUNYAN_T_END) {
 		void *data;
+		nvlist_t *obj;
 		boolean_t bt;
 		int32_t i32;
 		int64_t i64;
@@ -775,15 +863,60 @@ bunyan_vlog(bunyan_logger_t *bhp, bunyan_level_t level, const char *msg,
 			d = va_arg(*ap, double);
 			data = &d;
 			break;
+		case BUNYAN_T_OBJECT:
+			if ((ret = nvlist_alloc(&obj, NV_UNIQUE_NAME, 0)) != 0)
+				return (ret);
+			if ((ret = bunyan_vlog_arg(obj, ap)) != 0) {
+				nvlist_free(obj);
+				return (ret);
+			}
+			data = obj;
+			break;
 		default:
-			ret = EINVAL;
-			goto out;
+			return (EINVAL);
 		}
 
 		if ((ret = bunyan_vlog_add(nvl, key, type, data)) != 0)
-			goto out;
-
+			return (ret);
 	}
+
+	return (0);
+}
+
+static int
+bunyan_vlog(bunyan_logger_t *bhp, bunyan_level_t level, const char *msg,
+    va_list *ap)
+{
+	nvlist_t *nvl = NULL;
+	int ret;
+	bunyan_key_t *bkp;
+	bunyan_stream_t *bsp;
+	char *buf = NULL;
+	bunyan_t *b = (bunyan_t *)bhp;
+
+	if (msg == NULL)
+		return (EINVAL);
+
+	(void) pthread_mutex_lock(&b->bun_lock);
+
+	if ((ret = nvlist_alloc(&nvl, NV_UNIQUE_NAME, 0)) != 0) {
+		(void) pthread_mutex_unlock(&b->bun_lock);
+		return (ret);
+	}
+
+	/*
+	 * We add pre-defined keys, then go through and process the users keys,
+	 * and finally go ahead and our defaults. If all that succeeds, then we
+	 * can go ahead and call all the built-in logs.
+	 */
+	for (bkp = b->bun_keys; bkp != NULL; bkp = bkp->bk_next) {
+		if ((ret = bunyan_vlog_add_key(nvl, bkp)) != 0)
+			goto out;
+	}
+
+	if ((ret = bunyan_vlog_arg(nvl, ap)) != 0)
+		goto out;
+
 	/*
 	 * This must be the last thing we do before we log to ensure that all of
 	 * our defaults always make it out.

@@ -88,6 +88,20 @@ create_key(void)
 	    BUNYAN_T_INT64STR, "i64s", (uint64_t)12345,
 	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321, BUNYAN_T_END) == 0);
 
+	assert(bunyan_key_add(a, BUNYAN_T_OBJECT, "obj",
+	    BUNYAN_T_POINTER, "objp", (void *)a,
+	    BUNYAN_T_IP, "obj_v4", &v4,
+	    BUNYAN_T_IP6, "obj_v6", &v6,
+	    BUNYAN_T_BOOLEAN, "obj_b", B_TRUE,
+	    BUNYAN_T_INT32, "obj_i32", 69,
+	    BUNYAN_T_INT64, "obj_i64", (uint64_t)6969,
+	    BUNYAN_T_UINT32, "obj_u32", 23,
+	    BUNYAN_T_UINT64, "obj_u64", (uint64_t)2323,
+	    BUNYAN_T_DOUBLE, "obj_d", 3.14,
+	    BUNYAN_T_INT64STR, "obj_i64s", (uint64_t)12345,
+	    BUNYAN_T_UINT64STR, "obj_u64s", (uint64_t)54321,
+	    BUNYAN_T_END, BUNYAN_T_END) == 0);
+
 	assert(bunyan_key_remove(a, "s") == 0);
 	assert(bunyan_key_remove(a, "s") == ENOENT);
 	assert(bunyan_key_remove(a, "p") == 0);
@@ -112,7 +126,8 @@ create_key(void)
 	assert(bunyan_key_remove(a, "i64s") == ENOENT);
 	assert(bunyan_key_remove(a, "u64s") == 0);
 	assert(bunyan_key_remove(a, "u64s") == ENOENT);
-
+	assert(bunyan_key_remove(a, "obj") == 0);
+	assert(bunyan_key_remove(a, "obj") == ENOENT);
 	bunyan_fini(a);
 }
 
@@ -180,7 +195,11 @@ crazy_log(void)
 	    BUNYAN_T_UINT32, "u32", 23, BUNYAN_T_UINT64, "u64", (uint64_t)2323,
 	    BUNYAN_T_DOUBLE, "d", 3.14,
 	    BUNYAN_T_INT64STR, "i64s", (uint64_t)12345,
-	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321, BUNYAN_T_END) == 0);
+	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321,
+	    BUNYAN_T_OBJECT, "obj",
+	    BUNYAN_T_STRING, "objstr", "bar",
+	    BUNYAN_T_INT32, "objint", 42, BUNYAN_T_END,
+	    BUNYAN_T_END) == 0);
 	assert(bunyan_debug(a, "debug", BUNYAN_T_STRING, "s", "foo",
 	    BUNYAN_T_POINTER, "p", (void *)a, BUNYAN_T_IP, "v4", &v4,
 	    BUNYAN_T_IP6, "v6", &v6, BUNYAN_T_BOOLEAN, "b", B_TRUE,
@@ -188,39 +207,79 @@ crazy_log(void)
 	    BUNYAN_T_UINT32, "u32", 23, BUNYAN_T_UINT64, "u64", (uint64_t)2323,
 	    BUNYAN_T_DOUBLE, "d", 3.14,
 	    BUNYAN_T_INT64STR, "i64s", (uint64_t)12345,
-	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321, BUNYAN_T_END) == 0);
-	assert(bunyan_info(a, "info", BUNYAN_T_STRING, "s", "foo",
-	    BUNYAN_T_POINTER, "p", (void *)a, BUNYAN_T_IP, "v4", &v4,
-	    BUNYAN_T_IP6, "v6", &v6, BUNYAN_T_BOOLEAN, "b", B_TRUE,
-	    BUNYAN_T_INT32, "i32", 69, BUNYAN_T_INT64, "i64", (uint64_t)6969,
-	    BUNYAN_T_UINT32, "u32", 23, BUNYAN_T_UINT64, "u64", (uint64_t)2323,
+	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321,
+	    BUNYAN_T_OBJECT, "obj",
+	    BUNYAN_T_STRING, "objstr", "bar",
+	    BUNYAN_T_INT32, "objint", 42, BUNYAN_T_END,
+	    BUNYAN_T_END) == 0);
+	assert(bunyan_info(a, "info",
+	    BUNYAN_T_STRING, "s", "foo",
+	    BUNYAN_T_POINTER, "p", (void *)a,
+	    BUNYAN_T_IP, "v4", &v4,
+	    BUNYAN_T_IP6, "v6", &v6,
+	    BUNYAN_T_BOOLEAN, "b", B_TRUE,
+	    BUNYAN_T_INT32, "i32", 69,
+	    BUNYAN_T_INT64, "i64", (uint64_t)6969,
+	    BUNYAN_T_UINT32, "u32", 23,
+	    BUNYAN_T_UINT64, "u64", (uint64_t)2323,
 	    BUNYAN_T_DOUBLE, "d", 3.14,
 	    BUNYAN_T_INT64STR, "i64s", (uint64_t)12345,
-	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321, BUNYAN_T_END) == 0);
-	assert(bunyan_warn(a, "warn", BUNYAN_T_STRING, "s", "foo",
-	    BUNYAN_T_POINTER, "p", (void *)a, BUNYAN_T_IP, "v4", &v4,
-	    BUNYAN_T_IP6, "v6", &v6, BUNYAN_T_BOOLEAN, "b", B_TRUE,
-	    BUNYAN_T_INT32, "i32", 69, BUNYAN_T_INT64, "i64", (uint64_t)6969,
-	    BUNYAN_T_UINT32, "u32", 23, BUNYAN_T_UINT64, "u64", (uint64_t)2323,
+	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321,
+	    BUNYAN_T_OBJECT, "obj",
+	    BUNYAN_T_STRING, "objstr", "bar",
+	    BUNYAN_T_INT32, "objint", 42, BUNYAN_T_END,
+	    BUNYAN_T_END) == 0);
+	assert(bunyan_warn(a, "warn",
+	    BUNYAN_T_STRING, "s", "foo",
+	    BUNYAN_T_POINTER, "p", (void *)a,
+	    BUNYAN_T_IP, "v4", &v4,
+	    BUNYAN_T_IP6, "v6", &v6,
+	    BUNYAN_T_BOOLEAN, "b", B_TRUE,
+	    BUNYAN_T_INT32, "i32", 69,
+	    BUNYAN_T_INT64, "i64", (uint64_t)6969,
+	    BUNYAN_T_UINT32, "u32", 23,
+	    BUNYAN_T_UINT64, "u64", (uint64_t)2323,
 	    BUNYAN_T_DOUBLE, "d", 3.14,
 	    BUNYAN_T_INT64STR, "i64s", (uint64_t)12345,
-	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321, BUNYAN_T_END) == 0);
-	assert(bunyan_error(a, "error", BUNYAN_T_STRING, "s", "foo",
-	    BUNYAN_T_POINTER, "p", (void *)a, BUNYAN_T_IP, "v4", &v4,
-	    BUNYAN_T_IP6, "v6", &v6, BUNYAN_T_BOOLEAN, "b", B_TRUE,
-	    BUNYAN_T_INT32, "i32", 69, BUNYAN_T_INT64, "i64", (uint64_t)6969,
-	    BUNYAN_T_UINT32, "u32", 23, BUNYAN_T_UINT64, "u64", (uint64_t)2323,
+	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321,
+	    BUNYAN_T_OBJECT, "obj",
+	    BUNYAN_T_STRING, "objstr", "bar",
+	    BUNYAN_T_INT32, "objint", 42, BUNYAN_T_END,
+	    BUNYAN_T_END) == 0);
+	assert(bunyan_error(a, "error",
+	    BUNYAN_T_STRING, "s", "foo",
+	    BUNYAN_T_POINTER, "p", (void *)a,
+	    BUNYAN_T_IP, "v4", &v4,
+	    BUNYAN_T_IP6, "v6", &v6,
+	    BUNYAN_T_BOOLEAN, "b", B_TRUE,
+	    BUNYAN_T_INT32, "i32", 69,
+	    BUNYAN_T_INT64, "i64", (uint64_t)6969,
+	    BUNYAN_T_UINT32, "u32", 23,
+	    BUNYAN_T_UINT64, "u64", (uint64_t)2323,
 	    BUNYAN_T_DOUBLE, "d", 3.14,
 	    BUNYAN_T_INT64STR, "i64s", (uint64_t)12345,
-	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321, BUNYAN_T_END) == 0);
-	assert(bunyan_fatal(a, "fatal", BUNYAN_T_STRING, "s", "foo",
-	    BUNYAN_T_POINTER, "p", (void *)a, BUNYAN_T_IP, "v4", &v4,
-	    BUNYAN_T_IP6, "v6", &v6, BUNYAN_T_BOOLEAN, "b", B_TRUE,
-	    BUNYAN_T_INT32, "i32", 69, BUNYAN_T_INT64, "i64", (uint64_t)6969,
-	    BUNYAN_T_UINT32, "u32", 23, BUNYAN_T_UINT64, "u64", (uint64_t)2323,
+	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321,
+	    BUNYAN_T_OBJECT, "obj",
+	    BUNYAN_T_STRING, "objstr", "bar",
+	    BUNYAN_T_INT32, "objint", 42, BUNYAN_T_END,
+	    BUNYAN_T_END) == 0);
+	assert(bunyan_fatal(a, "fatal",
+	    BUNYAN_T_STRING, "s", "foo",
+	    BUNYAN_T_POINTER, "p", (void *)a,
+	    BUNYAN_T_IP, "v4", &v4,
+	    BUNYAN_T_IP6, "v6", &v6,
+	    BUNYAN_T_BOOLEAN, "b", B_TRUE,
+	    BUNYAN_T_INT32, "i32", 69,
+	    BUNYAN_T_INT64, "i64", (uint64_t)6969,
+	    BUNYAN_T_UINT32, "u32", 23,
+	    BUNYAN_T_UINT64, "u64", (uint64_t)2323,
 	    BUNYAN_T_DOUBLE, "d", 3.14,
 	    BUNYAN_T_INT64STR, "i64s", (uint64_t)12345,
-	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321, BUNYAN_T_END) == 0);
+	    BUNYAN_T_UINT64STR, "u64s", (uint64_t)54321,
+	    BUNYAN_T_OBJECT, "obj",
+	    BUNYAN_T_STRING, "objstr", "bar",
+	    BUNYAN_T_INT32, "objint", 42, BUNYAN_T_END,
+	    BUNYAN_T_END) == 0);
 
 	bunyan_fini(a);
 }
