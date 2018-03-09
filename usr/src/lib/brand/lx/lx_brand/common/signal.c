@@ -26,6 +26,7 @@
 
 /*
  * Copyright 2018 Joyent, Inc. All rights reserved.
+ * Copyright 2018 Austin Wise <austin@awise.us>
  */
 
 #include <sys/types.h>
@@ -1636,8 +1637,10 @@ lx_sigdeliver(int lx_sig, siginfo_t *sip, ucontext_t *ucp, size_t stacksz,
 	 * stack specified by the user.
 	 */
 	newstack = (lxsap->lxsa_flags & LX_SA_ONSTACK) &&
-	    !(lxtsd->lxtsd_sigaltstack.ss_flags & (LX_SS_ONSTACK |
-	    LX_SS_DISABLE));
+	    !(lxtsd->lxtsd_sigaltstack.ss_flags & LX_SS_DISABLE) &&
+	    (orig_sp < (uintptr_t)lxtsd->lxtsd_sigaltstack.ss_sp ||
+	    orig_sp >= (uintptr_t)(lxtsd->lxtsd_sigaltstack.ss_sp +
+	    lxtsd->lxtsd_sigaltstack.ss_size));
 
 	/*
 	 * Find the first unused region of the Linux process stack, where
