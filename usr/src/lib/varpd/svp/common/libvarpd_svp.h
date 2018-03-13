@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #ifndef _LIBVARPD_SVP_H
@@ -74,6 +74,8 @@ typedef union svp_query_data {
 	svp_vl3_ack_t	sdq_vl3a;
 	svp_log_req_t	sdq_logr;
 	svp_lrm_ack_t	sdq_lrma;
+	svp_rvl3_req_t	sqd_rvl3r;
+	svp_rvl3_ack_t	sqd_rvl3a;
 } svp_query_data_t;
 
 typedef void (*svp_query_f)(svp_query_t *, void *);
@@ -245,6 +247,8 @@ typedef void (*svp_vl3_inject_f)(svp_t *, const uint16_t,
     const struct in6_addr *, const uint8_t *, const uint8_t *);
 typedef void (*svp_shootdown_f)(svp_t *, const uint8_t *,
     const struct in6_addr *, const uint16_t uport);
+/* XXX KEBE SAYS FILL ME IN! */
+typedef void (*svp_rvl3_lookup_f)(svp_t *, svp_status_t, void *);
 
 typedef struct svp_cb {
 	svp_vl2_lookup_f	scb_vl2_lookup;
@@ -252,6 +256,7 @@ typedef struct svp_cb {
 	svp_vl2_invalidation_f	scb_vl2_invalidate;
 	svp_vl3_inject_f	scb_vl3_inject;
 	svp_shootdown_f		scb_shootdown;
+	svp_rvl3_lookup_f	scb_rvl3_lookup;
 } svp_cb_t;
 
 /*
@@ -285,6 +290,10 @@ extern void svp_remote_vl3_lookup(svp_t *, svp_query_t *,
     const struct sockaddr *, void *);
 extern void svp_remote_vl2_lookup(svp_t *, svp_query_t *, const uint8_t *,
     void *);
+extern void svp_remote_rvl3_lookup(svp_t *, svp_query_t *,
+    const struct in6_addr *, const struct in6_addr *, uint32_t, uint32_t,
+    uint16_t, void *);
+
 
 /*
  * Init functions

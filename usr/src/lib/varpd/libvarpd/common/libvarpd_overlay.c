@@ -280,7 +280,8 @@ libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 	vqp->vq_instance = inst;
 
 	inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private,
-	    (varpd_query_handle_t *)vqp, otl, &otr->otr_answer);
+	    (varpd_query_handle_t *)vqp, otl, &otr->otr_answer,
+	    &otr->otr_route);
 }
 
 void

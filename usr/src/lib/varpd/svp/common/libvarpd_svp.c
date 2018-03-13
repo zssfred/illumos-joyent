@@ -360,7 +360,8 @@ static umem_cache_t *svp_lookup_cache;
 typedef enum svp_lookup_type {
 	SVP_L_UNKNOWN	= 0x0,
 	SVP_L_VL2	= 0x1,
-	SVP_L_VL3	= 0x2
+	SVP_L_VL3	= 0x2,
+	SVP_L_RVL3	= 0x3
 } svp_lookup_type_t;
 
 typedef struct svp_lookup {
@@ -374,6 +375,11 @@ typedef struct svp_lookup {
 			varpd_arp_handle_t	*svl_vah;
 			uint8_t			*svl_out;
 		} svl_vl3;
+		struct svl_lookup_rvl3 {
+			varpd_query_handle_t	*svl_handle;
+			overlay_target_point_t	*svl_point;
+			overlay_target_route_t	*svl_route;
+		} svl_rvl3;
 	} svl_u;
 	svp_query_t				svl_query;
 } svp_lookup_t;
@@ -493,12 +499,37 @@ svp_shootdown_cb(svp_t *svp, const uint8_t *vl2mac, const struct in6_addr *uip,
 	libvarpd_inject_varp(svp->svp_hdl, vl2mac, NULL);
 }
 
+static void
+svp_rvl3_lookup_cb(svp_t *svp, svp_status_t status, /* XXX KEBE SAYS MORE */
+    void *arg)
+{
+	svp_lookup_t *svl = arg;
+	overlay_target_point_t *otp;
+	overlay_target_route_t *otr;
+
+	if (status != SVP_S_OK) {
+		libvarpd_plugin_query_reply(svl->svl_u.svl_rvl3.svl_handle,
+		    VARPD_LOOKUP_DROP);
+		umem_cache_free(svp_lookup_cache, svl);
+		return;
+	}
+
+	otp = svl->svl_u.svl_rvl3.svl_point;
+	otr = svl->svl_u.svl_rvl3.svl_route;
+	/* XXX KEBE SAYS FILL ME IN! */
+
+	libvarpd_plugin_query_reply(svl->svl_u.svl_rvl3.svl_handle,
+	    VARPD_LOOKUP_OK);
+	umem_cache_free(svp_lookup_cache, svl);
+}
+
 static svp_cb_t svp_defops = {
 	svp_vl2_lookup_cb,
 	svp_vl3_lookup_cb,
 	svp_vl2_invalidate_cb,
 	svp_vl3_inject_cb,
-	svp_shootdown_cb
+	svp_shootdown_cb,
+	svp_rvl3_lookup_cb,
 };
 
 static boolean_t
@@ -589,11 +620,79 @@ varpd_svp_destroy(void *arg)
 }
 
 static void
+varpd_svp_lookup_l3(svp_t *svp, varpd_query_handle_t *vqh,
+    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
+    overlay_target_route_t *otr)
+{
+	svp_lookup_t *slp;
+	uint32_t type;
+	const struct in6_addr *src = &otl->otl_addru.otlu_l3.otl3_srcip,
+	    *dst = &otl->otl_addru.otlu_l3.otl3_dstip;
+
+	/*
+	 * otl is an L3 request, so we have src/dst IPs for the inner packet.
+	 * We also have the vlan.
+	 *
+	 * Assume kernel's overlay module is caching well, so we are directly
+	 * going to query (i.e. no caching up here of actual destinations).
+	 *
+	 * Our existing remote sever (svp_remote), but with the new message
+	 * SVP_R_REMOTE_VL3_REQ.  Our naming of these functions already has
+	 * "remote" in it, but we'll use "rvl3" instead of "vl3".
+	 */
+
+	/* XXX KEBE SAYS DO SOME otl verification too... */
+	if (IN6_IS_ADDR_V4MAPPED(src)) {
+		if (!IN6_IS_ADDR_V4MAPPED(dst)) {
+			libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+			return;
+		}
+		type = SVP_VL3_IP;
+	} else {
+		if (IN6_IS_ADDR_V4MAPPED(dst)) {
+			libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+			return;
+		}
+		type = SVP_VL3_IPV6;
+	}
+
+	slp = umem_cache_alloc(svp_lookup_cache, UMEM_DEFAULT);
+	if (slp == NULL) {
+		libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	slp->svl_type = SVP_L_RVL3;
+	slp->svl_u.svl_rvl3.svl_handle = vqh;
+	slp->svl_u.svl_rvl3.svl_point = otp;
+	slp->svl_u.svl_rvl3.svl_route = otr;
+
+	/* XXX KEBE SAYS FILL IN ARGS PROPERLY... */
+	svp_remote_rvl3_lookup(svp, &slp->svl_query, src, dst, type,
+	    otl->otl_vnetid, (uint16_t)otl->otl_vlan, slp);
+}
+
+static void
 varpd_svp_lookup(void *arg, varpd_query_handle_t *vqh,
-    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
+    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
+    overlay_target_route_t *otr)
 {
 	svp_lookup_t *slp;
 	svp_t *svp = arg;
+
+	/*
+	 * Shuffle off L3 lookups to their own codepath.
+	 */
+	if (otl->otl_l3req) {
+		varpd_svp_lookup_l3(svp, vqh, otl, otp, otr);
+		return;
+	}
+	/*
+	 * At this point, the traditional overlay_target_point_t is all that
+	 * needs filling in.  Zero-out the otr for safety.
+	 */
+	bzero(otr, sizeof (*otr));
+
 
 	/*
 	 * Check if this is something that we need to proxy, eg. arp or ndp.

@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 /*
@@ -245,6 +245,8 @@ svp_remote_attach(svp_remote_t *srp, svp_t *svp)
 		libvarpd_panic("missing callback scb_vl2_invalidate");
 	if (svp->svp_cb.scb_vl3_inject == NULL)
 		libvarpd_panic("missing callback scb_vl3_inject");
+	if (svp->svp_cb.scb_rvl3_lookup == NULL)
+		libvarpd_panic("missing callback scb_rvl3_lookup");
 
 	check.svp_vid = svp->svp_vid;
 	if (avl_find(&srp->sr_tree, &check, &where) != NULL)
@@ -348,6 +350,58 @@ svp_remote_vl2_lookup(svp_t *svp, svp_query_t *sqp, const uint8_t *mac,
 	mutex_enter(&srp->sr_lock);
 	if (svp_remote_conn_queue(srp, sqp) == B_FALSE)
 		svp->svp_cb.scb_vl2_lookup(svp, SVP_S_FATAL, NULL, NULL, arg);
+	mutex_exit(&srp->sr_lock);
+}
+
+static void
+svp_remote_rvl3_lookup_cb(svp_query_t *sqp, void *arg)
+{
+	svp_t *svp = sqp->sq_svp;
+	svp_rvl3_ack_t *rvl3a = (svp_rvl3_ack_t *)sqp->sq_wdata;
+
+	if (sqp->sq_status == SVP_S_OK) {
+		svp->svp_cb.scb_rvl3_lookup(svp, sqp->sq_status,
+		    /* XXX KEBE SAYS MORE HERE */ arg);
+	} else {
+	}
+}
+
+void
+svp_remote_rvl3_lookup(svp_t *svp, svp_query_t *sqp, const struct in6_addr *src,
+    const struct in6_addr *dst, uint32_t type, uint32_t vnetid, uint16_t vlan,
+    void *arg)
+{
+	svp_remote_t *srp;
+	svp_rvl3_req_t *rvl3r = &sqp->sq_rdun.sqd_rvl3r;
+
+	srp = svp->svp_remote;
+	sqp->sq_func = svp_remote_rvl3_lookup_cb;
+	sqp->sq_arg = arg;
+	sqp->sq_svp = svp;
+	sqp->sq_state = SVP_QUERY_INIT;
+	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
+	sqp->sq_header.svp_op = htons(SVP_R_REMOTE_VL3_REQ);
+	sqp->sq_header.svp_size = htonl(sizeof (svp_vl2_req_t));
+	sqp->sq_header.svp_id = id_alloc(svp_idspace);
+	if (sqp->sq_header.svp_id == (id_t)-1)
+		libvarpd_panic("failed to allcoate from svp_idspace: %d",
+		    errno);
+	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_rdata = rvl3r;
+
+	bcopy(src, rvl3r->srl3r_srcip, sizeof (struct in6_addr));
+	bcopy(dst, rvl3r->srl3r_dstip, sizeof (struct in6_addr));
+	/* Caller should've checked both are the same type... */
+	rvl3r->srl3r_type = type;
+	rvl3r->srl3r_vnetid = vnetid;
+	rvl3r->srl3r_vlan = vlan;
+	rvl3r->srl3r_pad = 0;
+
+	mutex_enter(&srp->sr_lock);
+	if (!svp_remote_conn_queue(srp, sqp)) {
+		sqp->sq_status = SVP_S_FATAL;
+		sqp->sq_func(sqp, arg);
+	}
 	mutex_exit(&srp->sr_lock);
 }
 

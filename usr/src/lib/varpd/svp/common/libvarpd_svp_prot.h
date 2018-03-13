@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #ifndef _LIBVARPD_SVP_PROT_H
@@ -34,6 +34,8 @@ extern "C" {
  */
 
 #define	SVP_VERSION_ONE	1
+#define	SVP_VERSION_TWO	2
+/* XXX KEBE SAYS -- we are not yet ready to bump this. */
 #define	SVP_CURRENT_VERSION	SVP_VERSION_ONE
 
 typedef struct svp_req {
@@ -58,7 +60,9 @@ typedef enum svp_op {
 	SVP_R_LOG_ACK		= 0x0A,
 	SVP_R_LOG_RM		= 0x0B,
 	SVP_R_LOG_RM_ACK	= 0x0C,
-	SVP_R_SHOOTDOWN		= 0x0D
+	SVP_R_SHOOTDOWN		= 0x0D,
+	SVP_R_REMOTE_VL3_REQ	= 0x0E,
+	SVP_R_REMOTE_VL3_ACK	= 0x0F
 } svp_op_t;
 
 typedef enum svp_status {
@@ -118,6 +122,34 @@ typedef struct svp_vl3_ack {
 	uint16_t	sl3a_uport;
 	uint8_t		sl3a_uip[16];
 } svp_vl3_ack_t;
+
+/*
+ * A client issues the SVP_R_REMOTE_VL3_REQ for a far-remote (cross-DC) VL3 IP
+ * address.  The server may take longer because it may query cross-DC to get
+ * the answer for our response.
+ */
+typedef struct svp_rvl3_req {
+	uint8_t		srl3r_srcip[16];
+	uint8_t		srl3r_dstip[16];
+	uint32_t	srl3r_type;	/* Same as SVP_R_VL3_REQ */
+	uint32_t	srl3r_vnetid;
+	uint16_t	srl3r_vlan;
+	uint16_t	srl3r_pad;	/* XXX KEBE ASKS, necessary? */
+} svp_rvl3_req_t;
+
+/*
+ * The remote-VL3 response contains more than the regular VL3 one, because
+ * overlay needs to rewrite the MAC header completely.
+ */
+typedef struct svp_rvl3_ack {
+	uint32_t	srl3a_status;
+	uint8_t		srl3a_dstmac[ETHERADDRL]; /* MAC of the target. */
+	uint8_t		srl3a_srcmac[ETHERADDRL]; /* MAC of the target's rtr */
+	uint16_t	srl3a_vlanid;
+	uint16_t	srl3a_uport;
+	uint32_t	srl3a_dcid;	/* Remote Data Center ID. */
+	uint8_t		srl3a_uip[16];
+} svp_rvl3_ack_t;
 
 /*
  * SVP_R_BULK_REQ requests a bulk dump of data. Currently we have two kinds of

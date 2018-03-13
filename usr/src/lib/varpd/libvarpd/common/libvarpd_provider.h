@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #ifndef _LIBVARPD_PROVIDER_H
@@ -315,7 +315,8 @@ typedef void (*varpd_plugin_destroy_f)(void *);
 #define	VARPD_LOOKUP_DROP	(-1)
 typedef int (*varpd_plugin_default_f)(void *, overlay_target_point_t *);
 typedef void (*varpd_plugin_lookup_f)(void *, varpd_query_handle_t *,
-    const overlay_targ_lookup_t *, overlay_target_point_t *);
+    const overlay_targ_lookup_t *, overlay_target_point_t *,
+    overlay_target_route_t *);
 
 #define	VARPD_QTYPE_ETHERNET	0x0
 typedef void (*varpd_plugin_arp_f)(void *, varpd_arp_handle_t *, int,

@@ -224,14 +224,16 @@ varpd_files_destroy(void *arg)
 
 static void
 varpd_files_lookup_l3(varpd_files_t *vaf, varpd_query_handle_t *qh,
-    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
+    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
+    overlay_target_route_t *otr)
 {
 	/* XXX KEBE SAYS START HERE... */
 }
 
 static void
 varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
-    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
+    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
+    overlay_target_route_t *otr)
 {
 	char macstr[ETHERADDRSTRL], *ipstr;
 	nvlist_t *nvl;
@@ -245,10 +247,18 @@ varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
 		return;
 	}
 
+	/*
+	 * Shuffle off L3 lookups to their own codepath.
+	 */
 	if (otl->otl_l3req) {
-		varpd_files_lookup_l3(vaf, qh, otl, otp);
+		varpd_files_lookup_l3(vaf, qh, otl, otp, otr);
 		return;
 	}
+	/*
+	 * At this point, the traditional overlay_target_point_t is all that
+	 * needs filling in.  Zero-out the otr for safety.
+	 */
+	bzero(otr, sizeof (*otr));
 
 	if (otl->otl_addru.otlu_l2.otl2_sap == ETHERTYPE_ARP) {
 		libvarpd_plugin_proxy_arp(vaf->vaf_hdl, qh, otl);
