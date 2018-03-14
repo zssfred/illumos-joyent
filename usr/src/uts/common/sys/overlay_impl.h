@@ -109,13 +109,13 @@ typedef struct overlay_fabric_attach {
 /*
  * Since we have two different refhashes for an overlay_target_entry_t
  * (VL2 aka MAC address and VL3 aka IP address), we want to maintain
- * the refcount in only one place, so we elect to use the ott_dhash
+ * the refcount in only one place. We elect to use the ott_dhash
  * refhash to do so.
  */
 #define	OVERLAY_TARGET_ENTRY_HOLD(tgt, e) \
 	refhash_hold((tgt)->ott_u.ott_dyn.ott_dhash, e)
 #define	OVERLAY_TARGET_ENTRY_RELE(tgt, e) \
-	refhash_hold((tgt)->ott_u.ott_dyn.ott_dhash, e)
+	refhash_rele((tgt)->ott_u.ott_dyn.ott_dhash, e)
 
 typedef enum overlay_dev_flag {
 	OVERLAY_F_ACTIVATED	= 0x01, /* Activate ioctl completed */

@@ -667,10 +667,10 @@ again:
 
 	otl->otl_hdrsize = mhi.mhi_hdrsize;
 	otl->otl_pktsize = msgsize(entry->ote_chead) - otl->otl_hdrsize;
-	bcopy(mhi.mhi_daddr, otl->otl_dstaddr, ETHERADDRL);
-	bcopy(mhi.mhi_saddr, otl->otl_srcaddr, ETHERADDRL);
-	otl->otl_dsttype = mhi.mhi_dsttype;
-	otl->otl_sap = mhi.mhi_bindsap;
+	bcopy(mhi.mhi_daddr, otl->otl_addru.otlu_l2.otl2_dstaddr, ETHERADDRL);
+	bcopy(mhi.mhi_saddr, otl->otl_addru.otlu_l2.otl2_srcaddr, ETHERADDRL);
+	otl->otl_addru.otlu_l2.otl2_dsttype = mhi.mhi_dsttype;
+	otl->otl_addru.otlu_l2.otl2_sap = mhi.mhi_bindsap;
 	otl->otl_vlan = VLAN_ID(mhi.mhi_tci);
 	mutex_exit(&entry->ote_lock);
 

@@ -180,13 +180,6 @@ typedef struct overlay_targ_lookup {
 	int32_t		otl_vlan;
 	boolean_t	otl_l3req;
 } overlay_targ_lookup_t;
-#define	otl_dstaddr	otl_addru.otlu_l2.otl2_dstaddr
-#define	otl_srcaddr	otl_addru.otlu_l2.otl2_srcaddr
-#define	otl_dsttype	otl_addru.otlu_l2.otl2_dsttype
-#define	otl_sap		otl_addru.otlu_l2.otl2_sap
-
-#define	otl_dstip	otl_addru.otlu_l3.otl3_dstip
-#define	otl_srcip	otl_addru.otlu_l3.otl3_srcip
 
 
 typedef struct overlay_targ_resp {
