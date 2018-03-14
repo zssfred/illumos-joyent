@@ -23,6 +23,8 @@
  *
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2018, Joyent, Inc.
  */
 
 /*
@@ -137,6 +139,18 @@ struct ether_vlan_extinfo {
 	((short *)b)[1] = ((short *)a)[1]; ((short *)b)[2] = ((short *)a)[2]; }
 #else
 #define	ether_copy(a, b) (bcopy((caddr_t)a, (caddr_t)b, 6))
+#endif
+
+/*
+ * Ethernet is-zero check
+ */
+#if defined(__sparc) || defined(__i386) || defined(__amd64)
+#define	ether_is_zero(a) \
+	(((short *)a)[0] == 0 && ((short *)a)[1] == 0 && ((short *)a)[2] == 0)
+#else
+#define	ether_is_zero(a) (((uint8_t *)a)[0] == 0 && ((uint8_t *)a)[1] == 0 && \
+	((uint8_t *)a)[2] == 0 && ((uint8_t *)a)[3] == 0 && \
+	((uint8_t *)a)[4] == 0 && ((uint8_t *)a)[5] == 0)
 #endif
 
 #ifdef	_KERNEL

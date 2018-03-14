@@ -127,6 +127,11 @@ dladm_overlay_parse_prop(overlay_prop_type_t type, void *buf, uint32_t *sizep,
 		bcopy(&ipv6, buf, sizeof (struct in6_addr));
 		*sizep = sizeof (struct in6_addr);
 		break;
+	case OVERLAY_PROP_T_ETHER:
+		if (ether_aton_r(val, (struct ether_addr *)buf) == NULL)
+			return (DLADM_STATUS_BADARG);
+		*sizep = ETHERADDRL;
+		break;
 	default:
 		abort();
 	}
