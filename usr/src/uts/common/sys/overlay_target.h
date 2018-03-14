@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2015 Joyent, Inc.
+ * Copyright (c) 2018 Joyent, Inc.
  */
 
 #ifndef _OVERLAY_TARGET_H
@@ -30,6 +30,8 @@ extern "C" {
 #endif
 
 typedef struct overlay_target_point {
+	uint64_t	otp_vnet;
+	uint16_t	otp_vlan;
 	uint8_t		otp_mac[ETHERADDRL];
 	struct in6_addr	otp_ip;
 	uint16_t	otp_port;
@@ -134,7 +136,7 @@ typedef struct overlay_targ_id {
  *
  * 		This ioctl can be used to copy data from a given request into a
  * 		user buffer. This can be used in combination with
- * 		OVERLAY_TARG_INJECT to implemnt services such as a proxy-arp.
+ * 		OVERLAY_TARG_INJECT to implement services such as a proxy-arp.
  *
  *
  * 	OVERLAY_TARG_RESEND - overlay_targ_pkt_t
@@ -152,6 +154,18 @@ typedef struct overlay_targ_id {
 #define	OVERLAY_TARG_PKT	(OVERLAY_TARG_IOCTL | 0x14)
 #define	OVERLAY_TARG_RESEND	(OVERLAY_TARG_IOCTL | 0x15)
 
+typedef struct overlay_targ_l2 {
+	uint8_t		otl2_srcaddr[ETHERADDRL];
+	uint8_t		otl2_dstaddr[ETHERADDRL];
+	uint32_t	otl2_dsttype;
+	uint32_t	otl2_sap;
+} overlay_targ_l2_t;
+
+typedef struct overlay_targ_l3 {
+	struct in6_addr	otl3_srcip;
+	struct in6_addr	otl3_dstip;
+} overlay_targ_l3_t;
+
 typedef struct overlay_targ_lookup {
 	uint64_t	otl_dlid;
 	uint64_t	otl_reqid;
@@ -159,16 +173,29 @@ typedef struct overlay_targ_lookup {
 	uint64_t	otl_vnetid;
 	uint64_t	otl_hdrsize;
 	uint64_t	otl_pktsize;
-	uint8_t		otl_srcaddr[ETHERADDRL];
-	uint8_t		otl_dstaddr[ETHERADDRL];
-	uint32_t	otl_dsttype;
-	uint32_t	otl_sap;
+	union {
+		overlay_targ_l2_t	otlu_l2;
+		overlay_targ_l3_t	otlu_l3;
+	} otl_addru;
 	int32_t		otl_vlan;
+	boolean_t	otl_l3req;
 } overlay_targ_lookup_t;
+#define	otl_dstaddr	otl_addru.otlu_l2.otl2_dstaddr
+#define	otl_srcaddr	otl_addru.otlu_l2.otl2_srcaddr
+#define	otl_dsttype	otl_addru.otlu_l2.otl2_dsttype
+#define	otl_sap		otl_addru.otlu_l2.otl2_sap
+
+#define	otl_dstip	otl_addru.otlu_l3.otl3_dstip
+#define	otl_srcip	otl_addru.otlu_l3.otl3_srcip
+
 
 typedef struct overlay_targ_resp {
 	uint64_t	otr_reqid;
 	overlay_target_point_t otr_answer;
+	/* XXX: Put the below fields in their own struct? */
+	uint32_t	otr_dcid;
+	uint8_t		otr_src_prefixlen;
+	uint8_t		otr_dst_prefixlen;
 } overlay_targ_resp_t;
 
 typedef struct overlay_targ_pkt {
@@ -269,6 +296,7 @@ typedef struct overlay_targ_list {
 typedef struct overlay_targ_cache_entry {
 	uint8_t			otce_mac[ETHERADDRL];
 	uint16_t		otce_flags;
+	uint32_t		otce_dcid;
 	overlay_target_point_t	otce_dest;
 } overlay_targ_cache_entry_t;
 

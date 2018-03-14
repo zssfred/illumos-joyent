@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2016 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #ifndef _SYS_OVERLAY_IMPL_H
@@ -59,7 +59,7 @@ typedef struct overlay_mux {
 	int			omux_domain;	/* RO: socket domain */
 	int			omux_family;	/* RO: socket family */
 	int			omux_protocol;	/* RO: socket protocol */
-	struct sockaddr 	*omux_addr;	/* RO: socket address */
+	struct sockaddr		*omux_addr;	/* RO: socket address */
 	socklen_t		omux_alen;	/* RO: sockaddr len */
 	kmutex_t		omux_lock;	/* Protects everything below */
 	uint_t			omux_count;	/* Active instances */
@@ -82,10 +82,40 @@ typedef struct overlay_target {
 		overlay_target_point_t	ott_point;
 		struct overlay_target_dyn {
 			refhash_t	*ott_dhash;
+			refhash_t	*ott_l3dhash;
 			avl_tree_t	ott_tree;
+			/* XXX: Do we actually need a tree sorted by VL3? */
+			avl_tree_t	ott_l3tree;
 		} ott_dyn;
 	} ott_u;
 } overlay_target_t;
+
+/*
+ * Initially at least, we represent a group of fabrics that are attached to
+ * each other as a circular linked list.  Within an overlay_dev_t, we then
+ * maintain a list of pointers into these lists for each fabric that's
+ * present locally on the CN as we learn them:
+ *
+ */
+typedef struct overlay_fabric_attach {
+	struct overlay_fabric_attach *ofa_next;
+	struct in6_addr	ofa_addr;
+	uint32_t	ofa_dcid;
+	uint16_t	ofa_vlan;
+	uint8_t		ofa_prefixlen;
+	uint8_t		ofa_pad;
+} overlay_fabric_attach_t;
+
+/*
+ * Since we have two different refhashes for an overlay_target_entry_t
+ * (VL2 aka MAC address and VL3 aka IP address), we want to maintain
+ * the refcount in only one place, so we elect to use the ott_dhash
+ * refhash to do so.
+ */
+#define	OVERLAY_TARGET_ENTRY_HOLD(tgt, e) \
+	refhash_hold((tgt)->ott_u.ott_dyn.ott_dhash, e)
+#define	OVERLAY_TARGET_ENTRY_RELE(tgt, e) \
+	refhash_hold((tgt)->ott_u.ott_dyn.ott_dhash, e)
 
 typedef enum overlay_dev_flag {
 	OVERLAY_F_ACTIVATED	= 0x01, /* Activate ioctl completed */
@@ -117,6 +147,9 @@ typedef struct overlay_dev {
 	uint64_t	odd_vid;		/* RO if active else odd_lock */
 	avl_node_t	odd_muxnode;		/* managed by mux */
 	overlay_target_t *odd_target;		/* See big theory statement */
+	overlay_fabric_attach_t **odd_fattach;	/* protected by odd_lock */
+	uint32_t	odd_dcid;		/* RO if active else odd_lock */
+	uint8_t		odd_macaddr[ETHERADDRL]; /* RO same as odd_dcid */
 	char		odd_fmamsg[OVERLAY_STATUS_BUFLEN];	/* odd_lock */
 } overlay_dev_t;
 
@@ -130,10 +163,14 @@ typedef enum overlay_target_entry_flags {
 typedef struct overlay_target_entry {
 	kmutex_t		ote_lock;
 	refhash_link_t		ote_reflink;	/* hashtable link */
+	refhash_link_t		ote_l3_reflink;	/* IP hashtable link */
 	avl_node_t		ote_avllink;	/* iteration link */
+	avl_node_t		ote_l3_avllink;	/* IP iteration link */
 	list_node_t		ote_qlink;
 	overlay_target_entry_flags_t ote_flags;	/* RW: state flags */
+	uint32_t		ote_dcid;
 	uint8_t			ote_addr[ETHERADDRL];	/* RO: mac addr */
+	struct in6_addr		ote_ip;		/* RO: VL3 IP */
 	overlay_target_t	*ote_ott;	/* RO */
 	overlay_dev_t		*ote_odd;	/* RO */
 	overlay_target_point_t	ote_dest;	/* RW: destination */
@@ -142,7 +179,6 @@ typedef struct overlay_target_entry {
 	size_t			ote_mbsize;	/* RW: outstanding mblk size */
 	hrtime_t		ote_vtime;	/* RW: valid timestamp */
 } overlay_target_entry_t;
-
 
 #define	OVERLAY_CTL	"overlay"
 
