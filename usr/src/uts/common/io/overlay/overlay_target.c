@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2016 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 /*
@@ -141,6 +141,8 @@ overlay_entry_cache_destructor(void *buf, void *arg)
 	mutex_destroy(&ote->ote_lock);
 }
 
+/* TODO: we will need to modify these to hash/cmp DCID + MAC */
+
 static uint64_t
 overlay_mac_hash(const void *v)
 {
@@ -237,6 +239,8 @@ overlay_target_free(overlay_dev_t *odd)
 		avl_tree_t *ap = &odd->odd_target->ott_u.ott_dyn.ott_tree;
 		overlay_target_entry_t *ote;
 
+		/* TODO: remove from L3 trees */
+
 		/*
 		 * Our AVL tree and hashtable contain the same elements,
 		 * therefore we should just remove it from the tree, but then
@@ -303,6 +307,10 @@ overlay_target_quiesce(overlay_target_t *ott)
  * This functions assumes that the destination mode is OVERLAY_PLUGIN_D_IP |
  * OVERLAY_PLUGIN_D_PORT. As we don't have an implementation of anything else at
  * this time, say for NVGRE, we drop all packets that mcuh this.
+ *
+ * XXX: It might be better to replace the 'sock' argument with
+ * overlay_target_entry_t** and set it with the found entry in the case
+ * of OVERLAY_TARGET_OK.
  */
 int
 overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
@@ -350,6 +358,16 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 	 */
 	if (mac_header_info(odd->odd_mh, mp, &mhi) != 0)
 		return (OVERLAY_TARGET_DROP);
+
+	/*
+	 * TODO: compare mhi.mhi_daddr with odd->macaddr.
+	 * If match,
+	 * 	get VL3 dest from mp
+	 * 	lookup target using VL3 dest
+	 * otherwise,
+	 * 	lookup target using VL2 dest (existing refhash_lookup() call
+	 * 	below)
+	 */
 	mutex_enter(&ott->ott_lock);
 	entry = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
 	    mhi.mhi_daddr);
@@ -360,6 +378,11 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 			mutex_exit(&ott->ott_lock);
 			return (OVERLAY_TARGET_DROP);
 		}
+		/*
+		 * TODO: set entry->ote_dcid, if VL3 lookup, copy dst addr
+		 * into entry->ote_ip.  Probably zero out the address we're
+		 * not lookup up (VL2 or VL3) as well.
+		 */
 		bcopy(mhi.mhi_daddr, entry->ote_addr, ETHERADDRL);
 		entry->ote_chead = entry->ote_ctail = mp;
 		entry->ote_mbsize = msgsize(mp);
@@ -630,6 +653,13 @@ again:
 		goto again;
 	}
 
+	/*
+	 * TODO: If VL3 request,
+	 *	set otl->otl_l3req
+	 *	Fill in otl_{src,dst}ip
+	 * Else
+	 *	clear otl->otl_l3req
+	 */
 	otl->otl_dlid = entry->ote_odd->odd_linkid;
 	otl->otl_reqid = (uintptr_t)entry;
 	otl->otl_varpdid = entry->ote_ott->ott_id;
@@ -686,6 +716,11 @@ overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 
 	/*
 	 * For now do an in-situ drain.
+	 *
+	 * TODO: overlay_m_tx() will need to perform remote fabric attachment
+	 * checks, which may leave mblk_t's left in the msg chain for
+	 * mblk_t's whose connectivity with the target entry are unknown.
+	 * This will then need to deal with the leftovers.
 	 */
 	mp = overlay_m_tx(entry->ote_odd, mp);
 	freemsgchain(mp);
@@ -731,6 +766,15 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 		goto done;
 	}
 
+	/*
+	 * TODO: This will need to be smarter.  This drop can only apply to
+	 * packets from the same source fabric as the first mblk_t in the
+	 * chain.  If the target exists, packets from other fabrics which
+	 * are chained to this target entry may be able to be sent (if we
+	 * already know they are attached), or we might need to query from
+	 * those other source fabrics if we don't know if the two are
+	 * attached.
+	 */
 	mp = entry->ote_chead;
 	if (mp != NULL) {
 		entry->ote_chead = mp->b_next;
