@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2015 OmniTI Computer Consulting, Inc. All rights reserved.
- * Copyright 2016 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #include "i40e_sw.h"
@@ -342,11 +342,12 @@
  * Blocking MAC
  * ------------
  *
- * Wen performing transmit, we can run out of descriptors and ring entries. When
- * such a case happens, we return the mblk_t to MAC to indicate that we've been
- * blocked. At that point in time, MAC becomes blocked and will not transmit
- * anything out that specific ring until we notify MAC. To indicate that we're
- * in such a situation we set i40e_trqpair_t`itrq_tx_blocked member to B_TRUE.
+ * When performing transmit, we can run out of descriptors and ring entries.
+ * When such a case happens, we return the mblk_t to MAC to indicate that we've
+ * been blocked. At that point in time, MAC becomes blocked and will not
+ * transmit anything out that specific ring until we notify MAC. To indicate
+ * that we're in such a situation we set i40e_trqpair_t`itrq_tx_blocked member
+ * to B_TRUE.
  *
  * When we recycle tx descriptors then we'll end up signaling MAC by calling
  * mac_tx_ring_update() if we were blocked, letting it know that it's safe to
@@ -370,10 +371,15 @@
  * transmitting a frame. The first member is the set of flags we need to or into
  * the command word (generally checksumming related). The second member controls
  * the word offsets which is required for IP and L4 checksumming.
+ *
+ * XXX - update comment
  */
 typedef struct i40e_tx_context {
-	enum i40e_tx_desc_cmd_bits	itc_cmdflags;
-	uint32_t			itc_offsets;
+	enum i40e_tx_desc_cmd_bits	itc_data_cmdflags;
+	uint32_t			itc_data_offsets;
+	enum i40e_tx_ctx_desc_cmd_bits	itc_ctx_cmdflags;
+	uint32_t			itc_ctx_tsolen;
+	uint32_t			itc_ctx_mss;
 } i40e_tx_context_t;
 
 /*
@@ -1771,13 +1777,15 @@ mac_ether_offload_info(mblk_t *mp, mac_ether_offload_info_t *meoi)
  * The i40e_tx_context_t`itc_cmdflags contains the set of flags we need to or
  * into the descriptor based on the checksum flags for this mblk_t and the
  * actual information we care about.
+ *
+ * XXX - update comment
  */
 static int
 i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
     i40e_tx_context_t *tctx)
 {
 	int ret;
-	uint32_t flags, start;
+	uint32_t chkflags, start, mss, lsoflags;
 	mac_ether_offload_info_t meo;
 	i40e_txq_stat_t *txs = &itrq->itrq_txstat;
 
@@ -1786,8 +1794,10 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 	if (i40e->i40e_tx_hcksum_enable != B_TRUE)
 		return (0);
 
-	mac_hcksum_get(mp, &start, NULL, NULL, NULL, &flags);
-	if (flags == 0)
+	mac_hcksum_get(mp, &start, NULL, NULL, NULL, &chkflags);
+	mac_lso_get(mp, &mss, &lsoflags);
+
+	if (chkflags == 0 && lsoflags == 0)
 		return (0);
 
 	if ((ret = mac_ether_offload_info(mp, &meo)) != 0) {
@@ -1800,7 +1810,7 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 	 * have sufficient information and then set the proper fields in the
 	 * command structure.
 	 */
-	if (flags & HCK_IPV4_HDRCKSUM) {
+	if (chkflags & HCK_IPV4_HDRCKSUM) {
 		if ((meo.meoi_flags & MEOI_L2INFO_SET) == 0) {
 			txs->itxs_hck_nol2info.value.ui64++;
 			return (-1);
@@ -1813,10 +1823,10 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 			txs->itxs_hck_badl3.value.ui64++;
 			return (-1);
 		}
-		tctx->itc_cmdflags |= I40E_TX_DESC_CMD_IIPT_IPV4_CSUM;
-		tctx->itc_offsets |= (meo.meoi_l2hlen >> 1) <<
+		tctx->itc_data_cmdflags |= I40E_TX_DESC_CMD_IIPT_IPV4_CSUM;
+		tctx->itc_data_offsets |= (meo.meoi_l2hlen >> 1) <<
 		    I40E_TX_DESC_LENGTH_MACLEN_SHIFT;
-		tctx->itc_offsets |= (meo.meoi_l3hlen >> 2) <<
+		tctx->itc_data_offsets |= (meo.meoi_l3hlen >> 2) <<
 		    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
 	}
 
@@ -1826,13 +1836,13 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 	 * onto seeing if we have enough information for the L4 checksum
 	 * offload.
 	 */
-	if (flags & HCK_PARTIALCKSUM) {
+	if (chkflags & HCK_PARTIALCKSUM) {
 		if ((meo.meoi_flags & MEOI_L4INFO_SET) == 0) {
 			txs->itxs_hck_nol4info.value.ui64++;
 			return (-1);
 		}
 
-		if (!(flags & HCK_IPV4_HDRCKSUM)) {
+		if (!(chkflags & HCK_IPV4_HDRCKSUM)) {
 			if ((meo.meoi_flags & MEOI_L2INFO_SET) == 0) {
 				txs->itxs_hck_nol2info.value.ui64++;
 				return (-1);
@@ -1843,38 +1853,59 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 			}
 
 			if (meo.meoi_l3proto == ETHERTYPE_IP) {
-				tctx->itc_cmdflags |=
+				tctx->itc_data_cmdflags |=
 				    I40E_TX_DESC_CMD_IIPT_IPV4;
 			} else if (meo.meoi_l3proto == ETHERTYPE_IPV6) {
-				tctx->itc_cmdflags |=
+				tctx->itc_data_cmdflags |=
 				    I40E_TX_DESC_CMD_IIPT_IPV6;
 			} else {
 				txs->itxs_hck_badl3.value.ui64++;
 				return (-1);
 			}
-			tctx->itc_offsets |= (meo.meoi_l2hlen >> 1) <<
+			tctx->itc_data_offsets |= (meo.meoi_l2hlen >> 1) <<
 			    I40E_TX_DESC_LENGTH_MACLEN_SHIFT;
-			tctx->itc_offsets |= (meo.meoi_l3hlen >> 2) <<
+			tctx->itc_data_offsets |= (meo.meoi_l3hlen >> 2) <<
 			    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
 		}
 
 		switch (meo.meoi_l4proto) {
 		case IPPROTO_TCP:
-			tctx->itc_cmdflags |= I40E_TX_DESC_CMD_L4T_EOFT_TCP;
+			tctx->itc_data_cmdflags |=
+			    I40E_TX_DESC_CMD_L4T_EOFT_TCP;
 			break;
 		case IPPROTO_UDP:
-			tctx->itc_cmdflags |= I40E_TX_DESC_CMD_L4T_EOFT_UDP;
+			tctx->itc_data_cmdflags |=
+			    I40E_TX_DESC_CMD_L4T_EOFT_UDP;
 			break;
 		case IPPROTO_SCTP:
-			tctx->itc_cmdflags |= I40E_TX_DESC_CMD_L4T_EOFT_SCTP;
+			tctx->itc_data_cmdflags |=
+			    I40E_TX_DESC_CMD_L4T_EOFT_SCTP;
 			break;
 		default:
 			txs->itxs_hck_badl4.value.ui64++;
 			return (-1);
 		}
 
-		tctx->itc_offsets |= (meo.meoi_l4hlen >> 2) <<
+		tctx->itc_data_offsets |= (meo.meoi_l4hlen >> 2) <<
 		    I40E_TX_DESC_LENGTH_L4_FC_LEN_SHIFT;
+	}
+
+	/*
+	 * XXX - add comment
+	 */
+	if (lsoflags & HW_LSO) {
+		if (!((chkflags & HCK_IPV4_HDRCKSUM) &&
+		    (chkflags & HCK_PARTIALCKSUM))) {
+			return (-1);
+		}
+		tctx->itc_ctx_cmdflags |= I40E_TX_CTX_DESC_TSO;
+		tctx->itc_ctx_mss = mss;
+		/*
+		 * XXX - is this right?
+		 * see descr of TLEN in section 8.4.2.2.1
+		 */
+		tctx->itc_ctx_tsolen = msgsize(mp) -
+		    (meo.meoi_l2hlen + meo.meoi_l3hlen + meo.meoi_l4hlen);
 	}
 
 	return (0);
@@ -1926,6 +1957,8 @@ i40e_tcb_reset(i40e_tx_control_block_t *tcb)
 		break;
 	case I40E_TX_DMA:
 		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
+		break;
+	case I40E_TX_DESC:
 		break;
 	case I40E_TX_NONE:
 		/* Cast to pacify lint */
@@ -2098,10 +2131,14 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 {
 	const mblk_t *nmp;
 	size_t mpsize;
-	i40e_tx_control_block_t *tcb;
+	i40e_tx_control_block_t *tcb_ctx = NULL, *tcb_data = NULL, **tcb_dma = NULL;
 	i40e_tx_desc_t *txdesc;
+	i40e_tx_context_desc_t *ctxdesc;
 	i40e_tx_context_t tctx;
-	int cmd, type;
+	int cmd, type, i;
+	uint_t needed_desc = 0, tail, nbufs = 0, ncookies, dmaflags;
+	boolean_t do_ctx_desc = B_FALSE, do_dma_bind = B_FALSE;
+	ddi_dma_cookie_t dma_cookie;
 
 	i40e_trqpair_t *itrq = arg;
 	i40e_t *i40e = itrq->itrq_i40e;
@@ -2116,6 +2153,9 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	    (i40e->i40e_state & I40E_ERROR) ||
 	    (i40e->i40e_link_state != LINK_STATE_UP)) {
 		freemsg(mp);
+		/* XXX - will remove */
+		cmn_err(CE_WARN, "nic not happy (state: %d, linkstate: %d)",
+		    (int)i40e->i40e_state, (int)i40e->i40e_link_state);
 		return (NULL);
 	}
 
@@ -2129,6 +2169,8 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		itrq->itrq_txstat.itxs_err_context.value.ui64++;
 		return (NULL);
 	}
+	if (tctx.itc_ctx_cmdflags & I40E_TX_CTX_DESC_TSO)
+		do_ctx_desc = B_TRUE;
 
 	/*
 	 * For the primordial driver we can punt on doing any recycling right
@@ -2137,50 +2179,116 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	 */
 
 	/*
-	 * Do a quick size check to make sure it fits into what we think it
-	 * should for this device. Note that longer term this will be false,
-	 * particularly when we have the world of TSO.
+	 * Iterate through the mblks to calculate both the total size and the
+	 * number of contiguous buffers.  This is used to determine whether
+	 * we're doing DMA binding and, if so, how many data descriptors we'll
+	 * need.
 	 */
 	mpsize = 0;
 	for (nmp = mp; nmp != NULL; nmp = nmp->b_cont) {
 		mpsize += MBLKL(nmp);
+		ASSERT(MBLKL(nmp) > 0);
+		nbufs++;
+	}
+	/* cmn_err(CE_NOTE, "mpsize = %lu, nbufs = %u, do_ctx_desc = %d", mpsize, nbufs,
+	    (int)do_ctx_desc); */
+
+	if (do_ctx_desc == B_TRUE) {
+		/*
+		 * If we're doing LSO, then we'll need a tx context descriptor
+		 * in addition to one or more tx data descriptors.  Since
+		 * there's no data DMA block associated with the context
+		 * descriptor we create a special control block that behaves
+		 * effectively like a NOP.
+		 */
+		if ((tcb_ctx = i40e_tcb_alloc(itrq)) == NULL) {
+			txs->itxs_err_notcb.value.ui64++;
+			goto txfail;
+		}
+		tcb_ctx->tcb_type = I40E_TX_DESC;
 	}
 
 	/*
-	 * First we allocate our tx control block and prepare the packet for
-	 * transmit before we do a final check for descriptors. We do it this
-	 * way to minimize the time under the tx lock.
+	 * We alter our DMA strategy based on a threshold tied to the message
+	 * size.  This threshold is configurable via tx_dma_threshold property.
+	 * If above the threshold we do DMA binding of the contiguous
+	 * fragments, building a control block and data descriptor for each
+	 * piece.
+	 *
+	 * If it's below or at the threshold then we just use a single control
+	 * block and data descriptor and simply bcopy all of the fragments in
+	 * the pre-allocated DMA buffer in the control block.
 	 */
-	tcb = i40e_tcb_alloc(itrq);
-	if (tcb == NULL) {
-		txs->itxs_err_notcb.value.ui64++;
-		goto txfail;
+	if (mpsize > i40e->i40e_tx_dma_min) {
+		do_dma_bind = B_TRUE;
+		/*
+		 * Reserve a tx control block for each b_cont
+		 */
+		tcb_dma =
+		    kmem_zalloc(nbufs * sizeof (i40e_tx_control_block_t *),
+		    KM_NOSLEEP);
+		if (tcb_dma == NULL) {
+			i40e_error(i40e, "failed to allocate tcb_dma list");
+			goto txfail; 
+		}
+		for (i = 0; i < nbufs; i++) {
+			if ((tcb_dma[i] = i40e_tcb_alloc(itrq)) == NULL) {
+				txs->itxs_err_notcb.value.ui64++;
+				goto txfail;
+			}
+			tcb_dma[i]->tcb_type = I40E_TX_DMA;
+		}
+		/*
+		 * For each b_cont, bind the control block's DMA handle to the
+		 * b_rptr, and record the addr and len.
+		 */
+		dmaflags = DDI_DMA_RDWR | DDI_DMA_STREAMING;
+		for (nmp = mp, i = 0; nmp != NULL; nmp = nmp->b_cont, i++) {
+			tcb_dma[i]->tcb_bind_addr = (caddr_t)nmp->b_rptr;
+			tcb_dma[i]->tcb_bind_len = MBLKL(nmp);
+			if (ddi_dma_addr_bind_handle(
+			    tcb_dma[i]->tcb_dma_handle, NULL,
+			    tcb_dma[i]->tcb_bind_addr,
+			    tcb_dma[i]->tcb_bind_len, dmaflags,
+			    DDI_DMA_DONTWAIT, NULL, &dma_cookie, &ncookies) !=
+			    DDI_DMA_MAPPED) {
+				i40e_error(i40e, "dma bind failed!");
+				goto txfail;
+			}
+		}
+		needed_desc = nbufs + 1;
+	} else {
+		/*
+		 * Just use a single control block and bcopy all of the
+		 * fragments into its pre-allocated DMA buffer.
+		 */
+		if ((tcb_data = i40e_tcb_alloc(itrq)) == NULL) {
+			txs->itxs_err_notcb.value.ui64++;
+			goto txfail;
+		}
+		tcb_data->tcb_type = I40E_TX_COPY;
+
+		ASSERT(tcb_data->tcb_dma.dmab_len == 0);
+		ASSERT(tcb_data->tcb_dma.dmab_size >= mpsize);
+
+		for (nmp = mp; nmp != NULL; nmp = nmp->b_cont) {
+			size_t clen = MBLKL(nmp);
+			void *coff = tcb_data->tcb_dma.dmab_address +
+			    tcb_data->tcb_dma.dmab_len;
+
+			bcopy(nmp->b_rptr, coff, clen);
+			tcb_data->tcb_dma.dmab_len += clen;
+		}
+		ASSERT(tcb_data->tcb_dma.dmab_len == mpsize);
+		I40E_DMA_SYNC(&tcb_data->tcb_dma, DDI_DMA_SYNC_FORDEV);
+
+		/*
+		 * While there's really no need to keep the mp here, but let's
+		 * just do it to help with our own debugging for now.
+		 */
+		tcb_data->tcb_mp = mp;
+		needed_desc = 1;
 	}
-
-	/*
-	 * For transmitting a block, we're currently going to use just a
-	 * single control block and bcopy all of the fragments into it. We
-	 * should be more intelligent about doing DMA binding or otherwise, but
-	 * for getting off the ground this will have to do.
-	 */
-	ASSERT(tcb->tcb_dma.dmab_len == 0);
-	ASSERT(tcb->tcb_dma.dmab_size >= mpsize);
-	for (nmp = mp; nmp != NULL; nmp = nmp->b_cont) {
-		size_t clen = MBLKL(nmp);
-		void *coff = tcb->tcb_dma.dmab_address + tcb->tcb_dma.dmab_len;
-
-		bcopy(nmp->b_rptr, coff, clen);
-		tcb->tcb_dma.dmab_len += clen;
-	}
-	ASSERT(tcb->tcb_dma.dmab_len == mpsize);
-
-	/*
-	 * While there's really no need to keep the mp here, but let's just do
-	 * it to help with our own debugging for now.
-	 */
-	tcb->tcb_mp = mp;
-	tcb->tcb_type = I40E_TX_COPY;
-	I40E_DMA_SYNC(&tcb->tcb_dma, DDI_DMA_SYNC_FORDEV);
 
 	mutex_enter(&itrq->itrq_tx_lock);
 	if (itrq->itrq_desc_free < i40e->i40e_tx_block_thresh) {
@@ -2189,45 +2297,96 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		goto txfail;
 	}
 
-	/*
-	 * Build up the descriptor and send it out. Thankfully at the moment
-	 * we only need a single desc, because we're not doing anything fancy
-	 * yet.
-	 */
-	ASSERT(itrq->itrq_desc_free > 0);
-	itrq->itrq_desc_free--;
-	txdesc = &itrq->itrq_desc_ring[itrq->itrq_desc_tail];
-	itrq->itrq_tcb_work_list[itrq->itrq_desc_tail] = tcb;
-	itrq->itrq_desc_tail = i40e_next_desc(itrq->itrq_desc_tail, 1,
-	    itrq->itrq_tx_ring_size);
+	ASSERT(itrq->itrq_desc_free >= needed_desc);
 
-	/*
-	 * Note, we always set EOP and RS which indicates that this is the last
-	 * data frame and that we should ask for it to be transmitted. We also
-	 * must always set ICRC, because that is an internal bit that must be
-	 * set to one for data descriptors. The remaining bits in the command
-	 * descriptor depend on checksumming and are determined based on the
-	 * information set up in i40e_tx_context().
-	 */
-	type = I40E_TX_DESC_DTYPE_DATA;
-	cmd = I40E_TX_DESC_CMD_EOP |
-	    I40E_TX_DESC_CMD_RS |
-	    I40E_TX_DESC_CMD_ICRC |
-	    tctx.itc_cmdflags;
-	txdesc->buffer_addr =
-	    CPU_TO_LE64((uintptr_t)tcb->tcb_dma.dmab_dma_address);
-	txdesc->cmd_type_offset_bsz = CPU_TO_LE64(((uint64_t)type |
-	    ((uint64_t)tctx.itc_offsets << I40E_TXD_QW1_OFFSET_SHIFT) |
-	    ((uint64_t)cmd << I40E_TXD_QW1_CMD_SHIFT) |
-	    ((uint64_t)tcb->tcb_dma.dmab_len << I40E_TXD_QW1_TX_BUF_SZ_SHIFT)));
+	if (do_ctx_desc == B_TRUE) {
+		/*
+		 * If we need LSO for this frame, then we'll need to build up a
+		 * transmit context descriptor, first.  The context descriptor
+		 * needs to be placed in the tx ring before the data
+		 * descriptor(s).  See section 8.4.2, table 8-16
+		 */
+		itrq->itrq_desc_free--;
+		tail = itrq->itrq_desc_tail;
+		ctxdesc = (i40e_tx_context_desc_t *)&itrq->itrq_desc_ring[tail];
+		itrq->itrq_tcb_work_list[tail] = tcb_ctx;
+		itrq->itrq_desc_tail = i40e_next_desc(tail, 1,
+		    itrq->itrq_tx_ring_size);
 
-	/*
-	 * Now, finally, sync the DMA data and alert hardware.
-	 */
+		type = I40E_TX_DESC_DTYPE_CONTEXT;
+		ctxdesc->tunneling_params = 0;
+		ctxdesc->l2tag2 = 0;
+		ctxdesc->type_cmd_tso_mss = CPU_TO_LE64(((uint64_t)type |
+		    ((uint64_t)tctx.itc_ctx_cmdflags <<
+		    I40E_TXD_CTX_QW1_CMD_SHIFT) |
+		    ((uint64_t)tctx.itc_ctx_tsolen <<
+		    I40E_TXD_CTX_QW1_TSO_LEN_SHIFT) |
+		    ((uint64_t)tctx.itc_ctx_mss <<
+		    I40E_TXD_CTX_QW1_MSS_SHIFT)));
+	}
+
+	if (do_dma_bind == B_TRUE) {
+		/*
+		 * Next build up a transmit data descriptor for each buffer.
+		 */
+		for (i = 0; i < nbufs; i++) {
+			itrq->itrq_desc_free--;
+			txdesc = &itrq->itrq_desc_ring[itrq->itrq_desc_tail];
+			itrq->itrq_tcb_work_list[itrq->itrq_desc_tail] =
+			    tcb_dma[i];
+			itrq->itrq_desc_tail =
+			    i40e_next_desc(itrq->itrq_desc_tail, 1,
+			    itrq->itrq_tx_ring_size);
+	
+			type = I40E_TX_DESC_DTYPE_DATA;
+			cmd = I40E_TX_DESC_CMD_ICRC | tctx.itc_data_cmdflags;
+			/*
+			 * The last data descriptor needs the EOP and RS bits
+			 * set, so that the HW knows that we're ready to send.
+			 */
+			if (i == (nbufs - 1)) {
+				cmd |= I40E_TX_DESC_CMD_EOP;
+				cmd |= I40E_TX_DESC_CMD_RS;
+			}
+			txdesc->buffer_addr =
+			    CPU_TO_LE64((uintptr_t)tcb_dma[i]->tcb_bind_addr);
+			txdesc->cmd_type_offset_bsz =
+			    CPU_TO_LE64(((uint64_t)type |
+			    ((uint64_t)tctx.itc_data_offsets <<
+			    I40E_TXD_QW1_OFFSET_SHIFT) |
+			    ((uint64_t)cmd << I40E_TXD_QW1_CMD_SHIFT) |
+			    ((uint64_t)tcb_dma[i]->tcb_bind_len <<
+			    I40E_TXD_QW1_TX_BUF_SZ_SHIFT)));
+		}
+	} else {
+		/*
+		 * Build up the single transmit data descriptor needed for the
+		 * non-DMA-bind case.
+		 */
+		itrq->itrq_desc_free--;
+		txdesc = &itrq->itrq_desc_ring[itrq->itrq_desc_tail];
+		itrq->itrq_tcb_work_list[itrq->itrq_desc_tail] = tcb_data;
+		itrq->itrq_desc_tail = i40e_next_desc(itrq->itrq_desc_tail, 1,
+		    itrq->itrq_tx_ring_size);
+	
+		type = I40E_TX_DESC_DTYPE_DATA;
+		cmd = I40E_TX_DESC_CMD_EOP |
+		    I40E_TX_DESC_CMD_RS |
+		    I40E_TX_DESC_CMD_ICRC |
+		    tctx.itc_data_cmdflags;
+		txdesc->buffer_addr =
+		    CPU_TO_LE64((uintptr_t)tcb_data->tcb_dma.dmab_dma_address);
+		txdesc->cmd_type_offset_bsz = CPU_TO_LE64(((uint64_t)type |
+		    ((uint64_t)tctx.itc_data_offsets << I40E_TXD_QW1_OFFSET_SHIFT) |
+		    ((uint64_t)cmd << I40E_TXD_QW1_CMD_SHIFT) |
+		    ((uint64_t)tcb_data->tcb_dma.dmab_len <<
+		    I40E_TXD_QW1_TX_BUF_SZ_SHIFT)));
+	}
+
 	I40E_DMA_SYNC(&itrq->itrq_desc_area, DDI_DMA_SYNC_FORDEV);
-
 	I40E_WRITE_REG(hw, I40E_QTX_TAIL(itrq->itrq_index),
 	    itrq->itrq_desc_tail);
+
 	if (i40e_check_acc_handle(i40e->i40e_osdep_space.ios_reg_handle) !=
 	    DDI_FM_OK) {
 		/*
@@ -2241,7 +2400,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 
 	txs->itxs_bytes.value.ui64 += mpsize;
 	txs->itxs_packets.value.ui64++;
-	txs->itxs_descriptors.value.ui64++;
+	txs->itxs_descriptors.value.ui64 += needed_desc;
 
 	mutex_exit(&itrq->itrq_tx_lock);
 
@@ -2254,10 +2413,15 @@ txfail:
 	 * Make sure to reset their message block's, since we'll return them
 	 * back to MAC.
 	 */
-	if (tcb != NULL) {
-		tcb->tcb_mp = NULL;
-		i40e_tcb_reset(tcb);
-		i40e_tcb_free(itrq, tcb);
+	if (tcb_ctx != NULL) {
+		tcb_data->tcb_mp = NULL;
+		i40e_tcb_reset(tcb_ctx);
+		i40e_tcb_free(itrq, tcb_ctx);
+	}
+	if (tcb_data != NULL) {
+		tcb_data->tcb_mp = NULL;
+		i40e_tcb_reset(tcb_data);
+		i40e_tcb_free(itrq, tcb_data);
 	}
 
 	mutex_enter(&itrq->itrq_tx_lock);

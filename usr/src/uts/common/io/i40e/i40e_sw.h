@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2015 OmniTI Computer Consulting, Inc. All rights reserved.
- * Copyright (c) 2017, Joyent, Inc.
+ * Copyright (c) 2018, Joyent, Inc.
  * Copyright 2017 Tegile Systems, Inc.  All rights reserved.
  */
 
@@ -199,7 +199,8 @@ typedef enum i40e_itr_index {
 #define	I40E_MAX_RX_DMA_THRESH		INT32_MAX
 
 #define	I40E_MIN_TX_DMA_THRESH		0
-#define	I40E_DEF_TX_DMA_THRESH		256
+/* XXX - temporarily disable DMA bind on tx till it's working properly */
+#define	I40E_DEF_TX_DMA_THRESH		INT32_MAX
 #define	I40E_MAX_TX_DMA_THRESH		INT32_MAX
 
 /*
@@ -405,10 +406,12 @@ typedef struct i40e_rx_control_block {
 typedef enum {
 	I40E_TX_NONE,
 	I40E_TX_COPY,
-	I40E_TX_DMA
+	I40E_TX_DMA,
+	I40E_TX_DESC,
 } i40e_tx_type_t;
 
 typedef struct i40e_tx_desc i40e_tx_desc_t;
+typedef struct i40e_tx_context_desc i40e_tx_context_desc_t;
 typedef union i40e_32byte_rx_desc i40e_rx_desc_t;
 
 typedef struct i40e_tx_control_block {
@@ -417,6 +420,8 @@ typedef struct i40e_tx_control_block {
 	i40e_tx_type_t			tcb_type;
 	ddi_dma_handle_t		tcb_dma_handle;
 	i40e_dma_buffer_t		tcb_dma;
+	caddr_t				tcb_bind_addr;
+	size_t				tcb_bind_len;
 } i40e_tx_control_block_t;
 
 /*
@@ -832,6 +837,7 @@ typedef struct i40e {
 	uint32_t	i40e_tx_buf_size;
 	uint32_t	i40e_tx_block_thresh;
 	boolean_t	i40e_tx_hcksum_enable;
+	boolean_t	i40e_tx_lso_enable;
 	uint32_t	i40e_tx_dma_min;
 	uint_t		i40e_tx_itr;
 
