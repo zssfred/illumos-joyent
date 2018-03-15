@@ -1076,6 +1076,11 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 		mp->b_next = NULL;
 		ep = NULL;
 
+		/*
+		 * TODO: we probably need to change 'storage' to a
+		 * refheld overlay_target_entry_t and also maybe set
+		 * local vlan from packet header for check below
+		 */
 		ret = overlay_target_lookup(odd, mp,
 		    (struct sockaddr *)&storage, &slen);
 		if (ret != OVERLAY_TARGET_OK) {
@@ -1085,6 +1090,17 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 			continue;
 		}
 
+		/*
+		 * TODO:
+		 *	set hdr.msg_name from target_entry
+		 *
+		 *	if !local:
+		 *		check fabric attachment
+		 *		modify vlan tag, VL2 mac addresses
+		 *
+		 *	set einfo.ovdi_id to vnet id (move into loop since
+		 *	things cannot assume to all have same vnet id anymore)
+		 */
 		hdr.msg_name = &storage;
 		hdr.msg_namelen = slen;
 
