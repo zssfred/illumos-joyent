@@ -753,7 +753,6 @@ varpd_svp_getprop(void *arg, const char *pname, void *buf, uint32_t *sizep)
 			bcopy(&val, buf, sizeof (uint64_t));
 			*sizep = sizeof (uint64_t);
 		}
-
 		mutex_exit(&svp->svp_lock);
 		return (0);
 	}
@@ -769,6 +768,7 @@ varpd_svp_getprop(void *arg, const char *pname, void *buf, uint32_t *sizep)
 			bcopy(&svp->svp_uip, buf, sizeof (struct in6_addr));
 			*sizep = sizeof (struct in6_addr);
 		}
+		mutex_exit(&svp->svp_lock);
 		return (0);
 	}
 
