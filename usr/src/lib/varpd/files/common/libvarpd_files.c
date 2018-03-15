@@ -223,7 +223,7 @@ varpd_files_destroy(void *arg)
 }
 
 static void
-varpd_files_lookup_l3(varpd_file_t *vaf, varpd_query_handle_t *qh,
+varpd_files_lookup_l3(varpd_files_t *vaf, varpd_query_handle_t *qh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
 {
 	/* XXX KEBE SAYS START HERE... */
