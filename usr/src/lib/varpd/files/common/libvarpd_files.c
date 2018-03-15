@@ -223,6 +223,13 @@ varpd_files_destroy(void *arg)
 }
 
 static void
+varpd_files_lookup_l3(varpd_file_t *vaf, varpd_query_handle_t *qh,
+    const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
+{
+	/* XXX KEBE SAYS START HERE... */
+}
+
+static void
 varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp)
 {
@@ -235,6 +242,11 @@ varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
 	/* We don't support a default */
 	if (otl == NULL) {
 		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
+		return;
+	}
+
+	if (otl->otl_l3req) {
+		varpd_files_lookup_l3(vaf, qh, otl, otp);
 		return;
 	}
 
