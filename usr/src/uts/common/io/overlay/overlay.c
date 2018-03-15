@@ -205,6 +205,10 @@
  * 		UTF-8. Note that the size of the string includes the null
  * 		terminator.
  *
+ * 	OVERLAY_PROP_T_ETHER
+ *
+ *		An ether_addr_t, which has a fixed size.
+ *
  * The next thing that we apply to a property is its permission. The permissions
  * are put together by the bitwise or of the following flags and values.
  *

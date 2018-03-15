@@ -268,8 +268,10 @@ struct svp {
 	char			*svp_host;	/* svp_lock */
 	uint16_t		svp_port;	/* svp_lock */
 	uint16_t		svp_uport;	/* svp_lock */
+	uint32_t		svp_dcid;	/* svp_lock (but write-once?) */
 	boolean_t		svp_huip;	/* svp_lock */
 	struct in6_addr		svp_uip;	/* svp_lock */
+	struct ether_addr	svp_router_mac;	/* svp_lock (but write-once?) */
 };
 
 extern bunyan_logger_t *svp_bunyan;

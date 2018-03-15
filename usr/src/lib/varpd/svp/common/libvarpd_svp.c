@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015, Joyent, Inc.
+ * Copyright 2018, Joyent, Inc.
  */
 
 /*
@@ -382,7 +382,9 @@ static const char *varpd_svp_props[] = {
 	"svp/host",
 	"svp/port",
 	"svp/underlay_ip",
-	"svp/underlay_port"
+	"svp/underlay_port",
+	"svp/dcid",
+	"svp/router_mac"
 };
 
 static const uint8_t svp_bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -689,6 +691,22 @@ varpd_svp_propinfo(void *arg, uint_t propid, varpd_prop_handle_t *vph)
 		    sizeof (svp_defuport));
 		libvarpd_prop_set_range_uint32(vph, 1, UINT16_MAX);
 		break;
+	case 4:
+		/* svp/dcid */
+		libvarpd_prop_set_name(vph, varpd_svp_props[4]);
+		libvarpd_prop_set_prot(vph, OVERLAY_PROP_PERM_RRW);
+		libvarpd_prop_set_type(vph, OVERLAY_PROP_T_UINT);
+		libvarpd_prop_set_nodefault(vph);
+		/* XXX KEBE ASKS should I just set high to UINT32_MAX? */
+		libvarpd_prop_set_range_uint32(vph, 1, UINT32_MAX - 1);
+		break;
+	case 5:
+		/* svp/router_mac */
+		libvarpd_prop_set_name(vph, varpd_svp_props[5]);
+		libvarpd_prop_set_prot(vph, OVERLAY_PROP_PERM_RRW);
+		libvarpd_prop_set_type(vph, OVERLAY_PROP_T_ETHER);
+		libvarpd_prop_set_nodefault(vph);
+		break;
 	default:
 		return (EINVAL);
 	}
@@ -742,7 +760,7 @@ varpd_svp_getprop(void *arg, const char *pname, void *buf, uint32_t *sizep)
 
 	/* svp/underlay_ip */
 	if (strcmp(pname, varpd_svp_props[2]) == 0) {
-		if (*sizep > sizeof (struct in6_addr))
+		if (*sizep < sizeof (struct in6_addr))
 			return (EOVERFLOW);
 		mutex_enter(&svp->svp_lock);
 		if (svp->svp_huip == B_FALSE) {
@@ -774,6 +792,42 @@ varpd_svp_getprop(void *arg, const char *pname, void *buf, uint32_t *sizep)
 		return (0);
 	}
 
+	/* svp/dcid */
+	if (strcmp(pname, varpd_svp_props[4]) == 0) {
+		uint64_t val;
+
+		if (*sizep < sizeof (uint64_t))
+			return (EOVERFLOW);
+
+		mutex_enter(&svp->svp_lock);
+		if (svp->svp_uport == 0) {
+			*sizep = 0;
+		} else {
+			val = svp->svp_dcid;
+			bcopy(&val, buf, sizeof (uint64_t));
+			*sizep = sizeof (uint64_t);
+		}
+
+		mutex_exit(&svp->svp_lock);
+		return (0);
+	}
+
+	/* svp/router_mac */
+	if (strcmp(pname, varpd_svp_props[5]) == 0) {
+		if (*sizep < ETHERADDRL)
+			return (EOVERFLOW);
+		mutex_enter(&svp->svp_lock);
+
+		if (ether_is_zero(&svp->svp_router_mac)) {
+			*sizep = 0;
+		} else {
+			bcopy(&svp->svp_router_mac, buf, ETHERADDRL);
+			*sizep = ETHERADDRL;
+		}
+
+		mutex_exit(&svp->svp_lock);
+		return (0);
+	}
 	return (EINVAL);
 }
 
@@ -859,6 +913,33 @@ varpd_svp_setprop(void *arg, const char *pname, const void *buf,
 		return (0);
 	}
 
+	/* svp/dcid */
+	if (strcmp(pname, varpd_svp_props[4]) == 0) {
+		const uint64_t *valp = buf;
+		if (size < sizeof (uint64_t))
+			return (EOVERFLOW);
+
+		/* XXX KEBE ASKS, use UINT32_MAX instead? */
+		if (*valp == 0 || *valp > UINT32_MAX - 1)
+			return (EINVAL);
+
+		mutex_enter(&svp->svp_lock);
+		svp->svp_dcid = (uint32_t)*valp;
+		mutex_exit(&svp->svp_lock);
+
+		return (0);
+	}
+
+	/* svp/router_mac */
+	if (strcmp(pname, varpd_svp_props[5]) == 0) {
+		if (size < ETHERADDRL)
+			return (EOVERFLOW);
+		mutex_enter(&svp->svp_lock);
+		bcopy(buf, &svp->svp_router_mac, ETHERADDRL);
+		mutex_exit(&svp->svp_lock);
+		return (0);
+	}
+
 	return (EINVAL);
 }
 
@@ -869,6 +950,7 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 	svp_t *svp = arg;
 
 	mutex_enter(&svp->svp_lock);
+	/* svp/host */
 	if (svp->svp_host != NULL) {
 		if ((ret = nvlist_add_string(nvp, varpd_svp_props[0],
 		    svp->svp_host)) != 0) {
@@ -877,6 +959,7 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 		}
 	}
 
+	/* svp/port */
 	if (svp->svp_port != 0) {
 		if ((ret = nvlist_add_uint16(nvp, varpd_svp_props[1],
 		    svp->svp_port)) != 0) {
@@ -885,6 +968,7 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 		}
 	}
 
+	/* svp/underlay_ip */
 	if (svp->svp_huip == B_TRUE) {
 		char buf[INET6_ADDRSTRLEN];
 
@@ -900,9 +984,36 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 		}
 	}
 
+	/* svp/underlay_port */
 	if (svp->svp_uport != 0) {
 		if ((ret = nvlist_add_uint16(nvp, varpd_svp_props[3],
 		    svp->svp_uport)) != 0) {
+			mutex_exit(&svp->svp_lock);
+			return (ret);
+		}
+	}
+
+	/* svp/dcid */
+	if (svp->svp_dcid != 0) {
+		if ((ret = nvlist_add_uint32(nvp, varpd_svp_props[4],
+		    svp->svp_dcid)) != 0) {
+			mutex_exit(&svp->svp_lock);
+			return (ret);
+		}
+	}
+
+	/* svp/router_mac */
+	if (!ether_is_zero(&svp->svp_router_mac)) {
+		char buf[ETHERADDRSTRL];
+
+		/* XXX KEBE SAYS See underlay_ip... */
+		if (ether_ntoa_r(&svp->svp_router_mac, buf) == NULL) {
+			libvarpd_panic("unexpected ether_ntoa_r failure: %d",
+			    errno);
+		}
+
+		if ((ret = nvlist_add_string(nvp, varpd_svp_props[5],
+		    buf)) != 0) {
 			mutex_exit(&svp->svp_lock);
 			return (ret);
 		}
@@ -918,7 +1029,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 {
 	int ret;
 	svp_t *svp;
-	char *ipstr, *hstr;
+	char *ipstr, *hstr, *etherstr;
 
 	if (varpd_svp_valid_dest(dest) == B_FALSE)
 		return (ENOTSUP);
@@ -926,6 +1037,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 	if ((ret = varpd_svp_create(hdl, (void **)&svp, dest)) != 0)
 		return (ret);
 
+	/* svp/host */
 	if ((ret = nvlist_lookup_string(nvp, varpd_svp_props[0],
 	    &hstr)) != 0) {
 		if (ret != ENOENT) {
@@ -939,6 +1051,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 		(void) strlcpy(svp->svp_host, hstr, blen);
 	}
 
+	/* svp/port */
 	if ((ret = nvlist_lookup_uint16(nvp, varpd_svp_props[1],
 	    &svp->svp_port)) != 0) {
 		if (ret != ENOENT) {
@@ -948,6 +1061,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 		svp->svp_port = 0;
 	}
 
+	/* svp/underlay_ip */
 	if ((ret = nvlist_lookup_string(nvp, varpd_svp_props[2],
 	    &ipstr)) != 0) {
 		if (ret != ENOENT) {
@@ -970,6 +1084,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 		svp->svp_huip = B_TRUE;
 	}
 
+	/* svp/underlay_port */
 	if ((ret = nvlist_lookup_uint16(nvp, varpd_svp_props[3],
 	    &svp->svp_uport)) != 0) {
 		if (ret != ENOENT) {
@@ -977,6 +1092,28 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 			return (ret);
 		}
 		svp->svp_uport = 0;
+	}
+
+	/* svp/dcid */
+	if ((ret = nvlist_lookup_uint32(nvp, varpd_svp_props[4],
+	    &svp->svp_dcid)) != 0) {
+		if (ret != ENOENT) {
+			varpd_svp_destroy(svp);
+			return (ret);
+		}
+		svp->svp_dcid = 0;
+	}
+
+	/* svp/router_mac */
+	if ((ret = nvlist_lookup_string(nvp, varpd_svp_props[5],
+	    &etherstr)) != 0) {
+		if (ret != ENOENT) {
+			varpd_svp_destroy(svp);
+			return (ret);
+		}
+		bzero(&svp->svp_router_mac, ETHERADDRL);
+	} else if (ether_aton_r(etherstr, &svp->svp_router_mac) == NULL) {
+		libvarpd_panic("unexpected ether_aton_r failure: %d", errno);
 	}
 
 	svp->svp_hdl = hdl;

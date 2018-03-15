@@ -10079,6 +10079,12 @@ print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, const void *pbuf,
 	case OVERLAY_PROP_T_STRING:
 		(void) snprintf(outbuf, bufsize, "%s", pbuf);
 		break;
+	case OVERLAY_PROP_T_ETHER:
+		if (ether_ntoa_r((struct ether_addr *)pbuf, outbuf) == NULL) {
+			warn("malformed overlay ethernet property\n");
+			(void) snprintf(outbuf, bufsize, "--");
+		}
+		break;
 	default:
 		abort();
 	}
