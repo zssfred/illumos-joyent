@@ -169,6 +169,7 @@ typedef struct overlay_target_entry {
 	list_node_t		ote_qlink;
 	overlay_target_entry_flags_t ote_flags;	/* RW: state flags */
 	uint32_t		ote_dcid;
+	uint16_t		ote_vlan;	/* RO: VL3 vlan id */
 	uint8_t			ote_addr[ETHERADDRL];	/* RO: mac addr */
 	struct in6_addr		ote_ip;		/* RO: VL3 IP */
 	overlay_target_t	*ote_ott;	/* RO */
