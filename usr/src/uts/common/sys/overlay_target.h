@@ -29,13 +29,32 @@
 extern "C" {
 #endif
 
+/*
+ * The overlay_target_point_t structure represents the destination where
+ * encapsulated frames are sent.  Currently supported virtualization protocls
+ * (i.e. vxlan) only use otp_ip and otp_port, but other methods might use
+ * a L2 address instead of an L3 address to represent a destination.
+ */
 typedef struct overlay_target_point {
-	uint64_t	otp_vnet;
-	uint16_t	otp_vlan;
 	uint8_t		otp_mac[ETHERADDRL];
 	struct in6_addr	otp_ip;
 	uint16_t	otp_port;
 } overlay_target_point_t;
+
+/*
+ * The overlay_target_route_t represents the information necessary to send
+ * packets to remote (routed) destinations.  Note: we currently only include
+ * the L3 address prefix lengths since overlay can deduce the subnet address
+ * from the original VL3 IP in the request + the prefix length in the reply.
+ */
+typedef struct overlay_target_route {
+	uint64_t	otr_vnet;
+	uint16_t	otr_vlan;
+	uint8_t		otr_srcmac[ETHERADDRL];
+	uint32_t	otr_dcid;
+	uint8_t		otr_src_prefixlen;
+	uint8_t		otr_dst_prefixlen;
+} overlay_target_route_t;
 
 #define	OVERLAY_TARG_IOCTL	(('o' << 24) | ('v' << 16) | ('t' << 8))
 
@@ -185,10 +204,7 @@ typedef struct overlay_targ_lookup {
 typedef struct overlay_targ_resp {
 	uint64_t	otr_reqid;
 	overlay_target_point_t otr_answer;
-	/* XXX: Put the below fields in their own struct? */
-	uint32_t	otr_dcid;
-	uint8_t		otr_src_prefixlen;
-	uint8_t		otr_dst_prefixlen;
+	overlay_target_route_t otr_route; /* Ignored for VL2->UL3 requests */
 } overlay_targ_resp_t;
 
 typedef struct overlay_targ_pkt {
