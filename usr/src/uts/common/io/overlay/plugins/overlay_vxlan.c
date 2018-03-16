@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright (c) 2018 Joyent, Inc.
  */
 
 /*
@@ -48,6 +48,9 @@
 #include <inet/ip.h>
 #include <netinet/in.h>
 #include <sys/strsun.h>
+#include <sys/dld.h>
+#include <sys/dlpi.h>
+#include <sys/pattr.h>
 #include <netinet/udp.h>
 
 static const char *vxlan_ident = "vxlan";
@@ -64,12 +67,21 @@ static const char *vxlan_props[] = {
 	NULL
 };
 
+typedef enum vxlan_capab_state {
+	VXLAN_C_UNKNOWN = 0,
+	VXLAN_C_VALID,
+	VXLAN_C_FAILED
+} vxlan_capab_state_t;
+
 typedef struct vxlan {
 	kmutex_t vxl_lock;
 	overlay_handle_t vxl_oh;
 	uint16_t vxl_lport;
 	boolean_t vxl_hladdr;
 	struct in6_addr vxl_laddr;
+	vxlan_capab_state_t vxl_cstate;
+	int vxl_cstate_err;
+	udp_tunnel_opt_t vxl_utunnel;
 } vxlan_t;
 
 static int
@@ -77,12 +89,14 @@ vxlan_o_init(overlay_handle_t oh, void **outp)
 {
 	vxlan_t *vxl;
 
-	vxl = kmem_alloc(sizeof (vxlan_t), KM_SLEEP);
+	vxl = kmem_zalloc(sizeof (vxlan_t), KM_SLEEP);
 	*outp = vxl;
 	mutex_init(&vxl->vxl_lock, NULL, MUTEX_DRIVER, NULL);
 	vxl->vxl_oh = oh;
 	vxl->vxl_lport = vxlan_defport;
 	vxl->vxl_hladdr = B_FALSE;
+	vxl->vxl_cstate = VXLAN_C_UNKNOWN;
+	vxl->vxl_cstate_err = 0;
 
 	return (0);
 }
@@ -128,16 +142,24 @@ vxlan_o_socket(void *arg, int *dp, int *fp, int *pp, struct sockaddr *addr,
 }
 
 static int
-vxlan_o_sockopt(ksocket_t ksock)
+vxlan_o_sockopt(ksocket_t ksock, boolean_t strictif)
 {
 	int val, err;
-	if (vxlan_fanout == B_FALSE)
-		return (0);
+	udp_tunnel_opt_t topt;
 
-	val = UDP_HASH_VXLAN;
-	err = ksocket_setsockopt(ksock, IPPROTO_UDP, UDP_SRCPORT_HASH, &val,
-	    sizeof (val), kcred);
-	return (err);
+	bzero(&topt, sizeof (udp_tunnel_opt_t));
+	topt.uto_type = UDP_TUNNEL_VXLAN;
+	topt.uto_opts = UDP_TUNNEL_OPT_SRCPORT_HASH;
+	if (strictif) {
+		topt.uto_opts |= UDP_TUNNEL_OPT_HWCAP | UDP_TUNNEL_OPT_RELAX_CKSUM;
+	}
+
+	if ((err = ksocket_setsockopt(ksock, IPPROTO_UDP, UDP_TUNNEL, &topt,
+	    sizeof (topt), kcred) != 0)) {
+		return (err);
+	}
+
+	return (0);
 }
 
 /* ARGSUSED */
@@ -166,6 +188,13 @@ vxlan_o_encap(void *arg, mblk_t *mp, ovep_encap_info_t *einfop,
 	vxh->vxlan_flags = ntohl(VXLAN_F_VDI);
 	vxh->vxlan_id = htonl((uint32_t)einfop->ovdi_id << VXLAN_ID_SHIFT);
 	ob->b_wptr += VXLAN_HDR_LEN;
+
+	/*
+	 * Make sure to set the fact that this is a VXLAN packet on this message
+	 * block.
+	 */
+	DB_TTYPEFLAGS(ob) |= (TTYPE_VXLAN << TTYPE_SHIFT);
+
 	*outp = ob;
 
 	return (0);
@@ -305,6 +334,78 @@ vxlan_o_propinfo(const char *pr_name, overlay_prop_handle_t phdl)
 	return (EINVAL);
 }
 
+static boolean_t
+vxlan_o_mac_capab(void *arg, mac_capab_t capab, void *cap_data, ksocket_t ksock)
+{
+	vxlan_t *vxl = arg;
+	boolean_t hcapab = B_FALSE; 
+
+	if (capab != MAC_CAPAB_HCKSUM && capab != MAC_CAPAB_LSO)
+		return (B_FALSE);
+
+	mutex_enter(&vxl->vxl_lock);
+	if (vxl->vxl_cstate == VXLAN_C_FAILED) {
+		goto out;
+	} else if (vxl->vxl_cstate == VXLAN_C_UNKNOWN) {
+		int len = sizeof (udp_tunnel_opt_t);
+		bzero(&vxl->vxl_utunnel, sizeof (udp_tunnel_opt_t));
+		vxl->vxl_cstate_err = ksocket_getsockopt(ksock, IPPROTO_UDP,
+		    UDP_TUNNEL, &vxl->vxl_utunnel, &len, kcred);
+		if (vxl->vxl_cstate_err != 0) {
+			vxl->vxl_cstate = VXLAN_C_FAILED;
+			goto out;
+		}
+
+		if (vxl->vxl_utunnel.uto_type != UDP_TUNNEL_VXLAN) {
+			vxl->vxl_cstate = VXLAN_C_FAILED;
+			vxl->vxl_cstate_err = -1;
+			goto out;
+		}
+	}
+
+	switch (capab) {
+	case MAC_CAPAB_HCKSUM:
+		/*
+		 * XXX Almost certainly some things are going to need the right
+		 * psuedo-header on transmit.
+		 */
+		if ((vxl->vxl_utunnel.uto_cksum_flags & (HCKSUM_VXLAN_FULL |
+		    HCKSUM_VXLAN_PSEUDO | HCKSUM_VXLAN_PSEUDO_NO_OL4)) != 0) {
+			uint32_t *hck = cap_data;
+			*hck = HCKSUM_IPHDRCKSUM;
+			if ((vxl->vxl_utunnel.uto_cksum_flags &
+			    HCKSUM_VXLAN_FULL) != 0) {
+				*hck |= HCKSUM_INET_FULL_V4 | HCKSUM_INET_FULL_V6;
+			} else if ((vxl->vxl_utunnel.uto_cksum_flags &
+			    (HCKSUM_VXLAN_PSEUDO |
+			    HCKSUM_VXLAN_PSEUDO_NO_OL4)) != 0) {
+				*hck |= HCKSUM_INET_PARTIAL;
+			}
+			hcapab = B_TRUE;
+		}
+		break;
+#if 0
+	case MAC_CAPAB_LSO:
+		if ((vxl->vxl_utunnel.uto_lso_flags & DLD_LSO_VXLAN_TCP_IPV4) != 0) {
+			mac_capab_lso_t *lso = cap_data;
+			lso->lso_flags = LSO_TX_BASIC_TCP_IPV4;
+			/* XXX Check value */
+			lso->lso_basic_tcp_ipv4.lso_max =
+			    vxl->vxl_utunnel.uto_lso_max - 100;
+			hcapab = B_TRUE;
+		}
+		break;
+#endif
+	default:
+		hcapab = B_FALSE;
+		break;
+	}
+
+out:
+	mutex_exit(&vxl->vxl_lock);
+	return (hcapab);
+}
+
 static struct overlay_plugin_ops vxlan_o_ops = {
 	0,
 	vxlan_o_init,
@@ -315,7 +416,8 @@ static struct overlay_plugin_ops vxlan_o_ops = {
 	vxlan_o_sockopt,
 	vxlan_o_getprop,
 	vxlan_o_setprop,
-	vxlan_o_propinfo
+	vxlan_o_propinfo,
+	vxlan_o_mac_capab
 };
 
 static struct modlmisc vxlan_modlmisc = {

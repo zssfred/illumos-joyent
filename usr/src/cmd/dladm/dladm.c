@@ -10013,6 +10013,7 @@ print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, const void *pbuf,
 {
 	const struct in6_addr *ipv6;
 	struct in_addr ip;
+	const uint32_t *bval;
 
 	switch (type) {
 	case OVERLAY_PROP_T_INT:
@@ -10078,6 +10079,17 @@ print_overlay_value(char *outbuf, uint_t bufsize, uint_t type, const void *pbuf,
 		break;
 	case OVERLAY_PROP_T_STRING:
 		(void) snprintf(outbuf, bufsize, "%s", pbuf);
+		break;
+	case OVERLAY_PROP_T_BOOLEAN:
+		if (psize != sizeof (uint32_t)) {
+			warn("malformed overlay boolean property: wrong byte "
+			    "size %d bytes\n", psize);
+			(void) snprintf(outbuf, bufsize, "--");
+			break;
+		}
+		bval = pbuf;
+		(void) snprintf(outbuf, bufsize, "%s", *bval > 0 ? "true" :
+		    "false");
 		break;
 	default:
 		abort();

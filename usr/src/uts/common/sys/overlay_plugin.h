@@ -267,12 +267,14 @@ typedef int (*overlay_plugin_init_t)(overlay_handle_t, void **);
 typedef void (*overlay_plugin_fini_t)(void *);
 typedef int (*overlay_plugin_socket_t)(void *, int *, int *, int *,
     struct sockaddr *, socklen_t *);
-typedef int (*overlay_plugin_sockopt_t)(ksocket_t);
+typedef int (*overlay_plugin_sockopt_t)(ksocket_t, boolean_t);
 typedef int (*overlay_plugin_getprop_t)(void *, const char *, void *,
     uint32_t *);
 typedef int (*overlay_plugin_setprop_t)(void *, const char *, const void *,
     uint32_t);
 typedef int (*overlay_plugin_propinfo_t)(const char *, overlay_prop_handle_t);
+typedef boolean_t (*overlay_plugin_mac_capab_t)(void *, mac_capab_t, void *,
+    ksocket_t);
 
 typedef struct overlay_plugin_ops {
 	uint_t			ovpo_callbacks;
@@ -285,6 +287,7 @@ typedef struct overlay_plugin_ops {
 	overlay_plugin_getprop_t ovpo_getprop;
 	overlay_plugin_setprop_t ovpo_setprop;
 	overlay_plugin_propinfo_t ovpo_propinfo;
+	overlay_plugin_mac_capab_t ovpo_mac_capab;
 } overlay_plugin_ops_t;
 
 typedef struct overlay_plugin_register {
@@ -311,7 +314,8 @@ extern int overlay_plugin_unregister(const char *);
 extern void overlay_prop_set_name(overlay_prop_handle_t, const char *);
 extern void overlay_prop_set_prot(overlay_prop_handle_t, overlay_prop_prot_t);
 extern void overlay_prop_set_type(overlay_prop_handle_t, overlay_prop_type_t);
-extern int overlay_prop_set_default(overlay_prop_handle_t, void *, ssize_t);
+extern int overlay_prop_set_default(overlay_prop_handle_t, const void *,
+    ssize_t);
 extern void overlay_prop_set_nodefault(overlay_prop_handle_t);
 extern void overlay_prop_set_range_uint32(overlay_prop_handle_t, uint32_t,
     uint32_t);

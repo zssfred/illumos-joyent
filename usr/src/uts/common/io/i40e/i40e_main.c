@@ -2799,6 +2799,14 @@ i40e_start(i40e_t *i40e, boolean_t alloc)
 		goto done;
 	}
 
+	/* XXX */
+	{
+		enum i40e_status_code r;
+
+		r = i40e_aq_add_udp_tunnel(hw, 4789, 0, NULL, NULL);
+		cmn_err(CE_WARN, "i40e add UDP tunnel: %x", r);
+	}
+
 	/*
 	 * Finally, make sure that we're happy from an FM perspective.
 	 */

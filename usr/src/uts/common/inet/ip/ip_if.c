@@ -19138,3 +19138,156 @@ ip_sioctl_get_lifhwaddr(ipif_t *ipif, sin_t *dummy_sin, queue_t *q, mblk_t *mp,
 
 	return (0);
 }
+
+static int
+ip_bindif_getipif(conn_t *connp, ipif_t **ipifp)
+{
+	in6_addr_t laddrv6;
+	in_addr_t laddrv4;
+	ushort_t ipvers;
+	ipif_t *ipif;
+	ip_stack_t *ipst;
+	int ret;
+
+	ipst = connp->conn_netstack->netstack_ip;
+
+	/*
+	 * The caller has made sure that this socket is bound before calling.
+	 * This makes it safe to cache this data and not hold the conn lock
+	 * across this operation.
+	 */
+	mutex_enter(&connp->conn_lock);
+	ipvers = connp->conn_ipversion;
+	if (ipvers == IPV4_VERSION) {
+		laddrv4 = connp->conn_saddr_v4;
+	} else if (ipvers == IPV6_VERSION) {
+		laddrv6 = connp->conn_saddr_v6;
+	} else {
+		mutex_exit(&connp->conn_lock);
+		return (EINVAL);
+	}
+	mutex_exit(&connp->conn_lock);
+
+	if (ipvers == IPV4_VERSION) {
+		ipif = ipif_lookup_addr_nondup(laddrv4, NULL, ALL_ZONES, ipst);
+	} else 	{
+		ipif = ipif_lookup_addr_nondup_v6(&laddrv6, NULL, ALL_ZONES,
+		    ipst);
+	}
+
+	if (ipif == NULL) {
+		return (ENOENT);
+	}
+
+	*ipifp = ipif;
+	return (0);
+}
+
+int
+ip_bindif_ifindex(conn_t *connp, uint_t *ifindex)
+{
+	int ret;
+	ipif_t *ipif;
+
+	if (connp == NULL || ifindex == NULL)
+		return (EINVAL);
+
+	if ((ret = ip_bindif_getipif(connp, &ipif)) != 0) {
+		return (ret);
+	}
+
+	if (IS_VNI(ipif->ipif_ill) || IS_IPMP(ipif->ipif_ill) ||
+	    IS_LOOPBACK(ipif->ipif_ill)) {
+		ret = ENOTSUP;
+		goto out;
+	}
+
+	mutex_enter(&ipif->ipif_ill->ill_lock);
+	*ifindex = ipif->ipif_ill->ill_phyint->phyint_ifindex;
+	mutex_exit(&ipif->ipif_ill->ill_lock);
+out:
+	if (ipif != NULL)
+		ipif_refrele(ipif);
+	return (ret);
+}
+
+int
+ip_bindif_hwcaps(conn_t *connp, uint_t *hckflags, uint_t *lsoflags,
+    uint_t *lsomax)
+{
+	in6_addr_t laddrv6;
+	in_addr_t laddrv4;
+	ushort_t ipvers;
+	ipif_t *ipif;
+	ip_stack_t *ipst;
+	int ret;
+
+	if (connp == NULL || hckflags == NULL || lsoflags == NULL ||
+	    lsomax == NULL) {
+		return (EINVAL);
+	}
+
+	ipst = connp->conn_netstack->netstack_ip;
+
+	/*
+	 * The caller has made sure that this socket is bound before calling.
+	 * This makes it safe to cache this data and not hold the conn lock
+	 * across this operation.
+	 */
+	mutex_enter(&connp->conn_lock);
+	ipvers = connp->conn_ipversion;
+	if (ipvers == IPV4_VERSION) {
+		laddrv4 = connp->conn_saddr_v4;
+	} else if (ipvers == IPV6_VERSION) {
+		laddrv6 = connp->conn_saddr_v6;
+	} else {
+		mutex_exit(&connp->conn_lock);
+		return (EINVAL);
+	}
+	mutex_exit(&connp->conn_lock);
+
+	if (ipvers == IPV4_VERSION) {
+		ipif = ipif_lookup_addr_nondup(laddrv4, NULL, ALL_ZONES, ipst);
+	} else 	{
+		ipif = ipif_lookup_addr_nondup_v6(&laddrv6, NULL, ALL_ZONES,
+		    ipst);
+	}
+
+	if (ipif == NULL) {
+		return (ENOENT);
+	}
+
+	if (IS_VNI(ipif->ipif_ill) || IS_IPMP(ipif->ipif_ill) ||
+	    IS_LOOPBACK(ipif->ipif_ill)) {
+		ret = ENOTSUP;
+		goto out;
+	}
+
+	/*
+	 * XXX We should consider entering the ipsq here via ipsq_enter().
+	 * There's really no good way to get a consistent snapshot of the
+	 * hardware capabilities from an ill. We'll revisit this when we need
+	 * to deal with getting updates.
+	 */
+	if (ILL_LSO_USABLE(ipif->ipif_ill)) {
+		ill_lso_capab_t *lsop = ipif->ipif_ill->ill_lso_capab;
+		*lsoflags = lsop->ill_lso_flags;
+		*lsomax = lsop->ill_lso_max;
+	} else {
+		*lsoflags = 0;
+		*lsomax = 0;
+	}
+
+	if (ILL_HCKSUM_CAPABLE(ipif->ipif_ill)) {
+		ill_hcksum_capab_t *hck = ipif->ipif_ill->ill_hcksum_capab;
+		*hckflags = hck->ill_hcksum_txflags;
+	} else {
+		*hckflags = 0;
+	}
+
+	ret = 0;
+out:
+	if (ipif != NULL)
+		ipif_refrele(ipif);
+	return (ret);
+}

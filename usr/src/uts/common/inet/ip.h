@@ -2254,6 +2254,8 @@ struct ip_xmit_attr_s {
 #define	IXAF_VERIFY_ZCOPY	0x400000000	/* Check Zero Copy capability */
 #define	IXAF_ZCOPY_CAPAB	0x800000000	/* Capable of ZEROCOPY */
 
+#define	IXAF_SKIP_ULP_CKSUM	0x1000000000	/* Checksum IP, but skip ULP */
+
 /*
  * The normal flags for sending packets e.g., icmp errors
  */

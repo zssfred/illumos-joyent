@@ -689,14 +689,20 @@ typedef struct {
 #define	HCKSUM_INET_FULL_ICMPV6	0x0040	/* Full 1's complement checksum */
 					/* ability for IPv6 ICMP packets. */
 #define	HCKSUM_VXLAN_FULL	0x0080	/* Inner L3/L4 & outer L3/L4 offload */
-#define	HCKSUM_VXLAN_FULL_NO_OL4 0x0100	/* Same as HCKSUM_VXLAN_FULL but no */
-					/* outer L4 offload */
+#define	HCKSUM_VXLAN_PSEUDO	0x0100	/* Inner L3/L4 & outer L3/L4 offload */
+					/* L4 requires psuedo header */
+#define	HCKSUM_VXLAN_PSEUDO_NO_OL4 0x0200	/* Same as HCKSUM_VXLAN_PSEUDO */
+					/* but no outer L4 offload */
 
 #define	HCKSUM_ALL_BUT_ENBL	(HCKSUM_INET_PARTIAL | \
 			HCKSUM_INET_FULL_V4 | HCKSUM_INET_FULL_V6 | \
 			HCKSUM_IPHDRCKSUM | \
 			HCKSUM_INET_FULL_ICMPV4 | HCKSUM_INET_FULL_ICMPV6 | \
-			HCKSUM_VXLAN_FULL | HCKSUM_VXLAN_FULL_NO_OL4)
+			HCKSUM_VXLAN_FULL | HCKSUM_VXLAN_PSEUDO | \
+			HCKSUM_VXLAN_PSEUDO_NO_OL4)
+
+#define	HCKSUM_TUNNEL_VXLAN_OIP	(HCKSUM_VXLAN_FULL | HCKSUM_VXLAN_PSEUDO | \
+				HCKSUM_VXLAN_PSEUDO_NO_OL4)
 
 #define	HCKSUM_ALL	(HCKSUM_ENABLE | HCKSUM_ALL_BUT_ENBL)
 

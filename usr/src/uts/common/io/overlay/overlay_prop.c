@@ -54,7 +54,8 @@ overlay_prop_set_type(overlay_prop_handle_t phdl, overlay_prop_type_t type)
 }
 
 int
-overlay_prop_set_default(overlay_prop_handle_t phdl, void *def, ssize_t len)
+overlay_prop_set_default(overlay_prop_handle_t phdl, const void *def,
+    ssize_t len)
 {
 	overlay_ioc_propinfo_t *infop = (overlay_ioc_propinfo_t *)phdl;
 

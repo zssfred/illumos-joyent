@@ -34,15 +34,28 @@ struct udphdr {
 #define	UDP_EXCLBIND		0x0101		/* for internal use only */
 #define	UDP_RCVHDR		0x0102		/* for internal use only */
 #define	UDP_NAT_T_ENDPOINT	0x0103		/* for internal use only */
-#define	UDP_SRCPORT_HASH	0x0104		/* for internal use only */
+#define	UDP_TUNNEL		0x0104		/* for internal use only */
 #define	UDP_SND_TO_CONNECTED	0x0105		/* for internal use only */
 
+#ifdef _KERNEL
+
 /*
- * Hash definitions for UDP_SRCPORT_HASH that effectively tell UDP how to go
- * handle UDP_SRCPORT_HASH.
+ * Internal structure defintions for UDP_TUNNEL.
  */
-#define	UDP_HASH_DISABLE	0x0000		/* for internal use only */
-#define	UDP_HASH_VXLAN		0x0001		/* for internal use only */
+#define	UDP_TUNNEL_VXLAN	1
+#define	UDP_TUNNEL_OPT_SRCPORT_HASH	0x01
+#define	UDP_TUNNEL_OPT_HWCAP		0x02
+#define	UDP_TUNNEL_OPT_RELAX_CKSUM	0x04
+
+typedef struct udp_tunnel_opt {
+	uint32_t	uto_type;
+	uint32_t	uto_opts;
+	uint32_t	uto_cksum_flags;
+	uint32_t	uto_lso_flags;
+	uint32_t	uto_lso_max;
+} udp_tunnel_opt_t;
+
+#endif	/* _KERNEL */
 
 /*
  * Following option in UDP_ namespace required to be exposed through

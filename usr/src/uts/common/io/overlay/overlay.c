@@ -817,6 +817,7 @@
 #include <sys/mac_client_priv.h>
 #include <sys/mac_ether.h>
 #include <sys/vlan.h>
+#include <sys/pattr.h>
 
 #include <sys/overlay_impl.h>
 
@@ -830,15 +831,17 @@ typedef enum overlay_dev_prop {
 	OVERLAY_DEV_P_MTU = 0,
 	OVERLAY_DEV_P_VNETID,
 	OVERLAY_DEV_P_ENCAP,
-	OVERLAY_DEV_P_VARPDID
+	OVERLAY_DEV_P_VARPDID,
+	OVERLAY_DEV_P_STRICTIF
 } overlay_dev_prop_t;
 
-#define	OVERLAY_DEV_NPROPS	4
+#define	OVERLAY_DEV_NPROPS	5
 static const char *overlay_dev_props[] = {
 	"mtu",
 	"vnetid",
 	"encap",
-	"varpd/id"
+	"varpd/id",
+	"mux/bound"
 };
 
 #define	OVERLAY_MTU_MIN	576
@@ -973,7 +976,7 @@ overlay_m_start(void *arg)
 		return (ret);
 
 	mux = overlay_mux_open(odd->odd_plugin, domain, family, prot,
-	    (struct sockaddr *)&storage, slen, &ret);
+	    (struct sockaddr *)&storage, slen, odd->odd_strictif, &ret);
 	if (mux == NULL)
 		return (ret);
 
@@ -983,6 +986,12 @@ overlay_m_start(void *arg)
 	ASSERT(!(odd->odd_flags & OVERLAY_F_IN_MUX));
 	odd->odd_flags |= OVERLAY_F_IN_MUX;
 	mutex_exit(&odd->odd_lock);
+
+	/*
+	 * Now that we're in the MUX trigger MAC to rescan our capabilities,
+	 * which is important for VNICs on top of us.
+	 */
+	mac_capab_update(odd->odd_mh);
 
 	return (0);
 }
@@ -1044,6 +1053,28 @@ overlay_m_unicast(void *arg, const uint8_t *macaddr)
 	return (0);
 }
 
+static inline void
+overlay_tx_checksum_shift(mblk_t *source, mblk_t *target)
+{
+	uint32_t oflags, nflags = 0;
+
+	mac_hcksum_get(source, NULL, NULL, NULL, NULL, &oflags);
+	mac_hcksum_set(source, NULL, NULL, NULL, NULL, 0);
+
+	if ((oflags & HCK_IPV4_HDRCKSUM) != 0)
+		nflags |= HCK_INNER_IPV4_HDRCKSUM_NEEDED;
+	if ((oflags & HCK_FULLCKSUM) != 0) {
+		nflags |= HCK_INNER_FULLCKSUM_NEEDED;
+	} else if ((oflags & HCK_PARTIALCKSUM) != 0) {
+		nflags |= HCK_INNER_PSEUDO_NEEDED;
+	}
+
+	/*
+	 * Manually or in the flags so we don't clobber existing information.
+	 */
+	DB_CKSUMFLAGS(target) |= nflags;
+}
+
 mblk_t *
 overlay_m_tx(void *arg, mblk_t *mp_chain)
 {
@@ -1095,6 +1126,12 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 			goto out;
 		}
 
+		/*
+		 * Make sure any checksum flags that ended up on mp from the
+		 * lower level are shifted over to emp as outer flags.
+		 */
+		overlay_tx_checksum_shift(mp, ep);
+
 		ep->b_cont = mp;
 		ret = overlay_mux_tx(odd->odd_mux, &hdr, ep);
 		if (ret != 0)
@@ -1121,12 +1158,50 @@ overlay_m_ioctl(void *arg, queue_t *q, mblk_t *mp)
 static boolean_t
 overlay_m_getcapab(void *arg, mac_capab_t cap, void *cap_data)
 {
+	overlay_dev_t *odd = arg;
+
 	/*
-	 * Tell MAC we're an overlay.
+	 * Always tell MAC we're an overlay.
 	 */
 	if (cap == MAC_CAPAB_OVERLAY)
 		return (B_TRUE);
-	return (B_FALSE);
+
+	/*
+	 * Check to see if this is a capability that we'd consider letting a
+	 * module know how to ask the mux about.
+	 */
+	switch (cap) {
+	case MAC_CAPAB_HCKSUM:
+	case MAC_CAPAB_LSO:
+		break;
+	default:
+		return (B_FALSE);
+	}
+
+	if (odd->odd_plugin->ovp_ops->ovpo_mac_capab == NULL) {
+		return (B_FALSE);
+	}
+
+	/*
+	 * Once the device is present in a MUX it will know if it has the
+	 * ability to offer various capabillities to underlying hardware. Check
+	 * if we're in a mux and if so, offer that to the device. We can rely on
+	 * the fact that MAC won't stop us while it's asking us about a
+	 * capability to know that we can't be removed from a mux if we're not
+	 * in it right now.
+	 *
+	 * Also, even if we're not in a MUX yet, we will retrigger capability
+	 * scans once we are in one.
+	 */
+	mutex_enter(&odd->odd_lock);
+	if ((odd->odd_flags & OVERLAY_F_IN_MUX) == 0) {
+		mutex_exit(&odd->odd_lock);
+		return (B_FALSE);
+	}
+	mutex_exit(&odd->odd_lock);
+
+	return (odd->odd_plugin->ovp_ops->ovpo_mac_capab(odd->odd_pvoid,
+	    cap, cap_data, odd->odd_mux->omux_ksock));
 }
 
 /* ARGSUSED */
@@ -1359,6 +1434,7 @@ overlay_i_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	cv_init(&odd->odd_iowait, NULL, CV_DRIVER, NULL);
 	odd->odd_ref = 0;
 	odd->odd_flags = 0;
+	odd->odd_strictif = B_TRUE;
 	list_insert_tail(&overlay_dev_list, odd);
 	mutex_exit(&overlay_dev_lock);
 
@@ -1615,6 +1691,7 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 	uint_t propid = UINT_MAX;
 	overlay_ioc_propinfo_t *oip = karg;
 	overlay_prop_handle_t phdl = (overlay_prop_handle_t)oip;
+	const uint32_t def_true = 1;
 
 	odd = overlay_hold_by_dlid(oip->oipi_linkid);
 	if (odd == NULL)
@@ -1694,6 +1771,11 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_READ);
 		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
 		overlay_prop_set_nodefault(phdl);
+		break;
+	case OVERLAY_DEV_P_STRICTIF:
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_BOOLEAN);
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_default(phdl, &def_true, sizeof (def_true));
 		break;
 	default:
 		overlay_hold_rele(odd);
@@ -1804,6 +1886,13 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 		}
 		mutex_exit(&odd->odd_lock);
 		break;
+	case OVERLAY_DEV_P_STRICTIF:
+		mutex_enter(&odd->odd_lock);
+
+		oip->oip_size = sizeof (odd->odd_strictif);
+		bcopy(&odd->odd_strictif, oip->oip_value, oip->oip_size);
+		mutex_exit(&odd->odd_lock);
+		break;
 	default:
 		ret = ENOENT;
 	}
@@ -1856,6 +1945,7 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	uint_t propid = UINT_MAX;
 	mac_perim_handle_t mph;
 	uint64_t maxid, *vidp;
+	uint32_t *boolp;
 
 	if (oip->oip_size > OVERLAY_PROP_SIZEMAX)
 		return (EINVAL);
@@ -1940,6 +2030,22 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	case OVERLAY_DEV_P_ENCAP:
 	case OVERLAY_DEV_P_VARPDID:
 		ret = EPERM;
+		break;
+	case OVERLAY_DEV_P_STRICTIF:
+		if (oip->oip_size != sizeof (uint32_t)) {
+			ret = EINVAL;
+			break;
+		}
+		mutex_enter(&odd->odd_lock);
+		if ((odd->odd_flags & OVERLAY_F_IN_MUX) != 0) {
+			mutex_exit(&odd->odd_lock);
+			ret = EBUSY;
+			break;
+		}
+
+		boolp = (uint32_t *)oip->oip_value;
+		odd->odd_strictif = *boolp > 0 ? B_TRUE : B_FALSE;
+		mutex_exit(&odd->odd_lock);
 		break;
 	default:
 		ret = ENOENT;

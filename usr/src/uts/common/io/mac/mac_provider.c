@@ -1559,3 +1559,11 @@ mac_transceiver_info_set_usable(mac_transceiver_info_t *infop,
 {
 	infop->mti_usable = usable;
 }
+
+void
+mac_tunnel_type_get(const mblk_t *mp, uint32_t *typep)
+{
+	ASSERT(DB_TYPE(mp) == M_DATA);
+
+	*typep = (DB_TTYPEFLAGS(mp) & TTYPE_MASK) >> TTYPE_SHIFT;
+}

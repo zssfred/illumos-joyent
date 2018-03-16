@@ -833,7 +833,7 @@ t4_mc_getcapab(void *arg, mac_capab_t cap, void *data)
 	case MAC_CAPAB_HCKSUM:
 		if (pi->features & CXGBE_HW_CSUM) {
 			uint32_t *d = data;
-			*d = HCKSUM_INET_FULL_V4 | HCKSUM_IPHDRCKSUM;
+			*d = HCKSUM_INET_FULL_V4 | HCKSUM_IPHDRCKSUM; 
 		} else
 			status = B_FALSE;
 		break;

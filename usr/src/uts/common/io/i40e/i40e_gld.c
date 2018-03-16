@@ -730,14 +730,16 @@ i40e_m_getcapab(void *arg, mac_capab_t cap, void *cap_data)
 		 * HW checksum offload
 		 * Inner L3 | Inner L4 | Outer L3 | Outer L4
 		 *   yes    |    yes   |    yes   | only on x722
-		 * i.e. this HCKSUM_VXLAN_FULL_NO_OL4, except for x722, but we
-		 * currently don't break out x722 separately.
+		 *
+		 * The L4 checksum offload requires that the pseudo-header is
+		 * calculated. Hence why we use HCKSUM_INET_PARTIAL and
+		 * HCKSUM_VXLAN_PSEUDO_NO_OL4. Eventually we can change this so
+		 * on the X722 we use HCKSUM_VXLAN_PSEUDO.
 		 */
-
 		*txflags = 0;
 		if (i40e->i40e_tx_hcksum_enable == B_TRUE)
 			*txflags = HCKSUM_INET_PARTIAL | HCKSUM_IPHDRCKSUM |
-			    HCKSUM_VXLAN_FULL_NO_OL4;
+			    HCKSUM_VXLAN_PSEUDO_NO_OL4;
 		break;
 	}
 

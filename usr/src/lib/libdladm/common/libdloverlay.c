@@ -82,6 +82,7 @@ dladm_overlay_parse_prop(overlay_prop_type_t type, void *buf, uint32_t *sizep,
 	int ret;
 	int64_t ival;
 	uint64_t uval;
+	uint32_t bval;
 	char *eptr;
 	struct in6_addr ipv6;
 	struct in_addr ip;
@@ -126,6 +127,17 @@ dladm_overlay_parse_prop(overlay_prop_type_t type, void *buf, uint32_t *sizep,
 		}
 		bcopy(&ipv6, buf, sizeof (struct in6_addr));
 		*sizep = sizeof (struct in6_addr);
+		break;
+	case OVERLAY_PROP_T_BOOLEAN:
+		if (strcmp(val, "true") == 0) {
+			bval = 1;
+		} else if (strcmp(vap, "false") == 0) {
+			bval = 0;
+		} else {
+			return (DLADM_STATUS_BADARG);
+		}
+		bcopy(&bval, buf, sizeof (bval));
+		*sizep = sizeof (bval);
 		break;
 	default:
 		abort();

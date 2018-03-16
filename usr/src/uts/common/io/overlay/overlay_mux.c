@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright (c) 2018, Joyent, Inc.
  */
 
 /*
@@ -30,6 +30,7 @@
 #include <sys/strsubr.h>
 #include <sys/strsun.h>
 #include <sys/tihdr.h>
+#include <sys/pattr.h>
 
 #include <sys/overlay_impl.h>
 
@@ -68,6 +69,24 @@ overlay_mux_comparator(const void *a, const void *b)
 		return (-1);
 	else
 		return (0);
+}
+
+/*
+ * Look at the checksum flags that are set on the block. Hardware may support
+ * checksumming the inner frames. If so, we need to update the checksum flags on
+ * the message block to make sure that it makes sense.
+ */
+static inline void
+overlay_recv_checksum_shift(mblk_t *mp)
+{
+	uint32_t oflags, nflags = 0;
+
+	mac_hcksum_get(mp, NULL, NULL, NULL, NULL, &oflags);
+	if ((oflags & HCK_INNER_IPV4_HDRCKSUM_OK) != 0)
+		nflags |= HCK_IPV4_HDRCKSUM_OK;
+	if ((oflags & HCK_INNER_FULLCKSUM_OK) != 0)
+		nflags |= HCK_FULLCKSUM_OK;
+	mac_hcksum_set(mp, NULL, NULL, NULL, NULL, nflags);
 }
 
 /*
@@ -187,6 +206,8 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 		mutex_exit(&odd->odd_lock);
 		mutex_exit(&mux->omux_lock);
 
+		overlay_recv_checksum_shift(mp);
+
 		mac_rx(odd->odd_mh, NULL, mp);
 
 		mutex_enter(&odd->odd_lock);
@@ -203,7 +224,7 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
  */
 overlay_mux_t *
 overlay_mux_open(overlay_plugin_t *opp, int domain, int family, int protocol,
-    struct sockaddr *addr, socklen_t len, int *errp)
+    struct sockaddr *addr, socklen_t len, boolean_t strictif, int *errp)
 {
 	int err;
 	overlay_mux_t *mux;
@@ -221,7 +242,8 @@ overlay_mux_open(overlay_plugin_t *opp, int domain, int family, int protocol,
 		    len == mux->omux_alen &&
 		    bcmp(addr, mux->omux_addr, len) == 0) {
 
-			if (opp != mux->omux_plugin) {
+			if (opp != mux->omux_plugin ||
+			    strictif != mux->omux_strictif) {
 				*errp = EEXIST;
 				return (NULL);
 			}
@@ -260,7 +282,7 @@ overlay_mux_open(overlay_plugin_t *opp, int domain, int family, int protocol,
 	 * then ask it to perform any additional socket set up it'd like to do.
 	 */
 	if (opp->ovp_ops->ovpo_sockopt != NULL &&
-	    (*errp = opp->ovp_ops->ovpo_sockopt(ksock)) != 0) {
+	    (*errp = opp->ovp_ops->ovpo_sockopt(ksock, strictif)) != 0) {
 		mutex_exit(&overlay_mux_lock);
 		ksocket_close(ksock, kcred);
 		return (NULL);
@@ -273,6 +295,7 @@ overlay_mux_open(overlay_plugin_t *opp, int domain, int family, int protocol,
 	mux->omux_domain = domain;
 	mux->omux_family = family;
 	mux->omux_protocol = protocol;
+	mux->omux_strictif = strictif;
 	mux->omux_addr = kmem_alloc(len, KM_SLEEP);
 	bcopy(addr, mux->omux_addr, len);
 	mux->omux_alen = len;

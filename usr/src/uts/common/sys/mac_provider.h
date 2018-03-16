@@ -120,10 +120,16 @@ typedef struct lso_basic_tcp_ipv4_s {
 	t_uscalar_t	lso_max;		/* maximum payload */
 } lso_basic_tcp_ipv4_t;
 
+typedef struct lso_vxlan_tcp {
+	t_uscalar_t	lso_tcpv4_max;		/* maximum payload */
+	t_uscalar_t	lso_tcpv6_max;		/* maximum payload */
+} lso_vxlan_tcp_t;
+
 /*
  * Currently supported flags for LSO.
  */
-#define	LSO_TX_BASIC_TCP_IPV4	0x01		/* TCP LSO capability */
+#define	LSO_TX_BASIC_TCP_IPV4	0x01		/* TCPv4 LSO capability */
+#define	LSO_TX_VXLAN_TCP	0x02		/* VXLAN LSO capability */	
 
 /*
  * Future LSO capabilities can be added at the end of the mac_capab_lso_t.
@@ -136,6 +142,7 @@ typedef struct lso_basic_tcp_ipv4_s {
 typedef	struct mac_capab_lso_s {
 	t_uscalar_t		lso_flags;
 	lso_basic_tcp_ipv4_t	lso_basic_tcp_ipv4;
+	lso_vxlan_tcp_t		lso_vxlan_tcp;
 	/* Add future lso capabilities here */
 } mac_capab_lso_t;
 
@@ -602,6 +609,8 @@ extern void			mac_transceiver_info_set_present(
 extern void			mac_transceiver_info_set_usable(
 				    mac_transceiver_info_t *,
 				    boolean_t);
+
+extern void			mac_tunnel_type_get(const mblk_t *, uint32_t *);
 
 #endif	/* _KERNEL */
 

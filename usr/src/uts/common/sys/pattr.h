@@ -105,26 +105,39 @@ typedef struct pattr_hcksum_s {
 					/* On Receive: equivalent to */
 					/* HCK_IPV4_HDRCKSUM_OK for the inner */
 					/* header */
+#define	HCK_INNER_IPV4_HDRCKSUM_NEEDED	0x20	/* On Transmit: equivalent to */
+					/* HCK_IPV4_HDRCKSUM; HW calculates */
+					/* inner checksum */
 
 #define	HCK_INNER_FULLCKSUM_OK	0x40	/* On Transmit: N/A */
 					/* On Receive: equivalent to */
 					/* HCK_FULLCKSUM_OK for the inner */
 					/* header */
 
-#define	HCK_INNER_IPV4_HDRCKSUM_NEEDED	0x80 /* On Transmit: equivalent to */
-					/* HCK_IPV4_HDRCKSUM; HW calculates */
-					/* inner checksum */
-
-#define	HCK_INNER_FULLCKSUM_NEEDED 0x100	/* On Transmit: equivalent to */
+#define	HCK_INNER_FULLCKSUM_NEEDED	0x40	/* On Transmit: equivalent to */
 					/* HCK_FULLCKSUM; HW calculates inner */
 					/* L4 header checksum. */
 
-#define	HCK_FLAGS		(HCK_IPV4_HDRCKSUM | HCK_PARTIALCKSUM |	\
-				HCK_FULLCKSUM | HCK_FULLCKSUM_OK | \
-				HCK_INNER_IPV4_HDRCKSUM_OK | \
+#define	HCK_INNER_PSEUDO_NEEDED	0x80	/* On Transmit: offload */
+					/* of the inner TCP/UDP header, but */
+					/* requires that the pseudo-header */
+					/* is filled in the checksum. Like */
+					/* HCK_PARTIALCKSUM, but no fields */
+					/* saved */
+
+#define	HCK_INNER_FLAGS_NEEDED	(HCK_INNER_IPV4_HDRCKSUM_NEEDED | \
+				HCK_INNER_FULLCKSUM_NEEDED | \
+				HCK_INNER_PSEUDO_NEEDED)
+
+#define	HCK_INNER_FLAGS		(HCK_INNER_IPV4_HDRCKSUM_OK | \
 				HCK_INNER_FULLCKSUM_OK | \
-				HCK_INNER_IPV4_HDRCKSUM_NEEDED | \
-				HCK_INNER_FULLCKSUM_NEEDED)
+				HCK_INNER_FLAGS_NEEDED)
+
+#define	HCK_OUTER_FLAGS		(HCK_IPV4_HDRCKSUM | HCK_PARTIALCKSUM | \
+			        HCK_FULLCKSUM | HCK_FULLCKSUM_OK)
+
+#define	HCK_FLAGS		(HCK_INNER_FLAGS | HCK_OUTER_FLAGS)
+
 /*
  * Extended hardware offloading flags that also use hcksum_flags
  */
@@ -132,6 +145,15 @@ typedef struct pattr_hcksum_s {
 					/* On Receive: N/A */
 
 #define	HW_LSO_FLAGS		HW_LSO	/* All LSO flags, currently only one */
+
+/*
+ * The upper three bits are used to indicate if the packet has any known
+ * tunneling information.
+ */
+#define	TTYPE_MASK	0xe000
+#define	TTYPE_SHIFT	13
+#define	TTYPE_NONE	0x00
+#define	TTYPE_VXLAN	0x01
 
 /*
  * Structure used for zerocopy attribute.

@@ -1201,6 +1201,7 @@ conn_opt_set_ip(conn_opt_arg_t *coa, t_scalar_t name, uint_t inlen,
 		case T_IP_TOS:
 		case IP_TTL:
 		case IP_DONTFRAG:
+		case IP_BOUND_IF:
 			break;
 		default:
 			return (EINVAL);
@@ -2454,7 +2455,7 @@ ip_attr_newdst(ip_xmit_attr_t *ixa)
 {
 	ixa->ixa_flags &= ~(IXAF_LOOPBACK_COPY | IXAF_NO_HW_CKSUM |
 	    IXAF_NO_TTL_CHANGE | IXAF_IPV6_ADD_FRAGHDR |
-	    IXAF_NO_LOOP_ZONEID_SET);
+	    IXAF_NO_LOOP_ZONEID_SET | IXAF_SKIP_ULP_CKSUM);
 }
 
 /*

@@ -493,6 +493,9 @@ extern int	ipif_arp_up(ipif_t *, enum ip_resolver_action, boolean_t);
 extern void	ipif_dup_recovery(void *);
 extern void	ipif_do_recovery(ipif_t *);
 
+extern int	ip_bindif_hwcaps(conn_t *, uint_t *, uint_t *, uint_t *);
+extern int	ip_bindif_ifindex(conn_t *, uint_t *);
+
 /*
  * Notes on reference tracing on ill, ipif, ire, nce data structures:
  *

@@ -1604,7 +1604,7 @@ ire_send_noroute_v4(ire_t *ire, mblk_t *mp, void *iph_arg,
 }
 
 /*
- * Calculate a checksum ignoring any hardware capabilities
+ * Calculate a checksum ignoring any hardware capabilities.
  *
  * Returns B_FALSE if the packet was too short for the checksum. Caller
  * should free and do stats.
@@ -1621,8 +1621,14 @@ ip_output_sw_cksum_v4(mblk_t *mp, ipha_t *ipha, ip_xmit_attr_t *ixa)
 	ipaddr_t	dst = ipha->ipha_dst;
 	ipaddr_t	src = ipha->ipha_src;
 
-	/* Just in case it contained garbage */
-	DB_CKSUMFLAGS(mp) &= ~HCK_FLAGS;
+	/*
+	 * Just in case it contained garbage. There may be valid flags if this
+	 * is a tunneled packet.
+	 */
+	DB_CKSUMFLAGS(mp) &= ~HCK_OUTER_FLAGS;
+
+	if ((ixa->ixa_flags & IXAF_SKIP_ULP_CKSUM) != 0)
+		goto ip_hdr_cksum;
 
 	/*
 	 * Calculate ULP checksum
@@ -1688,6 +1694,7 @@ ip_hdr_cksum:
  * Calculate the ULP checksum - try to use hardware.
  * In the case of MULTIRT, broadcast or multicast the
  * IXAF_NO_HW_CKSUM is set in which case we use software.
+ * If IXAF_SKIP_ULP_CKSUM is set, only do the IP checksum.
  *
  * If the hardware supports IP header checksum offload; then clear the
  * contents of IP header checksum field as expected by NIC.
@@ -1702,15 +1709,23 @@ ip_output_cksum_v4(iaflags_t ixaflags, mblk_t *mp, ipha_t *ipha,
 {
 	uint_t		pktlen = ixa->ixa_pktlen;
 	uint16_t	*cksump;
-	uint16_t	hck_flags;
+	uint16_t	hck_flags, mp_hck_flags, ttype;
 	uint32_t	cksum;
 	uint8_t		protocol = ixa->ixa_protocol;
 	uint16_t	ip_hdr_length = ixa->ixa_ip_hdr_length;
+	boolean_t	can_inet, can_full, can_partial;
 
 	if ((ixaflags & IXAF_NO_HW_CKSUM) || !ILL_HCKSUM_CAPABLE(ill) ||
 	    !dohwcksum) {
 		return (ip_output_sw_cksum_v4(mp, ipha, ixa));
 	}
+
+	/*
+	 * If we've been asked to skip the ULP checksum, then just let IP do its
+	 * business.
+	 */
+	if ((ixa->ixa_flags & IXAF_SKIP_ULP_CKSUM) != 0)
+		goto ip_hdr_cksum;
 
 	/*
 	 * Calculate ULP checksum. Note that we don't use cksump and cksum
@@ -1753,11 +1768,34 @@ ip_output_cksum_v4(iaflags_t ixaflags, mblk_t *mp, ipha_t *ipha,
 	 * the payload; leave the payload checksum for the hardware to
 	 * calculate.  N.B: We only need to set up checksum info on the
 	 * first mblk.
+	 *
+	 * We must check to see if an inner checksum has already been
+	 * computed.  If so, we need to look at different hardware flags
+	 * to determine if we can perform full or partial checksums.
 	 */
 	hck_flags = ill->ill_hcksum_capab->ill_hcksum_txflags;
 
-	DB_CKSUMFLAGS(mp) &= ~HCK_FLAGS;
-	if (hck_flags & HCKSUM_INET_FULL_V4) {
+	mp_hck_flags = DB_CKSUMFLAGS(mp);
+	ttype = (DB_TTYPEFLAGS(mp) & TTYPE_MASK) >> TTYPE_SHIFT;
+	if ((mp_hck_flags & HCK_INNER_FLAGS_NEEDED) != 0) {
+		switch (ttype) {
+		case TTYPE_VXLAN:
+			can_inet = (hck_flags & HCKSUM_TUNNEL_VXLAN_OIP) != 0;
+			can_full = (hck_flags & HCKSUM_VXLAN_FULL) != 0;
+			can_partial = (hck_flags & HCKSUM_VXLAN_PSEUDO) != 0;
+			break;
+		default:
+			can_inet = B_FALSE;
+			can_full = B_FALSE;
+			can_partial = B_FALSE;
+		}
+	} else {
+		can_inet = (hck_flags & HCKSUM_IPHDRCKSUM) != 0;
+		can_full = (hck_flags & HCKSUM_INET_FULL_V4) != 0;
+		can_partial = (hck_flags & HCKSUM_INET_PARTIAL) != 0;
+	}
+	DB_CKSUMFLAGS(mp) &= ~HCK_OUTER_FLAGS;
+	if (can_full) {
 		/*
 		 * Hardware calculates pseudo-header, header and the
 		 * payload checksums, so clear the checksum field in
@@ -1767,14 +1805,14 @@ ip_output_cksum_v4(iaflags_t ixaflags, mblk_t *mp, ipha_t *ipha,
 		DB_CKSUMFLAGS(mp) |= HCK_FULLCKSUM;
 
 		ipha->ipha_hdr_checksum = 0;
-		if (hck_flags & HCKSUM_IPHDRCKSUM) {
+		if (can_inet) {
 			DB_CKSUMFLAGS(mp) |= HCK_IPV4_HDRCKSUM;
 		} else {
 			ipha->ipha_hdr_checksum = ip_csum_hdr(ipha);
 		}
 		return (B_TRUE);
 	}
-	if ((hck_flags) & HCKSUM_INET_PARTIAL)  {
+	if (can_partial)  {
 		ipaddr_t	dst = ipha->ipha_dst;
 		ipaddr_t	src = ipha->ipha_src;
 		/*
@@ -1803,7 +1841,7 @@ ip_output_cksum_v4(iaflags_t ixaflags, mblk_t *mp, ipha_t *ipha,
 		DB_CKSUMFLAGS(mp) |= HCK_PARTIALCKSUM;
 
 		ipha->ipha_hdr_checksum = 0;
-		if (hck_flags & HCKSUM_IPHDRCKSUM) {
+		if (can_inet) {
 			DB_CKSUMFLAGS(mp) |= HCK_IPV4_HDRCKSUM;
 		} else {
 			ipha->ipha_hdr_checksum = ip_csum_hdr(ipha);

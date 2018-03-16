@@ -61,6 +61,7 @@ typedef struct overlay_mux {
 	int			omux_protocol;	/* RO: socket protocol */
 	struct sockaddr 	*omux_addr;	/* RO: socket address */
 	socklen_t		omux_alen;	/* RO: sockaddr len */
+	boolean_t		omux_strictif;	/* RO: strict IF bind */
 	kmutex_t		omux_lock;	/* Protects everything below */
 	uint_t			omux_count;	/* Active instances */
 	avl_tree_t		omux_devices;	/* Tree of devices */
@@ -115,6 +116,7 @@ typedef struct overlay_dev {
 	uint_t		odd_txcount;		/* protected by odd_lock */
 	overlay_mux_t	*odd_mux;		/* protected by odd_lock */
 	uint64_t	odd_vid;		/* RO if active else odd_lock */
+	boolean_t	odd_strictif;		/* RO if active else odd_lock */
 	avl_node_t	odd_muxnode;		/* managed by mux */
 	overlay_target_t *odd_target;		/* See big theory statement */
 	char		odd_fmamsg[OVERLAY_STATUS_BUFLEN];	/* odd_lock */
@@ -167,7 +169,7 @@ extern void overlay_mux_init(void);
 extern void overlay_mux_fini(void);
 
 extern overlay_mux_t *overlay_mux_open(overlay_plugin_t *, int, int, int,
-    struct sockaddr *, socklen_t, int *);
+    struct sockaddr *, socklen_t, boolean_t, int *);
 extern void overlay_mux_close(overlay_mux_t *);
 extern void overlay_mux_add_dev(overlay_mux_t *, overlay_dev_t *);
 extern void overlay_mux_remove_dev(overlay_mux_t *, overlay_dev_t *);

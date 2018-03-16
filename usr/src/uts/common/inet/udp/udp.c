@@ -79,6 +79,7 @@
 #include <inet/ipnet.h>
 #include <sys/vxlan.h>
 #include <inet/inet_hash.h>
+#include <sys/pattr.h>
 
 #include <sys/tsol/label.h>
 #include <sys/tsol/tnet.h>
@@ -347,6 +348,11 @@ void (*cl_inet_unbind)(netstackid_t stack_id, uint8_t protocol,
 
 typedef union T_primitives *t_primp_t;
 
+typedef enum udp_hash_type {
+	UDP_HASH_NONE,
+	UDP_HASH_VXLAN
+} udp_hash_type_t;
+
 /*
  * Various protocols that encapsulate UDP have no real use for the source port.
  * Instead, they want to vary the source port to provide better equal-cost
@@ -369,7 +375,7 @@ typedef union T_primitives *t_primp_t;
  * hashed. That should be an uncommon event.
  */
 uint16_t
-udp_srcport_hash(mblk_t *mp, int type, uint16_t min, uint16_t max,
+udp_srcport_hash(mblk_t *mp, udp_hash_type_t type, uint16_t min, uint16_t max,
     uint16_t def)
 {
 	size_t szused = 0;
@@ -1566,6 +1572,47 @@ udp_opt_allow_udr_set(t_scalar_t level, t_scalar_t name)
 	return (B_TRUE);
 }
 
+static int
+udp_do_opt_tunnel_get(conn_t *connp, udp_t *udp, udp_tunnel_opt_t *optp)
+{
+	uint_t hck, lso, mss;
+
+	mutex_enter(&connp->conn_lock);
+	bzero(optp, sizeof (udp_tunnel_opt_t));
+
+	if (udp->udp_tunnel == 0) {
+		mutex_exit(&connp->conn_lock);
+		return (sizeof (udp_tunnel_opt_t));
+	}
+
+	optp->uto_type = UDP_TUNNEL_VXLAN;
+	if (udp->udp_vxlanhash != 0) {
+		optp->uto_opts |= UDP_TUNNEL_OPT_SRCPORT_HASH;
+	}
+
+	if (udp->udp_tunnel_hwcap != 0) {
+		optp->uto_opts |= UDP_TUNNEL_OPT_HWCAP;
+	}
+
+	if (udp->udp_skip_cksum != 0) {
+		optp->uto_opts |= UDP_TUNNEL_OPT_RELAX_CKSUM;
+	}
+
+	mutex_exit(&connp->conn_lock);
+
+	if ((optp->uto_opts & UDP_TUNNEL_OPT_HWCAP) != 0) {
+		if (ip_bindif_hwcaps(connp, &hck, &lso, &mss) != 0)
+			return (-1);
+
+		optp->uto_type = UDP_TUNNEL_VXLAN;
+		optp->uto_cksum_flags = hck;
+		optp->uto_lso_flags = lso;
+		optp->uto_lso_max = mss;
+	}
+
+	return (sizeof (udp_tunnel_opt_t));
+}
+
 /*
  * This routine gets default values of certain options whose default
  * values are maintained by protcol specific code
@@ -1668,11 +1715,9 @@ udp_opt_get(conn_t *connp, t_scalar_t level, t_scalar_t name,
 			*i1 = udp->udp_rcvhdr ? 1 : 0;
 			mutex_exit(&connp->conn_lock);
 			return (sizeof (int));
-		case UDP_SRCPORT_HASH:
-			mutex_enter(&connp->conn_lock);
-			*i1 = udp->udp_vxlanhash;
-			mutex_exit(&connp->conn_lock);
-			return (sizeof (int));
+		case UDP_TUNNEL:
+			return (udp_do_opt_tunnel_get(connp, udp,
+			    (udp_tunnel_opt_t *)ptr));
 		case UDP_SND_TO_CONNECTED:
 			mutex_enter(&connp->conn_lock);
 			*i1 = udp->udp_snd_to_conn ? 1 : 0;
@@ -1698,6 +1743,111 @@ udp_tpi_opt_get(queue_t *q, t_scalar_t level, t_scalar_t name, uchar_t *ptr)
 
 	err = udp_opt_get(connp, level, name, ptr);
 	return (err);
+}
+
+static int
+udp_do_opt_tunnel_set(conn_opt_arg_t *coa, cred_t *cr, udp_tunnel_opt_t *optp)
+{
+	conn_t	*connp = coa->coa_connp;
+	udp_t	*udp = connp->conn_udp;
+
+	if (optp->uto_type != UDP_TUNNEL_VXLAN)
+		return (EINVAL);
+
+	if ((optp->uto_opts & ~(UDP_TUNNEL_OPT_SRCPORT_HASH |
+	    UDP_TUNNEL_OPT_HWCAP | UDP_TUNNEL_OPT_RELAX_CKSUM)) != 0)
+		return (EINVAL);
+
+	mutex_enter(&connp->conn_lock);
+
+	if (udp->udp_tunnel != 0) {
+		mutex_exit(&connp->conn_lock);
+		return (EEXIST);
+	}
+
+	/*
+	 * Check to make sure the caller has already called bind(2) on this
+	 * socket. If not, this is not acceptable.
+	 */
+	if (udp->udp_state < TS_IDLE) {
+		mutex_exit(&connp->conn_lock);
+		return (EINVAL);
+	}
+
+	/*
+	 * For now, don't allow multicast / broadcast. In the future if we do
+	 * interface binding with this, then that's fine.
+	 */
+	if (connp->conn_mcbc_bind) {
+		mutex_exit(&connp->conn_lock);
+		return (EINVAL);
+	}
+
+	if ((optp->uto_opts & UDP_TUNNEL_OPT_RELAX_CKSUM) != 0 &&
+	    connp->conn_ipversion != IPV4_VERSION) {
+		mutex_exit(&connp->conn_lock);
+		return (EINVAL);
+	}
+
+	/*
+	 * Set the fact that this is tunneled. We'll leave actually fetching the
+	 * information to the getsockopt.
+	 */
+	udp->udp_tunnel = 1;
+
+	/*
+	 * We trust that the caller has asked for strict binding.
+	 */
+	if ((optp->uto_opts & UDP_TUNNEL_OPT_HWCAP) != 0) {
+		uint_t ifindex;
+		int ret;
+		t_scalar_t proto, cmd;
+
+		if (connp->conn_ipversion == IPV4_VERSION) {
+			proto = IPPROTO_IP;
+			cmd = IP_BOUND_IF;
+		} else {
+			proto = IPPROTO_IPV6;
+			cmd = IPV6_BOUND_IF;
+		}
+		mutex_exit(&connp->conn_lock);
+
+		/*
+		 * Try and set up the strict binding to the listen interface.
+		 */
+		if ((ret = ip_bindif_ifindex(connp, &ifindex)) != 0) {
+			return (ret);
+		}
+
+		ret = conn_opt_set(coa, proto, cmd, sizeof (ifindex),
+		    (uchar_t *)&ifindex, B_FALSE, cr);
+		if (ret != 0) {
+			mutex_enter(&connp->conn_lock);
+			udp->udp_tunnel = 0;
+			mutex_exit(&connp->conn_lock);
+			return (ret);
+		}
+
+		mutex_enter(&connp->conn_lock);
+		udp->udp_tunnel_hwcap = 1;
+	}
+
+	if ((optp->uto_opts & UDP_TUNNEL_OPT_SRCPORT_HASH) != 0) {
+		udp->udp_vxlanhash = 1;
+	}
+
+	/*
+	 * We only relax the checksum when using IPv4. UDP over IPv6 is required
+	 * to have a checksum.
+	 */
+	if ((optp->uto_opts & UDP_TUNNEL_OPT_RELAX_CKSUM) != 0 &&
+	    connp->conn_ipversion == IPV4_VERSION) {
+		udp->udp_skip_cksum = 1;
+	}
+
+	mutex_exit(&connp->conn_lock);
+
+	return (0);
 }
 
 /*
@@ -1813,31 +1963,20 @@ udp_do_opt_set(conn_opt_arg_t *coa, int level, int name,
 			udp->udp_rcvhdr = onoff;
 			mutex_exit(&connp->conn_lock);
 			return (0);
-		case UDP_SRCPORT_HASH:
-			/*
-			 * This should have already been verified, but double
-			 * check.
-			 */
-			if ((error = secpolicy_ip_config(cr, B_FALSE)) != 0) {
-				return (error);
-			}
-
-			/* First see if the val is something we understand */
-			if (*i1 != UDP_HASH_DISABLE && *i1 != UDP_HASH_VXLAN)
-				return (EINVAL);
-
-			if (!checkonly) {
-				mutex_enter(&connp->conn_lock);
-				udp->udp_vxlanhash = *i1;
-				mutex_exit(&connp->conn_lock);
-			}
-			/* Fully handled this option. */
-			return (0);
 		case UDP_SND_TO_CONNECTED:
 			mutex_enter(&connp->conn_lock);
 			udp->udp_snd_to_conn = onoff;
 			mutex_exit(&connp->conn_lock);
 			return (0);
+		case UDP_TUNNEL:
+			if (cr != kcred) {
+				return (EPERM);
+			}
+
+			if (checkonly)
+				return (0);
+			return (udp_do_opt_tunnel_set(coa, cr,
+			    (udp_tunnel_opt_t *)invalp));
 		}
 		break;
 	}
@@ -2106,6 +2245,35 @@ udp_tpi_opt_set(queue_t *q, uint_t optset_context, int level, int name,
 }
 
 /*
+ * If the message block that we're operating on belongs to an overlay device,
+ * then it may have information in the checksum and lso headers that we care
+ * about and need to move to the template message block.
+ */
+static void
+udp_prepend_tunnel_attr(udp_t *udp, const mblk_t *src, mblk_t *dst)
+{
+	uint16_t ckflags;
+
+	if (udp->udp_tunnel == 0)
+		return;
+	/* XXX Maybe assert? */
+	if (DB_TYPE(src) != M_DATA)
+		return;
+
+	ckflags = DB_CKSUMFLAGS(src) & HCK_INNER_FLAGS;
+	if (ckflags != 0) {
+		DB_CKSUMFLAGS(dst) |= ckflags;
+	}
+
+	if ((DB_LSOFLAGS(src) & HW_LSO) != 0) {
+		DB_LSOFLAGS(dst) |= HW_LSO;
+		DB_LSOMSS(dst) = DB_LSOMSS(src);
+	}
+
+	DB_TTYPEFLAGS(dst) |= (DB_TTYPEFLAGS(src) & TTYPE_MASK);
+}
+
+/*
  * Setup IP and UDP headers.
  * Returns NULL on allocation failure, in which case data_mp is freed.
  */
@@ -2123,7 +2291,7 @@ udp_prepend_hdr(conn_t *connp, ip_xmit_attr_t *ixa, const ip_pkt_t *ipp,
 	boolean_t	insert_spi = udp->udp_nat_t_endpoint;
 	boolean_t	hash_srcport = udp->udp_vxlanhash;
 	uint_t		ulp_hdr_len;
-	uint16_t	srcport;
+	uint16_t	srcport, ckflags;
 
 	data_len = msgdsize(data_mp);
 	ulp_hdr_len = UDPH_SIZE;
@@ -2145,6 +2313,9 @@ udp_prepend_hdr(conn_t *connp, ip_xmit_attr_t *ixa, const ip_pkt_t *ipp,
 	if (mp == NULL) {
 		ASSERT(*errorp != 0);
 		return (NULL);
+	}
+	if (mp != data_mp) {
+		udp_prepend_tunnel_attr(udp, data_mp, mp);
 	}
 
 	data_len += ulp_hdr_len;
@@ -2182,7 +2353,9 @@ udp_prepend_hdr(conn_t *connp, ip_xmit_attr_t *ixa, const ip_pkt_t *ipp,
 		ASSERT(ntohs(ipha->ipha_length) == ixa->ixa_pktlen);
 
 		/* IP does the checksum if uha_checksum is non-zero */
-		if (us->us_do_checksum) {
+		if (udp->udp_skip_cksum) {
+			udpha->uha_checksum = 0;
+		} else if (us->us_do_checksum) {
 			if (cksum == 0)
 				udpha->uha_checksum = 0xffff;
 			else
@@ -2201,6 +2374,7 @@ udp_prepend_hdr(conn_t *connp, ip_xmit_attr_t *ixa, const ip_pkt_t *ipp,
 	}
 
 	/* Insert all-0s SPI now. */
+skip_cksum:
 	if (insert_spi)
 		*((uint32_t *)(udpha + 1)) = 0;
 
@@ -2884,6 +3058,11 @@ udp_output_ancillary(conn_t *connp, sin_t *sin, sin6_t *sin6, mblk_t *mp,
 		dstport = connp->conn_fport;
 		flowinfo = connp->conn_flowinfo;
 	}
+
+	if (udp->udp_skip_cksum != 0) {
+		ixa->ixa_flags |= IXAF_SKIP_ULP_CKSUM;
+	}
+
 	mutex_exit(&connp->conn_lock);
 
 	/* Handle IP_PKTINFO/IPV6_PKTINFO setting source address. */
@@ -3377,6 +3556,9 @@ udp_prepend_header_template(conn_t *connp, ip_xmit_attr_t *ixa, mblk_t *mp,
 			*errorp = ENOMEM;
 			return (NULL);
 		}
+
+		udp_prepend_tunnel_attr(udp, mp, mp1);
+
 		mp1->b_wptr = DB_LIM(mp1);
 		mp1->b_cont = mp;
 		mp = mp1;
@@ -3411,8 +3593,11 @@ udp_prepend_header_template(conn_t *connp, ip_xmit_attr_t *ixa, mblk_t *mp,
 		ipha->ipha_length = htons((uint16_t)pktlen);
 
 		/* IP does the checksum if uha_checksum is non-zero */
-		if (us->us_do_checksum)
+		if (udp->udp_skip_cksum) {
+			udpha->uha_checksum = 0;
+		} else if (us->us_do_checksum) {
 			udpha->uha_checksum = htons(cksum);
+		}
 
 		/* if IP_PKTINFO specified an addres it wins over bind() */
 		if ((ipp->ipp_fields & IPPF_ADDR) &&
@@ -3915,6 +4100,11 @@ udp_output_newdst(conn_t *connp, mblk_t *data_mp, sin_t *sin, sin6_t *sin6,
 			}
 		}
 	}
+
+	if (udp->udp_skip_cksum != 0) {
+		ixa->ixa_flags |= IXAF_SKIP_ULP_CKSUM;
+	}
+
 	/* Handle IP_PKTINFO/IPV6_PKTINFO setting source address. */
 	if (connp->conn_xmit_ipp.ipp_fields & IPPF_ADDR) {
 		ip_pkt_t *ipp = &connp->conn_xmit_ipp;
