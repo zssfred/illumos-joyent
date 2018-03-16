@@ -10,7 +10,7 @@
 #
 
 #
-# Copyright 2015 Joyent, Inc.
+# Copyright 2018 Joyent, Inc.
 #
 
 #
@@ -39,6 +39,7 @@ SYMBOL_SCOPE {
 	libvarpd_panic			{ FLAGS = EXTERN };
 	libvarpd_plugin_alloc		{ FLAGS = EXTERN };
 	libvarpd_plugin_arp_reply	{ FLAGS = EXTERN };
+	libvarpd_plugin_dcid		{ FLAGS = EXTERN };
 	libvarpd_plugin_dhcp_reply	{ FLAGS = EXTERN };
 	libvarpd_plugin_free		{ FLAGS = EXTERN };
 	libvarpd_plugin_proxy_arp	{ FLAGS = EXTERN };
