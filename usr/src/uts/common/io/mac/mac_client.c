@@ -4238,8 +4238,9 @@ mac_capab_get(mac_handle_t mh, mac_capab_t cap, void *cap_data)
 	mac_impl_t *mip = (mac_impl_t *)mh;
 
 	/*
-	 * if mi_nactiveclients > 1, only MAC_CAPAB_LEGACY, MAC_CAPAB_HCKSUM,
-	 * MAC_CAPAB_NO_NATIVEVLAN and MAC_CAPAB_NO_ZCOPY can be advertised.
+	 * Some capabilities are restricted when there are more than one active
+	 * clients on the MAC resource.  The ones noted below are safe,
+	 * independent of that count.
 	 */
 	if (mip->mi_nactiveclients > 1) {
 		switch (cap) {
@@ -4247,6 +4248,7 @@ mac_capab_get(mac_handle_t mh, mac_capab_t cap, void *cap_data)
 			return (B_TRUE);
 		case MAC_CAPAB_LEGACY:
 		case MAC_CAPAB_HCKSUM:
+		case MAC_CAPAB_LSO:
 		case MAC_CAPAB_NO_NATIVEVLAN:
 			break;
 		default:
