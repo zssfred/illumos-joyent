@@ -361,7 +361,7 @@ typedef enum svp_lookup_type {
 	SVP_L_UNKNOWN	= 0x0,
 	SVP_L_VL2	= 0x1,
 	SVP_L_VL3	= 0x2,
-	SVP_L_RVL3	= 0x3
+	SVP_L_ROUTE	= 0x3
 } svp_lookup_type_t;
 
 typedef struct svp_lookup {
@@ -375,11 +375,11 @@ typedef struct svp_lookup {
 			varpd_arp_handle_t	*svl_vah;
 			uint8_t			*svl_out;
 		} svl_vl3;
-		struct svl_lookup_rvl3 {
+		struct svl_lookup_route {
 			varpd_query_handle_t	*svl_handle;
 			overlay_target_point_t	*svl_point;
 			overlay_target_route_t	*svl_route;
-		} svl_rvl3;
+		} svl_route;
 	} svl_u;
 	svp_query_t				svl_query;
 } svp_lookup_t;
@@ -390,7 +390,7 @@ static const char *varpd_svp_props[] = {
 	"svp/underlay_ip",
 	"svp/underlay_port",
 	"svp/dcid",
-	"svp/router_mac"
+	"svp/router_oui"
 };
 
 static const uint8_t svp_bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -437,8 +437,10 @@ static void
 svp_vl3_lookup_cb(svp_t *svp, svp_status_t status, const uint8_t *vl2mac,
     const struct in6_addr *uip, const uint16_t uport, void *arg)
 {
-	overlay_target_point_t point;
+	/* Initialize address-holders to 0 for comparisons-to-zeroes later. */
+	overlay_target_point_t point = { 0 };
 	svp_lookup_t *svl = arg;
+	uint8_t nexthop_mac[6] = { 0, 0, 0, 0, 0, 0 };
 
 	assert(svp != NULL);
 	assert(svl != NULL);
@@ -451,9 +453,35 @@ svp_vl3_lookup_cb(svp_t *svp, svp_status_t status, const uint8_t *vl2mac,
 	}
 
 	/* Inject the L2 mapping before the L3 */
-	bcopy(uip, &point.otp_ip, sizeof (struct in6_addr));
-	point.otp_port = uport;
-	libvarpd_inject_varp(svp->svp_hdl, vl2mac, &point);
+	if (uport != 0 &&
+	    bcmp(uip, &point.otp_ip, sizeof (struct in6_addr)) != 0) {
+		/* Normal L3 lookup result... */
+		bcopy(uip, &point.otp_ip, sizeof (struct in6_addr));
+		point.otp_port = uport;
+		libvarpd_inject_varp(svp->svp_hdl, vl2mac, &point);
+	} else {
+		/*
+		 * Oh my, we have a next-hop router IP.
+		 * Set the MAC to the ouid+vid concatenated
+		 * special-router-MAC. Overlay down below will know
+		 * that uport == 0 means the MAC is a special one.
+		 */
+		if (bcmp(svp->svp_router_oui, nexthop_mac, ETHERADDRL) == 0) {
+			/*
+			 * We don't have a router_oui, so we can't support
+			 * special-router-MAC.  Drop it.
+			 */
+			libvarpd_plugin_arp_reply(svl->svl_u.svl_vl3.svl_vah,
+			    VARPD_LOOKUP_DROP);
+			umem_cache_free(svp_lookup_cache, svl);
+			return;
+		}
+		bcopy(svp->svp_router_oui, nexthop_mac, 3);
+		nexthop_mac[3] = (svp->svp_vid >> 16) & 0xff;
+		nexthop_mac[4] = (svp->svp_vid >> 8) & 0xff;
+		nexthop_mac[5] = svp->svp_vid & 0xff;
+		vl2mac = nexthop_mac;
+	}
 
 	bcopy(vl2mac, svl->svl_u.svl_vl3.svl_out, ETHERADDRL);
 	libvarpd_plugin_arp_reply(svl->svl_u.svl_vl3.svl_vah,
@@ -494,13 +522,15 @@ svp_shootdown_cb(svp_t *svp, const uint8_t *vl2mac, const struct in6_addr *uip,
     const uint16_t uport)
 {
 	/*
-	 * We should probably do a conditional invlaidation here.
+	 * We should probably do a conditional invalidation here.
 	 */
 	libvarpd_inject_varp(svp->svp_hdl, vl2mac, NULL);
 }
 
 static void
-svp_rvl3_lookup_cb(svp_t *svp, svp_status_t status, /* XXX KEBE SAYS MORE */
+svp_route_lookup_cb(svp_t *svp, svp_status_t status, uint32_t dcid,
+    uint32_t vnetid, uint16_t vlan, uint8_t *srcmac, uint8_t *dstmac,
+    uint16_t ul3_port, uint8_t *ul3_addr, uint8_t srcpfx, uint8_t dstpfx,
     void *arg)
 {
 	svp_lookup_t *svl = arg;
@@ -508,17 +538,26 @@ svp_rvl3_lookup_cb(svp_t *svp, svp_status_t status, /* XXX KEBE SAYS MORE */
 	overlay_target_route_t *otr;
 
 	if (status != SVP_S_OK) {
-		libvarpd_plugin_query_reply(svl->svl_u.svl_rvl3.svl_handle,
+		libvarpd_plugin_query_reply(svl->svl_u.svl_route.svl_handle,
 		    VARPD_LOOKUP_DROP);
 		umem_cache_free(svp_lookup_cache, svl);
 		return;
 	}
 
-	otp = svl->svl_u.svl_rvl3.svl_point;
-	otr = svl->svl_u.svl_rvl3.svl_route;
-	/* XXX KEBE SAYS FILL ME IN! */
+	otp = svl->svl_u.svl_route.svl_point;
+	bcopy(dstmac, otp->otp_mac, ETHERADDRL);
+	bcopy(ul3_addr, &otp->otp_ip, sizeof (struct in6_addr));
+	otp->otp_port = ul3_port;
 
-	libvarpd_plugin_query_reply(svl->svl_u.svl_rvl3.svl_handle,
+	otr = svl->svl_u.svl_route.svl_route;
+	otr->otr_vnet = vnetid;
+	otr->otr_vlan = vlan;
+	bcopy(srcmac, otr->otr_srcmac, ETHERADDRL);
+	otr->otr_dcid = dcid;
+	otr->otr_src_prefixlen = srcpfx;
+	otr->otr_dst_prefixlen = dstpfx;
+
+	libvarpd_plugin_query_reply(svl->svl_u.svl_route.svl_handle,
 	    VARPD_LOOKUP_OK);
 	umem_cache_free(svp_lookup_cache, svl);
 }
@@ -529,7 +568,7 @@ static svp_cb_t svp_defops = {
 	svp_vl2_invalidate_cb,
 	svp_vl3_inject_cb,
 	svp_shootdown_cb,
-	svp_rvl3_lookup_cb,
+	svp_route_lookup_cb,
 };
 
 static boolean_t
@@ -637,8 +676,7 @@ varpd_svp_lookup_l3(svp_t *svp, varpd_query_handle_t *vqh,
 	 * going to query (i.e. no caching up here of actual destinations).
 	 *
 	 * Our existing remote sever (svp_remote), but with the new message
-	 * SVP_R_REMOTE_VL3_REQ.  Our naming of these functions already has
-	 * "remote" in it, but we'll use "rvl3" instead of "vl3".
+	 * SVP_R_ROUTE_REQ.
 	 */
 
 	/* XXX KEBE SAYS DO SOME otl verification too... */
@@ -662,13 +700,12 @@ varpd_svp_lookup_l3(svp_t *svp, varpd_query_handle_t *vqh,
 		return;
 	}
 
-	slp->svl_type = SVP_L_RVL3;
-	slp->svl_u.svl_rvl3.svl_handle = vqh;
-	slp->svl_u.svl_rvl3.svl_point = otp;
-	slp->svl_u.svl_rvl3.svl_route = otr;
+	slp->svl_type = SVP_L_ROUTE;
+	slp->svl_u.svl_route.svl_handle = vqh;
+	slp->svl_u.svl_route.svl_point = otp;
+	slp->svl_u.svl_route.svl_route = otr;
 
-	/* XXX KEBE SAYS FILL IN ARGS PROPERLY... */
-	svp_remote_rvl3_lookup(svp, &slp->svl_query, src, dst, type,
+	svp_remote_route_lookup(svp, &slp->svl_query, src, dst,
 	    otl->otl_vnetid, (uint16_t)otl->otl_vlan, slp);
 }
 
@@ -800,7 +837,7 @@ varpd_svp_propinfo(void *arg, uint_t propid, varpd_prop_handle_t *vph)
 		libvarpd_prop_set_range_uint32(vph, 1, UINT32_MAX - 1);
 		break;
 	case 5:
-		/* svp/router_mac */
+		/* svp/router_oui */
 		libvarpd_prop_set_name(vph, varpd_svp_props[5]);
 		libvarpd_prop_set_prot(vph, OVERLAY_PROP_PERM_RRW);
 		libvarpd_prop_set_type(vph, OVERLAY_PROP_T_ETHER);
@@ -911,16 +948,16 @@ varpd_svp_getprop(void *arg, const char *pname, void *buf, uint32_t *sizep)
 		return (0);
 	}
 
-	/* svp/router_mac */
+	/* svp/router_oui */
 	if (strcmp(pname, varpd_svp_props[5]) == 0) {
 		if (*sizep < ETHERADDRL)
 			return (EOVERFLOW);
 		mutex_enter(&svp->svp_lock);
 
-		if (ether_is_zero(&svp->svp_router_mac)) {
+		if (ether_is_zero(&svp->svp_router_oui)) {
 			*sizep = 0;
 		} else {
-			bcopy(&svp->svp_router_mac, buf, ETHERADDRL);
+			bcopy(&svp->svp_router_oui, buf, ETHERADDRL);
 			*sizep = ETHERADDRL;
 		}
 
@@ -1029,12 +1066,16 @@ varpd_svp_setprop(void *arg, const char *pname, const void *buf,
 		return (0);
 	}
 
-	/* svp/router_mac */
+	/* svp/router_oui */
 	if (strcmp(pname, varpd_svp_props[5]) == 0) {
 		if (size < ETHERADDRL)
 			return (EOVERFLOW);
 		mutex_enter(&svp->svp_lock);
-		bcopy(buf, &svp->svp_router_mac, ETHERADDRL);
+		bcopy(buf, &svp->svp_router_oui, ETHERADDRL);
+		/* Zero-out the low three bytes. */
+		svp->svp_router_oui[3] = 0;
+		svp->svp_router_oui[4] = 0;
+		svp->svp_router_oui[5] = 0;
 		mutex_exit(&svp->svp_lock);
 		return (0);
 	}
@@ -1101,12 +1142,13 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 		}
 	}
 
-	/* svp/router_mac */
-	if (!ether_is_zero(&svp->svp_router_mac)) {
+	/* svp/router_oui */
+	if (!ether_is_zero(&svp->svp_router_oui)) {
 		char buf[ETHERADDRSTRL];
 
 		/* XXX KEBE SAYS See underlay_ip... */
-		if (ether_ntoa_r(&svp->svp_router_mac, buf) == NULL) {
+		if (ether_ntoa_r((struct ether_addr *)&svp->svp_router_oui,
+		    buf) == NULL) {
 			libvarpd_panic("unexpected ether_ntoa_r failure: %d",
 			    errno);
 		}
@@ -1203,15 +1245,16 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 		svp->svp_dcid = 0;
 	}
 
-	/* svp/router_mac */
+	/* svp/router_oui */
 	if ((ret = nvlist_lookup_string(nvp, varpd_svp_props[5],
 	    &etherstr)) != 0) {
 		if (ret != ENOENT) {
 			varpd_svp_destroy(svp);
 			return (ret);
 		}
-		bzero(&svp->svp_router_mac, ETHERADDRL);
-	} else if (ether_aton_r(etherstr, &svp->svp_router_mac) == NULL) {
+		bzero(&svp->svp_router_oui, ETHERADDRL);
+	} else if (ether_aton_r(etherstr,
+	    (struct ether_addr *)&svp->svp_router_oui) == NULL) {
 		libvarpd_panic("unexpected ether_aton_r failure: %d", errno);
 	}
 

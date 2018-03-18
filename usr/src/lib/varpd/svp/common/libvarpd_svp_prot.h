@@ -61,8 +61,8 @@ typedef enum svp_op {
 	SVP_R_LOG_RM		= 0x0B,
 	SVP_R_LOG_RM_ACK	= 0x0C,
 	SVP_R_SHOOTDOWN		= 0x0D,
-	SVP_R_REMOTE_VL3_REQ	= 0x0E,
-	SVP_R_REMOTE_VL3_ACK	= 0x0F
+	SVP_R_ROUTE_REQ		= 0x0E,
+	SVP_R_ROUTE_ACK		= 0x0F
 } svp_op_t;
 
 typedef enum svp_status {
@@ -74,7 +74,7 @@ typedef enum svp_status {
 } svp_status_t;
 
 /*
- * A client issues the SVP_R_VL2_REQ whenever it needs to perform a VLS->UL3
+ * A client issues the SVP_R_VL2_REQ whenever it needs to perform a VL2->UL3
  * lookup. Requests have the following structure:
  */
 typedef struct svp_vl2_req {
@@ -122,34 +122,6 @@ typedef struct svp_vl3_ack {
 	uint16_t	sl3a_uport;
 	uint8_t		sl3a_uip[16];
 } svp_vl3_ack_t;
-
-/*
- * A client issues the SVP_R_REMOTE_VL3_REQ for a far-remote (cross-DC) VL3 IP
- * address.  The server may take longer because it may query cross-DC to get
- * the answer for our response.
- */
-typedef struct svp_rvl3_req {
-	uint8_t		srl3r_srcip[16];
-	uint8_t		srl3r_dstip[16];
-	uint32_t	srl3r_type;	/* Same as SVP_R_VL3_REQ */
-	uint32_t	srl3r_vnetid;
-	uint16_t	srl3r_vlan;
-	uint16_t	srl3r_pad;	/* XXX KEBE ASKS, necessary? */
-} svp_rvl3_req_t;
-
-/*
- * The remote-VL3 response contains more than the regular VL3 one, because
- * overlay needs to rewrite the MAC header completely.
- */
-typedef struct svp_rvl3_ack {
-	uint32_t	srl3a_status;
-	uint8_t		srl3a_dstmac[ETHERADDRL]; /* MAC of the target. */
-	uint8_t		srl3a_srcmac[ETHERADDRL]; /* MAC of the target's rtr */
-	uint16_t	srl3a_vlanid;
-	uint16_t	srl3a_uport;
-	uint32_t	srl3a_dcid;	/* Remote Data Center ID. */
-	uint8_t		srl3a_uip[16];
-} svp_rvl3_ack_t;
 
 /*
  * SVP_R_BULK_REQ requests a bulk dump of data. Currently we have two kinds of
@@ -201,7 +173,8 @@ typedef struct svp_log_req {
  */
 typedef enum svp_log_type {
 	SVP_LOG_VL2	= 0x01,
-	SVP_LOG_VL3	= 0x02
+	SVP_LOG_VL3	= 0x02,
+	SVP_LOG_ROUTE	= 0x03
 } svp_log_type_t;
 
 typedef struct svp_log_vl2 {
@@ -220,6 +193,21 @@ typedef struct svp_log_vl3 {
 	uint16_t	svl3_vlan;
 	uint32_t	svl3_vnetid;
 } svp_log_vl3_t;
+
+typedef struct svp_log_route {
+	uint32_t	svlr_type;	/* Should be SVP_LOG_ROUTE */
+	uint8_t		svlr_id[16];	/* 16-byte UUID */
+	uint32_t	svlr_src_vnetid;	/* Source VXLAN vnetid. */
+	uint32_t	svlr_dst_vnetid;	/* Dest. VXLAN vnetid. */
+	uint32_t	svlr_dcid;	/* Remote/dest Data Center ID. */
+	uint8_t		svlr_srcip[16];	/* Source IP address base. */
+	uint8_t		svlr_dstip[16];	/* Destination IP address base. */
+	uint16_t	svlr_dst_vlan;	/* Source VLAN id. */
+	uint16_t	svlr_src_vlan;	/* Destination VLAN id. */
+	uint8_t		svlr_src_prefixlen;	/* Source IP prefix length. */
+	uint8_t		svlr_dst_prefixlen;	/* Dest. IP prefix length. */
+	uint16_t	svlr_pad;	/* So we can be aligned... */
+} svp_log_route_t;
 
 typedef struct svp_log_ack {
 	uint32_t	svla_status;
@@ -260,6 +248,38 @@ typedef struct svp_shootdown {
 	uint8_t		svsd_pad[2];
 	uint32_t	svsd_vnetid;
 } svp_shootdown_t;
+
+/*
+ * A route-request (SVP_R_ROUTE_REQ) queries the local SVP server to get a
+ * far-remote (i.e. another Triton Data Center, nee. SDC) SVP server for
+ * far-remote networks.  Modern overlay modules will request IP destinations
+ * for remote-Triton networks, but they must know how to reach the
+ * remote-Triton SVP server.
+ */
+typedef struct svp_route_req {
+	uint32_t	srr_vnetid;	/* Requester's vnet ID. */
+	uint16_t	srr_vlan;	/* Requester's VLAN ID. */
+	uint16_t	srr_pad;	/* Zero on xmit, ignore on receipt. */
+	uint8_t		srr_srcip[16];	/* VL3 Source IP. */
+	uint8_t		srr_dstip[16];	/* VL3 Destination IP. */
+} svp_route_req_t;
+
+/*
+ * The far-remote Triton Data Center will answer with the requisite information
+ * to send overlay packets to the appropriate far-remote CNs.
+ */
+typedef struct svp_route_ack {
+	uint32_t	sra_status;	/* Status. */
+	uint32_t	sra_dcid;	/* Far-remote Data Center ID. */
+	uint32_t	sra_vnetid;	/* Far-remote vnet ID. */
+	uint16_t	sra_vlan;	/* Far-remote VLAN ID. */
+	uint16_t	sra_port;	/* Destination UL3 port. */
+	uint8_t		sra_ip[16];	/* Destination UL3 address. */
+	uint8_t	sra_srcmac[ETHERADDRL];	/* Far-remote VL2 source. */
+	uint8_t	sra_dstmac[ETHERADDRL];	/* Far-remote VL2 dest. */
+	uint8_t		sra_src_pfx;	/* Far-remote VL3 source prefix */
+	uint8_t		sra_dst_pfx;	/* Far-remote VL3 dest. prefix */
+} svp_route_ack_t;
 
 #ifdef __cplusplus
 }
