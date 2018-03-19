@@ -1324,13 +1324,6 @@ badlabel:
 					(void) zfs_error(hdl, EZFS_ZONED,
 					    errbuf);
 					goto error;
-				} else if (prop == ZFS_PROP_SHARESMB) {
-					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-					    "'%s' cannot be set in "
-					    "a non-global zone"), propname);
-					(void) zfs_error(hdl, EZFS_ZONED,
-					    errbuf);
-					goto error;
 				}
 			} else if (getzoneid() != GLOBAL_ZONEID) {
 				/*
