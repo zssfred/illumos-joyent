@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 /*
@@ -53,7 +53,8 @@ libvarpd_overlay_fini(varpd_impl_t *vip)
 
 int
 libvarpd_overlay_info(varpd_impl_t *vip, datalink_id_t linkid,
-    overlay_plugin_dest_t *destp, uint64_t *flags, uint64_t *vnetid)
+    overlay_plugin_dest_t *destp, uint64_t *flags, uint64_t *vnetid,
+    uint32_t *dcid)
 {
 	overlay_targ_info_t oti;
 
@@ -67,6 +68,8 @@ libvarpd_overlay_info(varpd_impl_t *vip, datalink_id_t linkid,
 		*flags = oti.oti_flags;
 	if (vnetid != NULL)
 		*vnetid = oti.oti_vnetid;
+	if (dcid != NULL)
+		*dcid = oti.oti_dcid;
 	return (0);
 }
 

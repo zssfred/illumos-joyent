@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015, Joyent, Inc.
+ * Copyright 2018, Joyent, Inc.
  */
 
 #ifndef _SYS_OVERLAY_H
@@ -40,7 +40,7 @@ extern "C" {
 
 typedef struct overlay_ioc_create {
 	datalink_id_t	oic_linkid;
-	uint32_t	oic_filler;
+	uint32_t	oic_dcid;
 	uint64_t	oic_vnetid;
 	char		oic_encap[MAXLINKNAMELEN];
 } overlay_ioc_create_t;

@@ -176,7 +176,7 @@ dladm \- administer data links
 
 .LP
 .nf
-\fBdladm create-overlay\fR [\fB-t\fR] \fB-e\fR \fIencap\fR \fB-s\fR \fIsearch\fR \fB-v\fR \fIvnetid\fR [\fB-p\fR \fIprop\fR=\fIvalue\fR[,...]] \fIoverlay\fR
+\fBdladm create-overlay\fR [\fB-t\fR] \fB-e\fR \fIencap\fR \fB-s\fR \fIsearch\fR \fB-v\fR \fIvnetid\fR [\fB-d\fR \fIdcid\fR] [\fB-p\fR \fIprop\fR=\fIvalue\fR[,...]] \fIoverlay\fR
 \fBdladm delete-overlay\fR \fIoverlay\fR
 \fBdladm modify-overlay\fR \fB-d\fR \fImac\fR | \fB-f\fR | \fB-s\fR \fImac=ip:port\fR \fIoverlay\fR
 \fBdladm show-overlay\fR [ \fB-f\fR | \fB-t\fR ] [[\fB-p\fR] \fB-o\fR \fIfield\fR[,...]] [\fIoverlay\fR]
@@ -4446,8 +4446,8 @@ The tunnel destination address.
 .sp
 .ne 2
 .na
-\fBdladm create-overlay\fR \fB-e\fR \fIencap\fR \fB-s\fR \fIsearch\fR
-\fB-v\fR \fIvnetid\fR [\fB-p\fR \fIprop\fR=\fIvalue\fR[,...]] \fIoverlay\fR
+\fBdladm create-overlay\fR [\fB-t\fR] \fB-e\fR \fIencap\fR \fB-s\fR \fIsearch\fR
+\fB-v\fR \fIvnetid\fR [\fB-d\fR \fIdcid\fR] [\fB-p\fR \fIprop\fR=\fIvalue\fR[,...]] \fIoverlay\fR
 .ad
 .sp .6
 .RS 4n
@@ -4499,6 +4499,16 @@ before being put on the wire.
 .RS 4n
 Use \fIsearch\fR as the search plugin for \fIoverlay\fR. The search plugin
 determines how non-local targets are found and where packets are directed to.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fB-d\fR \fIdcid\fR
+.ad
+.sp .6
+.RS 4n
+Set the datacenter id to \fIdcid\fR.
 .RE
 
 .sp

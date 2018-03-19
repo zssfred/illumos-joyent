@@ -73,6 +73,7 @@ typedef struct overlay_targ_info {
 	uint32_t		oti_needs;
 	uint64_t		oti_flags;
 	uint64_t		oti_vnetid;
+	uint32_t		oti_dcid;
 } overlay_targ_info_t;
 
 /*

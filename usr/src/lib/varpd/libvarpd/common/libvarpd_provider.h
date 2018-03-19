@@ -374,6 +374,7 @@ extern const bunyan_logger_t *libvarpd_plugin_bunyan(varpd_provider_handle_t *);
  * Misc. Information APIs
  */
 extern uint64_t libvarpd_plugin_vnetid(varpd_provider_handle_t *);
+extern uint32_t	libvarpd_plugin_dcid(varpd_provider_handle_t *);
 
 /*
  * Lookup Replying query and proxying

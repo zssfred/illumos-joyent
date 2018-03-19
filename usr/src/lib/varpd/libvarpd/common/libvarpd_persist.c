@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.  All rights reserved.
+ * Copyright 2018 Joyent, Inc.  All rights reserved.
  */
 
 /*
@@ -281,7 +281,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	int err;
 	nvlist_t *pvl;
 	uint64_t id, flags, vid;
-	uint32_t linkid, dest, mode;
+	uint32_t linkid, dest, mode, dcid;
 	char *pluginstr;
 	varpd_plugin_t *plugin;
 	overlay_plugin_dest_t adest;
@@ -312,7 +312,8 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	if (plugin->vpp_mode != mode)
 		return (EINVAL);
 
-	if (libvarpd_overlay_info(vip, linkid, &adest, &flags, &vid) != 0)
+	if (libvarpd_overlay_info(vip, linkid, &adest, &flags, &vid,
+	    &dcid) != 0)
 		return (EINVAL);
 
 	if (dest != adest)
@@ -334,6 +335,7 @@ libvarpd_persist_restore_instance(varpd_impl_t *vip, nvlist_t *nvl)
 	inst->vri_dest = dest;
 	inst->vri_plugin = plugin;
 	inst->vri_impl = vip;
+	inst->vri_dcid = dcid;
 	inst->vri_flags = 0;
 	if (plugin->vpp_ops->vpo_restore(pvl, (varpd_provider_handle_t *)inst,
 	    dest, &inst->vri_private) != 0) {

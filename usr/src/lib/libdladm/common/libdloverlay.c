@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2015 Joyent, Inc.
+ * Copyright (c) 2018 Joyent, Inc.
  */
 
 #include <libdladm_impl.h>
@@ -480,7 +480,7 @@ dladm_overlay_walk_prop(dladm_handle_t handle, datalink_id_t linkid,
 
 dladm_status_t
 dladm_overlay_create(dladm_handle_t handle, const char *name,
-    const char *encap, const char *search, uint64_t vid,
+    const char *encap, const char *search, uint64_t vid, uint32_t dcid,
     dladm_arg_list_t *props, dladm_errlist_t *errs, uint32_t flags)
 {
 	int ret, i;
@@ -500,6 +500,7 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 	bzero(&oic, sizeof (oic));
 	oic.oic_linkid = linkid;
 	oic.oic_vnetid = vid;
+	oic.oic_dcid = dcid;
 	(void) strlcpy(oic.oic_encap, encap, MAXLINKNAMELEN);
 
 	status = DLADM_STATUS_OK;
@@ -547,8 +548,7 @@ dladm_overlay_create(dladm_handle_t handle, const char *name,
 		return (dladm_errno2status(ret));
 	}
 
-	if ((ret = libvarpd_c_instance_create(vch, linkid, search,
-	    &id)) != 0) {
+	if ((ret = libvarpd_c_instance_create(vch, linkid, search, &id)) != 0) {
 		(void) dladm_errlist_append(errs,
 		    "failed to create varpd instance: %s", strerror(ret));
 		libvarpd_c_destroy(vch);

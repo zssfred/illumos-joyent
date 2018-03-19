@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  * Copyright 2016 Nexenta Systems, Inc.
  */
 
@@ -419,7 +419,8 @@ static cmd_t	cmds[] = {
 	    "    show-bridge      -t [-p] [-o <field>,...] [-s [-i <interval>]]"
 	    " <bridge>\n"						},
 	{ "create-overlay",	do_create_overlay,
-	    "    create-overlay   [-t] -e <encap> -s <search> -v <vnetid>\n"
+	    "    create-overlay   [-t] [-d <dcid>] -e <encap> -s <search> "
+	    "-v <vnetid>\n"
 	    "\t\t     [ -p <prop>=<value>[,...]] <overlay>"	},
 	{ "delete-overlay",	do_delete_overlay,
 	    "    delete-overlay   <overlay>"			},
@@ -1463,6 +1464,7 @@ static const struct option overlay_create_lopts[] = {
 	{ "search",	required_argument,	NULL,	's' },
 	{ "temporary", 	no_argument,		NULL,	't' },
 	{ "vnetid",	required_argument,	NULL,	'v' },
+	{ "dcid",	optional_argument,	NULL,	'd' },
 	{ NULL,		0,			NULL,	0 }
 };
 
@@ -9891,15 +9893,26 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	char			name[MAXLINKNAMELEN];
 	dladm_status_t		status;
 	uint32_t		flags = DLADM_OPT_ACTIVE | DLADM_OPT_PERSIST;
+	uint32_t		dcid = 0;
 	uint64_t		vid;
 	boolean_t		havevid = B_FALSE;
 	char			propstr[DLADM_STRSIZE];
 	dladm_arg_list_t	*proplist = NULL;
 
 	bzero(propstr, sizeof (propstr));
-	while ((opt = getopt_long(argc, argv, ":te:v:p:s:",
+	while ((opt = getopt_long(argc, argv, ":td:e:v:p:s:",
 	    overlay_create_lopts, NULL)) != -1) {
 		switch (opt) {
+		case 'd':
+			errno = 0;
+			dcid = strtoul(optarg, &endp, 10);
+			if (*endp != '\0' || (dcid == 0 && errno == EINVAL))
+				die("couldn't parse datacenter id: %s",
+				    optarg);
+			if ((dcid == ULONG_MAX && errno == ERANGE) ||
+			    (dcid > UINT32_MAX))
+				die("datacenter id too large: %s", optarg);
+			break;
 		case 'e':
 			encap = optarg;
 			break;
@@ -9916,6 +9929,7 @@ do_create_overlay(int argc, char *argv[], const char *use)
 				die("property list too long '%s'", propstr);
 			break;
 		case 'v':
+			errno = 0;
 			vid = strtoul(optarg, &endp, 10);
 			if (*endp != '\0' || (vid == 0 && errno == EINVAL))
 				die("couldn't parse virtual networkd id: %s",
@@ -9958,7 +9972,7 @@ do_create_overlay(int argc, char *argv[], const char *use)
 	    != DLADM_STATUS_OK)
 		die("invalid overlay property");
 
-	status = dladm_overlay_create(handle, name, encap, search, vid,
+	status = dladm_overlay_create(handle, name, encap, search, vid, dcid,
 	    proplist, &errlist, flags);
 	dladm_free_props(proplist);
 	if (status != DLADM_STATUS_OK) {
@@ -9988,7 +10002,7 @@ do_delete_overlay(int argc, char *argv[], const char *use)
 
 typedef struct showoverlay_state {
 	ofmt_handle_t		sho_ofmt;
-	const char 		*sho_linkname;
+	const char		*sho_linkname;
 	dladm_overlay_propinfo_handle_t sho_info;
 	uint8_t			sho_value[DLADM_OVERLAY_PROP_SIZEMAX];
 	uint32_t		sho_size;

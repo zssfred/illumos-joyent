@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #ifndef _LIBVARPD_IMPL_H
@@ -77,6 +77,7 @@ typedef struct varpd_instance {
 	varpd_impl_t	*vri_impl;		/* RO */
 	varpd_plugin_t	*vri_plugin;		/* RO */
 	void		*vri_private;		/* RO */
+	uint32_t	vri_dcid;		/* RO */
 	mutex_t		vri_lock;
 	varpd_instance_flags_t vri_flags;	/* vri_lock */
 } varpd_instance_t;
@@ -208,7 +209,7 @@ extern int libvarpd_dirwalk(varpd_impl_t *, const char *, const char *,
 extern int libvarpd_overlay_init(varpd_impl_t *);
 extern void libvarpd_overlay_fini(varpd_impl_t *);
 extern int libvarpd_overlay_info(varpd_impl_t *, datalink_id_t,
-    overlay_plugin_dest_t *, uint64_t *, uint64_t *);
+    overlay_plugin_dest_t *, uint64_t *, uint64_t *, uint32_t *);
 extern int libvarpd_overlay_associate(varpd_instance_t *);
 extern int libvarpd_overlay_disassociate(varpd_instance_t *);
 extern int libvarpd_overlay_degrade(varpd_instance_t *, const char *);

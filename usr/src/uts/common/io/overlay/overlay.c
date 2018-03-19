@@ -834,15 +834,17 @@ typedef enum overlay_dev_prop {
 	OVERLAY_DEV_P_MTU = 0,
 	OVERLAY_DEV_P_VNETID,
 	OVERLAY_DEV_P_ENCAP,
-	OVERLAY_DEV_P_VARPDID
+	OVERLAY_DEV_P_VARPDID,
+	OVERLAY_DEV_P_DCID
 } overlay_dev_prop_t;
 
-#define	OVERLAY_DEV_NPROPS	4
+#define	OVERLAY_DEV_NPROPS	5
 static const char *overlay_dev_props[] = {
 	"mtu",
 	"vnetid",
 	"encap",
-	"varpd/id"
+	"varpd/id",
+	"dcid"
 };
 
 #define	OVERLAY_MTU_MIN	576
@@ -1280,6 +1282,14 @@ overlay_i_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	}
 	odd->odd_vid = oicp->oic_vnetid;
 
+	if (oicp->oic_dcid > UINT32_MAX) {
+		odd->odd_plugin->ovp_ops->ovpo_fini(odd->odd_pvoid);
+		overlay_plugin_rele(odd->odd_plugin);
+		kmem_free(odd, sizeof (overlay_dev_t));
+		return (EINVAL);
+	}
+	odd->odd_dcid = oicp->oic_dcid;
+
 	mac = mac_alloc(MAC_VERSION);
 	if (mac == NULL) {
 		mutex_exit(&overlay_dev_lock);
@@ -1715,6 +1725,12 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
 		overlay_prop_set_nodefault(phdl);
 		break;
+	case OVERLAY_DEV_P_DCID:
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_READ);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_nodefault(phdl);
+		overlay_prop_set_range_uint32(phdl, 0, UINT32_MAX);
+		break;
 	default:
 		overlay_hold_rele(odd);
 		mac_perim_exit(mph);
@@ -1824,6 +1840,18 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 		}
 		mutex_exit(&odd->odd_lock);
 		break;
+	case OVERLAY_DEV_P_DCID:
+		/*
+		 * While it's read-only while inside of a mux, we're not in a
+		 * context that can guarantee that. Therefore we always grab the
+		 * overlay_dev_t's odd_lock.
+		 */
+		mutex_enter(&odd->odd_lock);
+		bcopy(&odd->odd_dcid, oip->oip_value, sizeof (uint32_t));
+		mutex_exit(&odd->odd_lock);
+		oip->oip_size = sizeof (uint32_t);
+		break;
+
 	default:
 		ret = ENOENT;
 	}
@@ -1865,6 +1893,38 @@ overlay_setprop_vnetid(overlay_dev_t *odd, uint64_t vnetid)
 	mutex_exit(&odd->odd_lock);
 }
 
+static void
+overlay_setprop_dcid(overlay_dev_t *odd, uint32_t dcid)
+{
+	mutex_enter(&odd->odd_lock);
+
+	/* Simple case, not active */
+	if (!(odd->odd_flags & OVERLAY_F_IN_MUX)) {
+		odd->odd_dcid = dcid;
+		mutex_exit(&odd->odd_lock);
+		return;
+	}
+
+	/*
+	 * In the hard case, we need to set the drop flag, quiesce I/O and then
+	 * we can go ahead and do everything.
+	 */
+	odd->odd_flags |= OVERLAY_F_MDDROP;
+	overlay_io_wait(odd, OVERLAY_F_IOMASK);
+	mutex_exit(&odd->odd_lock);
+
+	overlay_mux_remove_dev(odd->odd_mux, odd);
+	mutex_enter(&odd->odd_lock);
+	odd->odd_dcid = dcid;
+	mutex_exit(&odd->odd_lock);
+	overlay_mux_add_dev(odd->odd_mux, odd);
+
+	mutex_enter(&odd->odd_lock);
+	ASSERT(odd->odd_flags & OVERLAY_F_IN_MUX);
+	odd->odd_flags &= ~OVERLAY_F_IN_MUX;
+	mutex_exit(&odd->odd_lock);
+}
+
 /* ARGSUSED */
 static int
 overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
@@ -1875,7 +1935,7 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	overlay_ioc_prop_t *oip = karg;
 	uint_t propid = UINT_MAX;
 	mac_perim_handle_t mph;
-	uint64_t maxid, *vidp;
+	uint64_t maxid, *vidp, *dcidp;
 
 	if (oip->oip_size > OVERLAY_PROP_SIZEMAX)
 		return (EINVAL);
@@ -1961,6 +2021,19 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	case OVERLAY_DEV_P_VARPDID:
 		ret = EPERM;
 		break;
+	case OVERLAY_DEV_P_DCID:
+		if (oip->oip_size != sizeof (uint64_t)) {
+			ret = EINVAL;
+			break;
+		}
+		dcidp = (uint64_t *)oip->oip_value;
+		if (*dcidp > UINT32_MAX) {
+			ret = EINVAL;
+			break;
+		}
+		overlay_setprop_dcid(odd, *dcidp);
+		break;
+
 	default:
 		ret = ENOENT;
 	}

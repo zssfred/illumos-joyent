@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright (c) 2015 Joyent, Inc.
+ * Copyright (c) 2018 Joyent, Inc.
  */
 
 #ifndef _LIBDLOVERLAY_H
@@ -45,8 +45,8 @@ typedef struct dladm_overlay_status {
 } dladm_overlay_status_t;
 
 extern dladm_status_t dladm_overlay_create(dladm_handle_t, const char *,
-    const char *, const char *, uint64_t, dladm_arg_list_t *, dladm_errlist_t *,
-    uint32_t);
+    const char *, const char *, uint64_t, uint32_t, dladm_arg_list_t *,
+    dladm_errlist_t *, uint32_t);
 extern dladm_status_t dladm_overlay_delete(dladm_handle_t, datalink_id_t);
 
 typedef void (*dladm_overlay_status_f)(dladm_handle_t, datalink_id_t,
