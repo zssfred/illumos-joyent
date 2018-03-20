@@ -1106,13 +1106,47 @@ enum i40e_tx_desc_length_fields {
 #define I40E_TXD_QW1_L2TAG1_SHIFT	48
 #define I40E_TXD_QW1_L2TAG1_MASK	(0xFFFFULL << I40E_TXD_QW1_L2TAG1_SHIFT)
 
-/* Context descriptors */
+/*
+ * Context descriptor
+ * 8.4.2.2.1 QW0 and Qw1, dtyp == 0x1
+ */
 struct i40e_tx_context_desc {
-	__le32 tunneling_params;
+				/* first 3 members are QW0 */
+	__le32 tunneling_params; /* really 24 bits (plus 8 reserved bits) */
 	__le16 l2tag2;
 	__le16 rsvd;
-	__le64 type_cmd_tso_mss;
+	__le64 type_cmd_tso_mss; /* QW1 */
 };
+
+#define I40E_TXD_QW0_TUNNEL_MASK	(0xFFFFFFUL)
+
+enum i40e_tx_ctx_desc_tunnel_bits {
+							/* bits 23:0 */
+	I40E_TX_DESC_TNL_EIPT_MASK		= 0x000003, /* 2 bits 1:0 */
+	I40E_TX_DESC_TNL_EIPT_NONIP		= 0x000000,
+	I40E_TX_DESC_TNL_EIPT_IPV6		= 0x000001,
+	I40E_TX_DESC_TNL_EIPT_IPV4		= 0x000002,
+	I40E_TX_DESC_TNL_EIPT_IPV4_CSUM		= 0x000003,
+	I40E_TX_DESC_TNL_EIPLEN_MASK		= 0x0001FC, /* 7 bits 8:2 */
+	I40E_TX_DESC_TNL_L4TUNT_MASK		= 0x000600, /* 2 bits 10:9 */
+	I40E_TX_DESC_TNL_L4TUNT_NONE		= 0x000000,
+	I40E_TX_DESC_TNL_L4TUNT_UDP		= 0x000200,
+	I40E_TX_DESC_TNL_L4TUNT_GRE		= 0x000400,
+							/* bit 11 unused */
+	I40E_TX_DESC_TNL_L4TUNLEN_MASK		= 0x07F000, /* 7 bits 18:12 */
+	I40E_TX_DESC_TNL_DECTTL_MASK		= 0x780000, /* 4 bits 22:19 */
+	I40E_TX_DESC_TNL_RESV_MASK		= 0x800000, /* 1 bit  23: */
+};
+
+#define	I40E_TXD_TNL_SET_EIPT(x)	((x) & I40E_TX_DESC_TNL_EIPT_MASK)
+#define	I40E_TXD_TNL_SET_EIPLEN(x)	(((x) << 2) & \
+						I40E_TX_DESC_TNL_EIPLEN_MASK)
+#define	I40E_TXD_TNL_SET_L4TUNT(x)	(((x) << 9) & \
+						I40E_TX_DESC_TNL_L4TUNT_MASK)
+#define	I40E_TXD_TNL_SET_L4TUNLEN(x)	(((x) << 12) & \
+						I40E_TX_DESC_TNL_L4TUNLEN_MASK)
+#define	I40E_TXD_TNL_SET_DECTTL(x)	(((x) << 19) & \
+						I40E_TX_DESC_TNL_DECTTL_MASK)
 
 #define I40E_TXD_CTX_QW1_DTYPE_SHIFT	0
 #define I40E_TXD_CTX_QW1_DTYPE_MASK	(0xFUL << I40E_TXD_CTX_QW1_DTYPE_SHIFT)
@@ -1120,6 +1154,7 @@ struct i40e_tx_context_desc {
 #define I40E_TXD_CTX_QW1_CMD_SHIFT	4
 #define I40E_TXD_CTX_QW1_CMD_MASK	(0xFFFFUL << I40E_TXD_CTX_QW1_CMD_SHIFT)
 
+/* See 8.4.2.2.1 CMD field, QW 1, bits 4:10 */
 enum i40e_tx_ctx_desc_cmd_bits {
 	I40E_TX_CTX_DESC_TSO		= 0x01,
 	I40E_TX_CTX_DESC_TSYN		= 0x02,

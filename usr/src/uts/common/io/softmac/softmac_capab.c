@@ -178,8 +178,7 @@ softmac_fill_hcksum_ack(void *arg, t_uscalar_t flags)
 	if (flags & HCKSUM_ENABLE) {
 		cmn_err(CE_WARN, "softmac_fill_hcksum_ack: unexpected "
 		    "HCKSUM_ENABLE flag in hardware checksum capability");
-	} else if (flags & (HCKSUM_INET_PARTIAL | HCKSUM_INET_FULL_V4 |
-	    HCKSUM_INET_FULL_V6 | HCKSUM_IPHDRCKSUM)) {
+	} else if (flags & HCKSUM_ALL_BUT_ENBL) {
 		softmac->smac_capab_flags |= MAC_CAPAB_HCKSUM;
 		softmac->smac_hcksum_txflags = flags;
 	}
@@ -376,8 +375,7 @@ softmac_adv_hcksum_ack(void *arg, t_uscalar_t flags)
 		cmn_err(CE_WARN, "softmac_adv_hcksum_ack: unexpected "
 		    "HCKSUM_ENABLE flag in hardware checksum capability");
 		return (-1);
-	} else if (flags & (HCKSUM_INET_PARTIAL | HCKSUM_INET_FULL_V4 |
-	    HCKSUM_INET_FULL_V6 | HCKSUM_IPHDRCKSUM)) {
+	} else if (flags & HCKSUM_ALL_BUT_ENBL) {
 		/*
 		 * The acknowledgement should be the same as we got when
 		 * the softmac is created.
@@ -642,8 +640,7 @@ i_capab_hcksum_ack(dl_capab_hcksum_t *hcksum, queue_t *q,
 
 	flags = hcksum->hcksum_txflags;
 
-	if (!(flags & (HCKSUM_INET_PARTIAL | HCKSUM_INET_FULL_V4 |
-	    HCKSUM_INET_FULL_V6 | HCKSUM_IPHDRCKSUM | HCKSUM_ENABLE))) {
+	if (!(flags & HCKSUM_ALL)) {
 		cmn_err(CE_WARN, "i_capab_hcksum_ack: invalid "
 		    "hardware checksum capability flags 0x%x", flags);
 		return (EINVAL);

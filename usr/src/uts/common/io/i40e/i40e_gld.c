@@ -729,6 +729,8 @@ i40e_m_getcapab(void *arg, mac_capab_t cap, void *cap_data)
 		*txflags = 0;
 		if (i40e->i40e_tx_hcksum_enable == B_TRUE)
 			*txflags = HCKSUM_INET_PARTIAL | HCKSUM_IPHDRCKSUM;
+/* XXX JJ add in HCKSUM_VXLAN_FULL or ...NO_OL4 here? */
+/* XXX JJ change to HCKSUM_INET_FULL_V4, etc with new interpretation? */
 		break;
 	}
 

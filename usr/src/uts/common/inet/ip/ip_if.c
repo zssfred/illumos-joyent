@@ -1646,9 +1646,7 @@ ill_capability_hcksum_ack(ill_t *ill, mblk_t *mp, dl_capability_sub_t *isub)
 		return;
 	}
 
-#define	CURR_HCKSUM_CAPAB				\
-	(HCKSUM_INET_PARTIAL | HCKSUM_INET_FULL_V4 |	\
-	HCKSUM_INET_FULL_V6 | HCKSUM_IPHDRCKSUM)
+#define	CURR_HCKSUM_CAPAB	HCKSUM_ALL_BUT_ENBL
 
 	if ((ihck->hcksum_txflags & HCKSUM_ENABLE) &&
 	    (ihck->hcksum_txflags & CURR_HCKSUM_CAPAB)) {

@@ -21,6 +21,7 @@
 /*
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #ifndef _SYS_PATTR_H
@@ -64,6 +65,8 @@ typedef struct pattr_hcksum_s {
 
 /*
  * Values for hcksum_flags
+ *
+ * Although not explicit in the names, the first set refers to "outer" headers.
  */
 #define	HCK_IPV4_HDRCKSUM	0x01	/* On Transmit: Compute IP header */
 					/* checksum in hardware. */
@@ -95,8 +98,33 @@ typedef struct pattr_hcksum_s {
 					/* checksum value to determine if */
 					/* checksum was bad */
 
+/*
+ * This second set refers to "inner" headers.
+ */
+#define	HCK_INNER_IPV4_HDRCKSUM_OK 0x10	/* On Transmit: N/A */
+					/* On Receive: equivalent to */
+					/* HCK_IPV4_HDRCKSUM_OK for the inner */
+					/* header */
+
+#define	HCK_INNER_FULLCKSUM_OK	0x20	/* On Transmit: N/A */
+					/* On Receive: equivalent to */
+					/* HCK_FULLCKSUM_OK for the inner */
+					/* header */
+
+#define	HCK_INNER_IPV4_HDRCKSUM_NEEDED	0x40 /* On Transmit: equivalent to */
+					/* HCK_IPV4_HDRCKSUM; HW calculates */
+					/* inner checksum */
+
+#define	HCK_INNER_FULLCKSUM_NEEDED 0x80	/* On Transmit: equivalent to */
+					/* HCK_FULLCKSUM; HW calculates inner */
+					/* L4 header checksum. */
+
 #define	HCK_FLAGS		(HCK_IPV4_HDRCKSUM | HCK_PARTIALCKSUM |	\
-				HCK_FULLCKSUM | HCK_FULLCKSUM_OK)
+				HCK_FULLCKSUM | HCK_FULLCKSUM_OK | \
+				HCK_INNER_IPV4_HDRCKSUM_OK | \
+				HCK_INNER_FULLCKSUM_OK | \
+				HCK_INNER_IPV4_HDRCKSUM_NEEDED | \
+				HCK_INNER_FULLCKSUM_NEEDED)
 /*
  * Extended hardware offloading flags that also use hcksum_flags
  */
