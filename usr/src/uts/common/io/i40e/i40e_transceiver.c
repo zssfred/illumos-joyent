@@ -1262,6 +1262,33 @@ i40e_rx_copy(i40e_trqpair_t *itrq, i40e_rx_data_t *rxd, uint32_t index,
 }
 
 /*
+ * Determine if this pinfo is valid for L4 outer checksum offload for a
+ * non-tunneled packet. This is the case for an IP packe
+ */
+static inline int
+i40e_rx_ptype_nontunnel_ol4(struct i40e_rx_ptype_decoded *pinfo)
+{
+	return (pinfo->outer_ip == I40E_RX_PTYPE_OUTER_IP &&
+	    pinfo->tunnel_type == I40E_RX_PTYPE_TUNNEL_NONE &&
+	    (pinfo->inner_prot == I40E_RX_PTYPE_INNER_PROT_UDP ||
+	    pinfo->inner_prot == I40E_RX_PTYPE_INNER_PROT_TCP ||
+	    pinfo->inner_prot == I40E_RX_PTYPE_INNER_PROT_SCTP));
+}
+
+static inline int
+i40e_rx_ptype_tunnel_il4(struct i40e_rx_ptype_decoded *pinfo)
+{
+	return (pinfo->outer_ip == I40E_RX_PTYPE_OUTER_IP &&
+	    (pinfo->tunnel_type == I40E_RX_PTYPE_TUNNEL_IP_GRENAT_MAC ||
+	    pinfo->tunnel_type == I40E_RX_PTYPE_TUNNEL_IP_GRENAT_MAC_VLAN) &&
+	    pinfo->tunnel_end_frag == I40E_RX_PTYPE_NOT_FRAG &&
+	    pinfo->tunnel_end_prot != I40E_RX_PTYPE_TUNNEL_END_NONE &&
+	    (pinfo->inner_prot == I40E_RX_PTYPE_INNER_PROT_UDP ||
+	    pinfo->inner_prot == I40E_RX_PTYPE_INNER_PROT_TCP ||
+	    pinfo->inner_prot == I40E_RX_PTYPE_INNER_PROT_SCTP));
+}
+
+/*
  * Determine if the device has enabled any checksum flags for us. The level of
  * checksum computed will depend on the type packet that we have, which is
  * contained in ptype. For example, the checksum logic it does will vary
@@ -1319,29 +1346,20 @@ i40e_rx_hcksum(i40e_trqpair_t *itrq, mblk_t *mp, uint64_t status, uint32_t err,
 	 * The hardware denotes three kinds of possible errors. Two are used
 	 * for inner and outer IP checksum errors (IPE and EIPE) and the third
 	 * is for L4 checksum errors (L4E). If there is only one IP header, then
-	 * the only thing that we care about is IPE. For both checksums on
-	 * tunneled packets we handle IPE and EIPE with two different status
-	 * flags.
+	 * the only thing that we care about is IPE. However, if this is a
+	 * tunnel packet, then we care about EPIE. Note, none of this controls
+	 * whether or not we have an inner IPv4 checksum.
 	 */
 	if (pinfo.outer_ip == I40E_RX_PTYPE_OUTER_IP &&
 	    pinfo.outer_ip_ver == I40E_RX_PTYPE_OUTER_IPV4) {
-		/*
-		 * The IPE check applies to either no tunnel, or to the inner
-		 * HW checksum.
-		 */
-		if ((err & (1 << I40E_RX_DESC_ERROR_IPE_SHIFT)) != 0) {
-			itrq->itrq_rxstat.irxs_hck_iperr.value.ui64++;
-		} else {
-			itrq->itrq_rxstat.irxs_hck_v4hdrok.value.ui64++;
-			if (pinfo.tunnel_type == I40E_RX_PTYPE_TUNNEL_NONE) {
-				cksum |= HCK_IPV4_HDRCKSUM_OK;
+		if (pinfo.tunnel_type == I40E_RX_PTYPE_TUNNEL_NONE) {
+			if ((err & (1 << I40E_RX_DESC_ERROR_IPE_SHIFT)) != 0) {
+				itrq->itrq_rxstat.irxs_hck_iperr.value.ui64++;
 			} else {
-				cksum |= HCK_INNER_IPV4_HDRCKSUM_OK;
+				itrq->itrq_rxstat.irxs_hck_v4hdrok.value.ui64++;
+				cksum |= HCK_IPV4_HDRCKSUM_OK;
 			}
-		}
-
-		if (pinfo.tunnel_type != I40E_RX_PTYPE_TUNNEL_NONE) {
-			/* Handle outer HW checksum */
+		} else {
 			if ((err & (1 << I40E_RX_DESC_ERROR_EIPE_SHIFT)) != 0) {
 				itrq->itrq_rxstat.irxs_hck_eiperr.value.ui64++;
 			} else {
@@ -1352,22 +1370,32 @@ i40e_rx_hcksum(i40e_trqpair_t *itrq, mblk_t *mp, uint64_t status, uint32_t err,
 	}
 
 	/*
-	 * We only have meaningful L4 checksums in the case of IP->L4 and
-	 * IP->IP->L4. There is no outer L4 checksum data available in any
-	 * other case.
-	 *
-	 * XXX
-	 * Older hardware does not support an outer L4 checksum, although newer
-	 * hardware does. For now we assume there is no outer L4 support, so
-	 * we do not attempt to handle a tunnel and HCK_INNER_FULLCKSUM_OK.
+	 * If we have a fragmented packet in any form, we're done.
 	 */
-	if (pinfo.outer_ip == I40E_RX_PTYPE_OUTER_IP &&
-	    pinfo.tunnel_type == I40E_RX_PTYPE_TUNNEL_NONE &&
-	    (pinfo.inner_prot == I40E_RX_PTYPE_INNER_PROT_UDP ||
-	    pinfo.inner_prot == I40E_RX_PTYPE_INNER_PROT_TCP ||
-	    pinfo.inner_prot == I40E_RX_PTYPE_INNER_PROT_ICMP ||
-	    pinfo.inner_prot == I40E_RX_PTYPE_INNER_PROT_SCTP)) {
-		ASSERT(pinfo.payload_layer == I40E_RX_PTYPE_PAYLOAD_LAYER_PAY4);
+	if (pinfo.outer_frag != I40E_RX_PTYPE_NOT_FRAG)
+		goto done;
+
+	/*
+	 * If we have a tunneled packet and the inner IP header is IPv4, check
+	 * IPE to see if we have a valid L4 checksum.
+	 */
+	if (pinfo.tunnel_type != I40E_RX_PTYPE_TUNNEL_NONE &&
+	    pinfo.tunnel_end_prot == I40E_RX_PTYPE_TUNNEL_END_IPV4) {
+		if ((err & (1 << I40E_RX_DESC_ERROR_IPE_SHIFT)) != 0) {
+			itrq->itrq_rxstat.irxs_hck_iperr.value.ui64++;
+		} else {
+			itrq->itrq_rxstat.irxs_hck_v4hdrok.value.ui64++;
+			cksum |= HCK_INNER_IPV4_HDRCKSUM_OK;
+		}
+	}
+
+	/*
+	 * Determine if we have a valid outer L4 checksum. The only supported L4
+	 * checksums are TCP, SCTP, and UDP. If this is a UDP tunneled packet,
+	 * then there is no support for the outer L4 unless we are on the X722
+	 * MAC. However, we do not support that at this time.
+	 */
+	if (i40e_rx_ptype_nontunnel_ol4(&pinfo)) {
 		if ((err & (1 << I40E_RX_DESC_ERROR_L4E_SHIFT)) != 0) {
 			itrq->itrq_rxstat.irxs_hck_l4err.value.ui64++;
 		} else {
@@ -1376,6 +1404,16 @@ i40e_rx_hcksum(i40e_trqpair_t *itrq, mblk_t *mp, uint64_t status, uint32_t err,
 		}
 	}
 
+	if (i40e_rx_ptype_tunnel_il4(&pinfo)) {
+		if ((err & (1 << I40E_RX_DESC_ERROR_L4E_SHIFT)) != 0) {
+			itrq->itrq_rxstat.irxs_hck_l4err.value.ui64++;
+		} else {
+			itrq->itrq_rxstat.irxs_hck_l4hdrok.value.ui64++;
+			cksum |= HCK_INNER_FULLCKSUM_OK;
+		}
+	}
+
+done:
 	if (cksum != 0) {
 		itrq->itrq_rxstat.irxs_hck_set.value.ui64++;
 		mac_hcksum_set(mp, 0, 0, 0, 0, cksum);
