@@ -2347,8 +2347,8 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		ASSERT(MBLKL(nmp) > 0);
 		nbufs++;
 	}
-	/* cmn_err(CE_NOTE, "mpsize = %lu, nbufs = %u, do_ctx_desc = %d", mpsize, nbufs,
-	    (int)do_ctx_desc); */
+	/*cmn_err(CE_NOTE, "mpsize = %lu, nbufs = %u, do_ctx_desc = %d", mpsize,
+	    nbufs, (int)do_ctx_desc);*/
 
 	if (do_ctx_desc == B_TRUE) {
 		/*
@@ -2363,6 +2363,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 			goto txfail;
 		}
 		tcb_ctx->tcb_type = I40E_TX_DESC;
+		needed_desc++;
 	}
 
 	/*
@@ -2412,8 +2413,9 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 				i40e_error(i40e, "dma bind failed!");
 				goto txfail;
 			}
+			ASSERT(ncookies == 1);
 		}
-		needed_desc = nbufs + 1;
+		needed_desc += nbufs;
 	} else {
 		/*
 		 * Just use a single control block and bcopy all of the
@@ -2444,7 +2446,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		 * just do it to help with our own debugging for now.
 		 */
 		tcb_data->tcb_mp = mp;
-		needed_desc = 1;
+		needed_desc++;
 	}
 
 	mutex_enter(&itrq->itrq_tx_lock);
@@ -2525,6 +2527,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 			    ((uint64_t)tcb_dma[i]->tcb_bind_len <<
 			    I40E_TXD_QW1_TX_BUF_SZ_SHIFT)));
 		}
+		kmem_free(tcb_dma, nbufs * sizeof (i40e_tx_control_block_t *));
 	} else {
 		/*
 		 * Build up the single transmit data descriptor needed for the
@@ -2591,6 +2594,8 @@ txfail:
 		i40e_tcb_reset(tcb_data);
 		i40e_tcb_free(itrq, tcb_data);
 	}
+	if (tcb_dma != NULL)
+		kmem_free(tcb_dma, nbufs * sizeof (i40e_tx_control_block_t *));
 
 	mutex_enter(&itrq->itrq_tx_lock);
 	itrq->itrq_tx_blocked = B_TRUE;
