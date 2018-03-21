@@ -1868,17 +1868,12 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 		return (0);
 
 	/*
-	 * Have we been asked to checksum an inner IPv4 header? This implies
-	 * a tunneled packet.
+	 * Have we been asked to perform an inner checksum? This implies a
+	 * tunneled packet.
 	 */
-	tunneled = (chkflags & HCK_INNER_IPV4_HDRCKSUM_NEEDED) != 0;
+	tunneled = (chkflags &
+	    (HCK_INNER_IPV4_HDRCKSUM_NEEDED | HCK_INNER_FULLCKSUM_NEEDED)) != 0;
 	tctx->itc_ctx_tunneled = tunneled;
-
-	/*
-	 * XXX JJ
-	 * Should HCK_INNER_IPV4_HDRCKSUM_NEEDED require HCK_IPV4_HDRCKSUM to
-	 * also be set? Does the inner makes sense w/o also doing the outer.
-	 */
 
 	if ((ret = mac_ether_offload_info(mp, &meo, tunneled, 0)) != 0) {
 		txs->itxs_hck_meoifail.value.ui64++;
@@ -1887,6 +1882,7 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 
 	/*
 	 * Tunneling:
+	 * See Table 8-21
 	 *	EIPT = 11b	calc. outer IP checksum
 	 *	IIPT = 11b	calc. inner IP checksum
 	 *	L4TUNT = 01b	UDP/GRE tunneling
@@ -1903,36 +1899,27 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 	 */
 	if (tunneled) {
 		/*
+		 * Setup to calculate the 3 possible requested HW checksum(s)
+		 * for the tunnel:
+		 *    Inner IPv4 checksum if IIPT = 11b
+		 *    Outer IPv4 checksum if EIPT = 11b
+		 *    L4 checksum if L4LEN is meaningful
+		 *
 		 * XXX JJ is the VXLAN_HDR_LEN properly accounted for?
 		 * XXX JJ do I need to set something in the DECTTL field?
 		 */
+		uint8_t eipt;
 		uint_t l4tunlen = meo.meoi_l4hlen + meo.meoi_tun_l2hlen;
 
-		if (meo.meoi_l3proto != ETHERTYPE_IP) {
-			txs->itxs_hck_badl3.value.ui64++;
-			return (-1);
-		}
-
+		/*
+		 * Tunneling implies inner checksumming is requested, but that
+		 * is current only supported when the outer L4 proto is UDP.
+		 */
 		if (meo.meoi_l4proto != IPPROTO_UDP ||
-		    meo.meoi_tun_l3proto != ETHERTYPE_IP) {
+		    (meo.meoi_flags & MEOI_TUNNEL_INFO_SET) == 0) {
 			txs->itxs_hck_badl4.value.ui64++;
 			return (-1);
 		}
-
-		tctx->itc_ctx_tunnel_fld =
-		    I40E_TXD_TNL_SET_EIPT(I40E_TX_DESC_TNL_EIPT_IPV4_CSUM) |
-		    I40E_TXD_TNL_SET_EIPLEN(meo.meoi_l3hlen) |
-		    I40E_TXD_TNL_SET_L4TUNT(I40E_TX_DESC_TNL_L4TUNT_UDP) |
-		    I40E_TXD_TNL_SET_L4TUNLEN(l4tunlen) |
-		    I40E_TXD_TNL_SET_DECTTL(0);
-	}
-
-	/*
-	 * Have we been asked to checksum an IPv4 header. If so, verify that we
-	 * have sufficient information and then set the proper fields in the
-	 * command structure.
-	 */
-	if (chkflags & HCK_IPV4_HDRCKSUM) {
 		if ((meo.meoi_flags & MEOI_L2INFO_SET) == 0) {
 			txs->itxs_hck_nol2info.value.ui64++;
 			return (-1);
@@ -1941,47 +1928,98 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 			txs->itxs_hck_nol3info.value.ui64++;
 			return (-1);
 		}
-		if (meo.meoi_l3proto != ETHERTYPE_IP) {
-			txs->itxs_hck_badl3.value.ui64++;
+
+		if (chkflags & (HCK_FULLCKSUM | HCK_PARTIALCKSUM)) {
+			/*
+			 * There is no HW support for outer checksum other than
+			 * the (outer) HCK_IPV4_HDRCKSUM.
+			 */
+			txs->itxs_hck_badl4.value.ui64++;
 			return (-1);
 		}
-		/* When tunneled, this applies to the inner IP (L3) */
-		tctx->itc_data_cmdflags |= I40E_TX_DESC_CMD_IIPT_IPV4_CSUM;
+
+		/* L4TUNT is UDP */
+		tctx->itc_data_cmdflags |= I40E_TX_DESC_CMD_L4T_EOFT_UDP;
 
 		/* The MAC len is for the outer, irregardless of tunneling */
 		tctx->itc_data_offsets |= (meo.meoi_l2hlen >> 1) <<
 		    I40E_TX_DESC_LENGTH_MACLEN_SHIFT;
 
-		if (tunneled) {
-			/* This applies to the inner L3 header */
-			tctx->itc_data_offsets |=
-			    (meo.meoi_tun_l3hlen >> 2) <<
-			    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
+		/* outer IP */
+		if (chkflags & HCK_IPV4_HDRCKSUM) {
+			if (meo.meoi_l3proto == ETHERTYPE_IP) {
+				eipt = I40E_TX_DESC_TNL_EIPT_IPV4_CSUM;
+			} else {
+				txs->itxs_hck_badl3.value.ui64++;
+				return (-1);
+			}
 		} else {
-			tctx->itc_data_offsets |=
-			    (meo.meoi_l3hlen >> 2) <<
-			    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
-		}
-	}
-
-	/*
-	 * We've been asked to provide an L4 header, first, set up the IP
-	 * information in the descriptor if we haven't already, before moving
-	 * on to seeing if we have enough information for the L4 checksum
-	 * offload.
-	 *
-	 * XXX JJ can't do this on a tunnel? i.e. when we advertise
-	 * HCKSUM_VXLAN_FULL_NO_OL4?
-	 */
-	if (chkflags & HCK_PARTIALCKSUM) {
-		uint8_t l4proto, l4hlen;
-
-		if ((meo.meoi_flags & MEOI_L4INFO_SET) == 0) {
-			txs->itxs_hck_nol4info.value.ui64++;
-			return (-1);
+			if (meo.meoi_l3proto == ETHERTYPE_IP) {
+				eipt = I40E_TX_DESC_TNL_EIPT_IPV4;
+			} else if (meo.meoi_l3proto == ETHERTYPE_IPV6) {
+				eipt = I40E_TX_DESC_TNL_EIPT_IPV6;
+			} else {
+				txs->itxs_hck_badl3.value.ui64++;
+				return (-1);
+			}
 		}
 
-		if (!(chkflags & HCK_IPV4_HDRCKSUM)) {
+		/* inner IP */
+		if (chkflags & HCK_INNER_IPV4_HDRCKSUM_NEEDED) {
+			/* When tunneled, IIPT applies to the inner IP (L3) */
+			if (meo.meoi_tun_l3proto != ETHERTYPE_IP) {
+				txs->itxs_hck_badl3.value.ui64++;
+				return (-1);
+			}
+			tctx->itc_data_cmdflags |=
+			    I40E_TX_DESC_CMD_IIPT_IPV4_CSUM;
+		}
+
+		/* set the inner IP header length */
+		tctx->itc_data_offsets |= (meo.meoi_tun_l3hlen >> 2) <<
+		    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
+
+		if (chkflags & HCK_INNER_FULLCKSUM_NEEDED) {
+			/* L4T */
+			switch (meo.meoi_tun_l4proto) {
+			case IPPROTO_TCP:
+				tctx->itc_data_cmdflags |=
+				    I40E_TX_DESC_CMD_L4T_EOFT_TCP;
+				break;
+			case IPPROTO_UDP:
+				tctx->itc_data_cmdflags |=
+				    I40E_TX_DESC_CMD_L4T_EOFT_UDP;
+				break;
+			case IPPROTO_SCTP:
+				tctx->itc_data_cmdflags |=
+				    I40E_TX_DESC_CMD_L4T_EOFT_SCTP;
+				break;
+			default:
+				txs->itxs_hck_badl4.value.ui64++;
+				return (-1);
+			}
+
+			/* setting L4LEN initiates inner L4 HW checksum */
+			tctx->itc_data_offsets |= (meo.meoi_tun_l4hlen >> 2) <<
+			    I40E_TX_DESC_LENGTH_L4_FC_LEN_SHIFT;
+		}
+
+		tctx->itc_ctx_tunnel_fld =
+		    I40E_TXD_TNL_SET_EIPT(eipt) |
+		    I40E_TXD_TNL_SET_EIPLEN(meo.meoi_l3hlen) |
+		    I40E_TXD_TNL_SET_L4TUNT(I40E_TX_DESC_TNL_L4TUNT_UDP) |
+		    I40E_TXD_TNL_SET_L4TUNLEN(l4tunlen) |
+		    I40E_TXD_TNL_SET_DECTTL(0);
+
+	} else {
+		/* Not tunneled */
+
+		/*
+		 * Have we been asked to checksum an IPv4 header. If so, verify
+		 * that we have sufficient information and then set the proper
+		 * fields in the command structure.
+		 */
+		if (chkflags & HCK_IPV4_HDRCKSUM) {
 			if ((meo.meoi_flags & MEOI_L2INFO_SET) == 0) {
 				txs->itxs_hck_nol2info.value.ui64++;
 				return (-1);
@@ -1990,60 +2028,83 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 				txs->itxs_hck_nol3info.value.ui64++;
 				return (-1);
 			}
-
-			if (meo.meoi_l3proto == ETHERTYPE_IP) {
-				tctx->itc_data_cmdflags |=
-				    I40E_TX_DESC_CMD_IIPT_IPV4;
-			} else if (meo.meoi_l3proto == ETHERTYPE_IPV6) {
-				tctx->itc_data_cmdflags |=
-				    I40E_TX_DESC_CMD_IIPT_IPV6;
-			} else {
+			if (meo.meoi_l3proto != ETHERTYPE_IP) {
 				txs->itxs_hck_badl3.value.ui64++;
 				return (-1);
 			}
+			tctx->itc_data_cmdflags |=
+			    I40E_TX_DESC_CMD_IIPT_IPV4_CSUM;
+
 			tctx->itc_data_offsets |= (meo.meoi_l2hlen >> 1) <<
 			    I40E_TX_DESC_LENGTH_MACLEN_SHIFT;
 
-			if (tunneled) {
-				/* This applies to the inner L3 header */
+			tctx->itc_data_offsets |=
+			    (meo.meoi_l3hlen >> 2) <<
+			    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
+		}
+
+		/*
+		 * Have we been asked to provide an L4 header. If so, first,
+		 * set up the IP information in the descriptor if we haven't
+		 * already, before moving on to seeing if we have enough
+		 * information for the L4 checksum offload.
+		 */
+		if (chkflags & HCK_PARTIALCKSUM) {
+			if ((meo.meoi_flags & MEOI_L4INFO_SET) == 0) {
+				txs->itxs_hck_nol4info.value.ui64++;
+				return (-1);
+			}
+
+			if (!(chkflags & HCK_IPV4_HDRCKSUM)) {
+				if ((meo.meoi_flags & MEOI_L2INFO_SET) == 0) {
+					txs->itxs_hck_nol2info.value.ui64++;
+					return (-1);
+				}
+				if ((meo.meoi_flags & MEOI_L3INFO_SET) == 0) {
+					txs->itxs_hck_nol3info.value.ui64++;
+					return (-1);
+				}
+
+				if (meo.meoi_l3proto == ETHERTYPE_IP) {
+					tctx->itc_data_cmdflags |=
+					    I40E_TX_DESC_CMD_IIPT_IPV4;
+				} else if (meo.meoi_l3proto == ETHERTYPE_IPV6) {
+					tctx->itc_data_cmdflags |=
+					    I40E_TX_DESC_CMD_IIPT_IPV6;
+				} else {
+					txs->itxs_hck_badl3.value.ui64++;
+					return (-1);
+				}
 				tctx->itc_data_offsets |=
-				    (meo.meoi_tun_l3hlen >> 2) <<
-				    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
-			} else {
+				    (meo.meoi_l2hlen >> 1) <<
+				    I40E_TX_DESC_LENGTH_MACLEN_SHIFT;
+
 				tctx->itc_data_offsets |=
 				    (meo.meoi_l3hlen >> 2) <<
 				    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
 			}
-		}
 
-		if (tunneled) {
-			l4proto = meo.meoi_tun_l4proto;
-			l4hlen = meo.meoi_tun_l4hlen;
-		} else {
-			l4proto = meo.meoi_l4proto;
-			l4hlen = meo.meoi_l4hlen;
-		}
+			switch (meo.meoi_l4proto) {
+			case IPPROTO_TCP:
+				tctx->itc_data_cmdflags |=
+				    I40E_TX_DESC_CMD_L4T_EOFT_TCP;
+				break;
+			case IPPROTO_UDP:
+				tctx->itc_data_cmdflags |=
+				    I40E_TX_DESC_CMD_L4T_EOFT_UDP;
+				break;
+			case IPPROTO_SCTP:
+				tctx->itc_data_cmdflags |=
+				    I40E_TX_DESC_CMD_L4T_EOFT_SCTP;
+				break;
+			default:
+				txs->itxs_hck_badl4.value.ui64++;
+				return (-1);
+			}
 
-		switch (l4proto) {
-		case IPPROTO_TCP:
-			tctx->itc_data_cmdflags |=
-			    I40E_TX_DESC_CMD_L4T_EOFT_TCP;
-			break;
-		case IPPROTO_UDP:
-			tctx->itc_data_cmdflags |=
-			    I40E_TX_DESC_CMD_L4T_EOFT_UDP;
-			break;
-		case IPPROTO_SCTP:
-			tctx->itc_data_cmdflags |=
-			    I40E_TX_DESC_CMD_L4T_EOFT_SCTP;
-			break;
-		default:
-			txs->itxs_hck_badl4.value.ui64++;
-			return (-1);
+			tctx->itc_data_offsets |= (meo.meoi_l4hlen >> 2) <<
+			    I40E_TX_DESC_LENGTH_L4_FC_LEN_SHIFT;
 		}
-
-		tctx->itc_data_offsets |= (l4hlen >> 2) <<
-		    I40E_TX_DESC_LENGTH_L4_FC_LEN_SHIFT;
 	}
 
 	/*
