@@ -1877,7 +1877,7 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 	/*
 	 * XXX JJ
 	 * Should HCK_INNER_IPV4_HDRCKSUM_NEEDED require HCK_IPV4_HDRCKSUM to
-	 * also be set? I'm not sure the inner makes sense w/o the outer.
+	 * also be set? Does the inner makes sense w/o also doing the outer.
 	 */
 
 	if ((ret = mac_ether_offload_info(mp, &meo, tunneled, 0)) != 0) {
@@ -1903,17 +1903,21 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 	 */
 	if (tunneled) {
 		/*
-		 * XXX JJ populate this correctly
-		 * 0:1 EIPT
-		 * 2:8 EIPLEN
-		 * 9:10 L4TUNT
-		 * 12:18 L4TUNLEN
-		 * 19:22 DECTTL
-		 *
 		 * XXX JJ is the VXLAN_HDR_LEN properly accounted for?
 		 * XXX JJ do I need to set something in the DECTTL field?
 		 */
 		uint_t l4tunlen = meo.meoi_l4hlen + meo.meoi_tun_l2hlen;
+
+		if (meo.meoi_l3proto != ETHERTYPE_IP) {
+			txs->itxs_hck_badl3.value.ui64++;
+			return (-1);
+		}
+
+		if (meo.meoi_l4proto != IPPROTO_UDP ||
+		    meo.meoi_tun_l3proto != ETHERTYPE_IP) {
+			txs->itxs_hck_badl4.value.ui64++;
+			return (-1);
+		}
 
 		tctx->itc_ctx_tunnel_fld =
 		    I40E_TXD_TNL_SET_EIPT(I40E_TX_DESC_TNL_EIPT_IPV4_CSUM) |
@@ -2387,7 +2391,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		    KM_NOSLEEP);
 		if (tcb_dma == NULL) {
 			i40e_error(i40e, "failed to allocate tcb_dma list");
-			goto txfail; 
+			goto txfail;
 		}
 		for (i = 0; i < nbufs; i++) {
 			if ((tcb_dma[i] = i40e_tcb_alloc(itrq)) == NULL) {

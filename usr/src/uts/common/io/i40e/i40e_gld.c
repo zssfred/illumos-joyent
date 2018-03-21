@@ -726,10 +726,18 @@ i40e_m_getcapab(void *arg, mac_capab_t cap, void *cap_data)
 	case MAC_CAPAB_HCKSUM: {
 		uint32_t *txflags = cap_data;
 
+		/*
+		 * HW checksum offload
+		 * Inner L3 | Inner L4 | Outer L3 | Outer L4
+		 *   yes    |    yes   |    yes   | only on x722
+		 * i.e. this HCKSUM_VXLAN_FULL_NO_OL4, except for x722, but we
+		 * currently don't break out x722 separately.
+		 */
+
 		*txflags = 0;
 		if (i40e->i40e_tx_hcksum_enable == B_TRUE)
-			*txflags = HCKSUM_INET_PARTIAL | HCKSUM_IPHDRCKSUM;
-/* XXX JJ add in HCKSUM_VXLAN_FULL or ...NO_OL4 here? */
+			*txflags = HCKSUM_INET_PARTIAL | HCKSUM_IPHDRCKSUM |
+			    HCKSUM_VXLAN_FULL_NO_OL4;
 /* XXX JJ change to HCKSUM_INET_FULL_V4, etc with new interpretation? */
 		break;
 	}
