@@ -1953,7 +1953,8 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 		 * Tunneling implies inner checksumming is requested, but that
 		 * is current only supported when the outer L4 proto is UDP.
 		 */
-		if (meo.meoi_l4proto != IPPROTO_UDP ||
+		if ((meo.meoi_flags & MEOI_L4INFO_SET) == 0 ||
+		    meo.meoi_l4proto != IPPROTO_UDP ||
 		    (meo.meoi_flags & MEOI_TUNNEL_INFO_SET) == 0) {
 			txs->itxs_hck_badl4.value.ui64++;
 			return (-1);
@@ -1971,8 +1972,8 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 			/*
 			 * There is no HW support for outer checksum other than
 			 * the (outer) HCK_IPV4_HDRCKSUM.
+			 * Note: no kstat for invalid request.
 			 */
-			txs->itxs_hck_badl4.value.ui64++;
 			return (-1);
 		}
 
@@ -2214,7 +2215,8 @@ i40e_tcb_reset(i40e_tx_control_block_t *tcb)
 		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
 		if (tcb->tcb_bind_info != NULL)
 			kmem_free(tcb->tcb_bind_info,
-			    tcb->tcb_bind_ncookies * sizeof (struct i40e_dma_bind_info *));
+			    tcb->tcb_bind_ncookies *
+			    sizeof (struct i40e_dma_bind_info *));
 		tcb->tcb_bind_info = NULL;
 		tcb->tcb_bind_ncookies = 0;
 		break;
@@ -2347,12 +2349,14 @@ i40e_tx_recycle_ring(i40e_trqpair_t *itrq)
 		else
 			desc_per_tcb = 1;
 
-		for (i = 0; i< desc_per_tcb; i++) {
+		for (i = 0; i < desc_per_tcb; i++) {
 			/*
 			 * We zero this out for sanity purposes.
 			 */
-			bzero(&itrq->itrq_desc_ring[toclean], sizeof (i40e_tx_desc_t));
-			toclean = i40e_next_desc(toclean, 1, itrq->itrq_tx_ring_size);
+			bzero(&itrq->itrq_desc_ring[toclean],
+			    sizeof (i40e_tx_desc_t));
+			toclean = i40e_next_desc(toclean, 1,
+			    itrq->itrq_tx_ring_size);
 			count++;
 		}
 	}
@@ -2421,7 +2425,7 @@ i40e_tx_bind_fragment(i40e_trqpair_t *itrq, const mblk_t *mp)
 		dbi = kmem_zalloc(sizeof (struct i40e_dma_bind_info),
 		    KM_NOSLEEP);
 		if (dbi == NULL)
-			goto bffail;		
+			goto bffail;
 
 		dbi->dbi_paddr = (caddr_t)dma_cookie.dmac_laddress;
 		dbi->dbi_len = dma_cookie.dmac_size;
@@ -2438,7 +2442,8 @@ bffail:
 		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
 	if (tcb->tcb_bind_info != NULL)
 		kmem_free(tcb->tcb_bind_info,
-		    tcb->tcb_bind_ncookies * sizeof (struct i40e_dma_bind_info *));
+		    tcb->tcb_bind_ncookies *
+		    sizeof (struct i40e_dma_bind_info *));
 	tcb->tcb_bind_info = NULL;
 	tcb->tcb_bind_ncookies = 0;
 
@@ -2506,7 +2511,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	int cmd, type, i, c;
 	uint_t needed_desc = 0, tail, nbufs = 0;
 	boolean_t do_ctx_desc = B_FALSE, do_dma_bind = B_FALSE, last_desc;
-	
+
 	i40e_trqpair_t *itrq = arg;
 	i40e_t *i40e = itrq->itrq_i40e;
 	i40e_hw_t *hw = &i40e->i40e_hw_space;
