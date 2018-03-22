@@ -199,7 +199,7 @@ typedef enum i40e_itr_index {
 #define	I40E_MAX_RX_DMA_THRESH		INT32_MAX
 
 #define	I40E_MIN_TX_DMA_THRESH		0
-/* XXX - temporarily disable DMA bind on tx till it's working properly */
+/* XXX - temporarily disable DMA bind on tx till it's fully working */
 #define	I40E_DEF_TX_DMA_THRESH		INT32_MAX
 #define	I40E_MAX_TX_DMA_THRESH		INT32_MAX
 
@@ -414,14 +414,19 @@ typedef struct i40e_tx_desc i40e_tx_desc_t;
 typedef struct i40e_tx_context_desc i40e_tx_context_desc_t;
 typedef union i40e_32byte_rx_desc i40e_rx_desc_t;
 
+struct i40e_dma_bind_info {
+	caddr_t dbi_paddr;
+	size_t dbi_len;
+};
+
 typedef struct i40e_tx_control_block {
 	struct i40e_tx_control_block	*tcb_next;
 	mblk_t				*tcb_mp;
 	i40e_tx_type_t			tcb_type;
 	ddi_dma_handle_t		tcb_dma_handle;
 	i40e_dma_buffer_t		tcb_dma;
-	caddr_t				tcb_bind_addr;
-	size_t				tcb_bind_len;
+	struct i40e_dma_bind_info	**tcb_bind_info;
+	uint_t				tcb_bind_ncookies;
 } i40e_tx_control_block_t;
 
 /*

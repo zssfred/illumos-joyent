@@ -2212,6 +2212,11 @@ i40e_tcb_reset(i40e_tx_control_block_t *tcb)
 		break;
 	case I40E_TX_DMA:
 		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
+		if (tcb->tcb_bind_info != NULL)
+			kmem_free(tcb->tcb_bind_info,
+			    tcb->tcb_bind_ncookies * sizeof (struct i40e_dma_bind_info *));
+		tcb->tcb_bind_info = NULL;
+		tcb->tcb_bind_ncookies = 0;
 		break;
 	case I40E_TX_DESC:
 		break;
@@ -2283,6 +2288,7 @@ i40e_tx_recycle_ring(i40e_trqpair_t *itrq)
 	uint32_t wbhead, toclean, count;
 	i40e_tx_control_block_t *tcbhead;
 	i40e_t *i40e = itrq->itrq_i40e;
+	int desc_per_tcb, i;
 
 	mutex_enter(&itrq->itrq_tx_lock);
 
@@ -2330,11 +2336,25 @@ i40e_tx_recycle_ring(i40e_trqpair_t *itrq)
 		tcbhead = tcb;
 
 		/*
-		 * We zero this out for sanity purposes.
+		 * In the DMA bind case, there may not necessarily a 1:1
+		 * mapping between tcb's and descriptors.  If the tcb type
+		 * indicates a DMA binding then check the number of DMA
+		 * cookies to determine how many entries to clean in the
+		 * descriptor ring.
 		 */
-		bzero(&itrq->itrq_desc_ring[toclean], sizeof (i40e_tx_desc_t));
-		toclean = i40e_next_desc(toclean, 1, itrq->itrq_tx_ring_size);
-		count++;
+		if (tcb->tcb_type == I40E_TX_DMA)
+			desc_per_tcb = tcb->tcb_bind_ncookies;
+		else
+			desc_per_tcb = 1;
+
+		for (i = 0; i< desc_per_tcb; i++) {
+			/*
+			 * We zero this out for sanity purposes.
+			 */
+			bzero(&itrq->itrq_desc_ring[toclean], sizeof (i40e_tx_desc_t));
+			toclean = i40e_next_desc(toclean, 1, itrq->itrq_tx_ring_size);
+			count++;
+		}
 	}
 
 	itrq->itrq_desc_head = wbhead;
@@ -2366,6 +2386,98 @@ i40e_tx_recycle_ring(i40e_trqpair_t *itrq)
 	DTRACE_PROBE2(i40e__recycle, i40e_trqpair_t *, itrq, uint32_t, count);
 }
 
+static i40e_tx_control_block_t *
+i40e_tx_bind_fragment(i40e_trqpair_t *itrq, const mblk_t *mp)
+{
+	ddi_dma_cookie_t dma_cookie;
+	uint_t ncookies = 0, dmaflags;
+	i40e_tx_control_block_t *tcb;
+	i40e_txq_stat_t *txs = &itrq->itrq_txstat;
+	int i = 0;
+	struct i40e_dma_bind_info *dbi;
+
+	if ((tcb = i40e_tcb_alloc(itrq)) == NULL) {
+		txs->itxs_err_notcb.value.ui64++;
+		return (NULL);
+	}
+	tcb->tcb_type = I40E_TX_DMA;
+
+	dmaflags = DDI_DMA_RDWR | DDI_DMA_STREAMING;
+	if (ddi_dma_addr_bind_handle(tcb->tcb_dma_handle, NULL,
+	    (caddr_t)mp->b_rptr, MBLKL(mp), dmaflags, DDI_DMA_DONTWAIT, NULL,
+	    &dma_cookie, &ncookies) != DDI_DMA_MAPPED) {
+		goto bffail;
+	}
+
+	tcb->tcb_bind_info =
+	    kmem_zalloc(ncookies * sizeof (struct i40e_dma_bind_info *),
+	    KM_NOSLEEP);
+	if (tcb->tcb_bind_info == NULL)
+		goto bffail;
+
+	while (i < ncookies) {
+		if (i > 0)
+			ddi_dma_nextcookie(tcb->tcb_dma_handle, &dma_cookie);
+		dbi = kmem_zalloc(sizeof (struct i40e_dma_bind_info),
+		    KM_NOSLEEP);
+		if (dbi == NULL)
+			goto bffail;		
+
+		dbi->dbi_paddr = (caddr_t)dma_cookie.dmac_laddress;
+		dbi->dbi_len = dma_cookie.dmac_size;
+		tcb->tcb_bind_info[i++] = dbi;
+	}
+	tcb->tcb_bind_ncookies = ncookies;
+
+	return (tcb);
+
+bffail:
+	i40e_tcb_reset(tcb);
+	i40e_tcb_free(itrq, tcb);
+	if (ncookies != 0)
+		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
+	if (tcb->tcb_bind_info != NULL)
+		kmem_free(tcb->tcb_bind_info,
+		    tcb->tcb_bind_ncookies * sizeof (struct i40e_dma_bind_info *));
+	tcb->tcb_bind_info = NULL;
+	tcb->tcb_bind_ncookies = 0;
+
+	return (NULL);
+}
+
+static void
+i40e_tx_set_data_desc(i40e_trqpair_t *itrq, i40e_tx_context_t *tctx,
+    struct i40e_dma_bind_info *dbi, boolean_t last_desc)
+{
+	i40e_tx_desc_t *txdesc;
+	int type, cmd;
+
+	/* XXX - should we assert that itrq_tx_lock is held? */
+	itrq->itrq_desc_free--;
+	txdesc = &itrq->itrq_desc_ring[itrq->itrq_desc_tail];
+	itrq->itrq_desc_tail = i40e_next_desc(itrq->itrq_desc_tail, 1,
+	    itrq->itrq_tx_ring_size);
+
+	type = I40E_TX_DESC_DTYPE_DATA;
+	cmd = I40E_TX_DESC_CMD_ICRC | tctx->itc_data_cmdflags;
+
+	/*
+	 * The last data descriptor needs the EOP and RS bits set, so that the
+	 * HW knows that we're ready to send.
+	 */
+	if (last_desc == B_TRUE) {
+		cmd |= I40E_TX_DESC_CMD_EOP;
+		cmd |= I40E_TX_DESC_CMD_RS;
+	}
+
+	txdesc->buffer_addr = CPU_TO_LE64((uintptr_t)dbi->dbi_paddr);
+	txdesc->cmd_type_offset_bsz =
+	    CPU_TO_LE64(((uint64_t)type |
+	    ((uint64_t)tctx->itc_data_offsets << I40E_TXD_QW1_OFFSET_SHIFT) |
+	    ((uint64_t)cmd << I40E_TXD_QW1_CMD_SHIFT) |
+	    ((uint64_t)dbi->dbi_len << I40E_TXD_QW1_TX_BUF_SZ_SHIFT)));
+}
+
 /*
  * We've been asked to send a message block on the wire. We'll only have a
  * single chain. There will not be any b_next pointers; however, there may be
@@ -2385,17 +2497,16 @@ mblk_t *
 i40e_ring_tx(void *arg, mblk_t *mp)
 {
 	const mblk_t *nmp;
-	size_t mpsize;
+	size_t mpsize, blksz;
 	i40e_tx_control_block_t *tcb_ctx = NULL, *tcb_data = NULL,
 	    **tcb_dma = NULL;
 	i40e_tx_desc_t *txdesc;
 	i40e_tx_context_desc_t *ctxdesc;
 	i40e_tx_context_t tctx;
-	int cmd, type, i;
-	uint_t needed_desc = 0, tail, nbufs = 0, ncookies, dmaflags;
-	boolean_t do_ctx_desc = B_FALSE, do_dma_bind = B_FALSE;
-	ddi_dma_cookie_t dma_cookie;
-
+	int cmd, type, i, c;
+	uint_t needed_desc = 0, tail, nbufs = 0;
+	boolean_t do_ctx_desc = B_FALSE, do_dma_bind = B_FALSE, last_desc;
+	
 	i40e_trqpair_t *itrq = arg;
 	i40e_t *i40e = itrq->itrq_i40e;
 	i40e_hw_t *hw = &i40e->i40e_hw_space;
@@ -2440,18 +2551,17 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 
 	/*
 	 * Iterate through the mblks to calculate both the total size and the
-	 * number of contiguous buffers.  This is used to determine whether
-	 * we're doing DMA binding and, if so, how many data descriptors we'll
-	 * need.
+	 * number of message blocks.  This is used to determine whether we're
+	 * doing DMA binding and, if so, how many data descriptors we'll need.
 	 */
 	mpsize = 0;
 	for (nmp = mp; nmp != NULL; nmp = nmp->b_cont) {
-		mpsize += MBLKL(nmp);
-		ASSERT(MBLKL(nmp) > 0);
-		nbufs++;
+		blksz = MBLKL(nmp);
+		if (blksz > 0) {
+			mpsize += blksz;
+			nbufs++;
+		}
 	}
-	/*cmn_err(CE_NOTE, "mpsize = %lu, nbufs = %u, do_ctx_desc = %d", mpsize,
-	    nbufs, (int)do_ctx_desc);*/
 
 	if (do_ctx_desc == B_TRUE) {
 		/*
@@ -2482,9 +2592,6 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	 */
 	if (mpsize > i40e->i40e_tx_dma_min) {
 		do_dma_bind = B_TRUE;
-		/*
-		 * Reserve a tx control block for each b_cont
-		 */
 		tcb_dma =
 		    kmem_zalloc(nbufs * sizeof (i40e_tx_control_block_t *),
 		    KM_NOSLEEP);
@@ -2492,33 +2599,21 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 			i40e_error(i40e, "failed to allocate tcb_dma list");
 			goto txfail;
 		}
-		for (i = 0; i < nbufs; i++) {
-			if ((tcb_dma[i] = i40e_tcb_alloc(itrq)) == NULL) {
-				txs->itxs_err_notcb.value.ui64++;
-				goto txfail;
-			}
-			tcb_dma[i]->tcb_type = I40E_TX_DMA;
-		}
 		/*
-		 * For each b_cont, bind the control block's DMA handle to the
-		 * b_rptr, and record the addr and len.
+		 * For each b_cont: bind the control block's DMA handle to the
+		 * b_rptr, and record the cookies so that we can iterate
+		 * through them and build tx data descriptors.
 		 */
-		dmaflags = DDI_DMA_RDWR | DDI_DMA_STREAMING;
-		for (nmp = mp, i = 0; nmp != NULL; nmp = nmp->b_cont, i++) {
-			tcb_dma[i]->tcb_bind_addr = (caddr_t)nmp->b_rptr;
-			tcb_dma[i]->tcb_bind_len = MBLKL(nmp);
-			if (ddi_dma_addr_bind_handle(
-			    tcb_dma[i]->tcb_dma_handle, NULL,
-			    tcb_dma[i]->tcb_bind_addr,
-			    tcb_dma[i]->tcb_bind_len, dmaflags,
-			    DDI_DMA_DONTWAIT, NULL, &dma_cookie, &ncookies) !=
-			    DDI_DMA_MAPPED) {
+		for (nmp = mp, i = 0; nmp != NULL; nmp = nmp->b_cont) {
+			if (MBLKL(nmp) == 0)
+				continue;
+			tcb_dma[i] = i40e_tx_bind_fragment(itrq, nmp);
+			if (tcb_dma[i] == NULL) {
 				i40e_error(i40e, "dma bind failed!");
 				goto txfail;
 			}
-			ASSERT(ncookies == 1);
+			needed_desc += tcb_dma[i++]->tcb_bind_ncookies;
 		}
-		needed_desc += nbufs;
 	} else {
 		/*
 		 * Just use a single control block and bcopy all of the
@@ -2601,34 +2696,19 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		/*
 		 * Next build up a transmit data descriptor for each buffer.
 		 */
+		last_desc = B_FALSE;
 		for (i = 0; i < nbufs; i++) {
-			itrq->itrq_desc_free--;
-			txdesc = &itrq->itrq_desc_ring[itrq->itrq_desc_tail];
 			itrq->itrq_tcb_work_list[itrq->itrq_desc_tail] =
 			    tcb_dma[i];
-			itrq->itrq_desc_tail =
-			    i40e_next_desc(itrq->itrq_desc_tail, 1,
-			    itrq->itrq_tx_ring_size);
 
-			type = I40E_TX_DESC_DTYPE_DATA;
-			cmd = I40E_TX_DESC_CMD_ICRC | tctx.itc_data_cmdflags;
-			/*
-			 * The last data descriptor needs the EOP and RS bits
-			 * set, so that the HW knows that we're ready to send.
-			 */
-			if (i == (nbufs - 1)) {
-				cmd |= I40E_TX_DESC_CMD_EOP;
-				cmd |= I40E_TX_DESC_CMD_RS;
+			for (c = 0; c < tcb_dma[i]->tcb_bind_ncookies; c++) {
+				if (i == (nbufs - 1) &&
+				    c == (tcb_dma[i]->tcb_bind_ncookies - 1)) {
+					last_desc = B_TRUE;
+				}
+				i40e_tx_set_data_desc(itrq, &tctx,
+				    tcb_dma[i]->tcb_bind_info[c], last_desc);
 			}
-			txdesc->buffer_addr =
-			    CPU_TO_LE64((uintptr_t)tcb_dma[i]->tcb_bind_addr);
-			txdesc->cmd_type_offset_bsz =
-			    CPU_TO_LE64(((uint64_t)type |
-			    ((uint64_t)tctx.itc_data_offsets <<
-			    I40E_TXD_QW1_OFFSET_SHIFT) |
-			    ((uint64_t)cmd << I40E_TXD_QW1_CMD_SHIFT) |
-			    ((uint64_t)tcb_dma[i]->tcb_bind_len <<
-			    I40E_TXD_QW1_TX_BUF_SZ_SHIFT)));
 		}
 		kmem_free(tcb_dma, nbufs * sizeof (i40e_tx_control_block_t *));
 	} else {
