@@ -2207,16 +2207,23 @@ i40e_tcb_alloc(i40e_trqpair_t *itrq)
 static void
 i40e_tcb_reset(i40e_tx_control_block_t *tcb)
 {
+	int i;
+
 	switch (tcb->tcb_type) {
 	case I40E_TX_COPY:
 		tcb->tcb_dma.dmab_len = 0;
 		break;
 	case I40E_TX_DMA:
 		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
-		if (tcb->tcb_bind_info != NULL)
+		if (tcb->tcb_bind_info != NULL) {
+			for (i = 0; i < tcb->tcb_bind_ncookies; i++) {
+				kmem_free(tcb->tcb_bind_info[i],
+				    sizeof (struct i40e_dma_bind_info));
+			}
 			kmem_free(tcb->tcb_bind_info,
 			    tcb->tcb_bind_ncookies *
 			    sizeof (struct i40e_dma_bind_info *));
+		}
 		tcb->tcb_bind_info = NULL;
 		tcb->tcb_bind_ncookies = 0;
 		break;
@@ -2230,8 +2237,10 @@ i40e_tcb_reset(i40e_tx_control_block_t *tcb)
 	}
 
 	tcb->tcb_type = I40E_TX_NONE;
-	freemsg(tcb->tcb_mp);
-	tcb->tcb_mp = NULL;
+	if (tcb->tcb_mp != NULL) {
+		freemsg(tcb->tcb_mp);
+		tcb->tcb_mp = NULL;
+	}
 	tcb->tcb_next = NULL;
 }
 
