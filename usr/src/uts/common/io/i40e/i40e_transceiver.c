@@ -2626,6 +2626,8 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 				i40e_error(i40e, "dma bind failed!");
 				goto txfail;
 			}
+			if (i == 0)
+				tcb_dma[i]->tcb_mp = mp;
 			needed_desc += tcb_dma[i++]->tcb_bind_ncookies;
 		}
 	} else {

@@ -199,8 +199,7 @@ typedef enum i40e_itr_index {
 #define	I40E_MAX_RX_DMA_THRESH		INT32_MAX
 
 #define	I40E_MIN_TX_DMA_THRESH		0
-/* XXX - temporarily disable DMA bind on tx till it's fully working */
-#define	I40E_DEF_TX_DMA_THRESH		INT32_MAX
+#define	I40E_DEF_TX_DMA_THRESH		256
 #define	I40E_MAX_TX_DMA_THRESH		INT32_MAX
 
 /*
