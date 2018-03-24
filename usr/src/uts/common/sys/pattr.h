@@ -101,21 +101,21 @@ typedef struct pattr_hcksum_s {
 /*
  * This second set refers to "inner" headers.
  */
-#define	HCK_INNER_IPV4_HDRCKSUM_OK 0x10	/* On Transmit: N/A */
+#define	HCK_INNER_IPV4_HDRCKSUM_OK 0x20	/* On Transmit: N/A */
 					/* On Receive: equivalent to */
 					/* HCK_IPV4_HDRCKSUM_OK for the inner */
 					/* header */
 
-#define	HCK_INNER_FULLCKSUM_OK	0x20	/* On Transmit: N/A */
+#define	HCK_INNER_FULLCKSUM_OK	0x40	/* On Transmit: N/A */
 					/* On Receive: equivalent to */
 					/* HCK_FULLCKSUM_OK for the inner */
 					/* header */
 
-#define	HCK_INNER_IPV4_HDRCKSUM_NEEDED	0x40 /* On Transmit: equivalent to */
+#define	HCK_INNER_IPV4_HDRCKSUM_NEEDED	0x80 /* On Transmit: equivalent to */
 					/* HCK_IPV4_HDRCKSUM; HW calculates */
 					/* inner checksum */
 
-#define	HCK_INNER_FULLCKSUM_NEEDED 0x80	/* On Transmit: equivalent to */
+#define	HCK_INNER_FULLCKSUM_NEEDED 0x100	/* On Transmit: equivalent to */
 					/* HCK_FULLCKSUM; HW calculates inner */
 					/* L4 header checksum. */
 
