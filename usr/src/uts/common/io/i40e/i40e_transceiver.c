@@ -2534,9 +2534,6 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	    (i40e->i40e_state & I40E_ERROR) ||
 	    (i40e->i40e_link_state != LINK_STATE_UP)) {
 		freemsg(mp);
-		/* XXX - will remove */
-		cmn_err(CE_WARN, "nic not happy (state: %d, linkstate: %d)",
-		    (int)i40e->i40e_state, (int)i40e->i40e_link_state);
 		return (NULL);
 	}
 
@@ -2550,9 +2547,6 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		itrq->itrq_txstat.itxs_err_context.value.ui64++;
 		return (NULL);
 	}
-	if (tctx.itc_ctx_cmdflags & I40E_TX_CTX_DESC_TSO)
-		do_ctx_desc = B_TRUE;
-
 	if ((tctx.itc_ctx_cmdflags & I40E_TX_CTX_DESC_TSO) ||
 	    tctx.itc_ctx_tunneled)
 		do_ctx_desc = B_TRUE;
@@ -2584,6 +2578,8 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		 * descriptors.  Since there's no data DMA block associated
 		 * with the context descriptor we create a special control
 		 * block that behaves effectively like a NOP.
+		 *
+		 * XXX - yes, this is hacky - I'll find a better way
 		 */
 		if ((tcb_ctx = i40e_tcb_alloc(itrq)) == NULL) {
 			txs->itxs_err_notcb.value.ui64++;
