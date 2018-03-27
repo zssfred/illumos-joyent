@@ -25,7 +25,7 @@
  */
 
 /*
- * Copyright 2017 Joyent, Inc.
+ * Copyright 2016 Joyent, Inc.  All rights reserved.
  */
 
 #ifndef _SYS_LX_H
@@ -146,9 +146,6 @@ extern void lx_free_stack(void);
 extern void lx_free_other_stacks(void);
 extern void lx_stack_prefork(void);
 extern void lx_stack_postfork(void);
-
-extern void lx_block_all_signals();
-extern void lx_unblock_all_signals();
 
 /*
  * NO_UUCOPY disables calls to the uucopy* system calls to help with

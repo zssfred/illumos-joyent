@@ -2378,15 +2378,3 @@ lx_signalfd4(int fd, uintptr_t mask, size_t msize, int flags)
 
 	return (r == -1 ? -errno : r);
 }
-
-void
-lx_block_all_signals()
-{
-	(void) syscall(SYS_brand, B_BLOCK_ALL_SIGS);
-}
-
-void
-lx_unblock_all_signals()
-{
-	(void) syscall(SYS_brand, B_UNBLOCK_ALL_SIGS);
-}
