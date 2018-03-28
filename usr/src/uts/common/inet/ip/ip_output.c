@@ -1721,13 +1721,6 @@ ip_output_cksum_v4(iaflags_t ixaflags, mblk_t *mp, ipha_t *ipha,
 	}
 
 	/*
-	 * If we've been asked to skip the ULP checksum, then just let IP do its
-	 * business.
-	 */
-	if ((ixa->ixa_flags & IXAF_SKIP_ULP_CKSUM) != 0)
-		goto ip_hdr_cksum;
-
-	/*
 	 * Calculate ULP checksum. Note that we don't use cksump and cksum
 	 * if the ill has FULL support.
 	 */
@@ -1795,6 +1788,14 @@ ip_output_cksum_v4(iaflags_t ixaflags, mblk_t *mp, ipha_t *ipha,
 		can_partial = (hck_flags & HCKSUM_INET_PARTIAL) != 0;
 	}
 	DB_CKSUMFLAGS(mp) &= ~HCK_OUTER_FLAGS;
+
+	if ((ixa->ixa_flags & IXAF_SKIP_ULP_CKSUM) != 0 && can_inet) {
+		DB_CKSUMFLAGS(mp) |= HCK_IPV4_HDRCKSUM;
+		*cksump = 0;
+		ipha->ipha_hdr_checksum = 0;
+		return (B_TRUE);
+	}
+
 	if (can_full) {
 		/*
 		 * Hardware calculates pseudo-header, header and the

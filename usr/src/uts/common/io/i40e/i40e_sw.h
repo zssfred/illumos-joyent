@@ -536,11 +536,17 @@ typedef struct i40e_txq_stat {
 	 * Various failure conditions.
 	 */
 	kstat_named_t	itxs_hck_meoifail;	/* ether offload failures */
+	kstat_named_t	itxs_hck_badttype;	/* bad tunnel type */
 	kstat_named_t	itxs_hck_nol2info;	/* Missing l2 info */
 	kstat_named_t	itxs_hck_nol3info;	/* Missing l3 info */
 	kstat_named_t	itxs_hck_nol4info;	/* Missing l4 info */
+	kstat_named_t	itxs_hck_notunl2info;	/* Missing tunnel l2 info */
+	kstat_named_t	itxs_hck_notunl3info;	/* Missing tunnel l3 info */
+	kstat_named_t	itxs_hck_notunl4info;	/* Missing tunnel l4 info */
 	kstat_named_t	itxs_hck_badl3;		/* Not IPv4/IPv6 */
 	kstat_named_t	itxs_hck_badl4;		/* Bad L4 Paylaod */
+	kstat_named_t	itxs_hck_outer;		/* requested outer tunnel */
+	kstat_named_t	itxs_hck_badtso;	/* Bad checksums for TSO */
 
 	kstat_named_t	itxs_err_notcb;		/* No tcb's available */
 	kstat_named_t	itxs_err_nodescs;	/* No tcb's available */

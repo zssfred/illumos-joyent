@@ -747,8 +747,13 @@ i40e_m_getcapab(void *arg, mac_capab_t cap, void *cap_data)
 		mac_capab_lso_t *cap_lso = cap_data;
 
 		if (i40e->i40e_tx_lso_enable == B_TRUE) {
-			cap_lso->lso_flags = LSO_TX_BASIC_TCP_IPV4;
+			cap_lso->lso_flags = LSO_TX_BASIC_TCP_IPV4 |
+			    LSO_TX_VXLAN_TCP;
 			cap_lso->lso_basic_tcp_ipv4.lso_max = I40E_LSO_MAXLEN;
+			/* XXX This is not the case for the X722 */
+			cap_lso->lso_vxlan_tcp.lso_oudp_cksum =
+			    LSO_VXLAN_OUDP_CSUM_NONE;
+			cap_lso->lso_vxlan_tcp.lso_tcp_max = I40E_LSO_MAXLEN;
 		} else {
 			return (B_FALSE);
 		}

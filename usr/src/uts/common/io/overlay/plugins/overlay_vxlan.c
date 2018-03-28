@@ -385,10 +385,6 @@ vxlan_o_mac_capab(void *arg, mac_capab_t capab, void *cap_data, ksocket_t ksock)
 
 	switch (capab) {
 	case MAC_CAPAB_HCKSUM:
-		/*
-		 * XXX Almost certainly some things are going to need the right
-		 * psuedo-header on transmit.
-		 */
 		if ((vxl->vxl_utunnel.uto_cksum_flags & (HCKSUM_VXLAN_FULL |
 		    HCKSUM_VXLAN_PSEUDO | HCKSUM_VXLAN_PSEUDO_NO_OL4)) != 0) {
 			uint32_t *hck = cap_data;
@@ -404,18 +400,15 @@ vxlan_o_mac_capab(void *arg, mac_capab_t capab, void *cap_data, ksocket_t ksock)
 			hcapab = B_TRUE;
 		}
 		break;
-#if 0
 	case MAC_CAPAB_LSO:
 		if ((vxl->vxl_utunnel.uto_lso_flags & DLD_LSO_VXLAN_TCP_IPV4) != 0) {
 			mac_capab_lso_t *lso = cap_data;
 			lso->lso_flags = LSO_TX_BASIC_TCP_IPV4;
-			/* XXX Check value */
 			lso->lso_basic_tcp_ipv4.lso_max =
-			    vxl->vxl_utunnel.uto_lso_max - 100;
+			    vxl->vxl_utunnel.uto_lso_tcp_max - 1024;
 			hcapab = B_TRUE;
 		}
 		break;
-#endif
 	default:
 		hcapab = B_FALSE;
 		break;

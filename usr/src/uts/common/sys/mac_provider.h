@@ -120,9 +120,13 @@ typedef struct lso_basic_tcp_ipv4_s {
 	t_uscalar_t	lso_max;		/* maximum payload */
 } lso_basic_tcp_ipv4_t;
 
+#define	LSO_VXLAN_OUDP_CSUM_NONE	0
+#define	LSO_VXLAN_OUDP_CSUM_PSEUDO	1
+#define	LSO_VXLAN_OUDP_CSUM_FULL	2
+
 typedef struct lso_vxlan_tcp {
-	t_uscalar_t	lso_tcpv4_max;		/* maximum payload */
-	t_uscalar_t	lso_tcpv6_max;		/* maximum payload */
+	uint_t	lso_oudp_cksum;		/* Checksum flags */
+	uint_t	lso_tcp_max;		/* maximum payload */
 } lso_vxlan_tcp_t;
 
 /*

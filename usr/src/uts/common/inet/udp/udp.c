@@ -553,6 +553,49 @@ udp_bind_hash_insert(udp_fanout_t *uf, udp_t *udp)
 }
 
 /*
+ * This function determines whether or not we have a tunneled TSO packet and
+ * takes care of setting up the things that we need to deal with this. Snapshot
+ * the needed data under the conn_lock to make sure that this is safe. We need
+ * to make sure that we do the following:
+ *
+ * 1. Use the UDP mss to set the fragment size
+ * 2. Use the mblk_t mss to set the extra ident
+ *
+ * Calculating the amount of extra ident here is a bit annoying. We have some
+ * number of headers that need to be taken into account that will be in each
+ * message block. To avoid reaching into the inner TCP data and figuring out
+ * what the actual length is, we'll approximate this by just taking the total
+ * message length, dividing it by the mss and adding two. One is to round up and
+ * then the additional one is to account for anything that the headers throw
+ * off.
+ */
+static boolean_t
+udp_setup_tunnel_lso(udp_t *udp, ip_xmit_attr_t *ixa, mblk_t *mp)
+{
+	conn_t *connp = udp->udp_connp;
+	uint32_t udpmss, mpmss;
+
+	if ((DB_LSOFLAGS(mp) & HW_LSO) == 0)
+		return (B_FALSE);
+
+	mpmss = DB_LSOMSS(mp);
+	ASSERT3U(mpmss, !=, 0);
+
+	mutex_enter(&connp->conn_lock);
+	if (udp->udp_tunnel == 0 || udp->udp_tunnel_tso == 0) {
+		mutex_exit(&connp->conn_lock);
+		return (B_FALSE);
+	}
+	udpmss = udp->udp_tso_mss;
+	mutex_exit(&connp->conn_lock);
+
+	ixa->ixa_fragsize = udpmss;
+	ixa->ixa_extra_ident = msgsize(mp) / mpmss + 2;
+
+	return (B_TRUE);
+}
+
+/*
  * This routine is called to handle each O_T_BIND_REQ/T_BIND_REQ message
  * passed to udp_wput.
  * It associates a port number and local address with the stream.
@@ -1572,10 +1615,71 @@ udp_opt_allow_udr_set(t_scalar_t level, t_scalar_t name)
 	return (B_TRUE);
 }
 
+/*
+ * Based on the UDP socket in question, determine whether or not we can perform
+ * hardware checksuming feature. The constraints are as follows:
+ *
+ *   - If hardware supports checksumming both the inner and outer L4 header,
+ *   then we can.
+ *
+ *   - If hardware only supports the inner L4 header, then we can if we're on an
+ *   IPv4 socket and the client has requested relaxed checksumming (e.g. no UDP
+ *   checksum).
+ *
+ * This returns the type of checksum that we'll be performing in the same
+ * constants that the LSO logic uses to make it easier to compare what works and
+ * doesn't work there.
+ */
+static int 
+udp_can_vxlan_checksum(udp_t *udp, uint_t cksum, boolean_t relax)
+{
+	if ((cksum & HCKSUM_VXLAN_FULL) != 0)
+		return (DLD_LSO_VXLAN_OUDP_CSUM_FULL);
+
+	if ((cksum & HCKSUM_VXLAN_PSEUDO) != 0)
+		return (DLD_LSO_VXLAN_OUDP_CSUM_PSEUDO);
+
+	if (udp->udp_connp->conn_ipversion != IPV4_VERSION)
+		return (-1);
+
+	if ((cksum & HCKSUM_VXLAN_PSEUDO_NO_OL4) != 0 && relax)
+		return (DLD_LSO_VXLAN_OUDP_CSUM_NONE);
+
+	return (-1);
+}
+
+/*
+ * Based on the hardware checksum and LSO capabilties, determine if we can
+ * support VXLAN based TSO. The main gotcha here is whether or not the hardware
+ * supports the checksumming features we need for TSO. See
+ * udp_can_vxlan_checksum for the requirements for checksumming.
+ */
+static boolean_t
+udp_can_vxlan_tso(udp_t *udp, uint_t cksum, ill_lso_capab_t *lso,
+    boolean_t relax)
+{
+	int cktype;
+
+	/*
+	 * If we can't perform checksum offload, then we can't do anything.
+	 */
+	if ((cktype = udp_can_vxlan_checksum(udp, cksum, relax)) == -1)
+		return (B_FALSE);
+
+	if ((lso->ill_lso_flags &
+	    (DLD_LSO_VXLAN_TCP_IPV4 | DLD_LSO_VXLAN_TCP_IPV6)) == 0)
+		return (B_FALSE);
+
+	if (cktype != lso->ill_lso_vxlan_cksum)
+		return (B_FALSE);
+
+	return (B_TRUE);
+}
+
 static int
 udp_do_opt_tunnel_get(conn_t *connp, udp_t *udp, udp_tunnel_opt_t *optp)
 {
-	uint_t hck, lso, mss;
+	boolean_t relax;
 
 	mutex_enter(&connp->conn_lock);
 	bzero(optp, sizeof (udp_tunnel_opt_t));
@@ -1596,18 +1700,31 @@ udp_do_opt_tunnel_get(conn_t *connp, udp_t *udp, udp_tunnel_opt_t *optp)
 
 	if (udp->udp_skip_cksum != 0) {
 		optp->uto_opts |= UDP_TUNNEL_OPT_RELAX_CKSUM;
+		relax = B_TRUE;
+	} else {
+		relax = B_FALSE;
 	}
 
 	mutex_exit(&connp->conn_lock);
 
 	if ((optp->uto_opts & UDP_TUNNEL_OPT_HWCAP) != 0) {
-		if (ip_bindif_hwcaps(connp, &hck, &lso, &mss) != 0)
+		uint_t hck;
+		ill_lso_capab_t lso;
+
+		bzero(&lso, sizeof (lso));
+		if (ip_bindif_hwcaps(connp, &hck, &lso) != 0)
 			return (-1);
 
 		optp->uto_type = UDP_TUNNEL_VXLAN;
-		optp->uto_cksum_flags = hck;
-		optp->uto_lso_flags = lso;
-		optp->uto_lso_max = mss;
+		if (udp_can_vxlan_checksum(udp, hck, relax) != -1) {
+			optp->uto_cksum_flags = hck;
+		}
+
+		if (udp_can_vxlan_tso(udp, hck, &lso, relax)) {
+			optp->uto_lso_flags = lso.ill_lso_flags &
+			    (DLD_LSO_VXLAN_TCP_IPV4 | DLD_LSO_VXLAN_TCP_IPV6);
+			optp->uto_lso_tcp_max = lso.ill_lso_vxlan_tcp_max;
+		}
 	}
 
 	return (sizeof (udp_tunnel_opt_t));
@@ -1790,18 +1907,19 @@ udp_do_opt_tunnel_set(conn_opt_arg_t *coa, cred_t *cr, udp_tunnel_opt_t *optp)
 	}
 
 	/*
-	 * Set the fact that this is tunneled. We'll leave actually fetching the
-	 * information to the getsockopt.
+	 * Set the fact that this is tunneled. We want to do this before we
+	 * potentially drop the conn_lock when looking at the HWCAP option so we
+	 * can make sure that we're safe against a concurrent setsockopt().
 	 */
 	udp->udp_tunnel = 1;
 
-	/*
-	 * We trust that the caller has asked for strict binding.
-	 */
 	if ((optp->uto_opts & UDP_TUNNEL_OPT_HWCAP) != 0) {
 		uint_t ifindex;
 		int ret;
 		t_scalar_t proto, cmd;
+		boolean_t can_relax;
+		uint_t hck;
+		ill_lso_capab_t lso;
 
 		if (connp->conn_ipversion == IPV4_VERSION) {
 			proto = IPPROTO_IP;
@@ -1816,6 +1934,9 @@ udp_do_opt_tunnel_set(conn_opt_arg_t *coa, cred_t *cr, udp_tunnel_opt_t *optp)
 		 * Try and set up the strict binding to the listen interface.
 		 */
 		if ((ret = ip_bindif_ifindex(connp, &ifindex)) != 0) {
+			mutex_enter(&connp->conn_lock);
+			udp->udp_tunnel = 0;
+			mutex_exit(&connp->conn_lock);
 			return (ret);
 		}
 
@@ -1828,8 +1949,25 @@ udp_do_opt_tunnel_set(conn_opt_arg_t *coa, cred_t *cr, udp_tunnel_opt_t *optp)
 			return (ret);
 		}
 
+		/*
+		 * XXX We should be setting up a change listener here.
+		 */
+		bzero(&lso, sizeof (lso));
+		if ((ret = ip_bindif_hwcaps(connp, &hck, &lso)) != 0) {
+			mutex_enter(&connp->conn_lock);
+			udp->udp_tunnel = 0;
+			mutex_exit(&connp->conn_lock);
+			return (ret);
+		}
+
 		mutex_enter(&connp->conn_lock);
 		udp->udp_tunnel_hwcap = 1;
+
+		can_relax = (optp->uto_opts & UDP_TUNNEL_OPT_RELAX_CKSUM) != 0;
+		if (udp_can_vxlan_tso(udp, hck, &lso, can_relax)) {
+			udp->udp_tunnel_tso = 1;
+			udp->udp_tso_mss = lso.ill_lso_vxlan_tcp_max;
+		}
 	}
 
 	if ((optp->uto_opts & UDP_TUNNEL_OPT_SRCPORT_HASH) != 0) {
@@ -2905,7 +3043,8 @@ retry:
  * Either tudr_mp or msg is set. If tudr_mp we take ancillary data from
  * the TPI options, otherwise we take them from msg_control.
  * If both sin and sin6 is set it is a connected socket and we use conn_faddr.
- * Always consumes mp; never consumes tudr_mp.
+ * Always consumes mp; never consumes tudr_mp. Kernel UDP tunnels do not use
+ * this path and therefore this does not perform any TSO checks.
  */
 static int
 udp_output_ancillary(conn_t *connp, sin_t *sin, sin6_t *sin6, mblk_t *mp,
@@ -3223,6 +3362,7 @@ udp_output_connected(conn_t *connp, mblk_t *mp, cred_t *cr, pid_t pid)
 	udp_stack_t	*us = udp->udp_us;
 	int		error;
 	ip_xmit_attr_t	*ixa;
+	boolean_t	lso;
 
 	/*
 	 * If no other thread is using conn_ixa this just gets a reference to
@@ -3319,6 +3459,8 @@ udp_output_connected(conn_t *connp, mblk_t *mp, cred_t *cr, pid_t pid)
 	}
 	ASSERT(ixa->ixa_ire != NULL);
 
+	lso = udp_setup_tunnel_lso(udp, ixa, mp);
+
 	/* We're done.  Pass the packet to ip. */
 	UDPS_BUMP_MIB(us, udpHCOutDatagrams);
 
@@ -3346,6 +3488,10 @@ udp_output_connected(conn_t *connp, mblk_t *mp, cred_t *cr, pid_t pid)
 	ASSERT(!(ixa->ixa_free_flags & IXA_FREE_CRED));
 	ixa->ixa_cred = connp->conn_cred;	/* Restore */
 	ixa->ixa_cpid = connp->conn_cpid;
+	if (lso) {
+		ixa->ixa_fragsize = ixa->ixa_pmtu;
+		ixa->ixa_extra_ident = 0;
+	}
 	ixa_refrele(ixa);
 	return (error);
 }
@@ -3363,6 +3509,7 @@ udp_output_lastdst(conn_t *connp, mblk_t *mp, cred_t *cr, pid_t pid,
 	udp_t		*udp = connp->conn_udp;
 	udp_stack_t	*us = udp->udp_us;
 	int		error;
+	boolean_t	lso;
 
 	ASSERT(MUTEX_HELD(&connp->conn_lock));
 	ASSERT(ixa != NULL);
@@ -3449,6 +3596,8 @@ udp_output_lastdst(conn_t *connp, mblk_t *mp, cred_t *cr, pid_t pid,
 		mutex_exit(&connp->conn_lock);
 	}
 
+	lso = udp_setup_tunnel_lso(udp, ixa, mp);
+
 	/* We're done.  Pass the packet to ip. */
 	UDPS_BUMP_MIB(us, udpHCOutDatagrams);
 
@@ -3489,6 +3638,10 @@ udp_output_lastdst(conn_t *connp, mblk_t *mp, cred_t *cr, pid_t pid,
 	ASSERT(!(ixa->ixa_free_flags & IXA_FREE_CRED));
 	ixa->ixa_cred = connp->conn_cred;	/* Restore */
 	ixa->ixa_cpid = connp->conn_cpid;
+	if (lso) {
+		ixa->ixa_fragsize = ixa->ixa_pmtu;
+		ixa->ixa_extra_ident = 0;
+	}
 	ixa_refrele(ixa);
 	return (error);
 }
@@ -4022,6 +4175,7 @@ udp_output_newdst(conn_t *connp, mblk_t *data_mp, sin_t *sin, sin6_t *sin6,
 	in6_addr_t	v6dst;
 	in6_addr_t	v6nexthop;
 	in_port_t	dstport;
+	boolean_t	lso;
 
 	ASSERT(MUTEX_HELD(&connp->conn_lock));
 	ASSERT(ixa != NULL);
@@ -4284,6 +4438,8 @@ udp_output_newdst(conn_t *connp, mblk_t *data_mp, sin_t *sin, sin6_t *sin6,
 		goto ud_error;
 	}
 
+	lso = udp_setup_tunnel_lso(udp, ixa, data_mp);
+
 	/* We're done.  Pass the packet to ip. */
 	UDPS_BUMP_MIB(us, udpHCOutDatagrams);
 
@@ -4324,6 +4480,10 @@ udp_output_newdst(conn_t *connp, mblk_t *data_mp, sin_t *sin, sin6_t *sin6,
 	ASSERT(!(ixa->ixa_free_flags & IXA_FREE_CRED));
 	ixa->ixa_cred = connp->conn_cred;	/* Restore */
 	ixa->ixa_cpid = connp->conn_cpid;
+	if (lso) {
+		ixa->ixa_fragsize = ixa->ixa_pmtu;
+		ixa->ixa_extra_ident = 0;
+	}
 	ixa_refrele(ixa);
 	return (error);
 

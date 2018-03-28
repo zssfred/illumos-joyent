@@ -1234,6 +1234,10 @@ i40e_stats_trqpair_init(i40e_trqpair_t *itrq)
 	kstat_named_init(&tsp->itxs_hck_meoifail, "tx_hck_meoifail",
 	    KSTAT_DATA_UINT64);
 	tsp->itxs_hck_meoifail.value.ui64 = 0;
+	kstat_named_init(&tsp->itxs_hck_badttype, "tx_hck_bad_tunnel_type",
+	    KSTAT_DATA_UINT64);
+	tsp->itxs_hck_badttype.value.ui64 = 0;
+
 	kstat_named_init(&tsp->itxs_hck_nol2info, "tx_hck_nol2info",
 	    KSTAT_DATA_UINT64);
 	tsp->itxs_hck_nol2info.value.ui64 = 0;
@@ -1243,12 +1247,27 @@ i40e_stats_trqpair_init(i40e_trqpair_t *itrq)
 	kstat_named_init(&tsp->itxs_hck_nol4info, "tx_hck_nol4info",
 	    KSTAT_DATA_UINT64);
 	tsp->itxs_hck_nol4info.value.ui64 = 0;
+	kstat_named_init(&tsp->itxs_hck_notunl2info, "tx_hck_notunl2info",
+	    KSTAT_DATA_UINT64);
+	tsp->itxs_hck_notunl2info.value.ui64 = 0;
+	kstat_named_init(&tsp->itxs_hck_notunl3info, "tx_hck_notunl3info",
+	    KSTAT_DATA_UINT64);
+	tsp->itxs_hck_notunl3info.value.ui64 = 0;
+	kstat_named_init(&tsp->itxs_hck_notunl4info, "tx_hck_notunl4info",
+	    KSTAT_DATA_UINT64);
+	tsp->itxs_hck_notunl4info.value.ui64 = 0;
 	kstat_named_init(&tsp->itxs_hck_badl3, "tx_hck_badl3",
 	    KSTAT_DATA_UINT64);
 	tsp->itxs_hck_badl3.value.ui64 = 0;
 	kstat_named_init(&tsp->itxs_hck_badl4, "tx_hck_badl4",
 	    KSTAT_DATA_UINT64);
 	tsp->itxs_hck_badl4.value.ui64 = 0;
+	kstat_named_init(&tsp->itxs_hck_outer, "tx_hck_outer",
+	    KSTAT_DATA_UINT64);
+	tsp->itxs_hck_outer.value.ui64 = 0;
+	kstat_named_init(&tsp->itxs_hck_badtso, "tx_hck_badtso",
+	    KSTAT_DATA_UINT64);
+	tsp->itxs_hck_badtso.value.ui64 = 0;
 	kstat_named_init(&tsp->itxs_err_notcb, "tx_err_notcb",
 	    KSTAT_DATA_UINT64);
 	tsp->itxs_err_notcb.value.ui64 = 0;

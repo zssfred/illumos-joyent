@@ -1596,6 +1596,8 @@ struct ill_zerocopy_capab_s {
 struct ill_lso_capab_s {
 	uint_t	ill_lso_flags;		/* capabilities */
 	uint_t	ill_lso_max;		/* maximum size of payload */
+	uint_t	ill_lso_vxlan_cksum;
+	uint_t	ill_lso_vxlan_tcp_max;
 };
 
 /*

@@ -52,7 +52,7 @@ typedef struct udp_tunnel_opt {
 	uint32_t	uto_opts;
 	uint32_t	uto_cksum_flags;
 	uint32_t	uto_lso_flags;
-	uint32_t	uto_lso_max;
+	uint32_t	uto_lso_tcp_max;
 } udp_tunnel_opt_t;
 
 #endif	/* _KERNEL */

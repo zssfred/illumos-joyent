@@ -440,9 +440,16 @@ typedef struct dld_capab_poll_s {
 #define	DLD_LSO_VXLAN_TCP_IPV4	0x04	/* TCPv4 LSO encapsulated in VXLAN */
 #define	DLD_LSO_VXLAN_TCP_IPV6	0x08	/* TCPv6 LSO encapsulated in VXLAN */
 
+/* These should match the counterparts in <sys/mac_provider.h> */
+#define	DLD_LSO_VXLAN_OUDP_CSUM_NONE	0
+#define	DLD_LSO_VXLAN_OUDP_CSUM_PSEUDO	1
+#define	DLD_LSO_VXLAN_OUDP_CSUM_FULL	2
+
 typedef struct dld_capab_lso_s {
 	uint_t  lso_flags;	/* capability flags */
 	uint_t  lso_max;	/* maximum payload */
+	uint_t	lso_vxlan_cksum;
+	uint_t	lso_vxlan_tcp_max;
 } dld_capab_lso_t;
 
 int	dld_getinfo(dev_info_t *, ddi_info_cmd_t, void *, void **);

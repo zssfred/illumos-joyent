@@ -1066,6 +1066,16 @@ overlay_tx_checksum_shift(mblk_t *mp, uint16_t flags)
 	}
 }
 
+static inline void
+overlay_tx_lso_copy(const mblk_t *src, mblk_t *dst)
+{
+	uint16_t flags = DB_LSOFLAGS(src) & HW_LSO_FLAGS;
+	if (flags == 0)
+		return;
+	DB_LSOFLAGS(dst) |= flags;
+	DB_LSOMSS(dst) = DB_LSOMSS(src);
+}
+
 mblk_t *
 overlay_m_tx(void *arg, mblk_t *mp_chain)
 {
@@ -1123,6 +1133,7 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 		 */
 		overlay_tx_checksum_shift(ep, DB_CKSUMFLAGS(mp));
 		if (ep != mp) {
+			overlay_tx_lso_copy(mp, ep);
 			ep->b_cont = mp;
 		}
 

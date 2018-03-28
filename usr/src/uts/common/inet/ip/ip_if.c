@@ -2096,6 +2096,8 @@ ill_capability_lso_enable(ill_t *ill)
 	    DLD_ENABLE)) == 0) {
 		ill->ill_lso_capab->ill_lso_flags = lso.lso_flags;
 		ill->ill_lso_capab->ill_lso_max = lso.lso_max;
+		ill->ill_lso_capab->ill_lso_vxlan_cksum = lso.lso_vxlan_cksum;
+		ill->ill_lso_capab->ill_lso_vxlan_tcp_max = lso.lso_vxlan_tcp_max;
 		ill->ill_capabilities |= ILL_CAPAB_LSO;
 		ip1dbg(("ill_capability_lso_enable: interface %s "
 		    "has enabled LSO\n ", ill->ill_name));
@@ -19212,8 +19214,7 @@ out:
 }
 
 int
-ip_bindif_hwcaps(conn_t *connp, uint_t *hckflags, uint_t *lsoflags,
-    uint_t *lsomax)
+ip_bindif_hwcaps(conn_t *connp, uint_t *hckflags, ill_lso_capab_t *lso)
 {
 	in6_addr_t laddrv6;
 	in_addr_t laddrv4;
@@ -19222,8 +19223,7 @@ ip_bindif_hwcaps(conn_t *connp, uint_t *hckflags, uint_t *lsoflags,
 	ip_stack_t *ipst;
 	int ret;
 
-	if (connp == NULL || hckflags == NULL || lsoflags == NULL ||
-	    lsomax == NULL) {
+	if (connp == NULL || hckflags == NULL || lso == NULL) {
 		return (EINVAL);
 	}
 
@@ -19270,12 +19270,10 @@ ip_bindif_hwcaps(conn_t *connp, uint_t *hckflags, uint_t *lsoflags,
 	 * to deal with getting updates.
 	 */
 	if (ILL_LSO_USABLE(ipif->ipif_ill)) {
-		ill_lso_capab_t *lsop = ipif->ipif_ill->ill_lso_capab;
-		*lsoflags = lsop->ill_lso_flags;
-		*lsomax = lsop->ill_lso_max;
+		bcopy(ipif->ipif_ill->ill_lso_capab, lso,
+		    sizeof (ill_lso_capab_t));
 	} else {
-		*lsoflags = 0;
-		*lsomax = 0;
+		bzero(lso, sizeof (ill_lso_capab_t));
 	}
 
 	if (ILL_HCKSUM_CAPABLE(ipif->ipif_ill)) {

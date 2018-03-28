@@ -1493,6 +1493,17 @@ dld_capab_poll(dld_str_t *dsp, void *data, uint_t flags)
 	return (ENOTSUP);
 }
 
+static void
+dld_capab_lso_fill_vxlan(mac_capab_lso_t *mac, dld_capab_lso_t *lso)
+{
+	lso->lso_vxlan_cksum = mac->lso_vxlan_tcp.lso_oudp_cksum;
+
+	if (mac->lso_vxlan_tcp.lso_tcp_max > 0) {
+		lso->lso_flags |= DLD_LSO_VXLAN_TCP_IPV4 | DLD_LSO_VXLAN_TCP_IPV6;
+		lso->lso_vxlan_tcp_max = mac->lso_vxlan_tcp.lso_tcp_max;
+	}
+}
+
 static int
 dld_capab_lso(dld_str_t *dsp, void *data, uint_t flags)
 {
@@ -1514,14 +1525,9 @@ dld_capab_lso(dld_str_t *dsp, void *data, uint_t flags)
 			/* translate the flag for mac clients */
 			if ((mac_lso.lso_flags & LSO_TX_BASIC_TCP_IPV4) != 0)
 				lso->lso_flags |= DLD_LSO_BASIC_TCP_IPV4;
-			/* XXX We should probably not rely on equality */
-			if ((mac_lso.lso_flags & LSO_TX_VXLAN_TCP) != 0 &&
-			    mac_lso.lso_vxlan_tcp.lso_tcpv4_max == lso->lso_max) {
-				lso->lso_flags |= DLD_LSO_VXLAN_TCP_IPV4;
-			}
-			if ((mac_lso.lso_flags & LSO_TX_VXLAN_TCP) != 0 &&
-			    mac_lso.lso_vxlan_tcp.lso_tcpv6_max == lso->lso_max) {
-				lso->lso_flags |= DLD_LSO_VXLAN_TCP_IPV6;
+
+			if ((mac_lso.lso_flags & LSO_TX_VXLAN_TCP) != 0) {
+				dld_capab_lso_fill_vxlan(&mac_lso, lso);
 			}
 			dsp->ds_lso = B_TRUE;
 			dsp->ds_lso_max = lso->lso_max;

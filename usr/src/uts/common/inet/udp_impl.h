@@ -186,8 +186,10 @@ typedef	struct udp_s {
 		udp_tunnel: 1,		/* UDP_TUNNEL called */
 		udp_tunnel_hwcap: 1,	/* UDP_TUNNEL asked for strict bind */
 		udp_skip_cksum: 1,	/* UDP_TUNNEL asked for no checksum */
+		udp_tunnel_tso: 1,	/* UDP tunnel traffic can perform TSO */
 
-		udp_pad_to_bit_31 : 25;
+		udp_pad_to_bit_31 : 23;
+	uint32_t	udp_tso_mss;	/* TSO MSS for tunneled traffic */
 
 	/* Following 2 fields protected by the uf_lock */
 	struct udp_s	*udp_bind_hash; /* Bind hash chain */

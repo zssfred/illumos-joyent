@@ -1682,13 +1682,15 @@ i40e_ring_rx_poll(void *arg, int poll_bytes)
  * consider adding this to MAC.
  */
 typedef enum mac_ether_offload_flags {
-	MEOI_L2INFO_SET		= 0x01,
-	MEOI_VLAN_TAGGED	= 0x02,
-	MEOI_L3INFO_SET		= 0x04,
-	MEOI_L3CKSUM_SET	= 0x08,
-	MEOI_L4INFO_SET		= 0x10,
-	MEOI_L4CKSUM_SET	= 0x20,
-	MEOI_TUNNEL_INFO_SET	= 0x40,
+	MEOI_L2INFO_SET		= 0x001,
+	MEOI_VLAN_TAGGED	= 0x002,
+	MEOI_L3INFO_SET		= 0x004,
+	MEOI_L4INFO_SET		= 0x010,
+	MEOI_TUN_INFO_SET	= 0x020,
+	MEOI_TUN_L2INFO_SET	= 0x040,
+	MEOI_TUN_VLAN_TAGGED	= 0x080,
+	MEOI_TUN_L3INFO_SET	= 0x100,
+	MEOI_TUN_L4INFO_SET	= 0x200,
 } mac_ether_offload_flags_t;
 
 #define	MEOI_L2_L3_L4	(MEOI_L2INFO_SET | MEOI_L3INFO_SET | MEOI_L4INFO_SET)
@@ -1709,13 +1711,6 @@ typedef struct mac_ether_offload_info {
 	uint8_t		meoi_tun_l3hlen;  /* How long is the header? */
 	uint8_t		meoi_tun_l4proto; /* What is the payload type? */
 	uint8_t		meoi_tun_l4hlen;  /* How long is the L4 header */
-	/*
-	 * The following members are currently not used
-	 */
-	mblk_t		*meoi_l3ckmp;	/* Which mblk has the l3 checksum */
-	off_t		meoi_l3ckoff;	/* What's the offset to it */
-	mblk_t		*meoi_l4ckmp;	/* Which mblk has the L4 checksum */
-	off_t		meoi_l4ckoff;	/* What is the offset to it? */
 } mac_ether_offload_info_t;
 
 /*
@@ -1788,6 +1783,41 @@ i40e_meoi_get_uint16(mblk_t *mp, off_t off, uint16_t *out)
 	*out |= *bp;
 	return (0);
 
+}
+
+static int
+i40e_meoi_zero_uint16(mblk_t *mp, off_t off)
+{
+	size_t mpsize;
+	uint8_t *bp;
+
+	mpsize = msgsize(mp);
+	/* Check for overflow */
+	if (off + sizeof (uint16_t) > mpsize)
+		return (-1);
+
+	mpsize = MBLKL(mp);
+	while (off >= mpsize) {
+		mp = mp->b_cont;
+		off -= mpsize;
+		mpsize = MBLKL(mp);
+	}
+
+	/*
+	 * Data is in network order. Note the second byte of data might be in
+	 * the next mp.
+	 */
+	bp = mp->b_rptr + off;
+	*bp = 0;
+	if (off + 1 == mpsize) {
+		mp = mp->b_cont;
+		bp = mp->b_rptr;
+	} else {
+		bp++;
+	}
+	*bp = 0;
+
+	return (0);
 }
 
 static int
@@ -1895,20 +1925,125 @@ mac_ether_offload_info(mblk_t *mp, mac_ether_offload_info_t *meoi,
 		if (ret != 0)
 			return (ret);
 
-		if ((meo.meoi_flags & MEOI_L2_L3_L4) != MEOI_L2_L3_L4)
-			return (-1);
-
 		meoi->meoi_tun_protlen = VXLAN_HDR_LEN;
-		meoi->meoi_tun_l2hlen = meo.meoi_l2hlen;
-		meoi->meoi_tun_l3proto = meo.meoi_l3proto;
-		meoi->meoi_tun_l3hlen = meo.meoi_l3hlen;
-		meoi->meoi_tun_l4proto = meo.meoi_l4proto;
-		meoi->meoi_tun_l4hlen = meo.meoi_l4hlen;
+		meoi->meoi_flags |= MEOI_TUN_INFO_SET;
 
-		meoi->meoi_flags |= MEOI_TUNNEL_INFO_SET;
+		if (meo.meoi_flags & MEOI_L2INFO_SET) {
+			meoi->meoi_flags |= MEOI_TUN_L2INFO_SET;
+			meoi->meoi_tun_l2hlen = meo.meoi_l2hlen;
+		}
+
+		if (meo.meoi_flags & MEOI_VLAN_TAGGED) {
+			meoi->meoi_flags |= MEOI_TUN_VLAN_TAGGED;
+		}
+
+		if (meo.meoi_flags & MEOI_L3INFO_SET) {
+			meoi->meoi_flags |= MEOI_TUN_L3INFO_SET;
+			meoi->meoi_tun_l3proto = meo.meoi_l3proto;
+			meoi->meoi_tun_l3hlen = meo.meoi_l3hlen;
+		}
+
+		if (meo.meoi_flags & MEOI_L4INFO_SET) {
+			meoi->meoi_flags |= MEOI_TUN_L4INFO_SET;
+			meoi->meoi_tun_l4proto = meo.meoi_l4proto;
+			meoi->meoi_tun_l4hlen = meo.meoi_l4hlen;
+		}
+
 	}
 
 	return (0);
+}
+
+/*
+ * Determine if we have sufficient checksum flags to perform TSO. This varies
+ * based on the tunnel type. If we have normal TSO traffic, we need both the
+ * IPv4 header checksum and the L4 checksum. For VXLAN encoded traffic, we need
+ * the outer IPv4 checksum and inner checksums.
+ *
+ * At this time the networking stack only supports TSO on IPv4 and the X710
+ * hardware can't support VXLAN aware TSO on IPv6 due to the fact that it can't
+ * perform the UDP checksum.
+ */
+static inline boolean_t
+i40e_tx_tso_have_cksums(uint32_t chkflags, uint32_t ttype)
+{
+	 if (ttype == TTYPE_NONE) {
+		 if ((chkflags & HCK_IPV4_HDRCKSUM) == 0)
+			 return (B_FALSE);
+		 if ((chkflags & HCK_PARTIALCKSUM) == 0)
+			 return (B_FALSE);
+	 } else if (ttype == TTYPE_VXLAN) {
+		 if ((chkflags & HCK_IPV4_HDRCKSUM) == 0)
+			 return (B_FALSE);
+		 /*
+		  * We can't perform LSO if we need an outer checksum, so that's
+		  * an error.
+		  */
+		 if ((chkflags & HCK_PARTIALCKSUM) != 0)
+			 return (B_FALSE);
+		 /*
+		  * When the networking stack supports TSO over IPv6, this check
+		  * will need to be conditional on protocol.
+		  */
+		 if ((chkflags & HCK_INNER_IPV4_HDRCKSUM_NEEDED) == 0)
+			 return (B_FALSE);
+		 if ((chkflags & HCK_INNER_PSEUDO_NEEDED) == 0)
+			 return (B_FALSE);
+	 } else {
+		 return (B_FALSE);
+	 }
+
+	 return (B_TRUE);
+}
+
+/*
+ * Fix up the message block for TSO to match what hardware expects. The hardware
+ * requires that the length and checksum for all IP headers be zero. It requires
+ * that the outer UDP checksum be zero and that the length field be zero. The
+ * networking stack will have taken care of making sure that the inner (or
+ * single) TCP header is OK. What we have to do is make sure that:
+ *
+ *  1. Outer IP length is zero
+ *  2. Outer UDP length (if it exists) is zero
+ *  3. Inner IP length (if it exists) is zero
+ */
+static boolean_t
+i40e_tx_tso_fix_mp(mblk_t *mp, uint32_t ttype, mac_ether_offload_info_t *infop)
+{
+	off_t off = infop->meoi_l2hlen;
+
+	if (infop->meoi_l3proto == ETHERTYPE_IP) {
+		i40e_meoi_zero_uint16(mp, off + offsetof(ipha_t, ipha_length));
+	} else if (infop->meoi_l3proto == ETHERTYPE_IPV6) {
+		i40e_meoi_zero_uint16(mp, off + offsetof(ip6_t, ip6_plen));
+	} else {
+		return (B_FALSE);
+	}
+
+	if (ttype == TTYPE_NONE) {
+		return (B_TRUE);
+	} else if (ttype != TTYPE_VXLAN) {
+		return (B_FALSE);
+	}
+
+	off += infop->meoi_l3hlen;
+	if (infop->meoi_l4proto != IPPROTO_UDP) {
+		return (B_FALSE);
+	}
+
+#if 0
+	i40e_meoi_zero_uint16(mp, off + offsetof(struct udphdr, uh_ulen));
+#endif
+	off += infop->meoi_l4hlen + infop->meoi_tun_protlen +
+	    infop->meoi_tun_l2hlen;
+	if (infop->meoi_tun_l3proto == ETHERTYPE_IP) {
+		i40e_meoi_zero_uint16(mp, off + offsetof(ipha_t, ipha_length));
+	} else if (infop->meoi_tun_l3proto == ETHERTYPE_IPV6) {
+		i40e_meoi_zero_uint16(mp, off + offsetof(ip6_t, ip6_plen));
+	} else {
+		return (B_FALSE);
+	}
+	return (B_TRUE);
 }
 
 /*
@@ -1952,7 +2087,7 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 	tunneled = (chkflags &
 	    (HCK_INNER_IPV4_HDRCKSUM_NEEDED | HCK_INNER_PSEUDO_NEEDED)) != 0;
 	if (tunneled && ttype != TTYPE_VXLAN) {
-		/* XXX kstat */
+		txs->itxs_hck_badttype.value.ui64++;
 		return (-1);
 	}
 
@@ -1994,7 +2129,11 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 		/*
 		 * The MAC ether offload logic should have verified that we have
 		 * the right information for calculating the checksums here.
-		 * Make sure that this is the case.
+		 * Make sure that this is the case. We'll check that we have
+		 * what we need for the checksum types as appropriate. We always
+		 * requiere having the inner L2/L3 information. We only require
+		 * Inner L4 info if we've been asked to do something in
+		 * particular.
 		 */
 		if ((meo.meoi_flags & MEOI_L2INFO_SET) == 0) {
 			txs->itxs_hck_nol2info.value.ui64++;
@@ -2011,17 +2150,18 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 			return (-1);
 		}
 
-		if ((meo.meoi_flags & MEOI_TUNNEL_INFO_SET) == 0) {
-			/* XXX Missing kstat */
+		if ((meo.meoi_flags & MEOI_TUN_L2INFO_SET) == 0) {
+			txs->itxs_hck_notunl2info.value.ui64++;
+			return (-1);
+		}
+
+		if ((meo.meoi_flags & MEOI_TUN_L3INFO_SET) == 0) {
+			txs->itxs_hck_notunl3info.value.ui64++;
 			return (-1);
 		}
 
 		if ((chkflags & HCK_PARTIALCKSUM) != 0) {
-			/*
-			 * There is no HW support for outer checksum other than
-			 * the (outer) HCK_IPV4_HDRCKSUM.
-			 * XXX missing kstat
-			 */
+			txs->itxs_hck_outer.value.ui64++;
 			return (-1);
 		}
 
@@ -2050,10 +2190,11 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 			}
 		}
 
+		/* XXX make comment for L4TUNT */
 		tctx->itc_ctx_tunnel_fld =
 		    I40E_TXD_TNL_SET_EIPT(eipt) |
 		    I40E_TXD_TNL_SET_EIPLEN(meo.meoi_l3hlen >> 2) |
-		    I40E_TXD_TNL_SET_L4TUNT(I40E_TX_DESC_TNL_L4TUNT_UDP) |
+		    I40E_TXD_TNL_SET_L4TUNT(1) |
 		    I40E_TXD_TNL_SET_L4TUNLEN(l4tunlen >> 1) |
 		    I40E_TXD_TNL_SET_DECTTL(0);
 
@@ -2088,6 +2229,11 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 		    I40E_TX_DESC_LENGTH_IPLEN_SHIFT;
 
 		if (chkflags & HCK_INNER_PSEUDO_NEEDED) {
+			if ((meo.meoi_flags & MEOI_TUN_L4INFO_SET) == 0) {
+				txs->itxs_hck_notunl4info.value.ui64++;
+				return (-1);
+			}
+
 			/* L4T */
 			switch (meo.meoi_tun_l4proto) {
 			case IPPROTO_TCP:
@@ -2213,14 +2359,25 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 		 * LSO requires that checksum offloads are enabled.  If for
 		 * some reason they're not we bail out with an error.
 		 */
-		if (!((chkflags & HCK_IPV4_HDRCKSUM) &&
-		    (chkflags & HCK_PARTIALCKSUM))) {
+		if (!i40e_tx_tso_have_cksums(chkflags, ttype)) {
+			txs->itxs_hck_badtso.value.ui64++;
 			return (-1);
 		}
+		if (!i40e_tx_tso_fix_mp(mp, ttype, &meo)) {
+			txs->itxs_hck_badtso.value.ui64++;
+			return (-1);
+		}
+
 		tctx->itc_ctx_cmdflags |= I40E_TX_CTX_DESC_TSO;
 		tctx->itc_ctx_mss = mss;
 		tctx->itc_ctx_tsolen = msgsize(mp) -
 		    (meo.meoi_l2hlen + meo.meoi_l3hlen + meo.meoi_l4hlen);
+		if (tunneled) {
+			tctx->itc_ctx_tsolen -= meo.meoi_tun_protlen +
+			    meo.meoi_tun_l2hlen + meo.meoi_tun_l3hlen +
+			    meo.meoi_tun_l4hlen;
+		}
+
 	}
 
 	return (0);
