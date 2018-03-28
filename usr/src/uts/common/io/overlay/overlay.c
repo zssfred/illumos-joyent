@@ -1054,25 +1054,16 @@ overlay_m_unicast(void *arg, const uint8_t *macaddr)
 }
 
 static inline void
-overlay_tx_checksum_shift(mblk_t *source, mblk_t *target)
+overlay_tx_checksum_shift(mblk_t *mp, uint16_t flags)
 {
-	uint32_t oflags, nflags = 0;
-
-	mac_hcksum_get(source, NULL, NULL, NULL, NULL, &oflags);
-	mac_hcksum_set(source, NULL, NULL, NULL, NULL, 0);
-
-	if ((oflags & HCK_IPV4_HDRCKSUM) != 0)
-		nflags |= HCK_INNER_IPV4_HDRCKSUM_NEEDED;
-	if ((oflags & HCK_FULLCKSUM) != 0) {
-		nflags |= HCK_INNER_FULLCKSUM_NEEDED;
-	} else if ((oflags & HCK_PARTIALCKSUM) != 0) {
-		nflags |= HCK_INNER_PSEUDO_NEEDED;
+	DB_CKSUMFLAGS(mp) &= ~HCK_FLAGS;
+	if ((flags & HCK_IPV4_HDRCKSUM) != 0)
+		DB_CKSUMFLAGS(mp) |= HCK_INNER_IPV4_HDRCKSUM_NEEDED;
+	if ((flags & HCK_FULLCKSUM) != 0) {
+		DB_CKSUMFLAGS(mp) |= HCK_INNER_FULLCKSUM_NEEDED;
+	} else if ((flags & HCK_PARTIALCKSUM) != 0) {
+		DB_CKSUMFLAGS(mp) |= HCK_INNER_PSEUDO_NEEDED;
 	}
-
-	/*
-	 * Manually or in the flags so we don't clobber existing information.
-	 */
-	DB_CKSUMFLAGS(target) |= nflags;
 }
 
 mblk_t *
@@ -1130,9 +1121,11 @@ overlay_m_tx(void *arg, mblk_t *mp_chain)
 		 * Make sure any checksum flags that ended up on mp from the
 		 * lower level are shifted over to emp as outer flags.
 		 */
-		overlay_tx_checksum_shift(mp, ep);
+		overlay_tx_checksum_shift(ep, DB_CKSUMFLAGS(mp));
+		if (ep != mp) {
+			ep->b_cont = mp;
+		}
 
-		ep->b_cont = mp;
 		ret = overlay_mux_tx(odd->odd_mux, &hdr, ep);
 		if (ret != 0)
 			goto out;
