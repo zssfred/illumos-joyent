@@ -152,11 +152,9 @@ typedef enum i40e_itr_index {
 } i40e_itr_index_t;
 
 /*
- * Table 1-5 of the PRM notes that LSO supports up to 256 KB.
- *
- * XXX - add comment as to why this got tuned down to 24k
+ * LSO supports up to 64 KB.
  */
-#define	I40E_LSO_MAXLEN	(24 * 1024)
+#define	I40E_LSO_MAXLEN	(64 * 1024)
 
 #define	I40E_CYCLIC_PERIOD NANOSEC	/* 1 second */
 #define	I40E_DRAIN_RX_WAIT	(500 * MILLISEC)	/* In us */
@@ -180,6 +178,8 @@ typedef enum i40e_itr_index {
  * Packet in System Memory.
  */
 #define	I40E_TX_MAX_COOKIE	8
+
+#define I40E_TX_LSO_MAX_COOKIE	32
 
 /*
  * Sizing to determine the amount of available descriptors at which we'll
@@ -427,9 +427,11 @@ typedef struct i40e_tx_control_block {
 	mblk_t				*tcb_mp;
 	i40e_tx_type_t			tcb_type;
 	ddi_dma_handle_t		tcb_dma_handle;
+	ddi_dma_handle_t		tcb_lso_dma_handle;
 	i40e_dma_buffer_t		tcb_dma;
 	struct i40e_dma_bind_info	**tcb_bind_info;
 	uint_t				tcb_bind_ncookies;
+	boolean_t			tcb_used_lso;
 } i40e_tx_control_block_t;
 
 /*
@@ -869,6 +871,7 @@ typedef struct i40e {
 	 */
 	ddi_dma_attr_t		i40e_static_dma_attr;
 	ddi_dma_attr_t		i40e_txbind_dma_attr;
+	ddi_dma_attr_t		i40e_txbind_lso_dma_attr;
 	ddi_device_acc_attr_t	i40e_desc_acc_attr;
 	ddi_device_acc_attr_t	i40e_buf_acc_attr;
 

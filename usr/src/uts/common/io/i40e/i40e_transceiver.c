@@ -409,9 +409,13 @@ i40e_debug_rx_t i40e_debug_rx_mode = I40E_DEBUG_RX_DEFAULT;
  * memory via the i40e_allocate_virt_mem osdep function, we have it leverage
  * the static dma attr.
  *
- * The second set of attributes, i40e_txbind_dma_attr, is what we use when we're
- * binding a bunch of mblk_t fragments to go out the door. Note that the main
- * difference here is that we're allowed a larger SGL length -- eight.
+ * The latter two sets of attributes, are what we use when we're binding a
+ * bunch of mblk_t fragments to go out the door. Note that the main difference
+ * here is that we're allowed a larger SGL length.  For non-LSO tx, we
+ * restrict the SGL length to match the number of tx buffers available to the
+ * PF (8).  For the LSO case we can go much larger, with the caveat that each
+ * MSS-sized chunk (segment) must not span more than 8 data descriptors and
+ * hence must not span more than 8 cookies.
  *
  * Note, we default to setting ourselves to be DMA capable here. However,
  * because we could have multiple instances which have different FMA error
@@ -445,6 +449,21 @@ static const ddi_dma_attr_t i40e_g_txbind_dma_attr = {
 	0x00000000FFFFFFFFull,		/* maximum transfer size */
 	0xFFFFFFFFFFFFFFFFull,		/* maximum segment size	 */
 	I40E_TX_MAX_COOKIE,		/* scatter/gather list length */
+	0x00000001,			/* granularity */
+	DDI_DMA_FLAGERR			/* DMA flags */
+};
+
+static const ddi_dma_attr_t i40e_g_txbind_lso_dma_attr = {
+	DMA_ATTR_V0,			/* version number */
+	0x0000000000000000ull,		/* low address */
+	0xFFFFFFFFFFFFFFFFull,		/* high address */
+	I40E_MAX_TX_BUFSZ,		/* dma counter max */
+	I40E_DMA_ALIGNMENT,		/* alignment */
+	0x00000FFF,			/* burst sizes */
+	0x00000001,			/* minimum transfer size */
+	0x00000000FFFFFFFFull,		/* maximum transfer size */
+	0xFFFFFFFFFFFFFFFFull,		/* maximum segment size	 */
+	I40E_TX_LSO_MAX_COOKIE,		/* scatter/gather list length */
 	0x00000001,			/* granularity */
 	DDI_DMA_FLAGERR			/* DMA flags */
 };
@@ -964,6 +983,17 @@ i40e_alloc_tx_dma(i40e_trqpair_t *itrq)
 			goto cleanup;
 		}
 
+		ret = ddi_dma_alloc_handle(i40e->i40e_dip,
+		    &i40e->i40e_txbind_lso_dma_attr, DDI_DMA_DONTWAIT, NULL,
+		    &tcb->tcb_lso_dma_handle);
+		if (ret != DDI_SUCCESS) {
+			i40e_error(i40e, "failed to allocate DMA handle for tx "
+			    "LSO data binding on ring %d: %d", itrq->itrq_index,
+			    ret);
+			tcb->tcb_lso_dma_handle = NULL;
+			goto cleanup;
+		}
+
 		if (i40e_alloc_dma_buffer(i40e, &tcb->tcb_dma,
 		    &i40e->i40e_static_dma_attr, &i40e->i40e_buf_acc_attr,
 		    B_TRUE, B_FALSE, dmasz) == B_FALSE) {
@@ -1064,6 +1094,8 @@ i40e_init_dma_attrs(i40e_t *i40e, boolean_t fma)
 	    sizeof (ddi_dma_attr_t));
 	bcopy(&i40e_g_txbind_dma_attr, &i40e->i40e_txbind_dma_attr,
 	    sizeof (ddi_dma_attr_t));
+	bcopy(&i40e_g_txbind_lso_dma_attr, &i40e->i40e_txbind_lso_dma_attr,
+	    sizeof (ddi_dma_attr_t));
 	bcopy(&i40e_g_desc_acc_attr, &i40e->i40e_desc_acc_attr,
 	    sizeof (ddi_device_acc_attr_t));
 	bcopy(&i40e_g_buf_acc_attr, &i40e->i40e_buf_acc_attr,
@@ -1072,9 +1104,13 @@ i40e_init_dma_attrs(i40e_t *i40e, boolean_t fma)
 	if (fma == B_TRUE) {
 		i40e->i40e_static_dma_attr.dma_attr_flags |= DDI_DMA_FLAGERR;
 		i40e->i40e_txbind_dma_attr.dma_attr_flags |= DDI_DMA_FLAGERR;
+		i40e->i40e_txbind_lso_dma_attr.dma_attr_flags |=
+		    DDI_DMA_FLAGERR;
 	} else {
 		i40e->i40e_static_dma_attr.dma_attr_flags &= ~DDI_DMA_FLAGERR;
 		i40e->i40e_txbind_dma_attr.dma_attr_flags &= ~DDI_DMA_FLAGERR;
+		i40e->i40e_txbind_lso_dma_attr.dma_attr_flags &=
+		    ~DDI_DMA_FLAGERR;
 	}
 }
 
@@ -2243,7 +2279,10 @@ i40e_tcb_reset(i40e_tx_control_block_t *tcb)
 		tcb->tcb_dma.dmab_len = 0;
 		break;
 	case I40E_TX_DMA:
-		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
+		if (tcb->tcb_used_lso == B_TRUE)
+			(void) ddi_dma_unbind_handle(tcb->tcb_lso_dma_handle);
+		else
+			(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
 		if (tcb->tcb_bind_info != NULL) {
 			for (i = 0; i < tcb->tcb_bind_ncookies; i++) {
 				kmem_free(tcb->tcb_bind_info[i],
@@ -2255,6 +2294,7 @@ i40e_tcb_reset(i40e_tx_control_block_t *tcb)
 		}
 		tcb->tcb_bind_info = NULL;
 		tcb->tcb_bind_ncookies = 0;
+		tcb->tcb_used_lso = B_FALSE;
 		break;
 	case I40E_TX_DESC:
 		break;
@@ -2429,8 +2469,10 @@ i40e_tx_recycle_ring(i40e_trqpair_t *itrq)
 }
 
 static i40e_tx_control_block_t *
-i40e_tx_bind_fragment(i40e_trqpair_t *itrq, const mblk_t *mp)
+i40e_tx_bind_fragment(i40e_trqpair_t *itrq, const mblk_t *mp,
+    boolean_t use_lso)
 {
+	ddi_dma_handle_t dma_handle;
 	ddi_dma_cookie_t dma_cookie;
 	uint_t ncookies = 0, dmaflags;
 	i40e_tx_control_block_t *tcb;
@@ -2444,8 +2486,13 @@ i40e_tx_bind_fragment(i40e_trqpair_t *itrq, const mblk_t *mp)
 	}
 	tcb->tcb_type = I40E_TX_DMA;
 
+	if (use_lso == B_TRUE)
+		dma_handle = tcb->tcb_lso_dma_handle;
+	else
+		dma_handle = tcb->tcb_dma_handle;
+
 	dmaflags = DDI_DMA_RDWR | DDI_DMA_STREAMING;
-	if (ddi_dma_addr_bind_handle(tcb->tcb_dma_handle, NULL,
+	if (ddi_dma_addr_bind_handle(dma_handle, NULL,
 	    (caddr_t)mp->b_rptr, MBLKL(mp), dmaflags, DDI_DMA_DONTWAIT, NULL,
 	    &dma_cookie, &ncookies) != DDI_DMA_MAPPED) {
 		goto bffail;
@@ -2459,7 +2506,7 @@ i40e_tx_bind_fragment(i40e_trqpair_t *itrq, const mblk_t *mp)
 
 	while (i < ncookies) {
 		if (i > 0)
-			ddi_dma_nextcookie(tcb->tcb_dma_handle, &dma_cookie);
+			ddi_dma_nextcookie(dma_handle, &dma_cookie);
 		dbi = kmem_zalloc(sizeof (struct i40e_dma_bind_info),
 		    KM_NOSLEEP);
 		if (dbi == NULL)
@@ -2470,6 +2517,7 @@ i40e_tx_bind_fragment(i40e_trqpair_t *itrq, const mblk_t *mp)
 		tcb->tcb_bind_info[i++] = dbi;
 	}
 	tcb->tcb_bind_ncookies = ncookies;
+	tcb->tcb_used_lso = use_lso;
 
 	return (tcb);
 
@@ -2477,7 +2525,7 @@ bffail:
 	i40e_tcb_reset(tcb);
 	i40e_tcb_free(itrq, tcb);
 	if (ncookies != 0)
-		(void) ddi_dma_unbind_handle(tcb->tcb_dma_handle);
+		(void) ddi_dma_unbind_handle(dma_handle);
 	if (tcb->tcb_bind_info != NULL)
 		kmem_free(tcb->tcb_bind_info,
 		    tcb->tcb_bind_ncookies *
@@ -2548,7 +2596,8 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	i40e_tx_context_t tctx;
 	int cmd, type, i, c;
 	uint_t needed_desc = 0, tail, nbufs = 0;
-	boolean_t do_ctx_desc = B_FALSE, do_dma_bind = B_FALSE, last_desc;
+	boolean_t do_ctx_desc = B_FALSE, do_dma_bind = B_FALSE, last_desc,
+	    use_lso = B_FALSE;
 
 	i40e_trqpair_t *itrq = arg;
 	i40e_t *i40e = itrq->itrq_i40e;
@@ -2576,6 +2625,9 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		itrq->itrq_txstat.itxs_err_context.value.ui64++;
 		return (NULL);
 	}
+	if (tctx.itc_ctx_cmdflags & I40E_TX_CTX_DESC_TSO)
+		use_lso = B_TRUE;
+
 	if ((tctx.itc_ctx_cmdflags & I40E_TX_CTX_DESC_TSO) ||
 	    tctx.itc_ctx_tunneled)
 		do_ctx_desc = B_TRUE;
@@ -2589,7 +2641,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	/*
 	 * Iterate through the mblks to calculate both the total size and the
 	 * number of message blocks.  This is used to determine whether we're
-	 * doing DMA binding and, if so, how many data descriptors we'll need.
+	 * doing DMA binding and, if so, how many control blocks we'll need.
 	 */
 	mpsize = 0;
 	for (nmp = mp; nmp != NULL; nmp = nmp->b_cont) {
@@ -2607,8 +2659,6 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		 * descriptors.  Since there's no data DMA block associated
 		 * with the context descriptor we create a special control
 		 * block that behaves effectively like a NOP.
-		 *
-		 * XXX - yes, this is hacky - I'll find a better way
 		 */
 		if ((tcb_ctx = i40e_tcb_alloc(itrq)) == NULL) {
 			txs->itxs_err_notcb.value.ui64++;
@@ -2619,17 +2669,21 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 	}
 
 	/*
-	 * We alter our DMA strategy based on a threshold tied to the message
-	 * size.  This threshold is configurable via tx_dma_threshold property.
-	 * If above the threshold we do DMA binding of the contiguous
+	 * For the non-LSO tx case, we alter our DMA strategy based on a
+	 * threshold tied to the frame size.  This threshold is configurable
+	 * via tx_dma_threshold property.
+	 *
+	 * If the frame size is above the threshold, we do DMA binding of the
 	 * fragments, building a control block and data descriptor for each
 	 * piece.
 	 *
 	 * If it's below or at the threshold then we just use a single control
-	 * block and data descriptor and simply bcopy all of the fragments in
+	 * block and data descriptor and simply bcopy all of the fragments into
 	 * the pre-allocated DMA buffer in the control block.
+	 *
+	 * For the LSO tx case we always to DMA binding.
 	 */
-	if (mpsize > i40e->i40e_tx_dma_min) {
+	if (use_lso == B_TRUE || mpsize > i40e->i40e_tx_dma_min) {
 		do_dma_bind = B_TRUE;
 		tcb_dma =
 		    kmem_zalloc(nbufs * sizeof (i40e_tx_control_block_t *),
@@ -2646,7 +2700,7 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		for (nmp = mp, i = 0; nmp != NULL; nmp = nmp->b_cont) {
 			if (MBLKL(nmp) == 0)
 				continue;
-			tcb_dma[i] = i40e_tx_bind_fragment(itrq, nmp);
+			tcb_dma[i] = i40e_tx_bind_fragment(itrq, nmp, use_lso);
 			if (tcb_dma[i] == NULL) {
 				i40e_error(i40e, "dma bind failed!");
 				goto txfail;
@@ -2680,10 +2734,6 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 		ASSERT(tcb_data->tcb_dma.dmab_len == mpsize);
 		I40E_DMA_SYNC(&tcb_data->tcb_dma, DDI_DMA_SYNC_FORDEV);
 
-		/*
-		 * While there's really no need to keep the mp here, but let's
-		 * just do it to help with our own debugging for now.
-		 */
 		tcb_data->tcb_mp = mp;
 		needed_desc++;
 	}
@@ -2699,10 +2749,10 @@ i40e_ring_tx(void *arg, mblk_t *mp)
 
 	if (do_ctx_desc == B_TRUE) {
 		/*
-		 * If we need LSO for this frame, then we'll need to build up a
-		 * transmit context descriptor, first.  The context descriptor
-		 * needs to be placed in the tx ring before the data
-		 * descriptor(s).  See section 8.4.2, table 8-16
+		 * If we're enabling any offloads for this frame, then we'll
+		 * need to build up a transmit context descriptor, first.  The
+		 * context descriptor needs to be placed in the tx ring before
+		 * the data descriptor(s).  See section 8.4.2, table 8-16
 		 */
 		itrq->itrq_desc_free--;
 		tail = itrq->itrq_desc_tail;
