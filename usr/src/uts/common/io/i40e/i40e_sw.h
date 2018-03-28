@@ -153,8 +153,10 @@ typedef enum i40e_itr_index {
 
 /*
  * Table 1-5 of the PRM notes that LSO supports up to 256 KB.
+ *
+ * XXX - add comment as to why this got tuned down to 24k
  */
-#define	I40E_LSO_MAXLEN	(256 * 1024)
+#define	I40E_LSO_MAXLEN	(24 * 1024)
 
 #define	I40E_CYCLIC_PERIOD NANOSEC	/* 1 second */
 #define	I40E_DRAIN_RX_WAIT	(500 * MILLISEC)	/* In us */
@@ -201,6 +203,8 @@ typedef enum i40e_itr_index {
 #define	I40E_MIN_TX_DMA_THRESH		0
 #define	I40E_DEF_TX_DMA_THRESH		256
 #define	I40E_MAX_TX_DMA_THRESH		INT32_MAX
+
+#define	I40E_MAX_TX_BUFSZ		0x0000000000003FFFull
 
 /*
  * Resource sizing counts. There are various aspects of hardware where we may

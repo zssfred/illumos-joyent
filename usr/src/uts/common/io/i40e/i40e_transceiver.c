@@ -438,7 +438,7 @@ static const ddi_dma_attr_t i40e_g_txbind_dma_attr = {
 	DMA_ATTR_V0,			/* version number */
 	0x0000000000000000ull,		/* low address */
 	0xFFFFFFFFFFFFFFFFull,		/* high address */
-	0x00000000FFFFFFFFull,		/* dma counter max */
+	I40E_MAX_TX_BUFSZ,		/* dma counter max */
 	I40E_DMA_ALIGNMENT,		/* alignment */
 	0x00000FFF,			/* burst sizes */
 	0x00000001,			/* minimum transfer size */
@@ -2780,7 +2780,7 @@ txfail:
 	 * back to MAC.
 	 */
 	if (tcb_ctx != NULL) {
-		tcb_data->tcb_mp = NULL;
+		tcb_ctx->tcb_mp = NULL;
 		i40e_tcb_reset(tcb_ctx);
 		i40e_tcb_free(itrq, tcb_ctx);
 	}

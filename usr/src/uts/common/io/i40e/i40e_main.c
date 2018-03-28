@@ -11,7 +11,7 @@
 
 /*
  * Copyright 2015 OmniTI Computer Consulting, Inc. All rights reserved.
- * Copyright (c) 2017, Joyent, Inc.
+ * Copyright (c) 2018, Joyent, Inc.
  * Copyright 2017 Tegile Systems, Inc.  All rights reserved.
  */
 
@@ -1558,9 +1558,8 @@ i40e_init_properties(i40e_t *i40e)
 	i40e->i40e_tx_hcksum_enable = i40e_get_prop(i40e, "tx_hcksum_enable",
 	    B_FALSE, B_TRUE, B_TRUE);
 
-	/* XXX - temporarily disable LSO by default till it actually works */
 	i40e->i40e_tx_lso_enable = i40e_get_prop(i40e, "tx_lso_enable",
-	    B_FALSE, B_TRUE, B_FALSE);
+	    B_FALSE, B_TRUE, B_TRUE);
 
 	i40e->i40e_rx_hcksum_enable = i40e_get_prop(i40e, "rx_hcksum_enable",
 	    B_FALSE, B_TRUE, B_TRUE);
