@@ -369,11 +369,8 @@
 
 /*
  * This structure is used to maintain information and flags related to
- * transmitting a frame. The first member is the set of flags we need to 'or'
- * into the command word (generally checksumming related). The second member
- * controls the word offsets which is required for IP and L4 checksumming.
- *
- * XXX - update comment
+ * transmitting a frame.  These fields are ultimately used to construct the
+ * tx data descriptor(s) and, if necessary, the tx context descriptor.
  */
 typedef struct i40e_tx_context {
 	enum i40e_tx_desc_cmd_bits	itc_data_cmdflags;
@@ -2211,20 +2208,17 @@ i40e_tx_context(i40e_t *i40e, i40e_trqpair_t *itrq, mblk_t *mp,
 		}
 	}
 
-	/*
-	 * XXX - add comment
-	 */
 	if (lsoflags & HW_LSO) {
+		/*
+		 * LSO requires that checksum offloads are enabled.  If for
+		 * some reason they're not we bail out with an error.
+		 */
 		if (!((chkflags & HCK_IPV4_HDRCKSUM) &&
 		    (chkflags & HCK_PARTIALCKSUM))) {
 			return (-1);
 		}
 		tctx->itc_ctx_cmdflags |= I40E_TX_CTX_DESC_TSO;
 		tctx->itc_ctx_mss = mss;
-		/*
-		 * XXX - is this right?
-		 * see descr of TLEN in section 8.4.2.2.1
-		 */
 		tctx->itc_ctx_tsolen = msgsize(mp) -
 		    (meo.meoi_l2hlen + meo.meoi_l3hlen + meo.meoi_l4hlen);
 	}
@@ -2416,7 +2410,7 @@ i40e_tx_recycle_ring(i40e_trqpair_t *itrq)
 		tcbhead = tcb;
 
 		/*
-		 * In the DMA bind case, there may not necessarily a 1:1
+		 * In the DMA bind case, there may not necessarily be a 1:1
 		 * mapping between tcb's and descriptors.  If the tcb type
 		 * indicates a DMA binding then check the number of DMA
 		 * cookies to determine how many entries to clean in the
@@ -2543,7 +2537,7 @@ i40e_tx_set_data_desc(i40e_trqpair_t *itrq, i40e_tx_context_t *tctx,
 	i40e_tx_desc_t *txdesc;
 	int type, cmd;
 
-	/* XXX - should we assert that itrq_tx_lock is held? */
+	ASSERT(MUTEX_HELD(&itrq->itrq_tx_lock));
 	itrq->itrq_desc_free--;
 	txdesc = &itrq->itrq_desc_ring[itrq->itrq_desc_tail];
 	itrq->itrq_desc_tail = i40e_next_desc(itrq->itrq_desc_tail, 1,
