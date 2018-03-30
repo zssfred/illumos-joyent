@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2017, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2018, Joyent, Inc. All rights reserved.
  */
 
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
@@ -2096,7 +2096,7 @@ udp_optname(private_t *pri, long val)
 	case UDP_EXCLBIND:		return ("UDP_EXCLBIND");
 	case UDP_RCVHDR:		return ("UDP_RCVHDR");
 	case UDP_NAT_T_ENDPOINT:	return ("UDP_NAT_T_ENDPOINT");
-	case UDP_SRCPORT_HASH:		return ("UDP_SRCPORT_HASH");
+	case UDP_TUNNEL:		return ("UDP_TUNNEL");
 	case UDP_SND_TO_CONNECTED:	return ("UDP_SND_TO_CONNECTED");
 
 	default:			(void) snprintf(pri->code_buf,
