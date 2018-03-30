@@ -131,7 +131,7 @@ dladm_overlay_parse_prop(overlay_prop_type_t type, void *buf, uint32_t *sizep,
 	case OVERLAY_PROP_T_BOOLEAN:
 		if (strcmp(val, "true") == 0) {
 			bval = 1;
-		} else if (strcmp(vap, "false") == 0) {
+		} else if (strcmp(va1, "false") == 0) {
 			bval = 0;
 		} else {
 			return (DLADM_STATUS_BADARG);
