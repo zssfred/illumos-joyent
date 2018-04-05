@@ -255,6 +255,7 @@ libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 	vqp = umem_cache_alloc(vip->vdi_qcache, UMEM_DEFAULT);
 	otl = &vqp->vq_lookup;
 	otr = &vqp->vq_response;
+
 	/*
 	 * abort doesn't really help here that much, maybe we can instead try
 	 * and for a reap or something?
@@ -284,7 +285,7 @@ libvarpd_overlay_lookup_handle(varpd_impl_t *vip)
 
 	inst->vri_plugin->vpp_ops->vpo_lookup(inst->vri_private,
 	    (varpd_query_handle_t *)vqp, otl, &otr->otr_answer,
-	    &otr->otr_route);
+	    &otr->otr_route, &otr->otr_mac);
 }
 
 void
@@ -391,7 +392,8 @@ libvarpd_overlay_cache_flush(varpd_instance_t *inst)
 }
 
 int
-libvarpd_overlay_cache_delete(varpd_instance_t *inst, const uint8_t *key)
+libvarpd_overlay_cache_delete(varpd_instance_t *inst, uint32_t dcid,
+    const uint8_t *key)
 {
 	int ret;
 	overlay_targ_cache_t cache;
@@ -399,7 +401,8 @@ libvarpd_overlay_cache_delete(varpd_instance_t *inst, const uint8_t *key)
 
 	bzero(&cache, sizeof (overlay_targ_cache_t));
 	cache.otc_linkid = inst->vri_linkid;
-	bcopy(key, cache.otc_entry.otce_mac, ETHERADDRL);
+	cache.otc_entry.otce_mac.otm_dcid = dcid;
+	bcopy(key, cache.otc_entry.otce_mac.otm_mac, ETHERADDRL);
 
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_REMOVE, &cache);
 	if (ret != 0 && errno == EFAULT)
@@ -416,12 +419,11 @@ libvarpd_overlay_cache_get(varpd_instance_t *inst, const uint8_t *key,
     varpd_client_cache_entry_t *entry)
 {
 	int ret;
-	overlay_targ_cache_t cache;
+	overlay_targ_cache_t cache = { 0 };
 	varpd_impl_t *vip = inst->vri_impl;
 
-	bzero(&cache, sizeof (overlay_targ_cache_t));
 	cache.otc_linkid = inst->vri_linkid;
-	bcopy(key, cache.otc_entry.otce_mac, ETHERADDRL);
+	bcopy(key, cache.otc_entry.otce_mac.otm_mac, ETHERADDRL);
 
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_GET, &cache);
 	if (ret != 0 && errno == EFAULT)
@@ -438,16 +440,16 @@ libvarpd_overlay_cache_get(varpd_instance_t *inst, const uint8_t *key,
 }
 
 int
-libvarpd_overlay_cache_set(varpd_instance_t *inst, const uint8_t *key,
-    const varpd_client_cache_entry_t *entry)
+libvarpd_overlay_cache_set(varpd_instance_t *inst, uint32_t dcid,
+    const uint8_t *key, const varpd_client_cache_entry_t *entry)
 {
 	int ret;
-	overlay_targ_cache_t cache;
+	overlay_targ_cache_t cache = { 0 };
 	varpd_impl_t *vip = inst->vri_impl;
 
-	bzero(&cache, sizeof (overlay_targ_cache_t));
 	cache.otc_linkid = inst->vri_linkid;
-	bcopy(key, cache.otc_entry.otce_mac, ETHERADDRL);
+	cache.otc_entry.otce_mac.otm_dcid = dcid;
+	bcopy(key, cache.otc_entry.otce_mac.otm_mac, ETHERADDRL);
 	bcopy(&entry->vcp_mac, cache.otc_entry.otce_dest.otp_mac, ETHERADDRL);
 	cache.otc_entry.otce_flags = entry->vcp_flags;
 	cache.otc_entry.otce_dest.otp_ip = entry->vcp_ip;
@@ -481,7 +483,8 @@ libvarpd_overlay_cache_walk_fill(varpd_instance_t *inst, uint64_t *markerp,
 		return (ENOMEM);
 
 	iter->otci_linkid = inst->vri_linkid;
-	iter->otci_marker = *markerp;
+	iter->otci_marker[0] = markerp[0];
+	iter->otci_marker[1] = markerp[1];
 	iter->otci_count = *countp;
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_ITER, iter);
 	if (ret != 0 && errno == EFAULT)
@@ -491,7 +494,8 @@ libvarpd_overlay_cache_walk_fill(varpd_instance_t *inst, uint64_t *markerp,
 		goto out;
 	}
 
-	*markerp = iter->otci_marker;
+	markerp[0] = iter->otci_marker[0];
+	markerp[1] = iter->otci_marker[1];
 	*countp = iter->otci_count;
 	bcopy(iter->otci_ents, ents,
 	    *countp * sizeof (overlay_targ_cache_entry_t));
@@ -525,18 +529,18 @@ libvarpd_inject_varp(varpd_provider_handle_t *vph, const uint8_t *mac,
     const overlay_target_point_t *otp)
 {
 	int ret;
-	overlay_targ_cache_t otc;
+	overlay_targ_cache_t otc = { 0 };
 	varpd_instance_t *inst = (varpd_instance_t *)vph;
 	varpd_impl_t *vip = inst->vri_impl;
 
 	if (otp == NULL) {
-		(void) libvarpd_overlay_cache_delete(inst, mac);
+		(void) libvarpd_overlay_cache_delete(inst, 0, mac);
 		return;
 	}
 
 	otc.otc_linkid = inst->vri_linkid;
 	otc.otc_entry.otce_flags = 0;
-	bcopy(mac, otc.otc_entry.otce_mac, ETHERADDRL);
+	bcopy(mac, otc.otc_entry.otce_mac.otm_mac, ETHERADDRL);
 	bcopy(otp, &otc.otc_entry.otce_dest, sizeof (overlay_target_point_t));
 
 	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_SET, &otc);

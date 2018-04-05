@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 #ifndef _LIBVARPD_CLIENT_H
@@ -73,11 +73,11 @@ extern int libvarpd_c_instance_target_mode(varpd_client_handle_t *, uint64_t,
     uint_t *, uint_t *);
 extern int libvarpd_c_instance_cache_flush(varpd_client_handle_t *, uint64_t);
 extern int libvarpd_c_instance_cache_delete(varpd_client_handle_t *, uint64_t,
-    const struct ether_addr *);
+    uint32_t, const struct ether_addr *);
 extern int libvarpd_c_instance_cache_get(varpd_client_handle_t *, uint64_t,
     const struct ether_addr *, varpd_client_cache_entry_t *);
 extern int libvarpd_c_instance_cache_set(varpd_client_handle_t *, uint64_t,
-    const struct ether_addr *, const varpd_client_cache_entry_t *);
+    uint32_t, const struct ether_addr *, const varpd_client_cache_entry_t *);
 
 typedef int (*varpd_client_cache_f)(varpd_client_handle_t *, uint64_t,
     const struct ether_addr *, const varpd_client_cache_entry_t *, void *);

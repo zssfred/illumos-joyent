@@ -31,29 +31,40 @@ extern "C" {
 
 /*
  * The overlay_target_point_t structure represents the destination where
- * encapsulated frames are sent.  Currently supported virtualization protocls
+ * encapsulated frames are sent.  Currently supported virtualization protocols
  * (i.e. vxlan) only use otp_ip and otp_port, but other methods might use
  * a L2 address instead of an L3 address to represent a destination.
  */
 typedef struct overlay_target_point {
-	uint8_t		otp_mac[ETHERADDRL];
 	struct in6_addr	otp_ip;
 	uint16_t	otp_port;
-} overlay_target_point_t;
+	uint8_t		otp_mac[ETHERADDRL];
+} overlay_target_point_t __aligned(8);
 
 /*
- * The overlay_target_route_t represents the information necessary to send
- * packets to remote (routed) destinations.  Note: we currently only include
- * the L3 address prefix lengths since overlay can deduce the subnet address
- * from the original VL3 IP in the request + the prefix length in the reply.
+ * An overlay_target_mac_t represents the overlay representation of a VL2 MAC
+ * address.  With the advent of cross-DC routing, it is possible to have
+ * duplicate MAC addresses in different data centers, so the data center id
+ * is necessary to uniquely identify a MAC address.
+ *
+ * XXX: In hindsight, using a uint16_t for the DCID might have been nicer.
+ */
+typedef struct overlay_target_mac {
+	uint32_t	otm_dcid;
+	uint8_t		otm_mac[ETHERADDRL];
+} overlay_target_mac_t;
+
+/*
+ * The overlay_target_route_t represents the fields of the packet that
+ * have to be modified to deliver a packet to remote (routed) destinations.
+ * All three values are always populated when a packet is routed, even if
+ * some of the overlay_target_route_t values end up being the same as the
+ * original values in the packet being routed.
  */
 typedef struct overlay_target_route {
-	uint64_t	otr_vnet;
-	uint16_t	otr_vlan;
-	uint8_t		otr_srcmac[ETHERADDRL];
-	uint32_t	otr_dcid;
-	uint8_t		otr_src_prefixlen;
-	uint8_t		otr_dst_prefixlen;
+	uint64_t		otr_vnet;
+	uint8_t			otr_srcmac[ETHERADDRL];
+	uint16_t		otr_vlan;
 } overlay_target_route_t;
 
 #define	OVERLAY_TARG_IOCTL	(('o' << 24) | ('v' << 16) | ('t' << 8))
@@ -203,9 +214,10 @@ typedef struct overlay_targ_lookup {
 
 
 typedef struct overlay_targ_resp {
-	uint64_t	otr_reqid;
-	overlay_target_point_t otr_answer;
-	overlay_target_route_t otr_route; /* Ignored for VL2->UL3 requests */
+	uint64_t		otr_reqid;
+	overlay_target_route_t	otr_route; /* Ignored for VL2->UL3 requests */
+	overlay_target_mac_t	otr_mac; /* Ignored for VL2->UL3 requests */
+	overlay_target_point_t	otr_answer;
 } overlay_targ_resp_t;
 
 typedef struct overlay_targ_pkt {
@@ -305,9 +317,8 @@ typedef struct overlay_targ_list {
 #define	OVERLAY_TARGET_CACHE_ROUTER	0x02
 
 typedef struct overlay_targ_cache_entry {
-	uint8_t			otce_mac[ETHERADDRL];
+	overlay_target_mac_t	otce_mac;
 	uint16_t		otce_flags;
-	uint32_t		otce_dcid;
 	overlay_target_point_t	otce_dest;
 } overlay_targ_cache_entry_t;
 
@@ -319,7 +330,7 @@ typedef struct overlay_targ_cache {
 typedef struct overlay_targ_cache_iter {
 	datalink_id_t			otci_linkid;
 	uint32_t			otci_pad;
-	uint64_t			otci_marker;
+	uint64_t			otci_marker[2];
 	uint16_t			otci_count;
 	uint8_t				otci_pad2[3];
 	overlay_targ_cache_entry_t	otci_ents[];

@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  */
 
 /*
@@ -476,7 +476,7 @@ libvarpd_c_instance_cache_flush(varpd_client_handle_t *chp, uint64_t cid)
 
 int
 libvarpd_c_instance_cache_delete(varpd_client_handle_t *chp, uint64_t cid,
-    const struct ether_addr *key)
+    uint32_t dcid, const struct ether_addr *key)
 {
 	int ret;
 	varpd_client_arg_t carg;
@@ -489,6 +489,7 @@ libvarpd_c_instance_cache_delete(varpd_client_handle_t *chp, uint64_t cid,
 	carg.vca_command = VARPD_CLIENT_CACHE_DELETE;
 	carg.vca_errno = 0;
 	vctcap->vtca_id = cid;
+	vctcap->vtca_dcid = dcid;
 	bcopy(key, vctcap->vtca_key, ETHERADDRL);
 
 	ret = libvarpd_c_door_call(client, &carg, 0);
@@ -532,7 +533,8 @@ libvarpd_c_instance_cache_get(varpd_client_handle_t *chp, uint64_t cid,
 
 int
 libvarpd_c_instance_cache_set(varpd_client_handle_t *chp, uint64_t cid,
-    const struct ether_addr *key, const varpd_client_cache_entry_t *entry)
+    uint32_t dcid, const struct ether_addr *key,
+    const varpd_client_cache_entry_t *entry)
 {
 	int ret;
 	varpd_client_arg_t carg;
@@ -545,6 +547,7 @@ libvarpd_c_instance_cache_set(varpd_client_handle_t *chp, uint64_t cid,
 	carg.vca_command = VARPD_CLIENT_CACHE_SET;
 	carg.vca_errno = 0;
 	vctcap->vtca_id = cid;
+	vctcap->vtca_dcid = dcid;
 	bcopy(key, vctcap->vtca_key, ETHERADDRL);
 	bcopy(entry, &vctcap->vtca_entry, sizeof (varpd_client_cache_entry_t));
 
@@ -604,14 +607,17 @@ libvarpd_c_instance_cache_walk(varpd_client_handle_t *chp, uint64_t cid,
 
 		for (i = 0; i < vctwap->vtcw_count; i++) {
 			varpd_client_cache_entry_t ent;
+			overlay_targ_cache_entry_t *otce;
 
-			ent.vcp_flags = vctwap->vtcw_ents[i].otce_flags;
-			bcopy(vctwap->vtcw_ents[i].otce_dest.otp_mac,
-			    &ent.vcp_mac, ETHERADDRL);
-			ent.vcp_ip = vctwap->vtcw_ents[i].otce_dest.otp_ip;
-			ent.vcp_port = vctwap->vtcw_ents[i].otce_dest.otp_port;
+			otce = &vctwap->vtcw_ents[i];
+
+			ent.vcp_flags = otce->otce_flags;
+			bcopy(otce->otce_dest.otp_mac, &ent.vcp_mac,
+			    ETHERADDRL);
+			ent.vcp_ip = otce->otce_dest.otp_ip;
+			ent.vcp_port = otce->otce_dest.otp_port;
 			ret = func(chp, cid,
-			    (struct ether_addr *)vctwap->vtcw_ents[i].otce_mac,
+			    (struct ether_addr *)otce->otce_mac.otm_mac,
 			    &ent, arg);
 			if (ret != 0) {
 				ret = 0;

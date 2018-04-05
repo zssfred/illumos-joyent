@@ -29,7 +29,8 @@ TYPELIST = \
 	varpd_persist_header_t \
 	overlay_targ_cache_entry_t \
 	overlay_targ_cache_t \
-	overlay_targ_cache_iter_t
+	overlay_targ_cache_iter_t \
+	overlay_targ_resp_t
 
 all :=		TARGET = all
 clean :=	TARGET = clean

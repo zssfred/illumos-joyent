@@ -56,9 +56,9 @@ extern dladm_status_t dladm_overlay_status(dladm_handle_t, datalink_id_t,
 
 extern dladm_status_t dladm_overlay_cache_flush(dladm_handle_t, datalink_id_t);
 extern dladm_status_t dladm_overlay_cache_delete(dladm_handle_t, datalink_id_t,
-    const struct ether_addr *);
+    uint32_t, const struct ether_addr *);
 extern dladm_status_t dladm_overlay_cache_set(dladm_handle_t, datalink_id_t,
-    const struct ether_addr *, char *);
+    uint32_t, const struct ether_addr *, char *);
 extern dladm_status_t dladm_overlay_cache_get(dladm_handle_t, datalink_id_t,
     const struct ether_addr *, dladm_overlay_point_t *);
 

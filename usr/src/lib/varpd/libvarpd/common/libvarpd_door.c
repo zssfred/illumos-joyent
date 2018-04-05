@@ -288,7 +288,7 @@ libvarpd_door_f_delete(varpd_impl_t *vip, varpd_client_arg_t *vcap,
 	if (ihp == NULL)
 		return (ENOENT);
 	return (libvarpd_overlay_cache_delete((varpd_instance_t *)ihp,
-	    vtcap->vtca_key));
+	    vtcap->vtca_dcid, vtcap->vtca_key));
 }
 
 /* ARGSUSED */
@@ -321,7 +321,7 @@ libvarpd_door_f_set(varpd_impl_t *vip, varpd_client_arg_t *vcap,
 		return (ENOENT);
 
 	return (libvarpd_overlay_cache_set((varpd_instance_t *)ihp,
-	    vtcap->vtca_key, &vtcap->vtca_entry));
+	    vtcap->vtca_dcid, vtcap->vtca_key, &vtcap->vtca_entry));
 }
 
 /* ARGSUSED */
@@ -337,7 +337,7 @@ libvarpd_door_f_walk(varpd_impl_t *vip, varpd_client_arg_t *vcap,
 		return (ENOENT);
 
 	return (libvarpd_overlay_cache_walk_fill((varpd_instance_t *)ihp,
-	    &vctwp->vtcw_marker, &vctwp->vtcw_count, vctwp->vtcw_ents));
+	    vctwp->vtcw_marker, &vctwp->vtcw_count, vctwp->vtcw_ents));
 }
 
 static libvarpd_door_f *libvarpd_door_table[] = {

@@ -20,6 +20,8 @@
  * uts/common/io/overlay/overlay.c
  */
 
+#include <inet/ip.h>
+#include <inet/ip6.h>
 #include <sys/types.h>
 #include <sys/ethernet.h>
 #include <sys/kmem.h>
@@ -50,6 +52,13 @@
  * enough', until it's not.
  */
 #define	OVERLAY_HSIZE	823
+
+/*
+ * The default size of each target cache.  This is also a complete strawman
+ * whose value could change as we gain better operational experience with
+ * overlay routing.
+ */
+#define	OVERLAY_CACHE_SIZE	512
 
 /*
  * We use this data structure to keep track of what requests have been actively
@@ -141,20 +150,54 @@ overlay_entry_cache_destructor(void *buf, void *arg)
 	mutex_destroy(&ote->ote_lock);
 }
 
-/* TODO: we will need to modify these to hash/cmp DCID + MAC */
-
 static uint64_t
 overlay_mac_hash(const void *v)
 {
+	const overlay_target_mac_t *m = v;
+
 	uint32_t crc;
-	CRC32(crc, v, ETHERADDRL, -1U, crc32_table);
+	CRC32(crc, m->otm_mac, ETHERADDRL, -1U, crc32_table);
+	CRC32(crc, &m->otm_dcid, sizeof (uint32_t), crc, crc32_table);
 	return (crc);
 }
 
 static int
 overlay_mac_cmp(const void *a, const void *b)
 {
-	return (bcmp(a, b, ETHERADDRL));
+	const overlay_target_mac_t *l = a;
+	const overlay_target_mac_t *r = b;
+
+	if (l->otm_dcid != r->otm_dcid)
+		return (1);
+	return (bcmp(l->otm_mac, r->otm_mac, ETHERADDRL) != 0);
+}
+
+static uint64_t
+overlay_ip_hash(const void *v)
+{
+	const overlay_target_vl3_t *vl3 = v;
+
+	uint32_t crc;
+	CRC32(crc, &vl3->otvl3_src, sizeof (vl3->otvl3_src), -1U, crc32_table);
+	CRC32(crc, &vl3->otvl3_dst, sizeof (vl3->otvl3_dst), crc, crc32_table);
+	CRC32(crc, &vl3->otvl3_src_vlan, sizeof (vl3->otvl3_src_vlan), crc,
+	    crc32_table);
+	return (crc);
+}
+
+static int
+overlay_ip_cmp(const void *a, const void *b)
+{
+	const overlay_target_vl3_t *l = a;
+	const overlay_target_vl3_t *r = b;
+
+	if (l->otvl3_src_vlan != r->otvl3_src_vlan)
+		return (1);
+	if (!IN6_ARE_ADDR_EQUAL(&l->otvl3_src, &r->otvl3_src))
+		return (1);
+	if (!IN6_ARE_ADDR_EQUAL(&l->otvl3_dst, &r->otvl3_dst))
+		return (1);
+	return (0);
 }
 
 /* ARGSUSED */
@@ -164,7 +207,7 @@ overlay_target_entry_dtor(void *arg)
 	overlay_target_entry_t *ote = arg;
 
 	ote->ote_flags = 0;
-	bzero(ote->ote_addr, ETHERADDRL);
+	bzero(&ote->ote_u, sizeof (ote->ote_u));
 	ote->ote_ott = NULL;
 	ote->ote_odd = NULL;
 	freemsgchain(ote->ote_chead);
@@ -177,18 +220,46 @@ overlay_target_entry_dtor(void *arg)
 static int
 overlay_mac_avl(const void *a, const void *b)
 {
+	const overlay_target_entry_t *le = a;
+	const overlay_target_entry_t *re = b;
+	const overlay_target_mac_t *lm = &le->ote_u.ote_vl2.otvl2_mac;
+	const overlay_target_mac_t *rm = &re->ote_u.ote_vl2.otvl2_mac;
 	int i;
-	const overlay_target_entry_t *l, *r;
-	l = a;
-	r = b;
+
+	/* Order by DCID, then MAC */
+	if (lm->otm_dcid < rm->otm_dcid)
+		return (-1);
+	if (lm->otm_dcid > rm->otm_dcid)
+		return (1);
 
 	for (i = 0; i < ETHERADDRL; i++) {
-		if (l->ote_addr[i] > r->ote_addr[i])
+		if (lm->otm_mac[i] > rm->otm_mac[i])
 			return (1);
-		else if (l->ote_addr[i] < r->ote_addr[i])
+		else if (lm->otm_mac[i] < rm->otm_mac[i])
 			return (-1);
 	}
+	return (0);
+}
 
+static int
+overlay_ip_avl(const void *a, const void *b)
+{
+	const overlay_target_entry_t *l = a;
+	const overlay_target_entry_t *r = b;
+	const overlay_target_vl3_t *l_vl3 = &l->ote_u.ote_vl3;
+	const overlay_target_vl3_t *r_vl3 = &r->ote_u.ote_vl3;
+	int ret;
+
+	if ((ret = memcmp(&l_vl3->otvl3_src, &r_vl3->otvl3_src,
+	    sizeof (l_vl3->otvl3_src))) != 0)
+		return (ret);
+	if ((ret = memcmp(&l_vl3->otvl3_dst, &r_vl3->otvl3_dst,
+	    sizeof (l_vl3->otvl3_dst))) != 0)
+		return (ret);
+	if (l_vl3->otvl3_src_vlan < r_vl3->otvl3_src_vlan)
+		return (-1);
+	if (l_vl3->otvl3_src_vlan > r_vl3->otvl3_src_vlan)
+		return (1);
 	return (0);
 }
 
@@ -235,27 +306,40 @@ overlay_target_free(overlay_dev_t *odd)
 		return;
 
 	if (odd->odd_target->ott_mode == OVERLAY_TARGET_DYNAMIC) {
-		refhash_t *rp = odd->odd_target->ott_u.ott_dyn.ott_dhash;
+		sarc_t *cp = odd->odd_target->ott_u.ott_dyn.ott_dhash;
 		avl_tree_t *ap = &odd->odd_target->ott_u.ott_dyn.ott_tree;
+		sarc_t *cp3 = odd->odd_target->ott_u.ott_dyn.ott_l3dhash;
+		avl_tree_t *ap3 = &odd->odd_target->ott_u.ott_dyn.ott_l3tree;
 		overlay_target_entry_t *ote;
 
-		/* TODO: remove from L3 trees */
+		/*
+		 * Our VL3 AVL tree and hashtable contain the same elements,
+		 * therefore we should just remove it from the tree, but then
+		 * delete the entries when we remove them from the hash table
+		 * (which happens through the sarc dtor).
+		 */
+		while ((ote = avl_first(ap3)) != NULL)
+			avl_remove(ap3, ote);
+		avl_destroy(ap3);
+
+		while ((ote = sarc_first(cp3)) != NULL)
+			sarc_remove(cp3, ote);
+		sarc_destroy(cp3);
 
 		/*
 		 * Our AVL tree and hashtable contain the same elements,
 		 * therefore we should just remove it from the tree, but then
 		 * delete the entries when we remove them from the hash table
-		 * (which happens through the refhash dtor).
+		 * (which happens through the sarc dtor).
 		 */
 		while ((ote = avl_first(ap)) != NULL)
 			avl_remove(ap, ote);
 
 		avl_destroy(ap);
-		for (ote = refhash_first(rp); ote != NULL;
-		    ote = refhash_next(rp, ote)) {
-			refhash_remove(rp, ote);
-		}
-		refhash_destroy(rp);
+
+		while ((ote = sarc_first(cp)) != NULL)
+			sarc_remove(cp, ote);
+		sarc_destroy(cp);
 	}
 
 	ASSERT(odd->odd_target->ott_ocount == 0);
@@ -304,7 +388,359 @@ overlay_target_quiesce(overlay_target_t *ott)
 }
 
 /*
- * This functions assumes that the destination mode is OVERLAY_PLUGIN_D_IP |
+ * Write the VL3 src/dst IP from the packet in mp into src and dst.  If the
+ * addresses are IPv4 addresses, they are written as mapped addresses.
+ */
+static int
+overlay_get_vl3_ips(mblk_t *mp, struct in6_addr *src, struct in6_addr *dst)
+{
+	uint16_t sap;
+
+	if (MBLKL(mp) >= sizeof (struct ether_vlan_header) + sizeof (ip6_t)) {
+		struct ether_vlan_header *eth =
+		    (struct ether_vlan_header *)mp->b_rptr;
+		ipha_t *iphp = (ipha_t *)(eth + 1);
+		ip6_t *ip6hp = (ip6_t *)(eth + 1);
+		sap = ntohs(eth->ether_tpid);
+
+		if (sap == ETHERTYPE_VLAN) {
+			sap = ntohs(eth->ether_type);
+		} else {
+			struct ether_header *e = (struct ether_header *)eth;
+
+			iphp = (ipha_t *)(e + 1);
+			ip6hp = (ip6_t *)(e + 1);
+		}
+
+		switch (sap) {
+		case ETHERTYPE_IP:
+			ASSERT3U(IPH_HDR_VERSION(iphp), ==, IPV4_VERSION);
+			IN6_IPADDR_TO_V4MAPPED(iphp->ipha_src, src);
+			IN6_IPADDR_TO_V4MAPPED(iphp->ipha_dst, dst);
+			break;
+		case ETHERTYPE_IPV6:
+			ASSERT3U(IPH_HDR_VERSION(iphp), ==, IPV6_VERSION);
+			bcopy(&ip6hp->ip6_src, src, sizeof (*src));
+			bcopy(&ip6hp->ip6_dst, dst, sizeof (*dst));
+			break;
+		default:
+			return (EINVAL);
+		}
+
+		return (0);
+	}
+
+#if 1
+	/* Temporary until mblk helpers are integrated */
+	return (EINVAL);
+#else
+	size_t soff, doff;
+	uint32_t v4s, v4d;
+	int i;
+
+	if (!mblk_read_uint16(mp, offsetof(struct ether_header, ether_type),
+	    &sap))
+		return (EINVAL);
+
+	if (sap == ETHERTYPE_VLAN) {
+		if (!mblk_read_uint16(mp,
+		    offsetof(struct ether_vlan_header, ether_type), &sap))
+			return (EINVAL);
+		soff = doff = sizeof (struct ether_vlan_header);
+	} else {
+		soff = doff = sizeof (struct ether_header);
+	}
+
+	switch (sap) {
+	case ETHERTYPE_IP:
+		soff += offsetof(ipha_t, ipha_src);
+		doff += offsetof(ipha_t, ipha_dst);
+
+		if (!mblk_read_uint32(mp, soff, &v4s) ||
+		    !mblk_read_uint32(mp, doff, &v4d))
+			return (EINVAL);
+		IN6_IPADDR_TO_V4MAPPED(&v4s, src);
+		IN6_IPADDR_TO_V4MAPPED(&v4d, dst);
+		break;
+	case ETHERTYPE_IPV6:
+		soff += offsetof(ip6_t, ip6_src);
+		doff += offsetof(ip6_6, ip6_dst);
+
+		for (i = 0; i < 4; i++) {
+			if (!mblk_read_uint32(mp, soff, &src->s6_addr32[i]) ||
+			    !mblk_read_uint32(mp, doff, &dst->s6_addr32[i]))
+				return (EINVAL);
+			soff += sizeof (uint32_t);
+			doff += sizeof (uint32_t);
+		}
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	return (0);
+#endif
+}
+
+static int
+overlay_route(overlay_dev_t *odd, mblk_t *mp,
+    const overlay_target_route_t *route, const overlay_target_mac_t *dst_mac)
+{
+	uint16_t tci;
+
+	if (MBLKL(mp) >= sizeof (struct ether_vlan_header)) {
+		struct ether_vlan_header *evh;
+
+		evh = (struct ether_vlan_header *)mp->b_rptr;
+		tci = ntohs(evh->ether_tci);
+
+		/*
+		 * Today we require all encapsulated frames to be vlan tagged.
+		 * If this is relaxed in the future, we will need to allow for
+		 * insertion and removal of the vlan tag as appropriate here.
+		 */
+		if (ntohs(evh->ether_tpid) != ETHERTYPE_VLAN)
+			return (OVERLAY_TARGET_DROP);
+
+		tci &= ~(VLAN_ID_MASK);
+		tci |= route->otr_vlan;
+		evh->ether_tci = htons(tci);
+		bcopy(dst_mac->otm_mac, &evh->ether_dhost, ETHERADDRL);
+		bcopy(route->otr_srcmac, &evh->ether_shost, ETHERADDRL);
+		return (OVERLAY_TARGET_OK);
+	}
+
+#if 1
+	/* Temporary until mblk helpers are integrated */
+	return (OVERLAY_TARGET_DROP);
+#else
+	size_t off;
+
+	off = offsetof(struct ether_vlan_header, ether_tpid);
+	if (!mblk_read_uint16(mp, off, &tci))
+		return (OVERLAY_TARGET_DROP);
+
+	tci = ntohs(evh->ether_tci);
+	tci &= ~(VLAN_ID_MASK);
+	tci |= route->otr_vlan;
+
+	if (!mblk_write_uint16(mp, off, tci))
+		return (OVERLAY_TARGET_DROP);
+
+	for (int i = 0; i < ETHERADDRL; i++) {
+		if (!mblk_write_uint8(mp, i, dst_msc->otm_mac[i]) ||
+		    !mblk_write_uint8(mp, i + ETHERADDRL, route->otr_srcmac[i]))
+			return (OVERLAY_TARGET_DROP);
+	}
+
+	return (OVERLAY_TARGET_OK);
+#endif
+}
+
+static int
+overlay_target_try_queue(overlay_target_entry_t *entry, mblk_t *mp)
+{
+	size_t mlen = msgsize(mp);
+
+	ASSERT(MUTEX_HELD(&entry->ote_lock));
+
+	if (mlen + entry->ote_mbsize > overlay_ent_size)
+		return (OVERLAY_TARGET_DROP);
+
+	if (entry->ote_ctail != NULL) {
+		ASSERT(entry->ote_ctail->b_next == NULL);
+		entry->ote_ctail->b_next = mp;
+		entry->ote_ctail = mp;
+	} else {
+		entry->ote_chead = mp;
+		entry->ote_ctail = mp;
+	}
+	entry->ote_mbsize += mlen;
+	if ((entry->ote_flags & OVERLAY_ENTRY_F_PENDING) == 0) {
+		entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
+		overlay_target_queue(entry);
+	}
+	return (OVERLAY_TARGET_ASYNC);
+}
+
+static int
+overlay_route_lookup_vl2(overlay_target_t *ott, overlay_target_entry_t *vl3e,
+    uint64_t *vidp, struct sockaddr_in6 *v6, socklen_t *slenp, mblk_t *mp)
+{
+	overlay_target_entry_t *vl2e;
+	overlay_target_vl2_t *vl2p;
+	int ret;
+
+	ASSERT(MUTEX_HELD(&vl3e->ote_lock));
+
+	mutex_enter(&ott->ott_lock);
+	if ((vl2e = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    &vl3e->ote_u.ote_vl3.otvl3_vl2)) != NULL) {
+		sarc_hold(ott->ott_u.ott_dyn.ott_dhash, vl2e);
+	}
+	mutex_exit(&ott->ott_lock);
+
+	if (vl2e == NULL) {
+		vl3e->ote_flags &= ~OVERLAY_ENTRY_F_VALID;
+		return (overlay_target_try_queue(vl3e, mp));
+	}
+
+	mutex_enter(&vl2e->ote_lock);
+	if (vl2e->ote_flags & (OVERLAY_ENTRY_F_DROP | OVERLAY_ENTRY_F_ROUTER)) {
+		mutex_exit(&vl2e->ote_lock);
+
+		mutex_enter(&ott->ott_lock);
+		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, vl2e);
+		mutex_exit(&ott->ott_lock);
+
+		return (OVERLAY_TARGET_DROP);
+	}
+
+	/*
+	 * If the route is missing queue on the VL3 entry so a VL3->UL3
+	 * lookup is done (to get the route data).
+	 */
+	if ((vl2e->ote_flags & OVERLAY_ENTRY_F_HAS_ROUTE) == 0) {
+		mutex_exit(&vl2e->ote_lock);
+
+		mutex_enter(&ott->ott_lock);
+		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, vl2e);
+		mutex_exit(&ott->ott_lock);
+
+		return (overlay_target_try_queue(vl3e, mp));
+	}
+
+	/*
+	 * If the VL2 target point is missing, we try to be a bit (though
+	 * hopefully not too) clever.  We can always queue on the VL3 entry
+	 * which will trigger a VL3->UL3 lookup request (as it is effectively
+	 * a superset of the VL2->UL3 lookup).  However, if we know we already
+	 * have an outstanding VL3->UL3 request, we queue on the VL2 entry and
+	 * avoid doing another redundant lookup.  We can also queue on the VL2
+	 * entry when it is a local (same vnet, same DC) destination -- we
+	 * currently cannot generate VL2->UL3 lookups for remote destinations,
+	 * only same vnet, same DC.  Queueing on the VL2 entry also allows
+	 * instances on the same vlan as the queued VL2 entry to piggy back on
+	 * the lookup request and avoid a redundant lookup.  However if the
+	 * VL2 entry is remote, we have to do a VL3->UL3 lookup.
+	 */
+	if ((vl2e->ote_flags & OVERLAY_ENTRY_F_VALID) == 0) {
+		overlay_target_entry_t *queue_e;
+
+		if ((vl2e->ote_flags & OVERLAY_ENTRY_F_PENDING) == 0 &&
+		    vl2e->ote_u.ote_vl2.otvl2_mac.otm_dcid !=
+		    vl2e->ote_odd->odd_dcid) {
+			queue_e = vl3e;
+		} else {
+			queue_e = vl2e;
+		}
+
+		ret = overlay_target_try_queue(queue_e, mp);
+		mutex_exit(&vl2e->ote_lock);
+
+		mutex_enter(&ott->ott_lock);
+		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, vl2e);
+		mutex_exit(&ott->ott_lock);
+
+		return (ret);
+	}
+
+	ASSERT(vl2e->ote_flags & OVERLAY_ENTRY_F_VALID);
+
+	vl2p = &vl2e->ote_u.ote_vl2;
+
+	*vidp = vl2p->otvl2_route.otr_vnet;
+	bcopy(&vl2p->otvl2_dest.otp_ip, &v6->sin6_addr,
+	    sizeof (struct in6_addr));
+	v6->sin6_port = htons(vl2p->otvl2_dest.otp_port);
+	*slenp = sizeof (struct sockaddr_in6);
+
+	ret = overlay_route(vl2e->ote_odd, mp, &vl2p->otvl2_route,
+	    &vl2p->otvl2_mac);
+	mutex_exit(&vl2e->ote_lock);
+
+	mutex_enter(&ott->ott_lock);
+	sarc_rele(ott->ott_u.ott_dyn.ott_dhash, vl2e);
+	mutex_exit(&ott->ott_lock);
+
+	return (ret);
+}
+
+static int
+overlay_route_lookup(overlay_dev_t *odd, mblk_t *mp, uint16_t vlan,
+    struct sockaddr *sock, socklen_t *slenp, uint64_t *vidp)
+{
+	overlay_target_t *ott = odd->odd_target;
+	overlay_target_entry_t *entry;
+	struct sockaddr_in6 *v6 = (struct sockaddr_in6 *)sock;
+	overlay_target_vl3_t vl3 = { 0 };
+	int ret = OVERLAY_TARGET_DROP;
+
+	/* overlay_target_lookup() should have set this */
+	ASSERT3U(v6->sin6_family, ==, AF_INET6);
+
+	/* We should only be called for dynamic endpoints */
+	ASSERT3U(ott->ott_mode, ==, OVERLAY_TARGET_DYNAMIC);
+
+	vl3.otvl3_src_vlan = vlan;
+	if ((ret = overlay_get_vl3_ips(mp, &vl3.otvl3_src, &vl3.otvl3_dst))
+	    != OVERLAY_TARGET_OK)
+		return (OVERLAY_TARGET_DROP);
+
+	mutex_enter(&ott->ott_lock);
+	entry = sarc_lookup(ott->ott_u.ott_dyn.ott_l3dhash, &vl3);
+	if (entry == NULL) {
+		if ((entry = kmem_cache_alloc(overlay_entry_cache,
+		    KM_NOSLEEP | KM_NORMALPRI)) == NULL) {
+			mutex_exit(&ott->ott_lock);
+			return (OVERLAY_TARGET_DROP);
+		}
+
+		bcopy(&vl3, &entry->ote_u.ote_vl3, sizeof (vl3));
+		entry->ote_flags = OVERLAY_ENTRY_F_VL3;
+
+		entry->ote_chead = entry->ote_ctail = mp;
+		entry->ote_mbsize = msgsize(mp);
+		entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
+
+		entry->ote_ott = ott;
+		entry->ote_odd = odd;
+
+		sarc_insert(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		avl_add(&ott->ott_u.ott_dyn.ott_l3tree, entry);
+		mutex_exit(&ott->ott_lock);
+		overlay_target_queue(entry);
+		return (OVERLAY_TARGET_ASYNC);
+	}
+	sarc_hold(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+	mutex_exit(&ott->ott_lock);
+
+	mutex_enter(&entry->ote_lock);
+	ASSERT(entry->ote_flags & OVERLAY_ENTRY_F_VL3);
+
+	if (entry->ote_flags & OVERLAY_ENTRY_F_DROP) {
+		ret = OVERLAY_TARGET_DROP;
+	} else if (entry->ote_flags & OVERLAY_ENTRY_F_ROUTER) {
+		/*
+		 * XXX: A packet with a dst IP of an overlay router.
+		 * Maybe generate an ICMP reply?  For now, we drop.
+		 */
+		ret = OVERLAY_TARGET_DROP;
+	} else if ((entry->ote_flags & OVERLAY_ENTRY_F_VALID) == 0) {
+		ret = overlay_target_try_queue(entry, mp);
+	} else {
+		ret = overlay_route_lookup_vl2(ott, entry, vidp, v6, slenp, mp);
+	}
+	mutex_exit(&entry->ote_lock);
+
+	mutex_enter(&ott->ott_lock);
+	sarc_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+	mutex_exit(&ott->ott_lock);
+	return (ret);
+}
+
+/*
+ * This function assumes that the destination mode is OVERLAY_PLUGIN_D_IP |
  * OVERLAY_PLUGIN_D_PORT. As we don't have an implementation of anything else at
  * this time, say for NVGRE, we drop all packets that match this.
  */
@@ -315,11 +751,13 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 	int ret;
 	struct sockaddr_in6 *v6;
 	overlay_target_t *ott;
-	mac_header_info_t mhi;
 	overlay_target_entry_t *entry;
+	mac_header_info_t mhi;
+	overlay_target_mac_t omac;
 
 	ASSERT(odd->odd_target != NULL);
 
+	/* Default to our local vid, routing may change this if necessary */
 	*vidp = odd->odd_vid;
 
 	/*
@@ -349,80 +787,66 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 
 	ASSERT(ott->ott_mode == OVERLAY_TARGET_DYNAMIC);
 
-	/*
-	 * Note we only want the MAC address here, therefore we won't bother
-	 * using mac_vlan_header_info(). If any caller needs the vlan info at
-	 * this point, this should change to a call to mac_vlan_header_info().
-	 */
-	if (mac_header_info(odd->odd_mh, mp, &mhi) != 0)
+	if (mac_vlan_header_info(odd->odd_mh, mp, &mhi) != 0)
 		return (OVERLAY_TARGET_DROP);
 
+	omac.otm_dcid = odd->odd_dcid;
+	bcopy(mhi.mhi_daddr, omac.otm_mac, ETHERADDRL);
+
 	mutex_enter(&ott->ott_lock);
-	entry = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-	    mhi.mhi_daddr);
+	entry = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash, &omac);
 	if (entry == NULL) {
+		overlay_target_vl2_t *vl2p;
+
 		entry = kmem_cache_alloc(overlay_entry_cache,
 		    KM_NOSLEEP | KM_NORMALPRI);
 		if (entry == NULL) {
 			mutex_exit(&ott->ott_lock);
 			return (OVERLAY_TARGET_DROP);
 		}
-		bcopy(mhi.mhi_daddr, entry->ote_addr, ETHERADDRL);
+
+		vl2p = &entry->ote_u.ote_vl2;
+		bcopy(mhi.mhi_daddr, vl2p->otvl2_mac.otm_mac, ETHERADDRL);
+		vl2p->otvl2_mac.otm_dcid = odd->odd_dcid;
+		vl2p->otvl2_route.otr_vnet = odd->odd_vid;
+		vl2p->otvl2_route.otr_vlan = VLAN_ID(mhi.mhi_tci);
+
 		entry->ote_chead = entry->ote_ctail = mp;
 		entry->ote_mbsize = msgsize(mp);
 		entry->ote_flags |= OVERLAY_ENTRY_F_PENDING;
+
 		entry->ote_ott = ott;
 		entry->ote_odd = odd;
-		refhash_insert(ott->ott_u.ott_dyn.ott_dhash, entry);
+
+		sarc_insert(ott->ott_u.ott_dyn.ott_dhash, entry);
 		avl_add(&ott->ott_u.ott_dyn.ott_tree, entry);
 		mutex_exit(&ott->ott_lock);
 		overlay_target_queue(entry);
 		return (OVERLAY_TARGET_ASYNC);
 	}
-	refhash_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
+	sarc_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
 	mutex_exit(&ott->ott_lock);
 
 	mutex_enter(&entry->ote_lock);
 	if (entry->ote_flags & OVERLAY_ENTRY_F_DROP) {
 		ret = OVERLAY_TARGET_DROP;
 	} else if (entry->ote_flags & OVERLAY_ENTRY_F_ROUTER) {
-		/* TODO: Lookup route info, adjust headers, and set vidp */
-		ret = OVERLAY_TARGET_DROP;
+		ret = overlay_route_lookup(odd, mp, VLAN_ID(mhi.mhi_tci), sock,
+		    slenp, vidp);
 	} else if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
-		bcopy(&entry->ote_dest.otp_ip, &v6->sin6_addr,
-		    sizeof (struct in6_addr));
-		v6->sin6_port = htons(entry->ote_dest.otp_port);
+		overlay_target_point_t *otp = &entry->ote_u.ote_vl2.otvl2_dest;
+
+		bcopy(&otp->otp_ip, &v6->sin6_addr, sizeof (struct in6_addr));
+		v6->sin6_port = htons(otp->otp_port);
 		*slenp = sizeof (struct sockaddr_in6);
 		ret = OVERLAY_TARGET_OK;
 	} else {
-		size_t mlen = msgsize(mp);
-
-		if (mlen + entry->ote_mbsize > overlay_ent_size) {
-			ret = OVERLAY_TARGET_DROP;
-		} else {
-			if (entry->ote_ctail != NULL) {
-				ASSERT(entry->ote_ctail->b_next ==
-				    NULL);
-				entry->ote_ctail->b_next = mp;
-				entry->ote_ctail = mp;
-			} else {
-				entry->ote_chead = mp;
-				entry->ote_ctail = mp;
-			}
-			entry->ote_mbsize += mlen;
-			if ((entry->ote_flags &
-			    OVERLAY_ENTRY_F_PENDING) == 0) {
-				entry->ote_flags |=
-				    OVERLAY_ENTRY_F_PENDING;
-				overlay_target_queue(entry);
-			}
-			ret = OVERLAY_TARGET_ASYNC;
-		}
+		ret = overlay_target_try_queue(entry, mp);
 	}
 	mutex_exit(&entry->ote_lock);
 
 	mutex_enter(&ott->ott_lock);
-	refhash_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
+	sarc_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
 	mutex_exit(&ott->ott_lock);
 
 	return (ret);
@@ -452,6 +876,22 @@ overlay_target_info(overlay_target_hdl_t *thdl, void *arg)
 	overlay_hold_rele(odd);
 	return (0);
 }
+
+static sarc_ops_t overlay_sarc_l2_ops = {
+	.sao_hash = overlay_mac_hash,
+	.sao_cmp = overlay_mac_cmp,
+	.sao_dtor = overlay_target_entry_dtor,
+	.sao_fetch = sarc_nofetch,
+	.sao_evict = sarc_noevict
+};
+
+static sarc_ops_t overlay_sarc_l3_ops = {
+	.sao_hash = overlay_ip_hash,
+	.sao_cmp = overlay_ip_cmp,
+	.sao_dtor = overlay_target_entry_dtor,
+	.sao_fetch = sarc_nofetch,
+	.sao_evict = sarc_noevict
+};
 
 /* ARGSUSED */
 static int
@@ -510,12 +950,38 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 		bcopy(&ota->ota_point, &ott->ott_u.ott_point,
 		    sizeof (overlay_target_point_t));
 	} else {
-		ott->ott_u.ott_dyn.ott_dhash = refhash_create(OVERLAY_HSIZE,
-		    overlay_mac_hash, overlay_mac_cmp,
-		    overlay_target_entry_dtor, sizeof (overlay_target_entry_t),
+		int ret;
+
+		ret = sarc_create(&ott->ott_u.ott_dyn.ott_dhash,
+		    OVERLAY_CACHE_SIZE, OVERLAY_HSIZE, &overlay_sarc_l2_ops,
+		    sizeof (overlay_target_entry_t),
 		    offsetof(overlay_target_entry_t, ote_reflink),
-		    offsetof(overlay_target_entry_t, ote_addr), KM_SLEEP);
+		    offsetof(overlay_target_entry_t, ote_u.ote_vl2.otvl2_mac),
+		    KM_SLEEP);
+		if (ret != 0) {
+			mutex_exit(&odd->odd_lock);
+			kmem_cache_free(overlay_target_cache, ott);
+			overlay_hold_rele(odd);
+			return (ret);
+		}
+
+		ret = sarc_create(&ott->ott_u.ott_dyn.ott_l3dhash,
+		    OVERLAY_CACHE_SIZE, OVERLAY_HSIZE, &overlay_sarc_l3_ops,
+		    sizeof (overlay_target_entry_t),
+		    offsetof(overlay_target_entry_t, ote_reflink),
+		    offsetof(overlay_target_entry_t, ote_u.ote_vl3), KM_SLEEP);
+		if (ret != 0) {
+			mutex_exit(&odd->odd_lock);
+			sarc_destroy(ott->ott_u.ott_dyn.ott_dhash);
+			kmem_cache_free(overlay_target_cache, ott);
+			overlay_hold_rele(odd);
+			return (ret);
+		}
+
 		avl_create(&ott->ott_u.ott_dyn.ott_tree, overlay_mac_avl,
+		    sizeof (overlay_target_entry_t),
+		    offsetof(overlay_target_entry_t, ote_avllink));
+		avl_create(&ott->ott_u.ott_dyn.ott_l3tree, overlay_ip_avl,
 		    sizeof (overlay_target_entry_t),
 		    offsetof(overlay_target_entry_t, ote_avllink));
 	}
@@ -641,13 +1107,6 @@ again:
 		goto again;
 	}
 
-	/*
-	 * TODO: If VL3 request,
-	 *	set otl->otl_l3req
-	 *	Fill in otl_{src,dst}ip
-	 * Else
-	 *	clear otl->otl_l3req
-	 */
 	otl->otl_dlid = entry->ote_odd->odd_linkid;
 	otl->otl_reqid = (uintptr_t)entry;
 	otl->otl_varpdid = entry->ote_ott->ott_id;
@@ -655,10 +1114,23 @@ again:
 
 	otl->otl_hdrsize = mhi.mhi_hdrsize;
 	otl->otl_pktsize = msgsize(entry->ote_chead) - otl->otl_hdrsize;
-	bcopy(mhi.mhi_daddr, otl->otl_addru.otlu_l2.otl2_dstaddr, ETHERADDRL);
-	bcopy(mhi.mhi_saddr, otl->otl_addru.otlu_l2.otl2_srcaddr, ETHERADDRL);
-	otl->otl_addru.otlu_l2.otl2_dsttype = mhi.mhi_dsttype;
-	otl->otl_addru.otlu_l2.otl2_sap = mhi.mhi_bindsap;
+	if (entry->ote_flags & OVERLAY_ENTRY_F_VL3) {
+		overlay_targ_l3_t *l3p = &otl->otl_addru.otlu_l3;
+
+		otl->otl_l3req = B_TRUE;
+		bcopy(&entry->ote_u.ote_vl3.otvl3_src, &l3p->otl3_srcip,
+		    sizeof (struct in6_addr));
+		bcopy(&entry->ote_u.ote_vl3.otvl3_dst, &l3p->otl3_dstip,
+		    sizeof (struct in6_addr));
+	} else {
+		overlay_targ_l2_t *l2p = &otl->otl_addru.otlu_l2;
+
+		otl->otl_l3req = B_FALSE;
+		bcopy(mhi.mhi_daddr, l2p->otl2_dstaddr, ETHERADDRL);
+		bcopy(mhi.mhi_saddr, l2p->otl2_srcaddr, ETHERADDRL);
+		l2p->otl2_dsttype = mhi.mhi_dsttype;
+		l2p->otl2_sap = mhi.mhi_bindsap;
+	}
 	otl->otl_vlan = VLAN_ID(mhi.mhi_tci);
 	mutex_exit(&entry->ote_lock);
 
@@ -669,22 +1141,106 @@ again:
 	return (0);
 }
 
+static void
+overlay_target_lookup_respond_vl3(const overlay_targ_resp_t *otr,
+    overlay_target_entry_t *entry)
+{
+	overlay_target_entry_t *shared = NULL;
+	overlay_target_entry_t *vl2_entry;
+	overlay_target_t *ott = entry->ote_ott;
+	sarc_t *mhash = ott->ott_u.ott_dyn.ott_dhash;
+	hrtime_t now = gethrtime();
+
+	ASSERT(MUTEX_HELD(&entry->ote_lock));
+	ASSERT(entry->ote_flags & OVERLAY_ENTRY_F_VL3);
+
+	/*
+	 * A cross-{vlan,dc,vnet} packet with a destination VL3 of an overlay
+	 * router IP.  For now we drop these.
+	 */
+	if (entry->ote_flags & OVERLAY_ENTRY_F_ROUTER) {
+		entry->ote_flags &= ~OVERLAY_ENTRY_F_PENDING;
+		entry->ote_flags |= OVERLAY_ENTRY_F_DROP;
+		return;
+	}
+
+	bcopy(&otr->otr_mac, &entry->ote_u.ote_vl3.otvl3_vl2,
+	   sizeof (overlay_target_mac_t));
+
+	mutex_enter(&ott->ott_lock);
+	if ((shared = sarc_lookup(mhash, &otr->otr_mac)) != NULL)
+		sarc_hold(mhash, shared);
+	mutex_exit(&ott->ott_lock);
+
+	/*
+	 * Once we have the VL2 destination, we need to see if we already
+	 * have an existing VL2 entry we can reuse.  If not, we create a
+	 * fully-formed (i.e. valid) VL2 entry that we add to the cache.
+	 */
+	if (shared == NULL) {
+		vl2_entry = kmem_cache_alloc(overlay_entry_cache,
+		    KM_NOSLEEP | KM_NORMALPRI);
+		if (vl2_entry == NULL) {
+			/* XXX: drop */
+			return;
+		}
+
+		bcopy(&otr->otr_answer, &vl2_entry->ote_u.ote_vl2.otvl2_dest,
+		    sizeof (overlay_target_point_t));
+		bcopy(&otr->otr_mac, &vl2_entry->ote_u.ote_vl2.otvl2_mac,
+		    sizeof (overlay_target_mac_t));
+		bcopy(&otr->otr_route, &vl2_entry->ote_u.ote_vl2.otvl2_route,
+		    sizeof (overlay_target_route_t));
+		vl2_entry->ote_flags =
+		    OVERLAY_ENTRY_F_HAS_ROUTE | OVERLAY_ENTRY_F_VALID;
+		vl2_entry->ote_vtime = entry->ote_vtime = now;
+
+		mutex_enter(&ott->ott_lock);
+		if ((shared = sarc_lookup(mhash, &otr->otr_mac)) != NULL) {
+			overlay_target_entry_dtor(vl2_entry);
+			kmem_cache_free(overlay_entry_cache, vl2_entry);
+			sarc_hold(mhash, shared);
+
+			vl2_entry = shared;
+		} else {
+			sarc_insert(mhash, vl2_entry);
+			avl_add(&ott->ott_u.ott_dyn.ott_tree, vl2_entry);
+			sarc_hold(mhash, vl2_entry);
+		}
+		mutex_exit(&ott->ott_lock);
+	} else {
+		vl2_entry = shared;
+	}
+
+	mutex_enter(&vl2_entry->ote_lock);
+	if ((vl2_entry->ote_flags & (OVERLAY_ENTRY_F_HAS_ROUTE)) == 0) {
+		bcopy(&otr->otr_route, &vl2_entry->ote_u.ote_vl2.otvl2_route,
+		    sizeof (overlay_target_route_t));
+		vl2_entry->ote_flags |= OVERLAY_ENTRY_F_HAS_ROUTE;
+	}
+
+	/*
+	 * Update the VL2 entry if it doesn't have a valid destination. This
+	 * can lead to a slightly strange corner case where an entry is both
+	 * valid and pending (if there is still an outstanding VL2 request).
+	 * In such a case, the VL2 response will just overwrite the destination
+	 * with the same results and clear the pending flag.
+	 */
+	if ((vl2_entry->ote_flags & (OVERLAY_ENTRY_F_VALID)) == 0) {
+		bcopy(&otr->otr_answer, &vl2_entry->ote_u.ote_vl2.otvl2_dest,
+		    sizeof (overlay_target_point_t));
+		vl2_entry->ote_vtime = gethrtime();
+		vl2_entry->ote_flags |= OVERLAY_ENTRY_F_VALID;
+	}
+	mutex_exit(&vl2_entry->ote_lock);
+}
+
 static int
 overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 {
 	const overlay_targ_resp_t *otr = arg;
 	overlay_target_entry_t *entry;
 	mblk_t *mp;
-	boolean_t is_router = B_FALSE;
-
-	/*
-	 * If we ever support a protocol that uses MAC addresses as the UL
-	 * destination address, this check should probably include checking
-	 * that otp_mac is also all zeros.
-	 */
-	if (IN6_IS_ADDR_UNSPECIFIED(&otr->otr_answer.otp_ip) &&
-	    otr->otr_answer.otp_port == 0)
-		is_router = B_TRUE;
 
 	mutex_enter(&thdl->oth_lock);
 	for (entry = list_head(&thdl->oth_outstanding); entry != NULL;
@@ -701,26 +1257,39 @@ overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 	mutex_exit(&thdl->oth_lock);
 
 	mutex_enter(&entry->ote_lock);
-	bcopy(&otr->otr_answer, &entry->ote_dest,
-	    sizeof (overlay_target_point_t));
+
+	/*
+	 * If we ever support a protocol that uses MAC addresses as the UL
+	 * destination address, this check should probably include checking
+	 * that otp_mac is also all zeros.
+	 */
+	if (IN6_IS_ADDR_UNSPECIFIED(&otr->otr_answer.otp_ip) &&
+	    otr->otr_answer.otp_port == 0)
+		entry->ote_flags |= OVERLAY_ENTRY_F_ROUTER;
+
+	if ((entry->ote_flags & OVERLAY_ENTRY_F_VL3) == 0) {
+		bcopy(&otr->otr_answer, &entry->ote_u.ote_vl2.otvl2_dest,
+		    sizeof (overlay_target_point_t));
+		entry->ote_vtime = gethrtime();
+	} else {
+		overlay_target_lookup_respond_vl3(otr, entry);
+	}
+
 	entry->ote_flags &= ~OVERLAY_ENTRY_F_PENDING;
 	entry->ote_flags |= OVERLAY_ENTRY_F_VALID;
-	if (is_router)
-		entry->ote_flags |= OVERLAY_ENTRY_F_ROUTER;
+
 	mp = entry->ote_chead;
 	entry->ote_chead = NULL;
 	entry->ote_ctail = NULL;
 	entry->ote_mbsize = 0;
-	entry->ote_vtime = gethrtime();
 	mutex_exit(&entry->ote_lock);
 
 	/*
-	 * For now do an in-situ drain.
-	 *
-	 * TODO: overlay_m_tx() may need to perform remote fabric attachment
-	 * checks, which may leave mblk_t's left in the msg chain for
-	 * mblk_t's whose connectivity with the target entry are unknown.
-	 * This will then need to deal with the leftovers.
+	 * For now do an in-situ drain.  For VL3 entries, if we re-use
+	 * and existing VL2 entry, it is possible the VL2 lookup is still
+	 * pending (though should be rare).  In such instances, the packets
+	 * queued on the VL3 entry will get queued on the VL2 entry until
+	 * the VL2 entry is resolved.
 	 */
 	mp = overlay_m_tx(entry->ote_odd, mp);
 	freemsgchain(mp);
@@ -766,15 +1335,6 @@ overlay_target_lookup_drop(overlay_target_hdl_t *thdl, void *arg)
 		goto done;
 	}
 
-	/*
-	 * TODO: This will need to be smarter.  This drop can only apply to
-	 * packets from the same source fabric as the first mblk_t in the
-	 * chain.  If the target exists, packets from other fabrics which
-	 * are chained to this target entry may be able to be sent (if we
-	 * already know they are attached), or we might need to query from
-	 * those other source fabrics if we don't know if the two are
-	 * attached.
-	 */
 	mp = entry->ote_chead;
 	if (mp != NULL) {
 		entry->ote_chead = mp->b_next;
@@ -1127,8 +1687,9 @@ overlay_target_cache_get(overlay_target_hdl_t *thdl, void *arg)
 		    sizeof (overlay_target_point_t));
 	} else {
 		overlay_target_entry_t *ote;
-		if ((ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-		    otc->otc_entry.otce_mac)) == NULL) {
+
+		if ((ote = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+		    &otc->otc_entry.otce_mac)) == NULL) {
 			ret = ENOENT;
 			goto done;
 		}
@@ -1143,7 +1704,7 @@ overlay_target_cache_get(overlay_target_hdl_t *thdl, void *arg)
 				    OVERLAY_TARGET_CACHE_ROUTER;
 			} else {
 				otc->otc_entry.otce_flags = 0;
-				bcopy(&ote->ote_dest,
+				bcopy(&ote->ote_u.ote_vl2.otvl2_dest,
 				    &otc->otc_entry.otce_dest,
 				    sizeof (overlay_target_point_t));
 			}
@@ -1198,17 +1759,20 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
 
-	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-	    otc->otc_entry.otce_mac);
+	ote = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    &otc->otc_entry.otce_mac);
 	if (ote == NULL) {
+
 		ote = kmem_cache_alloc(overlay_entry_cache, KM_SLEEP);
-		bcopy(otc->otc_entry.otce_mac, ote->ote_addr, ETHERADDRL);
+
+		bcopy(&otc->otc_entry.otce_mac, &ote->ote_u.ote_vl2.otvl2_mac,
+		    sizeof (overlay_target_mac_t));
 		ote->ote_chead = ote->ote_ctail = NULL;
 		ote->ote_mbsize = 0;
 		ote->ote_ott = ott;
 		ote->ote_odd = odd;
 		mutex_enter(&ote->ote_lock);
-		refhash_insert(ott->ott_u.ott_dyn.ott_dhash, ote);
+		sarc_insert(ott->ott_u.ott_dyn.ott_dhash, ote);
 		avl_add(&ott->ott_u.ott_dyn.ott_tree, ote);
 	} else {
 		mutex_enter(&ote->ote_lock);
@@ -1220,7 +1784,7 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 		ote->ote_flags |= OVERLAY_ENTRY_F_VALID;
 		if (otc->otc_entry.otce_flags & OVERLAY_TARGET_CACHE_ROUTER)
 			ote->ote_flags |= OVERLAY_ENTRY_F_ROUTER;
-		bcopy(&otc->otc_entry.otce_dest, &ote->ote_dest,
+		bcopy(&otc->otc_entry.otce_dest, &ote->ote_u.ote_vl2.otvl2_dest,
 		    sizeof (overlay_target_point_t));
 		mp = ote->ote_chead;
 		ote->ote_chead = NULL;
@@ -1271,8 +1835,11 @@ overlay_target_cache_remove(overlay_target_hdl_t *thdl, void *arg)
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
 
-	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-	    otc->otc_entry.otce_mac);
+	if (otc->otc_entry.otce_mac.otm_dcid == 0)
+		otc->otc_entry.otce_mac.otm_dcid = odd->odd_dcid;
+
+	ote = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	    &otc->otc_entry.otce_mac);
 	if (ote != NULL) {
 		mutex_enter(&ote->ote_lock);
 		ote->ote_flags &= ~OVERLAY_ENTRY_F_VALID_MASK;
@@ -1323,8 +1890,13 @@ overlay_target_cache_flush(overlay_target_hdl_t *thdl, void *arg)
 		ote->ote_flags &= ~OVERLAY_ENTRY_F_VALID_MASK;
 		mutex_exit(&ote->ote_lock);
 	}
-	ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-	    otc->otc_entry.otce_mac);
+
+	avl = &ott->ott_u.ott_dyn.ott_l3tree;
+	for (ote = avl_first(avl); ote != NULL; ote = AVL_NEXT(avl, ote)) {
+		mutex_enter(&ote->ote_lock);
+		ote->ote_flags &= ~OVERLAY_ENTRY_F_VALID_MASK;
+		mutex_exit(&ote->ote_lock);
+	}
 
 	mutex_exit(&ott->ott_lock);
 	overlay_hold_rele(odd);
@@ -1358,9 +1930,10 @@ overlay_target_cache_iter_copyin(const void *ubuf, void **outp, size_t *bsize,
 }
 
 typedef struct overlay_targ_cache_marker {
-	uint8_t		otcm_mac[ETHERADDRL];
+	overlay_target_mac_t otcm_mac;
 	uint16_t	otcm_done;
-} overlay_targ_cache_marker_t;
+} overlay_targ_cache_marker_t __aligned(8);
+CTASSERT(sizeof (overlay_targ_cache_marker_t) == 2 * sizeof (uint64_t));
 
 /* ARGSUSED */
 static int
@@ -1410,7 +1983,7 @@ overlay_target_cache_iter(overlay_target_hdl_t *thdl, void *arg)
 
 	if (ott->ott_mode == OVERLAY_TARGET_POINT) {
 		overlay_targ_cache_entry_t *out = &iter->otci_ents[0];
-		bzero(out->otce_mac, ETHERADDRL);
+		bzero(&out->otce_mac, sizeof (out->otce_mac));
 		out->otce_flags = 0;
 		bcopy(&ott->ott_u.ott_point, &out->otce_dest,
 		    sizeof (overlay_target_point_t));
@@ -1419,7 +1992,9 @@ overlay_target_cache_iter(overlay_target_hdl_t *thdl, void *arg)
 	}
 
 	avl = &ott->ott_u.ott_dyn.ott_tree;
-	bcopy(mark->otcm_mac, lookup.ote_addr, ETHERADDRL);
+	lookup.ote_u.ote_vl2.otvl2_mac.otm_dcid = odd->odd_dcid;
+	bcopy(&mark->otcm_mac, &lookup.ote_u.ote_vl2.otvl2_mac,
+	    sizeof (mark->otcm_mac));
 	ent = avl_find(avl, &lookup, &where);
 
 	/*
@@ -1444,19 +2019,21 @@ overlay_target_cache_iter(overlay_target_hdl_t *thdl, void *arg)
 			mutex_exit(&ent->ote_lock);
 			continue;
 		}
-		bcopy(ent->ote_addr, out->otce_mac, ETHERADDRL);
+		bcopy(&ent->ote_u.ote_vl2.otvl2_mac, &out->otce_mac,
+		    sizeof (out->otce_mac));
 		out->otce_flags = 0;
 		if (ent->ote_flags & OVERLAY_ENTRY_F_DROP)
 			out->otce_flags |= OVERLAY_TARGET_CACHE_DROP;
 		if (ent->ote_flags & OVERLAY_ENTRY_F_VALID)
-			bcopy(&ent->ote_dest, &out->otce_dest,
+			bcopy(&ent->ote_u.ote_vl2.otvl2_dest, &out->otce_dest,
 			    sizeof (overlay_target_point_t));
 		written++;
 		mutex_exit(&ent->ote_lock);
 	}
 
 	if (ent != NULL) {
-		bcopy(ent->ote_addr, mark->otcm_mac, ETHERADDRL);
+		bcopy(&ent->ote_u.ote_vl2.otvl2_mac, &mark->otcm_mac,
+		    sizeof (mark->otcm_mac));
 	} else {
 		mark->otcm_done = 1;
 	}

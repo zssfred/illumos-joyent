@@ -82,23 +82,33 @@
 #include <strings.h>
 #include <assert.h>
 #include <limits.h>
+#include <sys/avl.h>
+#include <sys/debug.h>
+#include <sys/list.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <libnvpair.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/ethernet.h>
 #include <sys/socket.h>
+#include <sys/vlan.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 #include <libvarpd_files_json.h>
 
 #define	FABRIC_NAME_MAX	64
+struct varpd_files_attach;
+typedef struct varpd_files_attach varpd_files_attach_t;
+
 typedef struct varpd_files_fabric {
+	avl_node_t	vafs_avlnode;
+	list_node_t	vafs_attached_node;
+	varpd_files_attach_t *vafs_attach;
 	char		vafs_name[FABRIC_NAME_MAX];
-	nvlist_t	*vafs_nvl;
 	struct in6_addr	vafs_addr;
 	uint64_t	vafs_vnet;
 	uint32_t	vafs_dcid;
@@ -107,19 +117,44 @@ typedef struct varpd_files_fabric {
 	uint8_t		vafs_routermac[ETHERADDRL];
 } varpd_files_fabric_t;
 
-typedef struct varpd_files_attach {
-	varpd_files_fabric_t **vff_fabrics;
-} varpd_files_attach_t;
+struct varpd_files_attach {
+	list_node_t	vfa_node;
+	char		vfa_name[FABRIC_NAME_MAX];
+	list_t		vfa_fabrics;
+};
+
+typedef struct varpd_files_if {
+	avl_node_t	vfi_macnode;
+	avl_node_t	vfi_ipnode;
+	avl_node_t	vfi_ndpnode;
+	struct in6_addr	vfi_ip;
+	struct in6_addr vfi_llocalip;	/* IPv6 link local if specified */
+	uint64_t	vfi_vnet;
+	uint32_t	vfi_dcid;
+	uint16_t	vfi_vlan;
+	uint8_t		vfi_mac[ETHERADDRL];
+	uint8_t		vfi_dhcp[ETHERADDRL]; /* dhcp-proxy MAC address */
+	boolean_t	vfi_has_dhcp;
+	boolean_t	vfi_has_lladdr;
+	overlay_target_point_t vfi_dest;
+} varpd_files_if_t;
 
 typedef struct varpd_files {
 	overlay_plugin_dest_t	vaf_dest;	/* RO */
 	varpd_provider_handle_t	*vaf_hdl;	/* RO */
 	char			*vaf_path;	/* WO */
-	nvlist_t		*vaf_nvl;	/* WO */
 	uint64_t		vaf_nmisses;	/* Atomic */
 	uint64_t		vaf_narp;	/* Atomic */
-	varpd_files_fabric_t	*vaf_fabrics;	/* RO */
-	varpd_files_attach_t	*vaf_attach;	/* RO */
+
+				/* These hold varpd_files_fabric_t's */
+	avl_tree_t		vaf_fabrics;	/* WO */
+	list_t			vaf_attached;	/* WO */
+
+				/* These hold varpd_files_if_t */
+	avl_tree_t		vaf_macs;	/* WO */
+	avl_tree_t		vaf_ips;	/* WO */
+	avl_tree_t		vaf_ndp;	/* WO */
+
 	uint64_t		vaf_vnet;	/* RO */
 	uint32_t		vaf_dcid;	/* RO */
 } varpd_files_t;
@@ -127,6 +162,8 @@ typedef struct varpd_files {
 static const char *varpd_files_props[] = {
 	"files/config"
 };
+
+static bunyan_logger_t *files_bunyan;
 
 /*
  * Try to convert a string to an IP address or IP address + prefix.  We first
@@ -203,6 +240,106 @@ str_to_ip(const char *s, struct in6_addr *v6, uint8_t *prefixlen)
 	return (0);
 }
 
+static int
+varpd_files_if_mac_avl(const void *a, const void *b)
+{
+	const varpd_files_if_t *l = a;
+	const varpd_files_if_t *r = b;
+	int i;
+
+	if (l->vfi_dcid < r->vfi_dcid)
+		return (-1);
+	if (l->vfi_dcid > r->vfi_dcid)
+		return (1);
+
+	for (i = 0; i < ETHERADDRL; i++) {
+		if (l->vfi_mac[i] < r->vfi_mac[i])
+			return (-1);
+		if (l->vfi_mac[i] > r->vfi_mac[i])
+			return (1);
+	}
+
+	return (0);
+}
+
+static int
+varpd_files_if_ip_avl(const void *a, const void *b)
+{
+	const varpd_files_if_t *l = a;
+	const varpd_files_if_t *r = b;
+	int i;
+
+	if (l->vfi_vnet < r->vfi_vnet)
+		return (-1);
+	if (l->vfi_vnet > r->vfi_vnet)
+		return (1);
+	if (l->vfi_vlan < r->vfi_vlan)
+		return (-1);
+	if (l->vfi_vlan > r->vfi_vlan)
+		return (1);
+	for (i = 0; i < sizeof (struct in6_addr); i++) {
+		if (l->vfi_ip.s6_addr[i] < r->vfi_ip.s6_addr[i])
+			return (-1);
+		if (l->vfi_ip.s6_addr[i] > r->vfi_ip.s6_addr[i])
+			return (1);
+	}
+	return (0);
+}
+
+static int
+varpd_files_if_ndp_avl(const void *a, const void *b)
+{
+	const varpd_files_if_t *l = a;
+	const varpd_files_if_t *r = b;
+	int i;
+
+	VERIFY(l->vfi_has_lladdr);
+	VERIFY(r->vfi_has_lladdr);
+
+	for (i = 0; i < sizeof (struct in6_addr); i++) {
+		if (l->vfi_llocalip.s6_addr[i] < r->vfi_llocalip.s6_addr[i])
+			return (-1);
+		if (l->vfi_llocalip.s6_addr[i] > r->vfi_llocalip.s6_addr[i])
+			return (1);
+	}
+	return (0);
+}
+
+static int
+varpd_files_fabric_avl(const void *a, const void *b)
+{
+	const varpd_files_fabric_t *l = a;
+	const varpd_files_fabric_t *r = b;
+	int i;
+
+	/*
+	 * Sort by dcid, vnet, vlan, subnet.  With subnet last, we can use
+	 * avl_nearest() to find the fabric for an IP (given the other pieces
+	 * of information).
+	 */
+	if (l->vafs_dcid < r->vafs_dcid)
+		return (-1);
+	if (l->vafs_dcid > r->vafs_dcid)
+		return (1);
+	if (l->vafs_vnet < r->vafs_vnet)
+		return (-1);
+	if (l->vafs_vnet > r->vafs_vnet)
+		return (1);
+	if (l->vafs_vlan < r->vafs_vlan)
+		return (-1);
+	if (l->vafs_vlan > r->vafs_vlan)
+		return (1);
+
+	for (i = 0; i < sizeof (struct in6_addr); i++) {
+		if (l->vafs_addr.s6_addr[i] < r->vafs_addr.s6_addr[i])
+			return (-1);
+		if (l->vafs_addr.s6_addr[i] > r->vafs_addr.s6_addr[i])
+			return (1);
+	}
+
+	return (0);
+}
+
 static boolean_t
 varpd_files_valid_dest(overlay_plugin_dest_t dest)
 {
@@ -224,413 +361,672 @@ varpd_files_create(varpd_provider_handle_t *hdl, void **outp,
 	if (varpd_files_valid_dest(dest) == B_FALSE)
 		return (ENOTSUP);
 
-	vaf = umem_alloc(sizeof (varpd_files_t), UMEM_DEFAULT);
+	vaf = umem_zalloc(sizeof (varpd_files_t), UMEM_DEFAULT);
 	if (vaf == NULL)
 		return (ENOMEM);
 
-	bzero(vaf, sizeof (varpd_files_t));
 	vaf->vaf_dest = dest;
-	vaf->vaf_path = NULL;
-	vaf->vaf_nvl = NULL;
 	vaf->vaf_hdl = hdl;
 	vaf->vaf_dcid = libvarpd_plugin_dcid(hdl);
+	vaf->vaf_vnet = libvarpd_plugin_vnetid(hdl);
+	avl_create(&vaf->vaf_macs, varpd_files_if_mac_avl,
+	    sizeof (varpd_files_if_t), offsetof(varpd_files_if_t, vfi_macnode));
+	avl_create(&vaf->vaf_ips, varpd_files_if_ip_avl,
+	    sizeof (varpd_files_if_t), offsetof(varpd_files_if_t, vfi_ipnode));
+	avl_create(&vaf->vaf_ndp, varpd_files_if_ndp_avl,
+	    sizeof (varpd_files_if_t), offsetof(varpd_files_if_t, vfi_ndpnode));
+	avl_create(&vaf->vaf_fabrics, varpd_files_fabric_avl,
+	    sizeof (varpd_files_fabric_t),
+	    offsetof(varpd_files_fabric_t, vafs_avlnode));
+	list_create(&vaf->vaf_attached, sizeof (varpd_files_attach_t),
+	    offsetof(varpd_files_attach_t, vfa_node));
 	*outp = vaf;
-	return (0);
-}
-
-static int varpd_files_normalize_remote(nvlist_t *, nvlist_t *);
-
-static int
-varpd_files_normalize_ethers(nvlist_t *nvl, nvlist_t *out, boolean_t is_sub)
-{
-	int ret;
-	nvpair_t *pair;
-
-	for (pair = nvlist_next_nvpair(nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(nvl, pair)) {
-		char *name, fname[ETHERADDRSTRL];
-		nvlist_t *data;
-		struct ether_addr ether, *e;
-		e = &ether;
-
-		if (nvpair_type(pair) != DATA_TYPE_NVLIST) {
-			nvlist_free(out);
-			return (EINVAL);
-		}
-
-		name = nvpair_name(pair);
-		if ((ret = nvpair_value_nvlist(pair, &data)) != 0) {
-			nvlist_free(out);
-			return (EINVAL);
-		}
-
-		/* Remote subnet */
-		if (!is_sub && strncmp(name, "remote-", 7) == 0) {
-			nvlist_t *rem;
-
-			ret = nvlist_alloc(&rem, NV_UNIQUE_NAME, 0);
-			if (ret != 0) {
-				nvlist_free(out);
-				return (EINVAL);
-			}
-
-			ret = varpd_files_normalize_remote(data, rem);
-			if (ret != 0) {
-				nvlist_free(out);
-				return (EINVAL);
-			}
-
-			ret = nvlist_add_nvlist(out, name, rem);
-			nvlist_free(rem);
-			if (ret != 0) {
-				nvlist_free(out);
-				return (EINVAL);
-			}
-			continue;
-		}
-
-		/* attached and local fabrics */
-		if (!is_sub && (strncmp(name, "attach-", 7) == 0 ||
-		    strncmp(name, "local-", 6) == 0)) {
-			if ((ret = nvlist_add_nvlist(out, name, data)) != 0) {
-				nvlist_free(out);
-				return (EINVAL);
-			}
-			continue;
-		}
-
-		if (ether_aton_r(name, e) == NULL) {
-			nvlist_free(out);
-			return (EINVAL);
-		}
-
-		if (ether_ntoa_r(e, fname) == NULL) {
-			nvlist_free(out);
-			return (ENOMEM);
-		}
-
-		if ((ret = nvlist_add_nvlist(out, fname, data)) != 0) {
-			nvlist_free(out);
-			return (EINVAL);
-		}
-	}
-
-	return (0);
-}
-
-static int
-varpd_files_normalize_remote(nvlist_t *nvl, nvlist_t *out)
-{
-	nvlist_t *macs, *mout;
-	nvpair_t *pair;
-	int ret;
-
-	for (pair = nvlist_next_nvpair(nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(nvl, pair)) {
-		char *name;
-
-		name = nvpair_name(pair);
-
-		if (strcmp(name, "macs") == 0) {
-			if ((ret = nvpair_value_nvlist(pair, &macs)) != 0) {
-				nvlist_free(out);
-				return (EINVAL);
-			}
-
-			/* This entry is handled at the end */
-			continue;
-		}
-
-		if ((ret = nvlist_add_nvpair(out, pair)) != 0) {
-			nvlist_free(out);
-			return (EINVAL);
-		}
-	}
-
-	if (macs == NULL) {
-		nvlist_free(out);
-		return (EINVAL);
-	}
-
-	if ((ret = nvlist_alloc(&mout, NV_UNIQUE_NAME, 0)) != 0) {
-		nvlist_free(out);
-		return (EINVAL);
-	}
-
-	if ((ret = varpd_files_normalize_ethers(macs, mout, B_TRUE)) != 0) {
-		/* mout is freed on error by varpd_files_normalize_ethers() */
-		nvlist_free(out);
-		return (EINVAL);
-	}
-
-	ret = nvlist_add_nvlist(out, "macs", mout);
-	nvlist_free(mout);
-	if (ret != 0) {
-		nvlist_free(out);
-		return (EINVAL);
-	}
-
-	return (0);
-}
-
-static int
-varpd_files_normalize_nvlist(varpd_files_t *vaf, nvlist_t *nvl)
-{
-	int ret;
-	nvlist_t *out;
-	nvpair_t *pair;
-
-	if ((ret = nvlist_alloc(&out, NV_UNIQUE_NAME, 0)) != 0)
-		return (ret);
-
-	if ((ret = varpd_files_normalize_ethers(nvl, out, B_FALSE)) != 0) {
-		/* varpd_files_normalize_ethers() frees out on error */
-		return (EINVAL);
-	}
-
-	vaf->vaf_nvl = out;
-	return (0);
-}
-
-static int
-varpd_files_add_local_subnet(varpd_files_t *vaf, varpd_files_fabric_t *net,
-    const char *name, nvlist_t *nvl)
-{
-	char *s;
-	int32_t vlan;
-	int ret;
-
-	net->vafs_dcid = vaf->vaf_dcid;
-	net->vafs_vnet = vaf->vaf_vnet;
-	net->vafs_nvl = vaf->vaf_nvl;
-
-	(void) strlcpy(net->vafs_name, name, sizeof (net->vafs_name));
-
-	if ((ret = nvlist_lookup_string(nvl, "prefix", &s)) != 0)
-		return (EINVAL);
-	if (str_to_ip(s, &net->vafs_addr, &net->vafs_prefixlen) != 0)
-		return (EINVAL);
-
-	if ((ret = nvlist_lookup_int32(nvl, "prefix", &vlan)) != 0)
-		return (EINVAL);
-	if (vlan < 0 || vlan > 4096)
-		return (EINVAL);
-	net->vafs_vlan = (uint16_t)vlan;
-
-	/* XXX: routermac */
-	return (0);
-}
-
-static int
-varpd_files_add_remote_subnet(varpd_files_fabric_t *net, const char *netname,
-    nvlist_t *nvl)
-{
-	nvpair_t *pair;
-	int ret;
-
-	(void) strlcpy(net->vafs_name, netname, sizeof (net->vafs_name));
-
-	for (pair = nvlist_next_nvpair(nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(nvl, pair)) {
-		char *name = nvpair_name(pair);
-		int32_t i32;
-
-		if (strcmp(name, "dcid") == 0) {
-			if ((ret = nvpair_value_int32(pair, &i32)) != 0)
-				return (ret);
-
-			net->vafs_dcid = (uint32_t)i32;
-		} else if (strcmp(name, "prefix") == 0) {
-			char *s;
-
-			if ((ret = nvpair_value_string(pair, &s)) != 0)
-				return (ret);
-
-			if (str_to_ip(s, &net->vafs_addr,
-			    &net->vafs_prefixlen) != 0)
-				return (EINVAL);
-		} else if (strcmp(name, "vnet") == 0) {
-			if ((ret = nvpair_value_int32(pair, &i32)) != 0)
-				return (ret);
-			net->vafs_vnet = i32;
-		} else if (strcmp(name, "vlan") == 0) {
-			if ((ret = nvpair_value_int32(pair, &i32)) != 0)
-				return (ret);
-			if (i32 > 4096 || i32 < 0)
-				return (EINVAL);
-			net->vafs_vlan = i32;
-		} else if (strcmp(name, "macs") == 0) {
-			nvlist_t *macs;
-
-			if ((ret = nvpair_value_nvlist(pair, &macs)) != 0)
-				return (ret);
-
-			if ((ret = nvlist_dup(macs, &net->vafs_nvl, 0)) != 0)
-				return (ret);
-		} else if (strcmp(name, "routermac") == 0) {
-			char *s;
-			struct ether_addr *e;
-			e = (struct ether_addr *)&net->vafs_routermac;
-
-			if ((ret = nvpair_value_string(pair, &s)) != 0)
-				return (ret);
-
-			if (ether_aton_r(s, e) == NULL)
-				return (EINVAL);
-
-		}
-	}
-
-	return (0);
-}
-
-static void varpd_files_stop_fabrics(varpd_files_t *);
-
-static int
-varpd_files_start_fabrics(varpd_files_t *vaf)
-{
-	nvpair_t *pair;
-	size_t nfabric = 0;
-	int ret;
-
-	for (pair = nvlist_next_nvpair(vaf->vaf_nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(vaf->vaf_nvl, pair)) {
-		char *name = nvpair_name(pair);
-
-		if (strncmp(name, "remote-", 7) != 0 &&
-		    strncmp(name, "attach-", 7) != 0)
-			continue;
-
-		nfabric++;
-	}
-
-	if (nfabric == 0)
-		return (0);
-
-	vaf->vaf_fabrics = calloc(nfabric + 1, sizeof (varpd_files_fabric_t));
-	if (vaf->vaf_fabrics == NULL)
-		return (ENOMEM);
-
-	nfabric = 0;
-	for (pair = nvlist_next_nvpair(vaf->vaf_nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(vaf->vaf_nvl, pair)) {
-		char *name = nvpair_name(pair);
-		boolean_t is_remote = B_FALSE;
-		boolean_t is_local = B_FALSE;
-
-		if (strncmp(name, "remote-", 7) == 0)
-			is_remote = B_TRUE;
-		if (strncmp(name, "local-", 7) == 0)
-			is_local = B_TRUE;
-
-		if (!is_remote && !is_local)
-			continue;
-
-		varpd_files_fabric_t *net = &vaf->vaf_fabrics[nfabric++];
-		nvlist_t *netnvl;
-
-		if ((ret = nvpair_value_nvlist(pair, &netnvl)) != 0) {
-			varpd_files_stop_fabrics(vaf);
-			return (ret);
-		}
-
-		ret = is_remote ?
-		    varpd_files_add_remote_subnet(net, name, netnvl) :
-		    varpd_files_add_local_subnet(vaf, net, name, netnvl);
-
-		if (ret != 0) {
-			varpd_files_stop_fabrics(vaf);
-			return (ret);
-		}
-	}
-
 	return (0);
 }
 
 static varpd_files_fabric_t *
 varpd_files_fabric_getbyname(varpd_files_t *vaf, const char *name)
 {
-	varpd_files_fabric_t *fab = &vaf->vaf_fabrics[0];
+	varpd_files_fabric_t *fab = NULL;
 
-	for (fab = &vaf->vaf_fabrics[0]; fab->vafs_name[0] != '\0'; fab++) {
-		if (strcmp(fab->vafs_name, name) != 0)
-			continue;
-		return (fab);
+	for (fab = avl_first(&vaf->vaf_fabrics); fab != NULL;
+	    fab = AVL_NEXT(&vaf->vaf_fabrics, fab)) {
+		if (strcmp(fab->vafs_name, name) == 0)
+			return (fab);
 	}
 
 	return (NULL);
 }
 
-static void
-varpd_files_stop_attached(varpd_files_t *vaf)
-{
-	size_t i;
-
-	if (vaf->vaf_attach == NULL)
-		return;
-
-	for (i = 0; vaf->vaf_attach[i].vff_fabrics != NULL; i++)
-		free(vaf->vaf_attach[i].vff_fabrics);
-
-	free(vaf->vaf_attach);
-	vaf->vaf_attach = NULL;
-}
-
 static int
-varpd_files_start_attached(varpd_files_t *vaf)
+varpd_files_convert_attached(varpd_files_t *vaf, nvlist_t *att)
 {
-	nvpair_t *pair;
-	size_t nattach = 0;
+	nvlist_t *nvl = NULL;
+	nvpair_t *nvp = NULL;
 	int ret;
 
-	for (pair = nvlist_next_nvpair(vaf->vaf_nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(vaf->vaf_nvl, pair)) {
-		char *name;
+	while ((nvp = nvlist_next_nvpair(att, nvp)) != NULL) {
+		varpd_files_attach_t *att;
+		char **nets = NULL;
+		uint32_t i, n;
 
-		name = nvpair_name(pair);
-		if (strncmp(name, "attach-", 7) != 0)
-			continue;
-
-		if (nvpair_type(pair) != DATA_TYPE_STRING_ARRAY)
+		if (nvpair_type(nvp) != DATA_TYPE_NVLIST) {
+			(void) bunyan_error(files_bunyan,
+			    "attached fabric group value is not an nvlist",
+			    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+			    BUNYAN_T_END);
 			return (EINVAL);
+		}
 
-		nattach++;
-	}
+		if ((ret = nvpair_value_nvlist(nvp, &nvl)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error retrieving attached fabric group",
+			    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+			    BUNYAN_T_STRING, "errmsg", strerror(ret),
+			    BUNYAN_T_END);
+			return (EINVAL);
+		}
 
-	if (nattach == 0)
-		return (0);
+		if ((ret = nvlist_lookup_boolean(nvl, ".__json_array")) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "group value does not appear to be a JSON array",
+			    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			return (EINVAL);
+		}
 
-	if ((vaf->vaf_attach = calloc(nattach + 1,
-	    sizeof (varpd_files_attach_t))) == NULL)
-		return (ENOMEM);
-
-	nattach = 0;
-	for (pair = nvlist_next_nvpair(vaf->vaf_nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(vaf->vaf_nvl, pair)) {
-		varpd_files_attach_t *fa = &vaf->vaf_attach[nattach++];
-		char **fabrics = NULL;
-		uint_t i, nelem = 0;
-
-		if ((ret = nvpair_value_string_array(pair, &fabrics,
-		    &nelem)) != NULL) {
-			varpd_files_stop_attached(vaf);
+		if ((ret = nvlist_lookup_uint32(nvl, "length", &n)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error obtain group array length",
+			    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+			    BUNYAN_T_STRING, "errmsg", strerror(ret),
+			    BUNYAN_T_END);
 			return (ret);
 		}
 
-		if ((fa = calloc(nelem + 1, sizeof (varpd_files_fabric_t *))) ==
-		    NULL) {
-			varpd_files_stop_attached(vaf);
+		if ((nets = calloc(n, sizeof (char *))) == NULL) {
+			(void) bunyan_error(files_bunyan,
+			    "out of memory", BUNYAN_T_END);
 			return (ENOMEM);
 		}
 
-		for (i = 0; i < nelem; i++) {
-			fa->vff_fabrics[i] =
-			    varpd_files_fabric_getbyname(vaf, fabrics[i]);
-			if (fa->vff_fabrics[i] == NULL) {
-				varpd_files_stop_attached(vaf);
-				return (ENOENT);
+		/*
+		 * Note, we are just storing references to the names in
+		 * nets, so we only need to call free(nets), and not on
+		 * each entry (e.g. free(nets[0])).  We strlcpy() it out,
+		 * so we don't need to worry about it going away before we
+		 * done with it.
+		 */
+		for (i = 0; i < n; i++) {
+			char buf[11];	/* largest uint32_t val + NUL */
+
+			(void) snprintf(buf, sizeof (buf), "%u", i);
+			ret = nvlist_lookup_string(nvl, buf, &nets[i]);
+			if (ret != 0) {
+				(void) bunyan_error(files_bunyan,
+				    "unexpected error lookup up group array "
+				    "value",
+				    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+				    BUNYAN_T_UINT32, "index", i,
+				    BUNYAN_T_STRING, "errmsg", strerror(ret),
+				    BUNYAN_T_END);
+				free(nets);
+				return (ret);
 			}
 		}
+
+		if ((att = umem_zalloc(sizeof (*att), UMEM_DEFAULT)) == NULL) {
+			(void) bunyan_error(files_bunyan, "out of memory",
+			    BUNYAN_T_END);
+			free(nets);
+			return (ENOMEM);
+		}
+
+		if (strlcpy(att->vfa_name, nvpair_name(nvp),
+		    sizeof (att->vfa_name)) >= sizeof (att->vfa_name)) {
+			(void) bunyan_error(files_bunyan,
+			    "attached fabric group name is too long",
+			    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+			    BUNYAN_T_UINT32, "len",
+			    (uint32_t)strlen(nvpair_name(nvp)),
+			    BUNYAN_T_UINT32, "maxlen",
+			    (uint32_t)sizeof (att->vfa_name) - 1,
+			    BUNYAN_T_END);
+			umem_free(att, sizeof (*att));
+			free(nets);
+			return (EOVERFLOW);
+		}
+
+		list_create(&att->vfa_fabrics, sizeof (varpd_files_fabric_t),
+		    offsetof(varpd_files_fabric_t, vafs_attached_node));
+
+		list_insert_tail(&vaf->vaf_attached, att);
+
+		for (i = 0; i < n; i++) {
+			varpd_files_fabric_t *fab;
+
+			fab = varpd_files_fabric_getbyname(vaf, nets[i]);
+			if (fab == NULL) {
+				(void) bunyan_error(files_bunyan,
+				    "subnet name not found",
+				    BUNYAN_T_STRING, "subnet", nets[i],
+				    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+				    BUNYAN_T_END);
+				free(nets);
+				return (ENOENT);
+			}
+
+			if (fab->vafs_attach != NULL) {
+				(void) bunyan_error(files_bunyan,
+				    "subnet already attached to another group",
+				    BUNYAN_T_STRING, "subnet", nets[i],
+				    BUNYAN_T_STRING, "group", nvpair_name(nvp),
+				    BUNYAN_T_STRING, "existing_group",
+				    fab->vafs_attach->vfa_name,
+				    BUNYAN_T_END);
+				free(nets);
+				return (EBUSY);
+			}
+
+			fab->vafs_attach = att;
+			list_insert_tail(&att->vfa_fabrics, fab);
+		}
+		free(nets);
+	}
+
+	return (0);
+}
+
+static int
+varpd_files_convert_fabrics(varpd_files_t *vaf, nvpair_t *fpair)
+{
+	nvlist_t *nvl = NULL;
+	nvpair_t *nvp = NULL;
+	int ret;
+
+	ASSERT(strcmp(nvpair_name(fpair), "fabrics") == 0);
+
+	if (nvpair_type(fpair) != DATA_TYPE_NVLIST) {
+		(void) bunyan_error(files_bunyan,
+		    "'fabrics' value is not an nvlist", BUNYAN_T_END);
+		return (EINVAL);
+	}
+
+	if ((ret = nvpair_value_nvlist(fpair, &nvl)) != 0) {
+		(void) bunyan_error(files_bunyan,
+		    "unexpected error reading value of 'fabrics'",
+		    BUNYAN_T_STRING, "errmsg", strerror(errno),
+		    BUNYAN_T_END);
+		return (ret);
+	}
+
+	while ((nvp = nvlist_next_nvpair(nvl, nvp)) != NULL) {
+		struct in6_addr ip = { 0 };
+		varpd_files_fabric_t *fab = NULL;
+		varpd_files_if_t *vl2 = NULL;
+		nvlist_t *vnvl = NULL;
+		int32_t i32;
+		char *s;
+
+		if (strcmp(nvpair_name(nvp), "attached-fabrics") == 0) {
+			if (nvpair_type(nvp) != DATA_TYPE_NVLIST) {
+				(void) bunyan_error(files_bunyan,
+				    "'attached-fabrics' value is not an nvlist",
+				    BUNYAN_T_END);
+				return (EINVAL);
+			}
+
+			if ((ret = nvpair_value_nvlist(nvp, &vnvl)) != 0) {
+				(void) bunyan_error(files_bunyan,
+				    "unexpected error in 'attached-fabrics' "
+				    "value",
+				    BUNYAN_T_STRING, "errmsg", strerror(ret),
+				    BUNYAN_T_END);
+				return (ret);
+			}
+			ret = varpd_files_convert_attached(vaf, vnvl);
+			if (ret != 0) {
+				return (ret);
+			}
+			continue;
+		}
+
+		if (nvpair_type(nvp) != DATA_TYPE_NVLIST) {
+			(void) bunyan_error(files_bunyan,
+			    "subnet value is not an nvlist",
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			return (EINVAL);
+		}
+
+		if ((ret = nvpair_value_nvlist(nvp, &vnvl)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error reading subnet value",
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			return (ret);
+		}
+
+		if ((fab = umem_zalloc(sizeof (*fab), UMEM_DEFAULT)) == NULL) {
+			(void) bunyan_error(files_bunyan, "out of memory",
+			    BUNYAN_T_END);
+			return (ENOMEM);
+		}
+		/* Default to our vid if none is given */
+		fab->vafs_vnet = vaf->vaf_vnet;
+
+		if (strlcpy(fab->vafs_name, nvpair_name(nvp),
+		    sizeof (fab->vafs_name)) >= sizeof (fab->vafs_name)) {
+			(void) bunyan_error(files_bunyan,
+			    "subnet name is too long",
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_UINT32, "length",
+			    (uint32_t)strlen(nvpair_name(nvp)),
+			    BUNYAN_T_UINT32, "maxlen",
+			    (uint32_t)sizeof (fab->vafs_name) - 1,
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (EOVERFLOW);
+		}
+
+		if ((ret = nvlist_lookup_string(vnvl, "prefix", &s)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'prefix' value is missing from subnet",
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (EINVAL);
+		}
+		if ((ret = str_to_ip(s, &fab->vafs_addr,
+		    &fab->vafs_prefixlen)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "prefix value is not valid",
+			    BUNYAN_T_STRING, "prefix", s,
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (ret);
+		}
+		/* XXX: Make sure it's the subnet address */
+
+		if ((ret = nvlist_lookup_int32(vnvl, "vlan", &i32)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'vlan' value is missing",
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (EINVAL);
+		}
+		if (i32 < 0 || i32 > VLAN_ID_MAX) {
+			(void) bunyan_error(files_bunyan,
+			    "vlan value is out of range (0-4094)",
+			    BUNYAN_T_INT32, "vlan", i32,
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (ERANGE);
+		}
+		fab->vafs_vlan = (uint16_t)i32;
+
+		if ((ret = nvlist_lookup_string(vnvl, "routerip", &s)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'routerip' value is missing",
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (EINVAL);
+		}
+		if ((ret = str_to_ip(s, &ip, NULL)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'routerip' value is not an IP",
+			    BUNYAN_T_STRING, "routerip", s,
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (ret);
+		}
+
+		if ((ret = nvlist_lookup_string(vnvl, "routermac", &s)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'routermac' value is missing from subnet",
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (EINVAL);
+		}
+		if (ether_aton_r(s,
+		    (struct ether_addr *)fab->vafs_routermac) == NULL) {
+			(void) bunyan_error(files_bunyan,
+			    "'routermac' is not a valid MAC address",
+			    BUNYAN_T_STRING, "mac", s,
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (EINVAL);
+		}
+
+		/*
+		 * XXX: Because of the quirks of javascript, representing
+		 * integers > INT32_MAX in json becomes dicey.  Should we
+		 * just use a string instead?
+		 */
+		switch (ret = nvlist_lookup_int32(vnvl, "dcid", &i32)) {
+		case 0:
+			fab->vafs_dcid = (uint32_t)i32;
+			break;
+		case ENOENT:
+			fab->vafs_dcid = vaf->vaf_dcid;
+			break;
+		default:
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error processing 'dcid' value",
+			    BUNYAN_T_STRING, "errmsg", strerror(errno),
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (ret);
+		}
+
+		switch (ret = nvlist_lookup_string(vnvl, "vid", &s)) {
+		case ENOENT:
+			fab->vafs_vnet = vaf->vaf_vnet;
+			break;
+		case 0:
+			errno = 0;
+			if ((fab->vafs_vnet = strtoul(s, NULL, 10)) != 0 ||
+			    errno == 0)
+				break;
+			ret = errno;
+			(void) bunyan_error(files_bunyan,
+			    "unable to parse 'vid' as a number",
+			    BUNYAN_T_STRING, "vid", s,
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (ret);
+		default:
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error processing 'vid' value",
+			    BUNYAN_T_STRING, "errmsg", strerror(errno),
+			    BUNYAN_T_STRING, "subnet", nvpair_name(nvp),
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (ret);
+		}
+
+		/* Make sure router ip is in subnet */
+		if (!IN6_ARE_PREFIXEDADDR_EQUAL(&ip, &fab->vafs_addr,
+		    fab->vafs_prefixlen)) {
+			void *ipp = &fab->vafs_addr;
+			bunyan_type_t type =
+			    IN6_IS_ADDR_V4MAPPED(&fab->vafs_addr) ?
+			    BUNYAN_T_IP : BUNYAN_T_IP6;
+
+			(void) bunyan_error(files_bunyan,
+			    "'routerip' value is not within subnet",
+			    type, "routerip", ipp,
+			    BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (EINVAL);
+		}
+
+		/*
+		 * Add VL2 entry for overlay router on this fabric.
+		 * Use umem_zalloc so vl2->vfi_dest (UL3 address) is all zeros.
+		 */
+		if ((vl2 = umem_zalloc(sizeof (*vl2), UMEM_DEFAULT)) == NULL) {
+			(void) bunyan_error(files_bunyan,
+			    "out of memory", BUNYAN_T_END);
+			umem_free(fab, sizeof (*fab));
+			return (ENOMEM);
+		}
+
+		bcopy(&ip, &vl2->vfi_ip, sizeof (struct in6_addr));
+		bcopy(fab->vafs_routermac, vl2->vfi_mac, ETHERADDRL);
+		vl2->vfi_dcid = fab->vafs_dcid;
+		vl2->vfi_vnet = fab->vafs_vnet;
+		vl2->vfi_vlan = fab->vafs_vlan;
+		avl_add(&vaf->vaf_macs, vl2);
+		avl_add(&vaf->vaf_ips, vl2);
+
+		avl_add(&vaf->vaf_fabrics, fab);
+	}
+
+	return (0);
+}
+
+static int
+varpd_files_convert_nvlist(varpd_files_t *vaf, nvlist_t *data, uint_t level)
+{
+	nvpair_t *nvp = NULL;
+	nvlist_t *nvl = NULL;
+	char *name;
+	int ret;
+
+	while ((nvp = nvlist_next_nvpair(data, nvp)) != NULL) {
+		varpd_files_if_t *ifp = NULL;
+		char *s;
+		int32_t i32;
+
+		name = nvpair_name(nvp);
+
+		(void) bunyan_debug(files_bunyan, "processing key",
+		    BUNYAN_T_STRING, "key", name,
+		    BUNYAN_T_END);
+
+		if (nvpair_type(nvp) != DATA_TYPE_NVLIST) {
+			(void) bunyan_error(files_bunyan,
+			    "value is not a hash (nvlist)",
+			    BUNYAN_T_STRING, "key", name,
+			    BUNYAN_T_END);
+			return (EINVAL);
+		}
+
+		if ((ret = nvpair_value_nvlist(nvp, &nvl)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error reading values for mac entry",
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_STRING, "errmsg", strerror(ret),
+			    BUNYAN_T_END);
+			return (ret);
+		}
+
+		if (strcmp(name, "fabrics") == 0) {
+			if (level > 0) {
+				(void) bunyan_error(files_bunyan,
+				    "'fabrics' can only appear at the top-most "
+				    "level", BUNYAN_T_END);
+				return (EINVAL);
+			}
+			ret = varpd_files_convert_fabrics(vaf, nvp);
+			if (ret != 0) {
+				return (ret);
+			}
+			continue;
+		}
+
+		if ((ifp = umem_zalloc(sizeof (*ifp), UMEM_DEFAULT)) == NULL) {
+			(void) bunyan_error(files_bunyan,
+			    "out of memory", BUNYAN_T_END);
+			return (ENOMEM);
+		}
+		ifp->vfi_dcid = vaf->vaf_dcid;
+
+		struct ether_addr *ep = (struct ether_addr *)ifp->vfi_mac;
+		if (ether_aton_r(name, ep) == NULL) {
+			(void) bunyan_error(files_bunyan, "invalid MAC address",
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (EINVAL);
+		}
+
+		if ((ret = nvlist_lookup_int32(nvl, "vlan", &i32)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'vlan' entry is missing",
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+		if (i32 < 0 || i32 > VLAN_ID_MAX) {
+			(void) bunyan_error(files_bunyan,
+			    "vlan value is out of range (0-4094)",
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_INT32, "vlan", i32,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ERANGE);
+		}
+		ifp->vfi_vlan = (uint16_t)i32;
+
+		if ((ret = nvlist_lookup_string(nvl, "arp", &s)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'arp' entry is missing",
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_STRING, "errmsg", strerror(ret),
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+		if ((ret = str_to_ip(s, &ifp->vfi_ip, NULL)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'arp' value is not an IP address",
+			    BUNYAN_T_STRING, "arp", s,
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+
+		if ((ret = nvlist_lookup_string(nvl, "ip", &s)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'ip' entry is missing",
+			    BUNYAN_T_STRING, "ip", s,
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+		if ((ret = str_to_ip(s, &ifp->vfi_dest.otp_ip, NULL)) != 0) {
+			(void) bunyan_error(files_bunyan,
+			    "'ip' value is not a IP address",
+			    BUNYAN_T_STRING, "ip", s,
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+
+		if (vaf->vaf_dest & OVERLAY_PLUGIN_D_PORT) {
+			ret = nvlist_lookup_int32(nvl, "port", &i32);
+			if (ret != 0) {
+				(void) bunyan_error(files_bunyan,
+				    "'port' value is required, but is missing",
+				    BUNYAN_T_STRING, "mac", name,
+				    BUNYAN_T_END);
+				umem_free(ifp, sizeof (*ifp));
+				return (ret);
+			}
+
+			if (i32 <= 0 || i32 > UINT16_MAX) {
+				(void) bunyan_error(files_bunyan,
+				    "'port' value is out of range (0-65535)",
+				    BUNYAN_T_INT32, "port", i32,
+				    BUNYAN_T_STRING, "mac", name,
+				    BUNYAN_T_END);
+				umem_free(ifp, sizeof (*ifp));
+				return (ERANGE);
+			}
+			ifp->vfi_dest.otp_port = i32;
+		}
+
+		switch (ret = nvlist_lookup_string(nvl, "ndp", &s)) {
+		case 0:
+			ret = str_to_ip(s, &ifp->vfi_llocalip, NULL);
+			if (ret != 0) {
+				(void) bunyan_error(files_bunyan,
+				    "'ndp' value is not an IP",
+				    BUNYAN_T_STRING, "ndp", s,
+				    BUNYAN_T_STRING, "mac", name,
+				    BUNYAN_T_END);
+				return (ret);
+			}
+			ifp->vfi_has_lladdr = B_TRUE;
+			break;
+		case ENOENT:
+			/* Ok if missing */
+			break;
+		default:
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error processing 'ndp' value",
+			    BUNYAN_T_STRING, "errmsg", strerror(errno),
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+
+		switch (ret = nvlist_lookup_string(nvl, "dhcp-proxy", &s)) {
+		case 0:
+			ep = (struct ether_addr *)&ifp->vfi_dhcp;
+			if (ether_aton_r(s, ep) == NULL) {
+				(void) bunyan_error(files_bunyan,
+				    "value of 'dhcp-proxy' is not a "
+				    "MAC address",
+				    BUNYAN_T_STRING, "dhcp-proxy", s,
+				    BUNYAN_T_STRING, "mac", name,
+				    BUNYAN_T_END);
+				umem_free(ifp, sizeof (*ifp));
+				return (EINVAL);
+			}
+			ifp->vfi_has_dhcp = B_TRUE;
+			break;
+		case ENOENT:
+			/* Ok if missing */
+			break;
+		default:
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error reading 'dhcp-proxy' value",
+			    BUNYAN_T_STRING, "errmsg", strerror(errno),
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+
+		switch (ret = nvlist_lookup_string(nvl, "vid", &s)) {
+		case ENOENT:
+			ifp->vfi_vnet = vaf->vaf_vnet;
+			break;
+		case 0:
+			errno = 0;
+			if ((ifp->vfi_vnet = strtoul(s, NULL, 10)) != 0 ||
+			    errno == 0)
+				break;
+			ret = errno;
+			(void) bunyan_error(files_bunyan,
+			    "unable to parse 'vid' as a number",
+			    BUNYAN_T_STRING, "vid", s,
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		default:
+			(void) bunyan_error(files_bunyan,
+			    "unexpected error processing 'vid' value",
+			    BUNYAN_T_STRING, "errmsg", strerror(errno),
+			    BUNYAN_T_STRING, "mac", name,
+			    BUNYAN_T_END);
+			umem_free(ifp, sizeof (*ifp));
+			return (ret);
+		}
+
+		/* Make sure router ip is in subnet */
+		avl_add(&vaf->vaf_macs, ifp);
+		avl_add(&vaf->vaf_ips, ifp);
+		if (ifp->vfi_has_lladdr && (ifp->vfi_dcid == vaf->vaf_dcid))
+			avl_add(&vaf->vaf_ndp, ifp);
 	}
 
 	return (0);
@@ -644,17 +1040,29 @@ varpd_files_start(void *arg)
 	struct stat st;
 	nvlist_t *nvl;
 	varpd_files_t *vaf = arg;
+	nvlist_parse_json_error_t jerr = { 0 };
 
 	if (vaf->vaf_path == NULL)
 		return (EAGAIN);
 
-	if ((fd = open(vaf->vaf_path, O_RDONLY)) < 0)
+	if ((fd = open(vaf->vaf_path, O_RDONLY)) < 0) {
+		(void) bunyan_error(files_bunyan,
+		    "Cannot read destination data",
+		    BUNYAN_T_STRING, "path", vaf->vaf_path,
+		    BUNYAN_T_STRING, "errmsg", strerror(errno),
+		    BUNYAN_T_END);
 		return (errno);
+	}
 
 	if (fstat(fd, &st) != 0) {
 		ret = errno;
 		if (close(fd) != 0)
 			abort();
+		(void) bunyan_error(files_bunyan,
+		    "could not determine status of file (stat(2) failed)",
+		    BUNYAN_T_STRING, "path", vaf->vaf_path,
+		    BUNYAN_T_STRING, "errmsg", strerror(ret),
+		    BUNYAN_T_END);
 		return (ret);
 	}
 
@@ -664,64 +1072,74 @@ varpd_files_start(void *arg)
 		ret = errno;
 		if (close(fd) != 0)
 			abort();
+		(void) bunyan_error(files_bunyan,
+		    "could not load destination data (mmap(2) failed)",
+		    BUNYAN_T_STRING, "path", vaf->vaf_path,
+		    BUNYAN_T_STRING, "errmsg", strerror(errno),
+		    BUNYAN_T_END);
 		return (ret);
 	}
 
-	ret = nvlist_parse_json(maddr, st.st_size, &nvl,
-	    NVJSON_FORCE_INTEGER, NULL);
-	if (ret == 0) {
-		ret = varpd_files_normalize_nvlist(vaf, nvl);
+	if ((ret = nvlist_parse_json(maddr, st.st_size, &nvl,
+	    NVJSON_FORCE_INTEGER, &jerr)) != 0) {
+		(void) bunyan_error(files_bunyan,
+		    "could not parse destination JSON file",
+		    BUNYAN_T_STRING, "path", vaf->vaf_path,
+		    BUNYAN_T_STRING, "parse_msg", jerr.nje_message,
+		    BUNYAN_T_UINT32, "pos", (uint32_t)jerr.nje_pos,
+		    BUNYAN_T_INT32, "errno", (int32_t)jerr.nje_errno,
+		    BUNYAN_T_STRING, "errmsg", strerror(jerr.nje_errno),
+		    BUNYAN_T_END);
+	} else {
+		ret = varpd_files_convert_nvlist(vaf, nvl, 0);
 		nvlist_free(nvl);
 		nvl = NULL;
 	}
+
 	if (munmap(maddr, st.st_size) != 0)
 		abort();
 	if (close(fd) != 0)
 		abort();
-	if (ret != 0) {
-		nvlist_free(nvl);
-		return (ret);
-	}
-
-	if ((ret = varpd_files_start_fabrics(vaf)) != 0) {
-		nvlist_free(nvl);
-		return (ret);
-	}
-
-	if ((ret = varpd_files_start_attached(vaf)) != 0) {
-		varpd_files_stop_fabrics(vaf);
-		nvlist_free(nvl);
-		return (ret);
-	}
 
 	return (ret);
 }
 
 static void
-varpd_files_stop_fabrics(varpd_files_t *vaf)
-{
-	varpd_files_fabric_t *net = NULL;
-
-	if (vaf == NULL || vaf->vaf_fabrics == NULL)
-		return;
-
-	for (net = vaf->vaf_fabrics; net->vafs_name[0] != '\0'; net++) {
-		if (net->vafs_nvl != vaf->vaf_nvl)
-			nvlist_free(net->vafs_nvl);
-	}
-	free(vaf->vaf_fabrics);
-	vaf->vaf_fabrics = NULL;
-}
-
-
-static void
 varpd_files_stop(void *arg)
 {
 	varpd_files_t *vaf = arg;
+	varpd_files_if_t *vif;
+	varpd_files_attach_t *att;
+	varpd_files_fabric_t *fab;
 
-	varpd_files_stop_fabrics(vaf);
-	nvlist_free(vaf->vaf_nvl);
-	vaf->vaf_nvl = NULL;
+	/*
+	 * VL2 data should appear in both trees, so free only after removed
+	 * from second tree.
+	 */
+	while ((vif = avl_first(&vaf->vaf_ips)) != NULL)
+		avl_remove(&vaf->vaf_ips, vif);
+
+	while ((vif = avl_first(&vaf->vaf_macs)) != NULL) {
+		avl_remove(&vaf->vaf_macs, vif);
+		umem_free(vif, sizeof (*vif));
+	}
+
+	/*
+	 * A fabric could be unattached, and not appear in any attachment
+	 * group.  Therefore, remove the fabrics from all the attached groups,
+	 * then free them after removing from the global list of fabrics.
+	 */
+	while ((att = list_remove_head(&vaf->vaf_attached)) != NULL) {
+		do {
+			fab = list_remove_head(&att->vfa_fabrics);
+		} while (fab != NULL);
+		umem_free(att, sizeof (*att));
+	}
+
+	while ((fab = avl_first(&vaf->vaf_fabrics)) != NULL) {
+		avl_remove(&vaf->vaf_fabrics, fab);
+		umem_free(fab, sizeof (*fab));
+	}
 }
 
 static void
@@ -729,89 +1147,92 @@ varpd_files_destroy(void *arg)
 {
 	varpd_files_t *vaf = arg;
 
-	assert(vaf->vaf_nvl == NULL);
 	if (vaf->vaf_path != NULL) {
 		umem_free(vaf->vaf_path, strlen(vaf->vaf_path) + 1);
 		vaf->vaf_path = NULL;
 	}
+
+	avl_destroy(&vaf->vaf_fabrics);
+	avl_destroy(&vaf->vaf_macs);
+	avl_destroy(&vaf->vaf_ips);
+	list_destroy(&vaf->vaf_attached);
+
 	umem_free(vaf, sizeof (varpd_files_t));
 }
 
-static nvlist_t *
-varpd_files_lookup_l3subnet(varpd_files_t *vaf, varpd_files_attach_t *attach,
-    const struct in6_addr *dst, overlay_target_point_t *otp,
-    overlay_target_route_t *otr)
+static varpd_files_fabric_t *
+varpd_files_find_dstfab(varpd_files_t *vaf, varpd_files_attach_t *att,
+    const struct in6_addr *dst)
 {
 	varpd_files_fabric_t *net = NULL;
-	nvlist_t *macs = NULL;
-	size_t i;
-	boolean_t found = B_FALSE;
 
-	for (i = 0; attach->vff_fabrics[i] != NULL; i++) {
-		net = attach->vff_fabrics[i];
-
+	for (net = list_head(&att->vfa_fabrics); net != NULL;
+	    net = list_next(&att->vfa_fabrics, net)) {
 		if (IN6_ARE_PREFIXEDADDR_EQUAL(dst, &net->vafs_addr,
 		    net->vafs_prefixlen)) {
-			found = B_TRUE;
-			break;
-		}
-	}
-
-	if (nvlist_lookup_nvlist(net->vafs_nvl, "macs", &macs) != 0)
-		return (NULL);
-
-	otr->otr_vnet = net->vafs_vnet;
-	otr->otr_vlan = net->vafs_vlan;
-	otr->otr_dcid = net->vafs_dcid;
-	otr->otr_dst_prefixlen = net->vafs_prefixlen;
-	bcopy(net->vafs_routermac, otr->otr_srcmac, ETHERADDRL);
-	return (macs);
-}
-
-static varpd_files_attach_t *
-varpd_files_find_attach(varpd_files_t *vaf, const struct in6_addr *src,
-    uint16_t vlan, overlay_target_route_t *otr)
-{
-	varpd_files_attach_t *attach;
-	varpd_files_fabric_t *fab;
-	size_t i;
-
-	if (vaf->vaf_attach == NULL)
-		return (NULL);
-
-	for (attach = vaf->vaf_attach; attach->vff_fabrics != NULL; attach++) {
-		for (i = 0; attach->vff_fabrics[i] != NULL; i++) {
-			fab = attach->vff_fabrics[i];
-
-			if (fab->vafs_dcid == vaf->vaf_dcid &&
-			    fab->vafs_vlan == vlan &&
-			    IN6_ARE_PREFIXEDADDR_EQUAL(src, &fab->vafs_addr,
-			    fab->vafs_prefixlen)) {
-				otr->otr_src_prefixlen = fab->vafs_prefixlen;
-				return (attach);
-			}
-			fab++;
+			return (net);
 		}
 	}
 
 	return (NULL);
 }
 
+static varpd_files_attach_t *
+varpd_files_find_attach(varpd_files_t *vaf, const struct in6_addr *src,
+    uint16_t vlan, overlay_target_route_t *otr)
+{
+	varpd_files_fabric_t *fab;
+	varpd_files_fabric_t lookup = {
+		.vafs_vnet = vaf->vaf_vnet,
+		.vafs_dcid = vaf->vaf_dcid,
+		.vafs_vlan = vlan,
+		.vafs_addr = *src
+	};
+	avl_index_t where = 0;
+
+	/*
+	 * Since fabrics are sorted by subnet address last, any given IP
+	 * potentially in a fabric subnet should lie between two adjacent
+	 * fabric entries in the tree.  Find where such an IP would go in
+	 * the tree, and the entry before the insertion point should be the
+	 * fabric (if it is present).
+	 */
+	fab = avl_find(&vaf->vaf_fabrics, &lookup, &where);
+	if (fab != NULL) {
+		/*
+		 * Someone requested the subnet address.  E.g. if the fabric
+		 * is 192.168.10.0/24, someone asked for 192.168.10.0.  Treat
+		 * as not found.
+		 */
+		return (NULL);
+	}
+
+	fab = avl_nearest(&vaf->vaf_fabrics, where, AVL_BEFORE);
+	if (fab == NULL) {
+		return (NULL);
+	}
+
+	/* Still must verify that the address lies in the range of the subnet */
+	if (!IN6_ARE_PREFIXEDADDR_EQUAL(&fab->vafs_addr, src,
+	   fab->vafs_prefixlen)) {
+		return (NULL);
+	}
+
+	return (fab->vafs_attach);
+}
+
 static void
 varpd_files_lookup_l3(varpd_files_t *vaf, varpd_query_handle_t *qh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
-    overlay_target_route_t *otr)
+    overlay_target_route_t *otr, overlay_target_mac_t *otm)
 {
-	const struct in6_addr *dest_ip;
+	const struct in6_addr *dst_ip;
 	const struct in6_addr *src_ip;
-	struct in6_addr ul3 = { 0 };
 	varpd_files_attach_t *attach = NULL;
-	char *s;
-	nvlist_t *macs = NULL, *entry = NULL;
-	nvpair_t *pair = NULL;
-	int32_t prefixlen;
+	varpd_files_fabric_t *fab = NULL;
+	varpd_files_if_t *ifp = NULL;
 
-	dest_ip = &otl->otl_addru.otlu_l3.otl3_dstip;
+	dst_ip = &otl->otl_addru.otlu_l3.otl3_dstip;
 	src_ip = &otl->otl_addru.otlu_l3.otl3_srcip;
 
 	if ((attach = varpd_files_find_attach(vaf, src_ip, otl->otl_vlan,
@@ -820,65 +1241,30 @@ varpd_files_lookup_l3(varpd_files_t *vaf, varpd_query_handle_t *qh,
 		return;
 	}
 
-	if ((macs = varpd_files_lookup_l3subnet(vaf, attach, dest_ip,
-	    otp, otr)) == NULL) {
+	if ((fab = varpd_files_find_dstfab(vaf, attach, dst_ip)) == NULL) {
 		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
 		return;
 	}
 
-	for (pair = nvlist_next_nvpair(macs, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(macs, pair)) {
-		char *s;
-		struct in6_addr v6;
+	varpd_files_if_t lookup = { 0 };
 
-		if (nvpair_value_nvlist(pair, &entry) != 0)
-			continue;
+	lookup.vfi_vnet = fab->vafs_vnet;
+	lookup.vfi_vlan = fab->vafs_vlan;
+	bcopy(dst_ip, &lookup.vfi_ip, sizeof (struct in6_addr));
 
-		if (nvlist_lookup_string(entry, "arp", &s) != 0)
-			continue;
-
-		if (str_to_ip(s, &v6, NULL) != 0)
-			continue;
-
-		if (IN6_ARE_ADDR_EQUAL(dest_ip, &v6))
-			break;
-	}
-
-	if (pair == NULL) {
+	if ((ifp = avl_find(&vaf->vaf_ips, &lookup, NULL)) == NULL) {
 		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
 		return;
 	}
 
-	if (nvlist_lookup_string(entry, "ip", &s) != 0) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
+	otr->otr_vnet = fab->vafs_vnet;
+	otr->otr_vlan = fab->vafs_vlan;
+	bcopy(fab->vafs_routermac, otr->otr_srcmac, ETHERADDRL);
 
-	if (str_to_ip(s, &ul3, NULL) != 0) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
-	bcopy(&ul3, &otp->otp_ip, sizeof (ul3));
+	otm->otm_dcid = fab->vafs_dcid;
+	bcopy(ifp->vfi_mac, otm->otm_mac, ETHERADDRL);
 
-	if (vaf->vaf_dest & OVERLAY_PLUGIN_D_PORT) {
-		int32_t port;
-
-		if (nvlist_lookup_int32(entry, "port", &port) != 0) {
-			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-			return;
-		}
-
-		otp->otp_port = port;
-	} else {
-		otp->otp_port = 0;
-	}
-
-	s = nvpair_name(pair);
-
-	if (ether_aton_r(s, (struct ether_addr *)otp->otp_mac) == NULL) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
+	bcopy(&ifp->vfi_dest, otp, sizeof (*otp));
 
 	libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_OK);
 }
@@ -886,13 +1272,13 @@ varpd_files_lookup_l3(varpd_files_t *vaf, varpd_query_handle_t *qh,
 static void
 varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
-    overlay_target_route_t *otr)
+    overlay_target_route_t *otr, overlay_target_mac_t *otm)
 {
-	char macstr[ETHERADDRSTRL], *ipstr;
-	nvlist_t *nvl;
 	varpd_files_t *vaf = arg;
-	int32_t port;
 	static const uint8_t bcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+	varpd_files_if_t *ifp = NULL;
+	varpd_files_if_t lookup = { .vfi_dcid = vaf->vaf_dcid };
+
 
 	/* We don't support a default */
 	if (otl == NULL) {
@@ -904,15 +1290,16 @@ varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
 	 * Shuffle off L3 lookups to their own codepath.
 	 */
 	if (otl->otl_l3req) {
-		varpd_files_lookup_l3(vaf, qh, otl, otp, otr);
+		varpd_files_lookup_l3(vaf, qh, otl, otp, otr, otm);
 		return;
 	}
 
 	/*
 	 * At this point, the traditional overlay_target_point_t is all that
-	 * needs filling in.  Zero-out the otr for safety.
+	 * needs filling in.  Zero-out the otr and otm for safety.
 	 */
 	bzero(otr, sizeof (*otr));
+	bzero(otm, sizeof (*otm));
 
 	if (otl->otl_addru.otlu_l2.otl2_sap == ETHERTYPE_ARP) {
 		libvarpd_plugin_proxy_arp(vaf->vaf_hdl, qh, otl);
@@ -928,28 +1315,15 @@ varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
 
 	if (otl->otl_addru.otlu_l2.otl2_sap == ETHERTYPE_IP &&
 	    bcmp(otl->otl_addru.otlu_l2.otl2_dstaddr, bcast, ETHERADDRL) == 0) {
-		char *mac;
-		struct ether_addr a, *addr;
+		bcopy(otl->otl_addru.otlu_l2.otl2_srcaddr, lookup.vfi_mac,
+		    ETHERADDRL);
 
-		addr = &a;
-		if (ether_ntoa_r(
-		    (struct ether_addr *)otl->otl_addru.otlu_l2.otl2_srcaddr,
-		    macstr) == NULL) {
+		if ((ifp = avl_find(&vaf->vaf_macs, &lookup, NULL)) == NULL) {
 			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
 			return;
 		}
 
-		if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0) {
-			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-			return;
-		}
-
-		if (nvlist_lookup_string(nvl, "dhcp-proxy", &mac) != 0) {
-			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-			return;
-		}
-
-		if (ether_aton_r(mac, addr) == NULL) {
+		if (!ifp->vfi_has_dhcp) {
 			libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
 			return;
 		}
@@ -958,38 +1332,13 @@ varpd_files_lookup(void *arg, varpd_query_handle_t *qh,
 		return;
 	}
 
-	if (ether_ntoa_r(
-	    (struct ether_addr *)otl->otl_addru.otlu_l2.otl2_dstaddr,
-	    macstr) == NULL) {
+	bcopy(otl->otl_addru.otlu_l2.otl2_dstaddr, lookup.vfi_mac, ETHERADDRL);
+	if ((ifp = avl_find(&vaf->vaf_macs, &lookup, NULL)) == NULL) {
 		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
 		return;
 	}
 
-	if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
-
-	if (nvlist_lookup_int32(nvl, "port", &port) != 0) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
-
-	if (port <= 0 || port > UINT16_MAX) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
-	otp->otp_port = port;
-
-	if (nvlist_lookup_string(nvl, "ip", &ipstr) != 0) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
-
-	if (str_to_ip(ipstr, &otp->otp_ip, NULL) != 0) {
-		libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_DROP);
-		return;
-	}
+	bcopy(&ifp->vfi_dest, otp, sizeof (*otp));
 
 	libvarpd_plugin_query_reply(qh, VARPD_LOOKUP_OK);
 }
@@ -1126,12 +1475,17 @@ varpd_files_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 
 static void
 varpd_files_proxy_arp(void *arg, varpd_arp_handle_t *vah, int kind,
-    const struct sockaddr *sock, uint8_t *out)
+    const struct sockaddr *sock, uint16_t vlan, uint8_t *out)
 {
 	varpd_files_t *vaf = arg;
 	const struct sockaddr_in *ip;
 	const struct sockaddr_in6 *ip6;
-	nvpair_t *pair;
+	varpd_files_if_t *ifp = NULL;
+	varpd_files_if_t lookup = {
+		.vfi_vnet = vaf->vaf_vnet,
+		.vfi_dcid = vaf->vaf_dcid,
+		.vfi_vlan = vlan
+	};
 
 	if (kind != VARPD_QTYPE_ETHERNET) {
 		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
@@ -1145,56 +1499,23 @@ varpd_files_proxy_arp(void *arg, varpd_arp_handle_t *vah, int kind,
 
 	ip = (const struct sockaddr_in *)sock;
 	ip6 = (const struct sockaddr_in6 *)sock;
-	for (pair = nvlist_next_nvpair(vaf->vaf_nvl, NULL); pair != NULL;
-	    pair = nvlist_next_nvpair(vaf->vaf_nvl, pair)) {
-		char *mac, *ipstr;
-		nvlist_t *data;
-		struct in_addr ia;
-		struct in6_addr ia6;
-		struct ether_addr ether, *e;
-		e = &ether;
 
-		if (nvpair_type(pair) != DATA_TYPE_NVLIST)
-			continue;
+	if (sock->sa_family == AF_INET) {
+		IN6_IPADDR_TO_V4MAPPED(ip->sin_addr.s_addr, &lookup.vfi_ip);
+		ifp = avl_find(&vaf->vaf_ips, &lookup, NULL);
+	} else {
+		bcopy(&ip6->sin6_addr, &lookup.vfi_llocalip,
+		    sizeof (struct in6_addr));
+		ifp = avl_find(&vaf->vaf_ndp, &lookup, NULL);
+	}
 
-		mac = nvpair_name(pair);
-		if (nvpair_value_nvlist(pair, &data) != 0)
-			continue;
-
-
-		if (sock->sa_family == AF_INET) {
-			if (nvlist_lookup_string(data, "arp", &ipstr) != 0)
-				continue;
-
-			if (inet_pton(AF_INET, ipstr, &ia) != 1)
-				continue;
-
-			if (bcmp(&ia, &ip->sin_addr,
-			    sizeof (struct in_addr)) != 0)
-				continue;
-		} else {
-			if (nvlist_lookup_string(data, "ndp", &ipstr) != 0)
-				continue;
-
-			if (inet_pton(AF_INET6, ipstr, &ia6) != 1)
-				continue;
-
-			if (bcmp(&ia6, &ip6->sin6_addr,
-			    sizeof (struct in6_addr)) != 0)
-				continue;
-		}
-
-		if (ether_aton_r(mac, e) == NULL) {
-			libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
-			return;
-		}
-
-		bcopy(e, out, ETHERADDRL);
-		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_OK);
+	if (ifp == NULL) {
+		libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
 		return;
 	}
 
-	libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_DROP);
+	bcopy(ifp->vfi_mac, out, ETHERADDRL);
+	libvarpd_plugin_arp_reply(vah, VARPD_LOOKUP_OK);
 }
 
 static void
@@ -1202,39 +1523,28 @@ varpd_files_proxy_dhcp(void *arg, varpd_dhcp_handle_t *vdh, int type,
     const overlay_targ_lookup_t *otl, uint8_t *out)
 {
 	varpd_files_t *vaf = arg;
-	nvlist_t *nvl;
-	char macstr[ETHERADDRSTRL], *mac;
-	struct ether_addr a, *addr;
+	varpd_files_if_t *ifp = NULL;
+	varpd_files_if_t lookup = {
+		.vfi_dcid = vaf->vaf_dcid,
+		.vfi_mac = *otl->otl_addru.otlu_l2.otl2_srcaddr
+	};
 
-	addr = &a;
 	if (type != VARPD_QTYPE_ETHERNET) {
 		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
 		return;
 	}
 
-	if (ether_ntoa_r(
-	    (struct ether_addr *)otl->otl_addru.otlu_l2.otl2_srcaddr,
-	    macstr) == NULL) {
+	if ((ifp = avl_find(&vaf->vaf_macs, &lookup, NULL)) == NULL) {
 		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
 		return;
 	}
 
-	if (nvlist_lookup_nvlist(vaf->vaf_nvl, macstr, &nvl) != 0) {
+	if (!ifp->vfi_has_dhcp) {
 		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
 		return;
 	}
 
-	if (nvlist_lookup_string(nvl, "dhcp-proxy", &mac) != 0) {
-		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
-		return;
-	}
-
-	if (ether_aton_r(mac, addr) == NULL) {
-		libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_DROP);
-		return;
-	}
-
-	bcopy(addr, out, ETHERADDRL);
+	bcopy(ifp->vfi_dhcp, out, ETHERADDRL);
 	libvarpd_plugin_dhcp_reply(vdh, VARPD_LOOKUP_OK);
 }
 
@@ -1256,6 +1566,27 @@ static const varpd_plugin_ops_t varpd_files_ops = {
 	varpd_files_proxy_dhcp
 };
 
+static int
+files_bunyan_init(void)
+{
+	int ret;
+
+	if ((ret = bunyan_init("files", &files_bunyan)) != 0)
+		return (ret);
+	ret = bunyan_stream_add(files_bunyan, "stderr", BUNYAN_L_INFO,
+	    bunyan_stream_fd, (void *)STDERR_FILENO);
+	if (ret != 0)
+		bunyan_fini(files_bunyan);
+	return (ret);
+}
+
+static void
+files_bunyan_fini(void)
+{
+	if (files_bunyan != NULL)
+		bunyan_fini(files_bunyan);
+}
+
 #pragma init(varpd_files_init)
 static void
 varpd_files_init(void)
@@ -1263,9 +1594,14 @@ varpd_files_init(void)
 	int err;
 	varpd_plugin_register_t *vpr;
 
-	vpr = libvarpd_plugin_alloc(VARPD_CURRENT_VERSION, &err);
-	if (vpr == NULL)
+	if (files_bunyan_init() != 0)
 		return;
+
+	vpr = libvarpd_plugin_alloc(VARPD_CURRENT_VERSION, &err);
+	if (vpr == NULL) {
+		files_bunyan_fini();
+		return;
+	}
 
 	vpr->vpr_mode = OVERLAY_TARGET_DYNAMIC;
 	vpr->vpr_name = "files";

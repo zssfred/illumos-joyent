@@ -713,7 +713,7 @@ dladm_overlay_cache_flush(dladm_handle_t handle, datalink_id_t linkid)
 /* ARGSUSED */
 dladm_status_t
 dladm_overlay_cache_delete(dladm_handle_t handle, datalink_id_t linkid,
-    const struct ether_addr *key)
+    uint32_t dcid, const struct ether_addr *key)
 {
 	int ret;
 	uint64_t varpdid;
@@ -727,7 +727,7 @@ dladm_overlay_cache_delete(dladm_handle_t handle, datalink_id_t linkid,
 		return (dladm_errno2status(ret));
 	}
 
-	ret = libvarpd_c_instance_cache_delete(chdl, varpdid, key);
+	ret = libvarpd_c_instance_cache_delete(chdl, varpdid, dcid, key);
 	libvarpd_c_destroy(chdl);
 
 	return (dladm_errno2status(ret));
@@ -736,7 +736,7 @@ dladm_overlay_cache_delete(dladm_handle_t handle, datalink_id_t linkid,
 /* ARGSUSED */
 dladm_status_t
 dladm_overlay_cache_set(dladm_handle_t handle, datalink_id_t linkid,
-    const struct ether_addr *key, char *val)
+    uint32_t dcid, const struct ether_addr *key, char *val)
 {
 	int ret;
 	uint_t dest;
@@ -841,7 +841,7 @@ dladm_overlay_cache_set(dladm_handle_t handle, datalink_id_t linkid,
 	}
 
 send:
-	ret = libvarpd_c_instance_cache_set(chdl, varpdid, key, &vcp);
+	ret = libvarpd_c_instance_cache_set(chdl, varpdid, dcid, key, &vcp);
 
 	libvarpd_c_destroy(chdl);
 	return (dladm_errno2status(ret));

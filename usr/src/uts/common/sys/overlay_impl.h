@@ -29,9 +29,10 @@
 #include <sys/avl.h>
 #include <sys/ksocket.h>
 #include <sys/socket.h>
-#include <sys/refhash.h>
 #include <sys/ethernet.h>
 #include <sys/list.h>
+
+#include "sarc.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -81,41 +82,13 @@ typedef struct overlay_target {
 	union {					/* ott_lock */
 		overlay_target_point_t	ott_point;
 		struct overlay_target_dyn {
-			refhash_t	*ott_dhash;
-			refhash_t	*ott_l3dhash;
+			sarc_t		*ott_dhash;
+			sarc_t		*ott_l3dhash;
 			avl_tree_t	ott_tree;
-			/* XXX: Do we actually need a tree sorted by VL3? */
 			avl_tree_t	ott_l3tree;
 		} ott_dyn;
 	} ott_u;
 } overlay_target_t;
-
-/*
- * Initially at least, we represent a group of fabrics that are attached to
- * each other as a circular linked list.  Within an overlay_dev_t, we then
- * maintain a list of pointers into these lists for each fabric that's
- * present locally on the CN as we learn them:
- *
- */
-typedef struct overlay_fabric_attach {
-	struct overlay_fabric_attach *ofa_next;
-	struct in6_addr	ofa_addr;
-	uint32_t	ofa_dcid;
-	uint16_t	ofa_vlan;
-	uint8_t		ofa_prefixlen;
-	uint8_t		ofa_pad;
-} overlay_fabric_attach_t;
-
-/*
- * Since we have two different refhashes for an overlay_target_entry_t
- * (VL2 aka MAC address and VL3 aka IP address), we want to maintain
- * the refcount in only one place. We elect to use the ott_dhash
- * refhash to do so.
- */
-#define	OVERLAY_TARGET_ENTRY_HOLD(tgt, e) \
-	refhash_hold((tgt)->ott_u.ott_dyn.ott_dhash, e)
-#define	OVERLAY_TARGET_ENTRY_RELE(tgt, e) \
-	refhash_rele((tgt)->ott_u.ott_dyn.ott_dhash, e)
 
 typedef enum overlay_dev_flag {
 	OVERLAY_F_ACTIVATED	= 0x01, /* Activate ioctl completed */
@@ -147,7 +120,6 @@ typedef struct overlay_dev {
 	uint64_t	odd_vid;		/* RO if active else odd_lock */
 	avl_node_t	odd_muxnode;		/* managed by mux */
 	overlay_target_t *odd_target;		/* See big theory statement */
-	overlay_fabric_attach_t **odd_fattach;	/* protected by odd_lock */
 	uint32_t	odd_dcid;		/* RO if active else odd_lock */
 	uint8_t		odd_macaddr[ETHERADDRL]; /* RO same as odd_dcid */
 	char		odd_fmamsg[OVERLAY_STATUS_BUFLEN];	/* odd_lock */
@@ -157,30 +129,50 @@ typedef enum overlay_target_entry_flags {
 	OVERLAY_ENTRY_F_PENDING		= 0x01,	/* lookup in progress */
 	OVERLAY_ENTRY_F_VALID		= 0x02,	/* entry is currently valid */
 	OVERLAY_ENTRY_F_DROP		= 0x04,	/* always drop target */
-	OVERLAY_ENTRY_F_ROUTER		= 0x08, /* entry is for router */
-	OVERLAY_ENTRY_F_VALID_MASK	= 0x0e,
+	OVERLAY_ENTRY_F_ROUTER		= 0x08, /* VL2 router entry */
+	OVERLAY_ENTRY_F_HAS_ROUTE	= 0x10,
+	OVERLAY_ENTRY_F_VALID_MASK	= 0x1e,
+	OVERLAY_ENTRY_F_VL3		= 0x20, /* Is VL3 entry */
 } overlay_target_entry_flags_t;
 
-typedef struct overlay_target_entry {
+struct overlay_target_entry;
+typedef struct overlay_target_entry overlay_target_entry_t;
+
+/*
+ * For VL3 target entries, if we need to lock both the VL3 entry and the
+ * (possibly shared with multiple VL3 entries) VL2 entry, we must always
+ * take the VL3 lock prior to the VL2 entry lock.
+ */
+typedef struct overlay_target_vl3 {
+	struct in6_addr		otvl3_src;
+	struct in6_addr		otvl3_dst;
+	uint16_t		otvl3_src_vlan;
+	overlay_target_mac_t	otvl3_vl2;
+} overlay_target_vl3_t;
+
+typedef struct overlay_target_vl2 {
+	overlay_target_route_t	otvl2_route;
+	overlay_target_mac_t	otvl2_mac;
+	overlay_target_point_t	otvl2_dest;
+} overlay_target_vl2_t;
+
+struct overlay_target_entry {
 	kmutex_t		ote_lock;
-	refhash_link_t		ote_reflink;	/* hashtable link */
-	refhash_link_t		ote_l3_reflink;	/* IP hashtable link */
+	sarc_link_t		ote_reflink;	/* hashtable link */
 	avl_node_t		ote_avllink;	/* iteration link */
-	avl_node_t		ote_l3_avllink;	/* IP iteration link */
 	list_node_t		ote_qlink;
 	overlay_target_entry_flags_t ote_flags;	/* RW: state flags */
-	uint32_t		ote_dcid;
-	uint16_t		ote_vlan;	/* RO: VL3 vlan id */
-	uint8_t			ote_addr[ETHERADDRL];	/* RO: mac addr */
-	struct in6_addr		ote_ip;		/* RO: VL3 IP */
 	overlay_target_t	*ote_ott;	/* RO */
 	overlay_dev_t		*ote_odd;	/* RO */
-	overlay_target_point_t	ote_dest;	/* RW: destination */
 	mblk_t			*ote_chead;	/* RW: blocked mb chain head */
 	mblk_t			*ote_ctail;	/* RW: blocked mb chain tail */
 	size_t			ote_mbsize;	/* RW: outstanding mblk size */
 	hrtime_t		ote_vtime;	/* RW: valid timestamp */
-} overlay_target_entry_t;
+	union {
+		overlay_target_vl2_t	ote_vl2;
+		overlay_target_vl3_t	ote_vl3;
+	} ote_u;
+};
 
 #define	OVERLAY_CTL	"overlay"
 

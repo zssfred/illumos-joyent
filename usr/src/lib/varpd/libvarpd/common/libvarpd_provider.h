@@ -316,11 +316,11 @@ typedef void (*varpd_plugin_destroy_f)(void *);
 typedef int (*varpd_plugin_default_f)(void *, overlay_target_point_t *);
 typedef void (*varpd_plugin_lookup_f)(void *, varpd_query_handle_t *,
     const overlay_targ_lookup_t *, overlay_target_point_t *,
-    overlay_target_route_t *);
+    overlay_target_route_t *, overlay_target_mac_t *);
 
 #define	VARPD_QTYPE_ETHERNET	0x0
 typedef void (*varpd_plugin_arp_f)(void *, varpd_arp_handle_t *, int,
-    const struct sockaddr *, uint8_t *);
+    const struct sockaddr *, uint16_t, uint8_t *);
 typedef void (*varpd_plugin_dhcp_f)(void *, varpd_dhcp_handle_t *, int,
     const overlay_targ_lookup_t *, uint8_t *);
 

@@ -43,7 +43,7 @@ typedef struct varpd_arp_query {
 	varpd_query_handle_t		*vaq_query;
 	const overlay_targ_lookup_t	*vaq_otl;
 	ip6_t				*vaq_ip6;
-	nd_neighbor_solicit_t 		*vaq_ns;
+	nd_neighbor_solicit_t		*vaq_ns;
 } varpd_arp_query_t;
 
 typedef struct varpd_dhcp_query {
@@ -151,7 +151,7 @@ libvarpd_plugin_proxy_arp(varpd_provider_handle_t *hdl,
 
 	inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
 	    (varpd_arp_handle_t *)vaq, VARPD_QTYPE_ETHERNET,
-	    (struct sockaddr *)ip, vaq->vaq_lookup);
+	    (struct sockaddr *)ip, otl->otl_vlan, vaq->vaq_lookup);
 }
 
 static void
@@ -388,7 +388,7 @@ libvarpd_plugin_proxy_ndp(varpd_provider_handle_t *hdl,
 	vaq->vaq_ip6 = v6hdr;
 	inst->vri_plugin->vpp_ops->vpo_arp(inst->vri_private,
 	    (varpd_arp_handle_t *)vaq,  VARPD_QTYPE_ETHERNET,
-	    (struct sockaddr *)s6, vaq->vaq_lookup);
+	    (struct sockaddr *)s6, otl->otl_vlan, vaq->vaq_lookup);
 }
 
 static void

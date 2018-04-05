@@ -333,9 +333,9 @@ static cmd_t	cmds[] = {
 	    "    show-secobj      [-pP] [-o <field>,...] [<secobj>,...]\n" },
 	{ "init-linkprop",	do_init_linkprop,	NULL		},
 	{ "init-secobj",	do_init_secobj,		NULL		},
-	{ "create-vlan", 	do_create_vlan,
+	{ "create-vlan",	do_create_vlan,
 	    "    create-vlan      [-ft] -l <link> -v <vid> [link]"	},
-	{ "delete-vlan", 	do_delete_vlan,
+	{ "delete-vlan",	do_delete_vlan,
 	    "    delete-vlan      [-t] <link>"				},
 	{ "show-vlan",		do_show_vlan,
 	    "    show-vlan        [-pP] [-o <field>,..] [<link>]\n"	},
@@ -425,7 +425,7 @@ static cmd_t	cmds[] = {
 	{ "delete-overlay",	do_delete_overlay,
 	    "    delete-overlay   <overlay>"			},
 	{ "modify-overlay",	do_modify_overlay,
-	    "    modify-overlay   -d mac | -f | -s mac=ip:port "
+	    "    modify-overlay   -d [dcid/]mac | -f | -s [dcid/]mac=ip:port "
 	    "<overlay>"						},
 	{ "show-overlay",	do_show_overlay,
 	    "    show-overlay     [-f | -t] [[-p] -o <field>,...] "
@@ -10447,7 +10447,7 @@ do_show_overlay(int argc, char *argv[], const char *use)
 	int			i, opt;
 	datalink_id_t		linkid = DATALINK_ALL_LINKID;
 	dladm_status_t		status;
-	int 			(*funcp)(dladm_handle_t, datalink_id_t, void *);
+	int			(*funcp)(dladm_handle_t, datalink_id_t, void *);
 	char			*fields_str = NULL;
 	const ofmt_field_t	*fieldsp;
 	ofmt_status_t		oferr;
@@ -10517,10 +10517,48 @@ do_show_overlay(int argc, char *argv[], const char *use)
 }
 
 static void
+parse_overlay_mac(const char *s, uint32_t *dcidp, struct ether_addr *ep)
+{
+	const char *slash;
+
+	*dcidp = 0;
+
+	if ((slash = strchr(s, '/')) != NULL) {
+		unsigned long dcval = 0;
+		size_t slen = (size_t)(slash - s) + 1;
+
+		/*
+		 * If present the dcid must be at least 1 digit, and <=
+		 * UINT32_MAX (10 digits + 1 for NUL).
+		 */
+		if (slen < 2 || slen > 11)
+			die("invalid mac specification: %s\n", s);
+
+		char dcstr[slen];
+
+		(void) strlcpy(dcstr, s, slen);
+		errno = 0;
+		if ((dcval = strtoul(dcstr, NULL, 10)) == 0 && errno != 0)
+			die("invalid data center id: %s\n", dcstr);
+
+		if (dcval > UINT32_MAX)
+			die("data center id out of range: %s\n", dcstr);
+
+		*dcidp = (uint32_t) dcval;
+		/* Move s past '/' */
+		s = slash + 1;
+	}
+
+	if (ether_aton_r(s, ep) == NULL)
+		die("invalid mac specification: %s\n", s);
+}
+
+static void
 do_modify_overlay(int argc, char *argv[], const char *use)
 {
 	int			opt, ocnt = 0;
 	boolean_t		flush, set, delete;
+	uint32_t		dcid = 0;
 	struct ether_addr	e;
 	char			*dest;
 	datalink_id_t		linkid = DATALINK_ALL_LINKID;
@@ -10535,8 +10573,7 @@ do_modify_overlay(int argc, char *argv[], const char *use)
 				die_optdup('d');
 			delete = B_TRUE;
 			ocnt++;
-			if (ether_aton_r(optarg, &e) == NULL)
-				die("invalid mac address: %s\n", optarg);
+			parse_overlay_mac(optarg, &dcid, &e);
 			break;
 		case 'f':
 			if (flush == B_TRUE)
@@ -10555,8 +10592,7 @@ do_modify_overlay(int argc, char *argv[], const char *use)
 			if (dest == NULL)
 				die("malformed value, expected mac=dest, "
 				    "got: %s\n", optarg);
-			if (ether_aton_r(optarg, &e) == NULL)
-				die("invalid mac address: %s\n", optarg);
+			parse_overlay_mac(optarg, &dcid, &e);
 			break;
 		default:
 			die_opterr(optopt, opt, use);
@@ -10587,14 +10623,15 @@ do_modify_overlay(int argc, char *argv[], const char *use)
 	}
 
 	if (delete == B_TRUE) {
-		status = dladm_overlay_cache_delete(handle, linkid, &e);
+		status = dladm_overlay_cache_delete(handle, linkid, dcid, &e);
 		if (status != DLADM_STATUS_OK)
 			die_dlerr(status, "failed to flush target %s from "
 			    "overlay target cache %s", optarg, argv[optind]);
 	}
 
 	if (set == B_TRUE) {
-		status = dladm_overlay_cache_set(handle, linkid, &e, dest);
+		status = dladm_overlay_cache_set(handle, linkid, dcid, &e,
+		    dest);
 		if (status != DLADM_STATUS_OK)
 			die_dlerr(status, "failed to set target %s for overlay "
 			    "target cache %s", optarg, argv[optind]);

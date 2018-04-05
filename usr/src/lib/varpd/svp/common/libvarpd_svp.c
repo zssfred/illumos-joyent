@@ -379,6 +379,7 @@ typedef struct svp_lookup {
 			varpd_query_handle_t	*svl_handle;
 			overlay_target_point_t	*svl_point;
 			overlay_target_route_t	*svl_route;
+			overlay_target_mac_t	*svl_mac;
 		} svl_route;
 	} svl_u;
 	svp_query_t				svl_query;
@@ -536,6 +537,7 @@ svp_route_lookup_cb(svp_t *svp, svp_status_t status, uint32_t dcid,
 	svp_lookup_t *svl = arg;
 	overlay_target_point_t *otp;
 	overlay_target_route_t *otr;
+	overlay_target_mac_t *otm;
 
 	if (status != SVP_S_OK) {
 		libvarpd_plugin_query_reply(svl->svl_u.svl_route.svl_handle,
@@ -545,7 +547,6 @@ svp_route_lookup_cb(svp_t *svp, svp_status_t status, uint32_t dcid,
 	}
 
 	otp = svl->svl_u.svl_route.svl_point;
-	bcopy(dstmac, otp->otp_mac, ETHERADDRL);
 	bcopy(ul3_addr, &otp->otp_ip, sizeof (struct in6_addr));
 	otp->otp_port = ul3_port;
 
@@ -553,9 +554,10 @@ svp_route_lookup_cb(svp_t *svp, svp_status_t status, uint32_t dcid,
 	otr->otr_vnet = vnetid;
 	otr->otr_vlan = vlan;
 	bcopy(srcmac, otr->otr_srcmac, ETHERADDRL);
-	otr->otr_dcid = dcid;
-	otr->otr_src_prefixlen = srcpfx;
-	otr->otr_dst_prefixlen = dstpfx;
+
+	otm = svl->svl_u.svl_route.svl_mac;
+	otm->otm_dcid = dcid;
+	bcopy(dstmac, otm->otm_mac, ETHERADDRL);
 
 	libvarpd_plugin_query_reply(svl->svl_u.svl_route.svl_handle,
 	    VARPD_LOOKUP_OK);
@@ -661,7 +663,7 @@ varpd_svp_destroy(void *arg)
 static void
 varpd_svp_lookup_l3(svp_t *svp, varpd_query_handle_t *vqh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
-    overlay_target_route_t *otr)
+    overlay_target_route_t *otr, overlay_target_mac_t *otm)
 {
 	svp_lookup_t *slp;
 	uint32_t type;
@@ -704,6 +706,7 @@ varpd_svp_lookup_l3(svp_t *svp, varpd_query_handle_t *vqh,
 	slp->svl_u.svl_route.svl_handle = vqh;
 	slp->svl_u.svl_route.svl_point = otp;
 	slp->svl_u.svl_route.svl_route = otr;
+	slp->svl_u.svl_route.svl_mac = otm;
 
 	svp_remote_route_lookup(svp, &slp->svl_query, src, dst,
 	    otl->otl_vnetid, (uint16_t)otl->otl_vlan, slp);
@@ -712,7 +715,7 @@ varpd_svp_lookup_l3(svp_t *svp, varpd_query_handle_t *vqh,
 static void
 varpd_svp_lookup(void *arg, varpd_query_handle_t *vqh,
     const overlay_targ_lookup_t *otl, overlay_target_point_t *otp,
-    overlay_target_route_t *otr)
+    overlay_target_route_t *otr, overlay_target_mac_t *otm)
 {
 	svp_lookup_t *slp;
 	svp_t *svp = arg;
@@ -721,7 +724,7 @@ varpd_svp_lookup(void *arg, varpd_query_handle_t *vqh,
 	 * Shuffle off L3 lookups to their own codepath.
 	 */
 	if (otl->otl_l3req) {
-		varpd_svp_lookup_l3(svp, vqh, otl, otp, otr);
+		varpd_svp_lookup_l3(svp, vqh, otl, otp, otr, otm);
 		return;
 	}
 	/*
@@ -1265,7 +1268,7 @@ varpd_svp_restore(nvlist_t *nvp, varpd_provider_handle_t *hdl,
 
 static void
 varpd_svp_arp(void *arg, varpd_arp_handle_t *vah, int type,
-    const struct sockaddr *sock, uint8_t *out)
+    const struct sockaddr *sock, uint16_t vlan __unused, uint8_t *out)
 {
 	svp_t *svp = arg;
 	svp_lookup_t *svl;

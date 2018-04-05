@@ -114,7 +114,7 @@ typedef struct varpd_client_propinfo_arg {
 	uint8_t		vcfa_pad[4];
 	char		vcfa_name[LIBVARPD_PROP_NAMELEN];
 	uint8_t		vcfa_default[LIBVARPD_PROP_SIZEMAX];
-	uint8_t		vcfa_poss[LIBVARPD_PROP_SIZEMAX];
+	uint8_t		vcfa_poss[LIBVARPD_PROP_SIZEMAX] __aligned(8);
 } varpd_client_propinfo_arg_t;
 
 typedef struct varpd_client_prop_arg {
@@ -138,6 +138,7 @@ typedef struct varpd_client_target_mode_arg {
 
 typedef struct varpd_client_target_cache_arg {
 	uint64_t	vtca_id;
+	uint32_t	vtca_dcid;
 	uint8_t		vtca_key[ETHERADDRL];
 	uint8_t		vtca_pad[2];
 	varpd_client_cache_entry_t vtca_entry;
@@ -145,7 +146,7 @@ typedef struct varpd_client_target_cache_arg {
 
 typedef struct varpd_client_target_walk_arg {
 	uint64_t	vtcw_id;
-	uint64_t	vtcw_marker;
+	uint64_t	vtcw_marker[2];
 	uint64_t	vtcw_count;
 	overlay_targ_cache_entry_t vtcw_ents[];
 } varpd_client_target_walk_arg_t;
@@ -229,12 +230,12 @@ typedef int (*libvarpd_overlay_iter_f)(varpd_impl_t *, datalink_id_t, void *);
 extern int libvarpd_overlay_iter(varpd_impl_t *, libvarpd_overlay_iter_f,
     void *);
 extern int libvarpd_overlay_cache_flush(varpd_instance_t *);
-extern int libvarpd_overlay_cache_delete(varpd_instance_t *, const uint8_t *);
-extern int libvarpd_overlay_cache_delete(varpd_instance_t *, const uint8_t *);
+extern int libvarpd_overlay_cache_delete(varpd_instance_t *, uint32_t,
+    const uint8_t *);
 extern int libvarpd_overlay_cache_get(varpd_instance_t *, const uint8_t *,
     varpd_client_cache_entry_t *);
-extern int libvarpd_overlay_cache_set(varpd_instance_t *, const uint8_t *,
-    const varpd_client_cache_entry_t *);
+extern int libvarpd_overlay_cache_set(varpd_instance_t *, uint32_t,
+    const uint8_t *, const varpd_client_cache_entry_t *);
 extern int libvarpd_overlay_cache_walk_fill(varpd_instance_t *, uint64_t *,
     uint64_t *, overlay_targ_cache_entry_t *);
 
