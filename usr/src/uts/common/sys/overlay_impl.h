@@ -157,7 +157,8 @@ typedef enum overlay_target_entry_flags {
 	OVERLAY_ENTRY_F_PENDING		= 0x01,	/* lookup in progress */
 	OVERLAY_ENTRY_F_VALID		= 0x02,	/* entry is currently valid */
 	OVERLAY_ENTRY_F_DROP		= 0x04,	/* always drop target */
-	OVERLAY_ENTRY_F_VALID_MASK	= 0x06
+	OVERLAY_ENTRY_F_ROUTER		= 0x08, /* entry is for router */
+	OVERLAY_ENTRY_F_VALID_MASK	= 0x0e,
 } overlay_target_entry_flags_t;
 
 typedef struct overlay_target_entry {
@@ -223,7 +224,7 @@ extern void overlay_target_free(overlay_dev_t *);
 #define	OVERLAY_TARGET_DROP	1
 #define	OVERLAY_TARGET_ASYNC	2
 extern int overlay_target_lookup(overlay_dev_t *, mblk_t *, struct sockaddr *,
-    socklen_t *);
+    socklen_t *, uint64_t *);
 extern void overlay_target_quiesce(overlay_target_t *);
 extern void overlay_target_fini(void);
 

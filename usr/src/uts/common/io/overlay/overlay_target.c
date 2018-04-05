@@ -306,15 +306,11 @@ overlay_target_quiesce(overlay_target_t *ott)
 /*
  * This functions assumes that the destination mode is OVERLAY_PLUGIN_D_IP |
  * OVERLAY_PLUGIN_D_PORT. As we don't have an implementation of anything else at
- * this time, say for NVGRE, we drop all packets that mcuh this.
- *
- * XXX: It might be better to replace the 'sock' argument with
- * overlay_target_entry_t** and set it with the found entry in the case
- * of OVERLAY_TARGET_OK.
+ * this time, say for NVGRE, we drop all packets that match this.
  */
 int
 overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
-    socklen_t *slenp)
+    socklen_t *slenp, uint64_t *vidp)
 {
 	int ret;
 	struct sockaddr_in6 *v6;
@@ -323,6 +319,8 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 	overlay_target_entry_t *entry;
 
 	ASSERT(odd->odd_target != NULL);
+
+	*vidp = odd->odd_vid;
 
 	/*
 	 * At this point, the overlay device is in a mux which means that it's
@@ -359,15 +357,6 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 	if (mac_header_info(odd->odd_mh, mp, &mhi) != 0)
 		return (OVERLAY_TARGET_DROP);
 
-	/*
-	 * TODO: compare mhi.mhi_daddr with odd->macaddr.
-	 * If match,
-	 * 	get VL3 dest from mp
-	 * 	lookup target using VL3 dest
-	 * otherwise,
-	 * 	lookup target using VL2 dest (existing refhash_lookup() call
-	 * 	below)
-	 */
 	mutex_enter(&ott->ott_lock);
 	entry = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
 	    mhi.mhi_daddr);
@@ -378,11 +367,6 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 			mutex_exit(&ott->ott_lock);
 			return (OVERLAY_TARGET_DROP);
 		}
-		/*
-		 * TODO: set entry->ote_dcid, if VL3 lookup, copy dst addr
-		 * into entry->ote_ip.  Probably zero out the address we're
-		 * not lookup up (VL2 or VL3) as well.
-		 */
 		bcopy(mhi.mhi_daddr, entry->ote_addr, ETHERADDRL);
 		entry->ote_chead = entry->ote_ctail = mp;
 		entry->ote_mbsize = msgsize(mp);
@@ -400,6 +384,9 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 
 	mutex_enter(&entry->ote_lock);
 	if (entry->ote_flags & OVERLAY_ENTRY_F_DROP) {
+		ret = OVERLAY_TARGET_DROP;
+	} else if (entry->ote_flags & OVERLAY_ENTRY_F_ROUTER) {
+		/* TODO: Lookup route info, adjust headers, and set vidp */
 		ret = OVERLAY_TARGET_DROP;
 	} else if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
 		bcopy(&entry->ote_dest.otp_ip, &v6->sin6_addr,
@@ -688,6 +675,16 @@ overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 	const overlay_targ_resp_t *otr = arg;
 	overlay_target_entry_t *entry;
 	mblk_t *mp;
+	boolean_t is_router = B_FALSE;
+
+	/*
+	 * If we ever support a protocol that uses MAC addresses as the UL
+	 * destination address, this check should probably include checking
+	 * that otp_mac is also all zeros.
+	 */
+	if (IN6_IS_ADDR_UNSPECIFIED(&otr->otr_answer.otp_ip) &&
+	    otr->otr_answer.otp_port == 0)
+		is_router = B_TRUE;
 
 	mutex_enter(&thdl->oth_lock);
 	for (entry = list_head(&thdl->oth_outstanding); entry != NULL;
@@ -708,6 +705,8 @@ overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 	    sizeof (overlay_target_point_t));
 	entry->ote_flags &= ~OVERLAY_ENTRY_F_PENDING;
 	entry->ote_flags |= OVERLAY_ENTRY_F_VALID;
+	if (is_router)
+		entry->ote_flags |= OVERLAY_ENTRY_F_ROUTER;
 	mp = entry->ote_chead;
 	entry->ote_chead = NULL;
 	entry->ote_ctail = NULL;
@@ -718,7 +717,7 @@ overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 	/*
 	 * For now do an in-situ drain.
 	 *
-	 * TODO: overlay_m_tx() will need to perform remote fabric attachment
+	 * TODO: overlay_m_tx() may need to perform remote fabric attachment
 	 * checks, which may leave mblk_t's left in the msg chain for
 	 * mblk_t's whose connectivity with the target entry are unknown.
 	 * This will then need to deal with the leftovers.
@@ -1128,31 +1127,34 @@ overlay_target_cache_get(overlay_target_hdl_t *thdl, void *arg)
 		    sizeof (overlay_target_point_t));
 	} else {
 		overlay_target_entry_t *ote;
-		ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
-		    otc->otc_entry.otce_mac);
-		if (ote != NULL) {
-			mutex_enter(&ote->ote_lock);
-			if ((ote->ote_flags &
-			    OVERLAY_ENTRY_F_VALID_MASK) != 0) {
-				if (ote->ote_flags & OVERLAY_ENTRY_F_DROP) {
-					otc->otc_entry.otce_flags =
-					    OVERLAY_TARGET_CACHE_DROP;
-				} else {
-					otc->otc_entry.otce_flags = 0;
-					bcopy(&ote->ote_dest,
-					    &otc->otc_entry.otce_dest,
-					    sizeof (overlay_target_point_t));
-				}
-				ret = 0;
+		if ((ote = refhash_lookup(ott->ott_u.ott_dyn.ott_dhash,
+		    otc->otc_entry.otce_mac)) == NULL) {
+			ret = ENOENT;
+			goto done;
+		}
+
+		mutex_enter(&ote->ote_lock);
+		if ((ote->ote_flags & OVERLAY_ENTRY_F_VALID_MASK) != 0) {
+			if (ote->ote_flags & OVERLAY_ENTRY_F_DROP) {
+				otc->otc_entry.otce_flags =
+				    OVERLAY_TARGET_CACHE_DROP;
+			} else if (ote->ote_flags & OVERLAY_ENTRY_F_ROUTER) {
+				otc->otc_entry.otce_flags =
+				    OVERLAY_TARGET_CACHE_ROUTER;
 			} else {
-				ret = ENOENT;
+				otc->otc_entry.otce_flags = 0;
+				bcopy(&ote->ote_dest,
+				    &otc->otc_entry.otce_dest,
+				    sizeof (overlay_target_point_t));
 			}
-			mutex_exit(&ote->ote_lock);
+			ret = 0;
 		} else {
 			ret = ENOENT;
 		}
+		mutex_exit(&ote->ote_lock);
 	}
 
+done:
 	mutex_exit(&ott->ott_lock);
 	overlay_hold_rele(odd);
 
@@ -1169,7 +1171,12 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 	overlay_targ_cache_t *otc = arg;
 	mblk_t *mp = NULL;
 
-	if (otc->otc_entry.otce_flags & ~OVERLAY_TARGET_CACHE_DROP)
+	if (otc->otc_entry.otce_flags &
+	    ~(OVERLAY_TARGET_CACHE_DROP | OVERLAY_TARGET_CACHE_ROUTER))
+		return (EINVAL);
+
+	if (otc->otc_entry.otce_flags ==
+	    (OVERLAY_TARGET_CACHE_DROP | OVERLAY_TARGET_CACHE_ROUTER))
 		return (EINVAL);
 
 	odd = overlay_hold_by_dlid(otc->otc_linkid);
@@ -1211,6 +1218,8 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 		ote->ote_flags |= OVERLAY_ENTRY_F_DROP;
 	} else {
 		ote->ote_flags |= OVERLAY_ENTRY_F_VALID;
+		if (otc->otc_entry.otce_flags & OVERLAY_TARGET_CACHE_ROUTER)
+			ote->ote_flags |= OVERLAY_ENTRY_F_ROUTER;
 		bcopy(&otc->otc_entry.otce_dest, &ote->ote_dest,
 		    sizeof (overlay_target_point_t));
 		mp = ote->ote_chead;

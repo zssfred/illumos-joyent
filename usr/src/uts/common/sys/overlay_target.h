@@ -302,6 +302,7 @@ typedef struct overlay_targ_list {
 #define	OVERLAY_TARGET_ITER_MAX	500
 
 #define	OVERLAY_TARGET_CACHE_DROP	0x01
+#define	OVERLAY_TARGET_CACHE_ROUTER	0x02
 
 typedef struct overlay_targ_cache_entry {
 	uint8_t			otce_mac[ETHERADDRL];
