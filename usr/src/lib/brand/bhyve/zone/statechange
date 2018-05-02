@@ -19,4 +19,6 @@ typeset -A FORCED_ATTRS
 FORCED_ATTRS["zlog-mode"]=g--
 FORCED_ATTRS["zlog-name"]=platform.log
 
+jst_ufpromisc="yes"
+
 . /usr/lib/brand/jcommon/statechange
