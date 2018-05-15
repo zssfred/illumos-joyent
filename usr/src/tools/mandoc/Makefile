@@ -11,7 +11,7 @@
 
 #
 # Copyright 2017 Nexenta Systems, Inc.
-# Copyright 2017 Joyent, Inc.
+# Copyright 2018 Joyent, Inc.
 #
 
 CMDDIR=		$(SRC)/cmd/mandoc
@@ -21,12 +21,14 @@ include		$(SRC)/tools/Makefile.tools
 include		$(CMDDIR)/Makefile.common
 
 CPPFLAGS += -_gcc=-nostdinc -I/usr/include -I$(NATIVE_ADJUNCT)/include
+CPPFLAGS += -D_FILE_OFFSET_BITS=64
 LDFLAGS += -L$(NATIVE_ADJUNCT)/lib -R$(NATIVE_ADJUNCT)/lib
 OBJS +=		fts.o \
 		reallocarray.o \
 		recallocarray.o \
 		strtonum.o
 
+CPPFLAGS +=	-_gcc=-nostdinc
 CPPFLAGS +=	-I. -include fts.h
 CPPFLAGS +=	-I$(NATIVE_ADJUNCT)/include
 LDFLAGS +=	-L$(NATIVE_ADJUNCT)/lib -R$(NATIVE_ADJUNCT)/lib

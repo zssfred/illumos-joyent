@@ -46,7 +46,8 @@ typedef enum {
 	PCI_SLOT_CD,
 	PCI_SLOT_BOOT_DISK,
 	PCI_SLOT_OTHER_DISKS,
-	PCI_SLOT_NICS
+	PCI_SLOT_NICS,
+	PCI_SLOT_FBUF = 30,
 } pci_slot_t;
 
 static boolean_t debug;
@@ -170,11 +171,13 @@ add_ram(int *argc, char **argv)
 }
 
 static int
-add_disk(char *disk, char *path, char *slotconf, size_t slotconf_len)
+add_disk(char *disk, char *path, const char *model, char *slotconf,
+    size_t slotconf_len)
 {
 	static char *boot = NULL;
 	static int next_cd = 0;
 	static int next_other = 0;
+	const char *emulation = "virtio-blk";
 	int pcislot;
 	int pcifn;
 
@@ -198,8 +201,22 @@ add_disk(char *disk, char *path, char *slotconf, size_t slotconf_len)
 		next_other++;
 	}
 
-	if (snprintf(slotconf, slotconf_len, "%d:%d,virtio-blk,%s",
-	    pcislot, pcifn, path) >= slotconf_len) {
+
+	if (strcmp(model, "virtio") == 0) {
+		emulation = "virtio-blk";
+	} else if (strcmp(model, "ahci") == 0) {
+		if (is_env_true("device", disk, "cdrom")) {
+			emulation = "ahci-cd";
+		} else {
+			emulation = "ahci-hd";
+		}
+	} else {
+		(void) printf("Error: unknown disk model '%s'\n", model);
+		return (-1);
+	}
+
+	if (snprintf(slotconf, slotconf_len, "%d:%d,%s,%s",
+	    pcislot, pcifn, emulation, path) >= slotconf_len) {
 		(void) printf("Error: disk path '%s' too long\n", path);
 		return (-1);
 	}
@@ -297,15 +314,12 @@ add_devices(int *argc, char **argv)
 			return (-1);
 		}
 
-		if (strcmp(model, "virtio") == 0) {
-			ret = add_disk(dev, path, slotconf, sizeof (slotconf));
-		} else if (strcmp(model, "passthru") == 0) {
+		if (strcmp(model, "passthru") == 0) {
 			ret = add_ppt(argc, argv, dev, path, slotconf,
 			    sizeof (slotconf));
 		} else {
-			(void) printf("Error: device %s has invalid model: "
-			    "%s\n", dev, model);
-			ret = -1;
+			ret = add_disk(dev, path, model, slotconf,
+			    sizeof (slotconf));
 		}
 
 		if (ret != 0)
@@ -452,6 +466,44 @@ add_bhyve_extra_opts(int *argc, char **argv)
 	return (0);
 }
 
+/*
+ * Adds the frame buffer and an xhci tablet to help with the pointer.
+ */
+static int
+add_fbuf(int *argc, char **argv)
+{
+	char *val;
+	char conf[MAXPATHLEN];
+	int len;
+
+	/*
+	 * Do not add a frame buffer or tablet if VNC is disabled.
+	 */
+	if ((val = get_zcfg_var("attr", "vnc_port", NULL)) != NULL &&
+	    strcmp(val, "-1") == 0) {
+		return (0);
+	}
+
+	len = snprintf(conf, sizeof (conf),
+	    "%d:0,fbuf,vga=off,unix=/tmp/vm.vnc", PCI_SLOT_FBUF);
+	assert(len < sizeof (conf));
+
+	if (add_arg(argc, argv, "-s") != 0 ||
+	    add_arg(argc, argv, conf) != 0) {
+		return (-1);
+	}
+
+	len = snprintf(conf, sizeof (conf), "%d:1,xhci,tablet", PCI_SLOT_FBUF);
+	assert(len < sizeof (conf));
+
+	if (add_arg(argc, argv, "-s") != 0 ||
+	    add_arg(argc, argv, conf) != 0) {
+		return (-1);
+	}
+
+	return (0);
+}
+
 /* Must be called last */
 static int
 add_vmname(int *argc, char **argv)
@@ -567,6 +619,7 @@ main(int argc, char **argv)
 	    add_devices(&zhargc, (char **)&zhargv) != 0 ||
 	    add_nets(&zhargc, (char **)&zhargv) != 0 ||
 	    add_bhyve_extra_opts(&zhargc, (char **)&zhargv) != 0 ||
+	    add_fbuf(&zhargc, (char **)&zhargv) != 0 ||
 	    add_vmname(&zhargc, (char **)&zhargv) != 0) {
 		return (1);
 	}

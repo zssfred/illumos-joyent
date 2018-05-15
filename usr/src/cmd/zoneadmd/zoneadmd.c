@@ -105,6 +105,7 @@
 #include <sys/dls_mgmt.h>
 #include <libscf.h>
 #include <uuid/uuid.h>
+#include <libppt.h>
 
 #include <libzonecfg.h>
 #include <zonestat_impl.h>
@@ -830,6 +831,46 @@ set_zonecfg_env(char *rsrc, char *attr, char *name, char *val)
 }
 
 /*
+ * Resolve a device:match value to a path.  This is only different for PPT
+ * devices, where we expect the match property to be a /devices/... path, and
+ * configured for PPT already.
+ */
+int
+resolve_device_match(zlog_t *zlogp, struct zone_devtab *dtab,
+    char *path, size_t len)
+{
+	struct zone_res_attrtab *rap;
+
+	for (rap = dtab->zone_dev_attrp; rap != NULL;
+	    rap = rap->zone_res_attr_next) {
+		if (strcmp(rap->zone_res_attr_name, "model") == 0 &&
+		    strcmp(rap->zone_res_attr_value, "passthru") == 0)
+			break;
+	}
+
+	if (rap == NULL) {
+		if (strlcpy(path, dtab->zone_dev_match, len) >= len)
+			return (Z_INVAL);
+		return (Z_OK);
+	}
+
+	if (strncmp(dtab->zone_dev_match, "/devices",
+	    strlen("/devices")) != 0) {
+		zerror(zlogp, B_FALSE, "invalid passthru match value '%s'",
+		    dtab->zone_dev_match);
+		return (Z_INVAL);
+	}
+
+	if (ppt_devpath_to_dev(dtab->zone_dev_match, path, len) != 0) {
+		zerror(zlogp, B_TRUE, "failed to resolve passthru device %s",
+		    dtab->zone_dev_match);
+		return (Z_INVAL);
+	}
+
+	return (Z_OK);
+}
+
+/*
  * Export various zonecfg properties into environment for the boot and state
  * change hooks.
  *
@@ -846,7 +887,7 @@ set_zonecfg_env(char *rsrc, char *attr, char *name, char *val)
  * SmartOS.
  */
 static int
-setup_subproc_env(boolean_t debug)
+setup_subproc_env(zlog_t *zlogp, boolean_t debug)
 {
 	int res;
 	struct zone_nwiftab ntab;
@@ -931,17 +972,19 @@ setup_subproc_env(boolean_t debug)
 
 	dev_resources[0] = '\0';
 	while (zonecfg_getdevent(snap_hndl, &dtab) == Z_OK) {
+		char *match = dtab.zone_dev_match;
 		struct zone_res_attrtab *rap;
-		char *match;
+		char path[MAXPATHLEN];
 
-		match = dtab.zone_dev_match;
+		res = resolve_device_match(zlogp, &dtab, path, sizeof (path));
+		if (res != Z_OK)
+			goto done;
 
 		/*
-		 * In the environment variable name, the value of match will be
-		 * mangled.  Thus, we store the value of match in a "path"
-		 * environment variable.
+		 * Even if not modified, the match path will be mangled in the
+		 * environment variable name, so we always store the value here.
 		 */
-		set_zonecfg_env(RSRC_DEV, match, "path", match);
+		set_zonecfg_env(RSRC_DEV, match, "path", path);
 
 		for (rap = dtab.zone_dev_attrp; rap != NULL;
 		    rap = rap->zone_res_attr_next) {
@@ -1018,6 +1061,8 @@ do_subproc(zlog_t *zlogp, char *cmdbuf, char **retstr, boolean_t debug)
 	FILE *file;
 	int status;
 	int rd_cnt;
+	int fds[2];
+	pid_t child;
 
 	if (retstr != NULL) {
 		if ((*retstr = malloc(1024)) == NULL) {
@@ -1030,17 +1075,72 @@ do_subproc(zlog_t *zlogp, char *cmdbuf, char **retstr, boolean_t debug)
 		inbuf = buf;
 	}
 
-	if (setup_subproc_env(debug) != Z_OK) {
-		zerror(zlogp, B_FALSE, "failed to setup environment");
+	if (pipe(fds) != 0) {
+		zerror(zlogp, B_TRUE, "failed to create pipe for subprocess");
 		return (-1);
 	}
 
-	file = popen(cmdbuf, "r");
-	if (file == NULL) {
-		zerror(zlogp, B_TRUE, "could not launch: %s", cmdbuf);
+	if ((child = fork()) == 0) {
+		int in;
+
+		/*
+		 * SIGINT is currently ignored.  It probably shouldn't be so
+		 * hard to kill errant children, so we revert to SIG_DFL.
+		 * SIGHUP and SIGUSR1 are used to perform log rotation.  We
+		 * leave those as-is because we don't want a 'pkill -HUP
+		 * zoneadmd' to kill this child process before exec().  On
+		 * exec(), SIGHUP and SIGUSR1 will become SIG_DFL.
+		 */
+		sigset(SIGINT, SIG_DFL);
+
+		/*
+		 * Do not call zerror() in child process as neither zerror() nor
+		 * logstream_*() functions are designed to handle multiple
+		 * processes logging.  Rather, write all errors to the pipe.
+		 */
+		if (dup2(fds[1], STDERR_FILENO) == -1) {
+			(void) snprintf(buf, sizeof (buf),
+			    "subprocess failed to dup2(STDERR_FILENO): %s\n",
+			    strerror(errno));
+			(void) write(fds[1], buf, strlen(buf));
+			_exit(127);
+		}
+		if (dup2(fds[1], STDOUT_FILENO) == -1) {
+			perror("subprocess failed to dup2(STDOUT_FILENO)");
+			_exit(127);
+		}
+		/*
+		 * Some naughty children may try to read from stdin.  Be sure
+		 * that the first file that a child opens doesn't get stdin's
+		 * file descriptor.
+		 */
+		if ((in = open("/dev/null", O_RDONLY)) == -1 ||
+		    dup2(in, STDIN_FILENO) == -1) {
+			perror("subprocess failed to set up STDIN_FILENO");
+			_exit(127);
+		}
+		closefrom(STDERR_FILENO + 1);
+
+		if (setup_subproc_env(zlogp, debug) != Z_OK) {
+			(void) fprintf(stderr, "failed to setup environment");
+			_exit(127);
+		}
+
+		(void) execl("/bin/sh", "sh", "-c", cmdbuf, NULL);
+
+		perror("subprocess execl failed");
+		_exit(127);
+	} else if (child == -1) {
+		zerror(zlogp, B_TRUE, "failed to create subprocess for '%s'",
+		    cmdbuf);
+		(void) close(fds[0]);
+		(void) close(fds[1]);
 		return (-1);
 	}
 
+	(void) close(fds[1]);
+
+	file = fdopen(fds[0], "r");
 	while (fgets(inbuf, 1024, file) != NULL) {
 		if (retstr == NULL) {
 			if (zlogp != &logsys) {
@@ -1056,15 +1156,24 @@ do_subproc(zlog_t *zlogp, char *cmdbuf, char **retstr, boolean_t debug)
 			rd_cnt += 1024 - 1;
 			if ((p = realloc(*retstr, rd_cnt + 1024)) == NULL) {
 				zerror(zlogp, B_FALSE, "out of memory");
-				(void) pclose(file);
-				return (-1);
+				break;
 			}
 
 			*retstr = p;
 			inbuf = *retstr + rd_cnt;
 		}
 	}
-	status = pclose(file);
+
+	while (fclose(file) != 0) {
+		assert(errno == EINTR);
+	}
+	while (waitpid(child, &status, 0) == -1) {
+		if (errno != EINTR) {
+			zerror(zlogp, B_TRUE,
+			    "failed to get exit status of '%s'", cmdbuf);
+			return (-1);
+		}
+	}
 
 	if (WIFSIGNALED(status)) {
 		zerror(zlogp, B_FALSE, "%s unexpectedly terminated due to "
