@@ -118,14 +118,16 @@ typedef enum svp_conn_state {
 	SVP_CS_CONNECTING	= 0x02,
 	SVP_CS_BACKOFF		= 0x03,
 	SVP_CS_ACTIVE		= 0x04,
-	SVP_CS_WINDDOWN		= 0x05
+	SVP_CS_WINDDOWN		= 0x05,
+	SVP_CS_VERSIONING	= 0x06
 } svp_conn_state_t;
 
 typedef enum svp_conn_error {
 	SVP_CE_NONE		= 0x00,
 	SVP_CE_ASSOCIATE	= 0x01,
 	SVP_CE_NOPOLLOUT	= 0x02,
-	SVP_CE_SOCKET		= 0x03
+	SVP_CE_SOCKET		= 0x03,
+	SVP_CE_VERSION_PONG	= 0x04
 } svp_conn_error_t;
 
 typedef enum svp_conn_flags {
@@ -166,6 +168,7 @@ struct svp_conn {
 	list_t			sc_queries;
 	svp_conn_out_t		sc_output;
 	svp_conn_in_t		sc_input;
+	uint_t			sc_version;
 };
 
 typedef enum svp_remote_state {
@@ -345,6 +348,7 @@ extern void svp_remote_resolved(svp_remote_t *, struct addrinfo *);
 extern void svp_host_queue(svp_remote_t *);
 extern void svp_query_release(svp_query_t *);
 extern void svp_query_crc32(svp_req_t *, void *, size_t);
+extern id_t svp_id_alloc(void);
 
 /*
  * Shootdown related

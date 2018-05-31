@@ -35,8 +35,12 @@ extern "C" {
 
 #define	SVP_VERSION_ONE	1
 #define	SVP_VERSION_TWO	2
-/* XXX KEBE SAYS -- we are not yet ready to bump this. */
-#define	SVP_CURRENT_VERSION	SVP_VERSION_ONE
+/*
+ * Bump this to 2.  Version 1 SVP is a subset of version 2, and can be
+ * determined using an SVP_R_PING as part of connection establishment.
+ * Version-2 specific changes will be highlighed (look for "v2").
+ */
+#define	SVP_CURRENT_VERSION	SVP_VERSION_TWO
 
 typedef struct svp_req {
 	uint16_t	svp_ver;
@@ -46,6 +50,10 @@ typedef struct svp_req {
 	uint32_t	svp_crc32;
 } svp_req_t;
 
+/*
+ * Unless specified, all message types function identically between v1 and v2
+ * of SVP.
+ */
 typedef enum svp_op {
 	SVP_R_UNKNOWN		= 0x00,
 	SVP_R_PING		= 0x01,
@@ -56,13 +64,13 @@ typedef enum svp_op {
 	SVP_R_VL3_ACK		= 0x06,
 	SVP_R_BULK_REQ		= 0x07,
 	SVP_R_BULK_ACK		= 0x08,
-	SVP_R_LOG_REQ		= 0x09,
-	SVP_R_LOG_ACK		= 0x0A,
+	SVP_R_LOG_REQ		= 0x09,	/* v2 introduces new log type */
+	SVP_R_LOG_ACK		= 0x0A, /* See svp_log_route_t */
 	SVP_R_LOG_RM		= 0x0B,
 	SVP_R_LOG_RM_ACK	= 0x0C,
 	SVP_R_SHOOTDOWN		= 0x0D,
-	SVP_R_ROUTE_REQ		= 0x0E,
-	SVP_R_ROUTE_ACK		= 0x0F
+	SVP_R_ROUTE_REQ		= 0x0E,	/* v2 only */
+	SVP_R_ROUTE_ACK		= 0x0F	/* v2 only */
 } svp_op_t;
 
 typedef enum svp_status {
@@ -174,7 +182,7 @@ typedef struct svp_log_req {
 typedef enum svp_log_type {
 	SVP_LOG_VL2	= 0x01,
 	SVP_LOG_VL3	= 0x02,
-	SVP_LOG_ROUTE	= 0x03
+	SVP_LOG_ROUTE	= 0x03	/* v2 only */
 } svp_log_type_t;
 
 typedef struct svp_log_vl2 {
@@ -194,6 +202,9 @@ typedef struct svp_log_vl3 {
 	uint32_t	svl3_vnetid;
 } svp_log_vl3_t;
 
+/*
+ * This log entry only appears on v2 connections.
+ */
 typedef struct svp_log_route {
 	uint32_t	svlr_type;	/* Should be SVP_LOG_ROUTE */
 	uint8_t		svlr_id[16];	/* 16-byte UUID */
@@ -255,6 +266,8 @@ typedef struct svp_shootdown {
  * far-remote networks.  Modern overlay modules will request IP destinations
  * for remote-Triton networks, but they must know how to reach the
  * remote-Triton SVP server.
+ *
+ * NOTE: SVP_R_ROUTE_{REQ,ACK} are only present in SVP v2.
  */
 typedef struct svp_route_req {
 	uint32_t	srr_vnetid;	/* Requester's vnet ID. */

@@ -48,6 +48,12 @@ static svp_timer_t svp_dns_timer;
 static id_space_t *svp_idspace;
 static int svp_dns_timer_rate = 30;	/* seconds */
 
+id_t
+svp_id_alloc(void)
+{
+	return (id_alloc(svp_idspace));
+}
+
 static void
 svp_remote_mkfmamsg(svp_remote_t *srp, svp_degrade_state_t state, char *buf,
     size_t buflen)
@@ -279,8 +285,40 @@ svp_remote_detach(svp_t *svp)
 }
 
 /*
- * Walk the list of connections and find the first one that's available, the
- * move it to the back of the list so it's less likely to be used again.
+ * See if the request can be sent over the connection's supported version.
+ * Scribble the version in the request itself.  NOTE that we do not check the
+ * version that already exists in sqp->sq_header.svp_ver, as we may be called
+ * from svp_remote_reassign() (and change versions when arriving at a new
+ * connection).
+ */
+static boolean_t
+svp_outbound_version_check(int version, svp_query_t *sqp)
+{
+	uint16_t op = htons(sqp->sq_header.svp_op);
+
+	/*
+	 * As of v1 -> v2, we really only need to restrict SVP_R_ROUTE_REQ
+	 * as v2-only.  Reflect that here.
+	 *
+	 * NOTE that if any message semantics change between future versions,
+	 * (e.g. "in v3 SVP_R_VL2_REQ takes on additional work"), we'll
+	 * need to more-deeply inspect the query.  It's possible that the
+	 * svp_op space is big enough to just continue op-only inspections.
+	 */
+
+	assert(version > 0 && version <= SVP_CURRENT_VERSION);
+
+	if (op != SVP_R_ROUTE_REQ || version >= SVP_VERSION_TWO) {
+		sqp->sq_header.svp_ver = htons(version);
+		return (B_TRUE);
+	}
+	return (B_FALSE);
+}
+
+/*
+ * Walk the list of connections and find the first one that's available AND
+ * version-appropriate for the message, then move the matched connection to
+ * the back of the list so it's less likely to be used again.
  */
 static boolean_t
 svp_remote_conn_queue(svp_remote_t *srp, svp_query_t *sqp)
@@ -291,7 +329,8 @@ svp_remote_conn_queue(svp_remote_t *srp, svp_query_t *sqp)
 	for (scp = list_head(&srp->sr_conns); scp != NULL;
 	    scp = list_next(&srp->sr_conns, scp)) {
 		mutex_enter(&scp->sc_lock);
-		if (scp->sc_cstate != SVP_CS_ACTIVE) {
+		if (scp->sc_cstate != SVP_CS_ACTIVE ||
+		    !svp_outbound_version_check(scp->sc_version, sqp)) {
 			mutex_exit(&scp->sc_lock);
 			continue;
 		}
@@ -331,7 +370,6 @@ svp_remote_vl2_lookup(svp_t *svp, svp_query_t *sqp, const uint8_t *mac,
 	sqp->sq_arg = arg;
 	sqp->sq_svp = svp;
 	sqp->sq_state = SVP_QUERY_INIT;
-	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
 	sqp->sq_header.svp_op = htons(SVP_R_VL2_REQ);
 	sqp->sq_header.svp_size = htonl(sizeof (svp_vl2_req_t));
 	sqp->sq_header.svp_id = id_alloc(svp_idspace);
@@ -383,7 +421,6 @@ svp_remote_route_lookup(svp_t *svp, svp_query_t *sqp,
 	sqp->sq_arg = arg;
 	sqp->sq_svp = svp;
 	sqp->sq_state = SVP_QUERY_INIT;
-	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
 	sqp->sq_header.svp_op = htons(SVP_R_ROUTE_REQ);
 	sqp->sq_header.svp_size = htonl(sizeof (svp_route_req_t));
 	sqp->sq_header.svp_id = id_alloc(svp_idspace);
@@ -435,7 +472,6 @@ svp_remote_vl3_common(svp_remote_t *srp, svp_query_t *sqp,
 	sqp->sq_func = func;
 	sqp->sq_arg = arg;
 	sqp->sq_state = SVP_QUERY_INIT;
-	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
 	sqp->sq_header.svp_op = htons(SVP_R_VL3_REQ);
 	sqp->sq_header.svp_size = htonl(sizeof (svp_vl3_req_t));
 	sqp->sq_header.svp_id = id_alloc(svp_idspace);
@@ -517,7 +553,6 @@ svp_remote_log_request(svp_remote_t *srp, svp_query_t *sqp, void *buf,
 	sqp->sq_func = svp_remote_log_request_cb;
 	sqp->sq_state = SVP_QUERY_INIT;
 	sqp->sq_arg = srp;
-	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
 	sqp->sq_header.svp_op = htons(SVP_R_LOG_REQ);
 	sqp->sq_header.svp_size = htonl(sizeof (svp_log_req_t));
 	sqp->sq_header.svp_id = id_alloc(svp_idspace);
@@ -563,7 +598,6 @@ svp_remote_lrm_request(svp_remote_t *srp, svp_query_t *sqp, void *buf,
 	sqp->sq_func = svp_remote_lrm_request_cb;
 	sqp->sq_state = SVP_QUERY_INIT;
 	sqp->sq_arg = srp;
-	sqp->sq_header.svp_ver = htons(SVP_CURRENT_VERSION);
 	sqp->sq_header.svp_op = htons(SVP_R_LOG_RM);
 	sqp->sq_header.svp_size = htonl(buflen);
 	sqp->sq_header.svp_id = id_alloc(svp_idspace);
