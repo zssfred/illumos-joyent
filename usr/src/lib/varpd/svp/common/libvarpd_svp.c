@@ -681,7 +681,6 @@ varpd_svp_lookup_l3(svp_t *svp, varpd_query_handle_t *vqh,
 	 * SVP_R_ROUTE_REQ.
 	 */
 
-	/* XXX KEBE SAYS DO SOME otl verification too... */
 	if (IN6_IS_ADDR_V4MAPPED(src)) {
 		if (!IN6_IS_ADDR_V4MAPPED(dst)) {
 			libvarpd_plugin_query_reply(vqh, VARPD_LOOKUP_DROP);
@@ -836,7 +835,6 @@ varpd_svp_propinfo(void *arg, uint_t propid, varpd_prop_handle_t *vph)
 		libvarpd_prop_set_prot(vph, OVERLAY_PROP_PERM_RRW);
 		libvarpd_prop_set_type(vph, OVERLAY_PROP_T_UINT);
 		libvarpd_prop_set_nodefault(vph);
-		/* XXX KEBE ASKS should I just set high to UINT32_MAX? */
 		libvarpd_prop_set_range_uint32(vph, 1, UINT32_MAX - 1);
 		break;
 	case 5:
@@ -1058,7 +1056,6 @@ varpd_svp_setprop(void *arg, const char *pname, const void *buf,
 		if (size < sizeof (uint64_t))
 			return (EOVERFLOW);
 
-		/* XXX KEBE ASKS, use UINT32_MAX instead? */
 		if (*valp == 0 || *valp > UINT32_MAX - 1)
 			return (EINVAL);
 
@@ -1149,7 +1146,6 @@ varpd_svp_save(void *arg, nvlist_t *nvp)
 	if (!ether_is_zero(&svp->svp_router_oui)) {
 		char buf[ETHERADDRSTRL];
 
-		/* XXX KEBE SAYS See underlay_ip... */
 		if (ether_ntoa_r((struct ether_addr *)&svp->svp_router_oui,
 		    buf) == NULL) {
 			libvarpd_panic("unexpected ether_ntoa_r failure: %d",
