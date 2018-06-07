@@ -413,6 +413,8 @@ extern void libvarpd_inject_arp(varpd_provider_handle_t *, const uint16_t,
     const uint8_t *, const struct in_addr *, const uint8_t *);
 extern void libvarpd_fma_degrade(varpd_provider_handle_t *, const char *);
 extern void libvarpd_fma_restore(varpd_provider_handle_t *);
+extern void libvarpd_route_flush(varpd_provider_handle_t *, uint8_t *,
+    uint8_t *, uint8_t, uint8_t, uint16_t vlan_id);
 
 #ifdef __cplusplus
 }

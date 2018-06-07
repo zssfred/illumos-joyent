@@ -562,6 +562,34 @@ libvarpd_inject_varp(varpd_provider_handle_t *vph, const uint8_t *mac,
 }
 
 void
+libvarpd_route_flush(varpd_provider_handle_t *vph, uint8_t *srcip,
+    uint8_t *dstip, uint8_t src_prefixlen, uint8_t dst_prefixlen,
+    uint16_t vlan_id)
+{
+	varpd_instance_t *inst = (varpd_instance_t *)vph;
+	varpd_impl_t *vip = inst->vri_impl;
+	overlay_targ_cache_net_t otcn;
+	overlay_targ_cache_net_entry_t *otcne;
+	int ret;
+
+	otcn.otcn_linkid = inst->vri_linkid;
+	otcne = &otcn.otcn_entry;
+	bcopy(srcip, &otcne->otcne_src, sizeof (in6_addr_t));
+	bcopy(dstip, &otcne->otcne_dst, sizeof (in6_addr_t));
+	otcne->otcne_vlan = vlan_id;
+	otcne->otcne_src_prefixlen = src_prefixlen;
+	otcne->otcne_dst_prefixlen = dst_prefixlen;
+
+	ret = ioctl(vip->vdi_overlayfd, OVERLAY_TARG_CACHE_REMOVE_NET, &otcn);
+	if (ret != 0) {
+		/* XXX KEBE ASKS, any harmless error cases? */
+		libvarpd_panic("received bad errno from "
+		    "OVERLAY_TARG_CACHE_REMOVE_NET: %d - %s", errno,
+		    strerror(errno));
+	}
+}
+
+void
 libvarpd_fma_degrade(varpd_provider_handle_t *vph, const char *msg)
 {
 	int ret;

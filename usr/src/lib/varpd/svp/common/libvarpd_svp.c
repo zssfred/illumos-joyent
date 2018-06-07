@@ -315,7 +315,7 @@
  *
  * The shoot down information needs to be done on a per-backend basis. The
  * general design is that we'll have a single query for this which can fire on a
- * 5-10s period, we randmoize the latter part to give us a bit more load
+ * 5-10s period, we randomize the latter part to give us a bit more load
  * spreading. If we complete because there's no work to do, then we wait the
  * normal period. If we complete, but there's still work to do, we'll go again
  * after a second.
@@ -542,6 +542,18 @@ svp_route_lookup_cb(svp_t *svp, svp_status_t status, uint32_t dcid,
 	umem_cache_free(svp_lookup_cache, svl);
 }
 
+/*
+ * Tell the overlay instance to flush out entries matcthing this route.
+ * See libvarpd_route_flush() for more.
+ */
+static void
+svp_route_shootdown_cb(svp_t *svp, uint8_t *srcip, uint8_t *dstip,
+    uint8_t src_prefixlen, uint8_t dst_prefixlen, uint16_t vlan_id)
+{
+	libvarpd_route_flush(svp->svp_hdl, srcip, dstip, src_prefixlen,
+	    dst_prefixlen, vlan_id);
+}
+
 static svp_cb_t svp_defops = {
 	svp_vl2_lookup_cb,
 	svp_vl3_lookup_cb,
@@ -549,6 +561,7 @@ static svp_cb_t svp_defops = {
 	svp_vl3_inject_cb,
 	svp_shootdown_cb,
 	svp_route_lookup_cb,
+	svp_route_shootdown_cb
 };
 
 static boolean_t

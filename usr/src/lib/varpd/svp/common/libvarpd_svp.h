@@ -253,6 +253,8 @@ typedef void (*svp_shootdown_f)(svp_t *, const uint8_t *,
 typedef void (*svp_route_lookup_f)(svp_t *, svp_status_t, uint32_t, uint32_t,
     uint16_t, uint8_t *, uint8_t *, uint16_t, uint8_t *, uint8_t, uint8_t,
     void *);
+typedef void (*svp_route_shootdown_f)(svp_t *, uint8_t *, uint8_t *, uint8_t,
+    uint8_t, uint16_t);
 
 typedef struct svp_cb {
 	svp_vl2_lookup_f	scb_vl2_lookup;
@@ -261,6 +263,7 @@ typedef struct svp_cb {
 	svp_vl3_inject_f	scb_vl3_inject;
 	svp_shootdown_f		scb_shootdown;
 	svp_route_lookup_f	scb_route_lookup;
+	svp_route_shootdown_f	scb_route_shootdown;
 } svp_cb_t;
 
 /*
@@ -356,11 +359,13 @@ extern id_t svp_id_alloc(void);
 extern void svp_remote_shootdown_vl3(svp_remote_t *, svp_log_vl3_t *,
     svp_sdlog_t *);
 extern void svp_remote_shootdown_vl2(svp_remote_t *, svp_log_vl2_t *);
+extern void svp_remote_shootdown_route(svp_remote_t *, svp_log_route_t *);
 extern void svp_remote_log_request(svp_remote_t *, svp_query_t *, void *,
     size_t);
 extern void svp_remote_lrm_request(svp_remote_t *, svp_query_t *, void *,
     size_t);
-extern void svp_shootdown_logr_cb(svp_remote_t *, svp_status_t, void *, size_t);
+extern void svp_shootdown_logr_cb(svp_remote_t *, svp_status_t, void *, size_t,
+    uint16_t);
 extern void svp_shootdown_lrm_cb(svp_remote_t *, svp_status_t);
 extern void svp_shootdown_vl3_cb(svp_status_t, svp_log_vl3_t *, svp_sdlog_t *);
 extern int svp_shootdown_init(svp_remote_t *);

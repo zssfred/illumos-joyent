@@ -154,7 +154,7 @@ svp_shootdown_logr_shoot(void *data, svp_log_type_t type, void *arg)
 	svp_remote_t *srp = sdl->sdl_remote;
 	svp_lrm_req_t *svrr = sdl->sdl_logrm;
 
-	if (type != SVP_LOG_VL2 && type != SVP_LOG_VL3)
+	if (type != SVP_LOG_VL2 && type != SVP_LOG_VL3 && type != SVP_LOG_ROUTE)
 		libvarpd_panic("encountered unknown type: %d\n", type);
 
 	if (type == SVP_LOG_VL2) {
@@ -165,12 +165,21 @@ svp_shootdown_logr_shoot(void *data, svp_log_type_t type, void *arg)
 		    UUID_LEN);
 		svrr->svrr_count++;
 		mutex_exit(&sdl->sdl_lock);
-	} else {
+	} else if (type == SVP_LOG_VL3) {
 		svp_log_vl3_t *svl3 = data;
 
 		/* Take a hold for the duration of this request */
 		svp_shootdown_ref(sdl);
 		svp_remote_shootdown_vl3(srp, svl3, sdl);
+	} else {
+		svp_log_route_t *svlr = data;
+
+		svp_remote_shootdown_route(srp, svlr);
+		mutex_enter(&sdl->sdl_lock);
+		bcopy(svlr->svlr_id, &svrr->svrr_ids[svrr->svrr_count * 16],
+		    UUID_LEN);
+		svrr->svrr_count++;
+		mutex_exit(&sdl->sdl_lock);
 	}
 
 	return (0);
@@ -187,7 +196,7 @@ svp_shootdown_logr_count(void *data, svp_log_type_t type, void *arg)
 
 static int
 svp_shootdown_logr_iter(svp_remote_t *srp, void *buf, size_t len,
-    int (*cb)(void *, svp_log_type_t, void *), void *arg)
+    int (*cb)(void *, svp_log_type_t, void *), void *arg, uint16_t version)
 {
 	int ret;
 	off_t cboff = 0;
@@ -202,6 +211,7 @@ svp_shootdown_logr_iter(svp_remote_t *srp, void *buf, size_t len,
 
 	while (len > 0) {
 		size_t opsz;
+		char *typestring;
 
 		if (len < sizeof (uint32_t)) {
 			(void) bunyan_warn(svp_bunyan,
@@ -216,30 +226,20 @@ svp_shootdown_logr_iter(svp_remote_t *srp, void *buf, size_t len,
 
 		typep = buf + cboff;
 		type = ntohl(*typep);
-		if (type == SVP_LOG_VL2) {
+		switch (type) {
+		case SVP_LOG_VL2:
 			opsz = sizeof (svp_log_vl2_t);
-			if (len < opsz) {
-				(void) bunyan_warn(svp_bunyan,
-				    "not enough data for svp_log_vl2_t",
-				    BUNYAN_T_STRING, "remote_host",
-				    srp->sr_hostname,
-				    BUNYAN_T_INT32, "remote_port",
-				    srp->sr_rport,
-				    BUNYAN_T_INT32, "response_size",
-				    cboff + len,
-				    BUNYAN_T_INT32, "response_offset", cboff,
-				    BUNYAN_T_END);
-				return (-1);
-			}
-			svl2 = (void *)typep;
-			if ((ret = cb(svl2, type, arg)) != 0)
-				return (ret);
-		} else if (type == SVP_LOG_VL3) {
-
+			typestring = "svp_log_vl2_t";
+			break;
+		case SVP_LOG_VL3:
 			opsz = sizeof (svp_log_vl3_t);
-			if (len < opsz) {
+			typestring = "svp_log_vl3_t";
+			break;
+		case SVP_LOG_ROUTE:
+			if (version < SVP_VERSION_TWO) {
 				(void) bunyan_warn(svp_bunyan,
-				    "not enough data for svp_log_vl3_t",
+				    "insufficient version for SVP_LOG_ROUTE",
+				    BUNYAN_T_UINT32, "version", version,
 				    BUNYAN_T_STRING, "remote_host",
 				    srp->sr_hostname,
 				    BUNYAN_T_INT32, "remote_port",
@@ -250,10 +250,10 @@ svp_shootdown_logr_iter(svp_remote_t *srp, void *buf, size_t len,
 				    BUNYAN_T_END);
 				return (-1);
 			}
-			svl3 = (void *)typep;
-			if ((ret = cb(svl3, type, arg)) != 0)
-				return (ret);
-		} else {
+			opsz = sizeof (svp_log_route_t);
+			typestring = "svp_log_route_t";
+			break;
+		default:
 			(void) bunyan_warn(svp_bunyan,
 			    "unknown log structure type",
 			    BUNYAN_T_STRING, "remote_host",
@@ -265,6 +265,20 @@ svp_shootdown_logr_iter(svp_remote_t *srp, void *buf, size_t len,
 			    BUNYAN_T_END);
 			return (-1);
 		}
+		if (len < opsz) {
+			(void) bunyan_warn(svp_bunyan,
+			    "not enough data for message type",
+			    BUNYAN_T_STRING, "msg_type", typestring,
+			    BUNYAN_T_STRING, "remote_host", srp->sr_hostname,
+			    BUNYAN_T_INT32, "remote_port", srp->sr_rport,
+			    BUNYAN_T_INT32, "response_size", cboff + len,
+			    BUNYAN_T_INT32, "response_offset", cboff,
+			    BUNYAN_T_END);
+			return (-1);
+		}
+		if ((ret = cb((void *)typep, type, arg)) != 0)
+			return (ret);
+
 		len -= opsz;
 		cboff += opsz;
 	}
@@ -274,7 +288,7 @@ svp_shootdown_logr_iter(svp_remote_t *srp, void *buf, size_t len,
 
 void
 svp_shootdown_logr_cb(svp_remote_t *srp, svp_status_t status, void *cbdata,
-    size_t cbsize)
+    size_t cbsize, uint16_t version)
 {
 	uint_t count;
 	svp_sdlog_t *sdl = &srp->sr_shoot;
@@ -301,7 +315,7 @@ svp_shootdown_logr_cb(svp_remote_t *srp, svp_status_t status, void *cbdata,
 	 */
 	count = 0;
 	if ((svp_shootdown_logr_iter(srp, cbdata, cbsize,
-	    svp_shootdown_logr_count, &count)) != 0) {
+		svp_shootdown_logr_count, &count, version)) != 0) {
 		mutex_enter(&sdl->sdl_lock);
 		sdl->sdl_flags &= ~SVP_SD_RUNNING;
 		svp_shootdown_schedule(sdl, B_FALSE);
@@ -337,7 +351,7 @@ svp_shootdown_logr_cb(svp_remote_t *srp, svp_status_t status, void *cbdata,
 	 * is how many entries we have to remove.
 	 */
 	(void) svp_shootdown_logr_iter(srp, cbdata, cbsize,
-	    svp_shootdown_logr_shoot, sdl);
+	    svp_shootdown_logr_shoot, sdl, version);
 
 	/*
 	 * Now that we're done with our work, release the hold. If we don't have

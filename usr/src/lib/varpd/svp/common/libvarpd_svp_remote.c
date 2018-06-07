@@ -300,7 +300,7 @@ svp_outbound_version_check(int version, svp_query_t *sqp)
 	 * As of v1 -> v2, we really only need to restrict SVP_R_ROUTE_REQ
 	 * as v2-only.  Reflect that here.
 	 *
-	 * NOTE that if any message semantics change between future versions,
+	 * NOTE that if any message semantics change between versions,
 	 * (e.g. "in v3 SVP_R_VL2_REQ takes on additional work"), we'll
 	 * need to more-deeply inspect the query.  It's possible that the
 	 * svp_op space is big enough to just continue op-only inspections.
@@ -312,6 +312,7 @@ svp_outbound_version_check(int version, svp_query_t *sqp)
 		sqp->sq_header.svp_ver = htons(version);
 		return (B_TRUE);
 	}
+
 	return (B_FALSE);
 }
 
@@ -541,13 +542,22 @@ static void
 svp_remote_log_request_cb(svp_query_t *sqp, void *arg)
 {
 	svp_remote_t *srp = sqp->sq_arg;
+	uint16_t version;
+
+	/*
+	 * Version in request is set in this sqp's read-data/sq_header by
+	 * now.
+	 */
+	assert(sqp->sq_header.svp_op == htons(SVP_R_LOG_REQ));
+	assert(sqp->sq_header.svp_ver != 0);
+	version = htons(sqp->sq_header.svp_ver);
 
 	assert(sqp->sq_wdata != NULL);
 	if (sqp->sq_status == SVP_S_OK)
 		svp_shootdown_logr_cb(srp, sqp->sq_status, sqp->sq_wdata,
-		    sqp->sq_size);
+		    sqp->sq_size, version);
 	else
-		svp_shootdown_logr_cb(srp, sqp->sq_status, NULL, 0);
+		svp_shootdown_logr_cb(srp, sqp->sq_status, NULL, 0, 0);
 }
 
 void
@@ -584,7 +594,7 @@ svp_remote_log_request(svp_remote_t *srp, svp_query_t *sqp, void *buf,
 	mutex_exit(&srp->sr_lock);
 
 	if (queued == B_FALSE)
-		svp_shootdown_logr_cb(srp, SVP_S_FATAL, NULL, 0);
+		svp_shootdown_logr_cb(srp, SVP_S_FATAL, NULL, 0, 0);
 }
 
 static void
@@ -631,7 +641,7 @@ svp_remote_lrm_request(svp_remote_t *srp, svp_query_t *sqp, void *buf,
 	mutex_exit(&srp->sr_lock);
 
 	if (queued == B_FALSE)
-		svp_shootdown_logr_cb(srp, SVP_S_FATAL, NULL, 0);
+		svp_shootdown_logr_cb(srp, SVP_S_FATAL, NULL, 0, 0);
 }
 
 /* ARGSUSED */
@@ -889,6 +899,21 @@ svp_remote_shootdown_vl2(svp_remote_t *srp, svp_log_vl2_t *svl2)
 	mutex_enter(&srp->sr_lock);
 	if ((svp = avl_find(&srp->sr_tree, &lookup, NULL)) != NULL) {
 		svp->svp_cb.scb_vl2_invalidate(svp, svl2->svl2_mac);
+	}
+	mutex_exit(&srp->sr_lock);
+}
+
+void
+svp_remote_shootdown_route(svp_remote_t *srp, svp_log_route_t *svlr)
+{
+	svp_t *svp, lookup;
+
+	lookup.svp_vid = ntohl(svlr->svlr_src_vnetid);
+	mutex_enter(&srp->sr_lock);
+	if ((svp = avl_find(&srp->sr_tree, &lookup, NULL)) != NULL) {
+		svp->svp_cb.scb_route_shootdown(svp, svlr->svlr_srcip,
+		    svlr->svlr_dstip, svlr->svlr_src_prefixlen,
+		    svlr->svlr_dst_prefixlen, htons(svlr->svlr_src_vlan));
 	}
 	mutex_exit(&srp->sr_lock);
 }

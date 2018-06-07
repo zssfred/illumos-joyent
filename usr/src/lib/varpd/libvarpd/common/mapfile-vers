@@ -65,6 +65,8 @@ SYMBOL_VERSION SUNWprivate {
 	libvarpd_inject_varp;
 	libvarpd_inject_arp;
 
+	libvarpd_route_flush;
+
 	libvarpd_instance_activate;
 	libvarpd_instance_create;
 	libvarpd_instance_destroy;
