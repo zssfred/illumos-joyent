@@ -1,0 +1,66 @@
+    libdis_test:       29 00 c0 da  rbit x9, x1
+    libdis_test+0x4:   1f 00 c0 5a  rbit wzr, w0
+    libdis_test+0x8:   c1 07 c0 da  rev16 x1, x30
+    libdis_test+0xc:   e3 07 c0 5a  rev16 w3, wzr
+    libdis_test+0x10:  a6 08 c0 da  rev32 x6, x5
+    libdis_test+0x14:  9f 09 c0 da  rev32 xzr, x12
+    libdis_test+0x18:  77 08 c0 5a  rev w23, w3
+    libdis_test+0x1c:  84 0c c0 da  rev x4, x4
+    libdis_test+0x20:  29 11 c0 5a  clz w9, w9
+    libdis_test+0x24:  ec 13 c0 da  clz x12, xzr
+    libdis_test+0x28:  23 17 c0 5a  cls w3, w25
+    libdis_test+0x2c:  9d 17 c0 da  cls x29, x28
+    libdis_test+0x30:  ec 0b c4 9a  udiv x12, xzr, x4
+    libdis_test+0x34:  82 08 df 1a  udiv w2, w4, wzr
+    libdis_test+0x38:  3f 0c c4 9a  sdiv xzr, x1, x4
+    libdis_test+0x3c:  13 0c cf 1a  sdiv w19, w0, w15
+    libdis_test+0x40:  17 23 d9 9a  lsl x23, x24, x25
+    libdis_test+0x44:  dd 23 c4 1a  lsl w29, w30, w4
+    libdis_test+0x48:  60 24 c1 9a  lsr x0, x3, x1
+    libdis_test+0x4c:  e9 27 dd 1a  lsr w9, wzr, w29
+    libdis_test+0x50:  23 29 ca 9a  asr x3, x9, x10
+    libdis_test+0x54:  83 28 c8 1a  asr w3, w4, w8
+    libdis_test+0x58:  47 2c cc 9a  ror x7, x2, x12
+    libdis_test+0x5c:  87 2c c3 1a  ror w7, w4, w3
+    libdis_test+0x60:  38 fb 1a 8a  and x24, x25, x26, lsl #62
+    libdis_test+0x64:  ee 51 50 0a  and w14, w15, w16, lsr #20
+    libdis_test+0x68:  a4 80 a6 8a  bic x4, x5, x6, asr #32
+    libdis_test+0x6c:  61 0a f6 0a  bic w1, w19, w22, ror #2
+    libdis_test+0x70:  ac 15 0e aa  orr x12, x13, x14, lsl #5
+    libdis_test+0x74:  61 04 5f 2a  orr w1, w3, wzr, lsr #1
+    libdis_test+0x78:  21 14 a1 aa  orn x1, x1, x1, asr #5
+    libdis_test+0x7c:  42 18 e2 2a  orn w2, w2, w2, ror #6
+    libdis_test+0x80:  e7 cb 09 ca  eor x7, xzr, x9, lsl #50
+    libdis_test+0x84:  3f 30 43 4a  eor wzr, w1, w3, lsr #12
+    libdis_test+0x88:  40 38 a3 ca  eon x0, x2, x3, asr #14
+    libdis_test+0x8c:  40 50 e3 4a  eon w0, w2, w3, ror #20
+    libdis_test+0x90:  92 a9 0e ea  ands x18, x12, x14, lsl #42
+    libdis_test+0x94:  40 0c 58 6a  ands w0, w2, w24, lsr #3
+    libdis_test+0x98:  21 05 b3 ea  bics x1, x9, x19, asr #1
+    libdis_test+0x9c:  89 78 e1 6a  bics w9, w4, w1, ror #30
+    libdis_test+0xa0:  38 fb 1a 8b  add x24, x25, x26, lsl #62
+    libdis_test+0xa4:  ee 51 50 0b  add w14, w15, w16, lsr #20
+    libdis_test+0xa8:  a4 80 86 ab  adds x4, x5, x6, asr #32
+    libdis_test+0xac:  61 02 16 2b  adds w1, w19, w22
+    libdis_test+0xb0:  ac 15 4e cb  sub x12, x13, x14, lsr #5
+    libdis_test+0xb4:  61 04 9f 4b  sub w1, w3, wzr, asr #1
+    libdis_test+0xb8:  e1 17 01 eb  subs x1, xzr, x1, lsl #5
+    libdis_test+0xbc:  42 18 42 6b  subs w2, w2, w2, lsr #6
+    libdis_test+0xc0:  e0 03 22 8b  add x0, sp, w2, uxtb #0
+    libdis_test+0xc4:  3e 24 3f ab  adds x30, x1, wzr, uxth #1
+    libdis_test+0xc8:  84 49 22 cb  sub x4, x12, w2, uxtw #2
+    libdis_test+0xcc:  a3 6d 25 eb  subs x3, x13, x5, uxtx #3
+    libdis_test+0xd0:  c5 91 22 0b  add w5, w14, w2, sxtb #4
+    libdis_test+0xd4:  ea a3 22 2b  adds w10, wsp, w2, sxth #0
+    libdis_test+0xd8:  ff c6 22 4b  sub wsp, w23, w2, sxtw #1
+    libdis_test+0xdc:  c9 ea 2a 6b  subs w9, w22, w10, sxtx #2
+    libdis_test+0xe0:  9f 69 21 8b  add sp, x12, x1, lsl #2
+    libdis_test+0xe4:  3f 49 28 4b  sub wsp, w9, w8, lsl #2
+    libdis_test+0xe8:  29 01 0a 9a  adc x9, x9, x10
+    libdis_test+0xec:  ec 03 13 1a  adc w12, wzr, w19
+    libdis_test+0xf0:  3f 00 00 ba  adcs xzr, x1, x0
+    libdis_test+0xf4:  83 00 1f 3a  adcs w3, w4, wzr
+    libdis_test+0xf8:  41 00 03 da  sbc x1, x2, x3
+    libdis_test+0xfc:  83 00 05 5a  sbc w3, w4, w5
+    libdis_test+0x100: 49 01 0b fa  sbcs x9, x10, x11
+    libdis_test+0x104: b4 02 16 7a  sbcs w20, w21, w22

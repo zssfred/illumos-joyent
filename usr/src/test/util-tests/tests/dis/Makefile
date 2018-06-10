@@ -17,9 +17,55 @@ include $(SRC)/Makefile.master
 
 ROOTOPTPKG = $(ROOT)/opt/util-tests
 TESTDIR = $(ROOTOPTPKG)/tests/dis
-ARCHS = i386 sparc
+ARCHS = i386 sparc arm64
 
 PROG = distest
+
+ARM64_TESTS =			\
+	tst.branches		\
+	tst.data-imm		\
+	tst.data-reg		\
+	tst.load-store		\
+	tst.regs		\
+	tst.branch		\
+	tst.addsub-carry	\
+	tst.addsub-extreg	\
+	tst.addsub-imm		\
+	tst.addsub-shiftreg	\
+	tst.bitfield		\
+	tst.condcomp-imm	\
+	tst.condcomp-reg	\
+	tst.movwide-imm		\
+	tst.extract		\
+	tst.logical-imm		\
+	tst.logical-shiftreg	\
+	tst.ldst-reg-pair	\
+	tst.ldst-literal	\
+	tst.ldst-prfm		\
+	tst.ldst-noalloc	\
+	tst.dproc1		\
+	tst.dproc2		\
+	tst.condsel		\
+	tst.dproc3		\
+	tst.exception		\
+	tst.system		\
+	tst.ldst-exclusive	\
+	tst.ldst-reg-imm-post	\
+	tst.ldst-reg-imm-pre	\
+	tst.ldst-reg-offset	\
+	tst.ldst-reg-unpriv	\
+	tst.ldst-reg-unscaled	\
+	tst.ldst-reg-unsigned	\
+	tst.ldst-simd		\
+	tst.simd-across		\
+	tst.simd-copy		\
+	tst.simd-ext		\
+	tst.simd-modimm		\
+	tst.simd-pairwise	\
+	tst.simd-scalarshift	\
+	tst.simd-tbl		\
+	tst.simd-trn
+
 
 SPARC_TESTS = \
 	tst.regs
@@ -90,6 +136,9 @@ ROOTI386 = $(I386_FILES:%=$(TESTDIR)/i386/%)
 SPARC_FILES = $(SPARC_TESTS:%=%.s) $(SPARC_TESTS:%=%.out)
 ROOTSPARC = $(SPARC_FILES:%=$(TESTDIR)/sparc/%)
 
+ARM64_FILES = $(ARM64_TESTS:%=%.s) $(ARM64_TESTS:%=%.out)
+ROOTARM64 = $(ARM64_FILES:%=$(TESTDIR)/arm64/%)
+
 include $(SRC)/cmd/Makefile.cmd
 include $(SRC)/test/Makefile.com
 
@@ -97,7 +146,7 @@ ARCHDIRS = $(ARCHS:%=$(TESTDIR)/%)
 CMDS = $(PROG:%=$(TESTDIR)/%)
 $(CMDS) := FILEMODE = 0555
 
-install: $(CMDS) $(ROOTI386) $(ROOTSPARC)
+install: $(CMDS) $(ROOTI386) $(ROOTSPARC) $(ROOTARM64)
 
 lint:
 
@@ -105,7 +154,7 @@ clobber: clean
 
 clean:
 
-$(CMDS) $(ROOTI386) $(ROOTSPARC): $(TESTDIR) $(ARCHDIRS)
+$(CMDS) $(ROOTI386) $(ROOTSPARC) $(ROOTARM64): $(TESTDIR) $(ARCHDIRS)
 
 $(TESTDIR) $(ARCHDIRS):
 	$(INS.dir)

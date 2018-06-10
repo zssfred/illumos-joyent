@@ -1,0 +1,45 @@
+    libdis_test:      00 78 00 29  stp w0, w30, [x0]
+    libdis_test+0x4:  1f 7c 20 29  stp wzr, wzr, [x0, #-256]
+    libdis_test+0x8:  ff fb 1f 29  stp wzr, w30, [sp, #252]
+    libdis_test+0xc:  00 78 80 28  stp w0, w30, [x0], #0
+    libdis_test+0x10: 1f 7c a0 28  stp wzr, wzr, [x0], #-256
+    libdis_test+0x14: ff fb 9f 28  stp wzr, w30, [sp], #252
+    libdis_test+0x18: 00 78 80 29  stp w0, w30, [x0, #0]!
+    libdis_test+0x1c: 1f 7c a0 29  stp wzr, wzr, [x0, #-256]!
+    libdis_test+0x20: ff fb 9f 29  stp wzr, w30, [sp, #252]!
+    libdis_test+0x24: 00 78 40 29  ldp w0, w30, [x0]
+    libdis_test+0x28: 1f 7c 60 29  ldp wzr, wzr, [x0, #-256]
+    libdis_test+0x2c: ff fb 5f 29  ldp wzr, w30, [sp, #252]
+    libdis_test+0x30: 00 78 c0 28  ldp w0, w30, [x0], #0
+    libdis_test+0x34: 1f 7c e0 28  ldp wzr, wzr, [x0], #-256
+    libdis_test+0x38: ff fb df 28  ldp wzr, w30, [sp], #252
+    libdis_test+0x3c: 00 78 c0 29  ldp w0, w30, [x0, #0]!
+    libdis_test+0x40: 1f 7c e0 29  ldp wzr, wzr, [x0, #-256]!
+    libdis_test+0x44: ff fb df 29  ldp wzr, w30, [sp, #252]!
+    libdis_test+0x48: 00 78 40 69  ldpsw x0, x30, [x0]
+    libdis_test+0x4c: 1f 7c 60 69  ldpsw xzr, xzr, [x0, #-256]
+    libdis_test+0x50: ff fb 5f 69  ldpsw xzr, x30, [sp, #252]
+    libdis_test+0x54: 00 78 c0 68  ldpsw x0, x30, [x0], #0
+    libdis_test+0x58: 1f 7c e0 68  ldpsw xzr, xzr, [x0], #-256
+    libdis_test+0x5c: ff fb df 68  ldpsw xzr, x30, [sp], #252
+    libdis_test+0x60: 00 78 c0 69  ldpsw x0, x30, [x0, #0]!
+    libdis_test+0x64: 1f 7c e0 69  ldpsw xzr, xzr, [x0, #-256]!
+    libdis_test+0x68: ff fb df 69  ldpsw xzr, x30, [sp, #252]!
+    libdis_test+0x6c: 00 78 00 a9  stp x0, x30, [x0]
+    libdis_test+0x70: 1f 7c 20 a9  stp xzr, xzr, [x0, #-512]
+    libdis_test+0x74: ff fb 1f a9  stp xzr, x30, [sp, #504]
+    libdis_test+0x78: 00 78 80 a8  stp x0, x30, [x0], #0
+    libdis_test+0x7c: 1f 7c a0 a8  stp xzr, xzr, [x0], #-512
+    libdis_test+0x80: ff fb 9f a8  stp xzr, x30, [sp], #504
+    libdis_test+0x84: 00 78 80 a9  stp x0, x30, [x0, #0]!
+    libdis_test+0x88: 1f 7c a0 a9  stp xzr, xzr, [x0, #-512]!
+    libdis_test+0x8c: ff fb 9f a9  stp xzr, x30, [sp, #504]!
+    libdis_test+0x90: 00 78 40 a9  ldp x0, x30, [x0]
+    libdis_test+0x94: 1f 7c 60 a9  ldp xzr, xzr, [x0, #-512]
+    libdis_test+0x98: ff fb 5f a9  ldp xzr, x30, [sp, #504]
+    libdis_test+0x9c: 00 78 c0 a8  ldp x0, x30, [x0], #0
+    libdis_test+0xa0: 1f 7c e0 a8  ldp xzr, xzr, [x0], #-512
+    libdis_test+0xa4: ff fb df a8  ldp xzr, x30, [sp], #504
+    libdis_test+0xa8: 00 78 c0 a9  ldp x0, x30, [x0, #0]!
+    libdis_test+0xac: 1f 7c e0 a9  ldp xzr, xzr, [x0, #-512]!
+    libdis_test+0xb0: ff fb df a9  ldp xzr, x30, [sp, #504]!

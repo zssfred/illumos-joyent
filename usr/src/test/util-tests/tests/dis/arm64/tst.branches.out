@@ -1,0 +1,34 @@
+    libdis_test:      20 04 00 54  b.eq +0x84 	<libdis_test+0x84>
+    libdis_test+0x4:  01 04 00 54  b.ne +0x80 	<libdis_test+0x84>
+    libdis_test+0x8:  e2 03 00 54  b.cs +0x7c 	<libdis_test+0x84>
+    libdis_test+0xc:  c3 03 00 54  b.cc +0x78 	<libdis_test+0x84>
+    libdis_test+0x10: a4 03 00 54  b.mi +0x74 	<libdis_test+0x84>
+    libdis_test+0x14: 85 03 00 54  b.pl +0x70 	<libdis_test+0x84>
+    libdis_test+0x18: 66 03 00 54  b.vs +0x6c 	<libdis_test+0x84>
+    libdis_test+0x1c: 47 03 00 54  b.vc +0x68 	<libdis_test+0x84>
+    libdis_test+0x20: 28 03 00 54  b.hi +0x64 	<libdis_test+0x84>
+    libdis_test+0x24: 09 03 00 54  b.ls +0x60 	<libdis_test+0x84>
+    libdis_test+0x28: ea 02 00 54  b.ge +0x5c 	<libdis_test+0x84>
+    libdis_test+0x2c: cb 02 00 54  b.lt +0x58 	<libdis_test+0x84>
+    libdis_test+0x30: ac 02 00 54  b.gt +0x54 	<libdis_test+0x84>
+    libdis_test+0x34: 8d 02 00 54  b.le +0x50 	<libdis_test+0x84>
+    libdis_test+0x38: 6e 02 00 54  b.al +0x4c 	<libdis_test+0x84>
+    libdis_test+0x3c: 4f 02 00 54  b.nv +0x48 	<libdis_test+0x84>
+    libdis_test+0x40: 00 00 1f d6  br x0
+    libdis_test+0x44: e0 03 1f d6  br xzr
+    libdis_test+0x48: 60 02 3f d6  blr x19
+    libdis_test+0x4c: c0 03 5f d6  ret
+    libdis_test+0x50: 20 01 5f d6  ret x9
+    libdis_test+0x54: e0 03 9f d6  eret
+    libdis_test+0x58: e0 03 bf d6  drps
+    libdis_test+0x5c: 0a 00 00 14  b +0x28 	<libdis_test+0x84>
+    libdis_test+0x60: 09 00 00 94  bl +0x24 	<libdis_test+0x84>
+    libdis_test+0x64: 13 01 00 34  cbz w19, +0x20 	<libdis_test+0x84>
+    libdis_test+0x68: ff 00 00 b4  cbz xzr, +0x1c 	<libdis_test+0x84>
+    libdis_test+0x6c: c3 00 00 35  cbnz w3, +0x18 	<libdis_test+0x84>
+    libdis_test+0x70: a2 00 00 b5  cbnz x2, +0x14 	<libdis_test+0x84>
+    libdis_test+0x74: 9f 00 98 36  tbz wzr, #0x13, +0x10 	<libdis_test+0x84>
+    libdis_test+0x78: 78 00 18 b6  tbz x24, #0x23, +0xc 	<libdis_test+0x84>
+    libdis_test+0x7c: 44 00 10 37  tbnz w4, #0x2, +0x8 	<libdis_test+0x84>
+    libdis_test+0x80: 30 00 f0 b7  tbnz x16, #0x3e, +0x4 	<libdis_test+0x84>
+    libdis_test+0x84: 00 00 00 8b  add x0, x0, x0

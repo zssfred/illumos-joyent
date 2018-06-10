@@ -1,0 +1,19 @@
+    libdis_test:      5f 02 00 18  ldr wzr, +0x48 	<libdis_test+0x48>
+    libdis_test+0x4:  29 02 00 58  ldr x9, +0x44 	<libdis_test+0x48>
+    libdis_test+0x8:  1f 02 00 98  ldrsw xzr, +0x40 	<libdis_test+0x48>
+    libdis_test+0xc:  f3 01 00 98  ldrsw x19, +0x3c 	<libdis_test+0x48>
+    libdis_test+0x10: cf 01 00 d8  prfm #0xf, +0x38 	<libdis_test+0x48>
+    libdis_test+0x14: 29 29 82 29  stp w9, w10, [x9, #16]!
+    libdis_test+0x18: 61 88 c1 29  ldp w1, w2, [x3, #12]!
+    libdis_test+0x1c: ea 7f c1 69  ldpsw x10, xzr, [sp, #8]!
+    libdis_test+0x20: e9 37 81 a8  stp x9, x13, [sp], #16
+    libdis_test+0x24: 6f aa ff a8  ldp x15, x10, [x19], #-8
+    libdis_test+0x28: ea ff c1 68  ldpsw x10, xzr, [sp], #12
+    libdis_test+0x2c: e9 37 00 a9  stp x9, x13, [sp]
+    libdis_test+0x30: e8 93 43 29  ldp w8, w4, [sp, #28]
+    libdis_test+0x34: e1 7f 7e 69  ldpsw x1, xzr, [sp, #-16]
+    libdis_test+0x38: 20 91 7f 28  ldnp w0, w4, [x9, #-4]
+    libdis_test+0x3c: ea 4f 40 a8  ldnp x10, x19, [sp]
+    libdis_test+0x40: e9 43 03 28  stnp w9, w16, [sp, #24]
+    libdis_test+0x44: 6a 86 00 a8  stnp x10, x1, [x19, #8]
+    libdis_test+0x48: 00 00 00 8b  add x0, x0, x0

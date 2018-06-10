@@ -215,8 +215,16 @@ run_single_file()
 		test_one "-64" $sfile $cmpfile
 		;;
 	tst)
-		test_one "-32" $sfile $cmpfile "(32-bit)"
-		test_one "-64" $sfile $cmpfile "(64-bit)"
+		case "$arch" in
+		arm64)
+			# arm64 gas doesn't work with -64 or -32 flags.
+			test_one "" $sfile $cmpfile
+			;;
+		*)
+			test_one "-32" $sfile $cmpfile "(32-bit)"
+			test_one "-64" $sfile $cmpfile "(64-bit)"
+			;;
+		esac
 		;;
 	esac
 }
@@ -270,9 +278,10 @@ while getopts ":np:" c $@; do
 		dt_nodefault="y"
 		;;
 	p)
+		OLD_IFS=$IFS
 		IFS="="
 		set -A split $OPTARG
-		IFS=" "
+		IFS=$OLD_IFS
 		[[ ${#split[@]} -eq 2 ]] || usage "malformed -p option: $OPTARG"
 		dt_platforms[${split[0]}]=${split[1]}
 		;;
