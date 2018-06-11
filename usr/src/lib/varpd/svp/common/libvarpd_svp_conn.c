@@ -538,24 +538,9 @@ svp_conn_pollin_validate(svp_conn_t *scp)
 		return (B_FALSE);
 	}
 
-	if (nop != SVP_R_LOG_RM_ACK && nsize != expected_size) {
-		(void) bunyan_warn(svp_bunyan, "response size too large",
-		    BUNYAN_T_IP, "remote_ip", &scp->sc_addr,
-		    BUNYAN_T_INT32, "remote_port", scp->sc_remote->sr_rport,
-		    BUNYAN_T_INT32, "version", nvers,
-		    BUNYAN_T_INT32, "operation", nop,
-		    BUNYAN_T_INT32, "response_id", resp->svp_id,
-		    BUNYAN_T_INT32, "response_size", nsize,
-		    BUNYAN_T_INT32, "expected_size", nop == SVP_R_VL2_ACK ?
-		    sizeof (svp_vl2_ack_t) : sizeof (svp_vl3_ack_t),
-		    BUNYAN_T_INT32, "query_state", sqp->sq_state,
-		    BUNYAN_T_END);
-		return (B_FALSE);
-	}
-
 	/*
-	 * The valid size is anything <= to what the user requested, but at
-	 * least svp_log_ack_t bytes large.
+	 * For LOG_ACK, the valid size is anything <= to what the user
+	 * requested, but at least svp_log_ack_t bytes large.
 	 */
 	if (nop == SVP_R_LOG_ACK) {
 		const char *msg = NULL;
@@ -578,6 +563,20 @@ svp_conn_pollin_validate(svp_conn_t *scp)
 			    BUNYAN_T_END);
 			return (B_FALSE);
 		}
+	} else if (nsize != expected_size) {
+		/* For other ops, we know the expected size. */
+		(void) bunyan_warn(svp_bunyan, "response size too large",
+		    BUNYAN_T_IP, "remote_ip", &scp->sc_addr,
+		    BUNYAN_T_INT32, "remote_port", scp->sc_remote->sr_rport,
+		    BUNYAN_T_INT32, "version", nvers,
+		    BUNYAN_T_INT32, "operation", nop,
+		    BUNYAN_T_INT32, "response_id", resp->svp_id,
+		    BUNYAN_T_INT32, "response_size", nsize,
+		    BUNYAN_T_INT32, "expected_size", nop == SVP_R_VL2_ACK ?
+		    sizeof (svp_vl2_ack_t) : sizeof (svp_vl3_ack_t),
+		    BUNYAN_T_INT32, "query_state", sqp->sq_state,
+		    BUNYAN_T_END);
+		return (B_FALSE);
 	}
 
 	sqp->sq_size = nsize;
