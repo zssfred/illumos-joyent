@@ -458,18 +458,30 @@ svp_vl3_lookup_cb(svp_t *svp, svp_status_t status, const uint8_t *vl2mac,
 	}
 
 	/* Inject the L2 mapping before the L3 */
-	if (uport != 0 &&
-	    bcmp(uip, &point.otp_ip, sizeof (struct in6_addr)) != 0) {
+	/*
+	 * XXX KEBE SAYS - this if () may change a lot before we're finally
+	 * done.  Basically, we want to know if a VL3 is a special next-hop
+	 * router IP.  For this moment, we have to beware of SVP server
+	 * work-in-progress issues, or other pathologies.
+	 */
+	if (bcmp(uip, &point.otp_ip, sizeof (struct in6_addr)) != 0 &&
+	    !IN6_IS_ADDR_V4MAPPED_ANY(uip)) {
 		/* Normal L3 lookup result... */
 		bcopy(uip, &point.otp_ip, sizeof (struct in6_addr));
 		point.otp_port = uport;
-		libvarpd_inject_varp(svp->svp_hdl, vl2mac, &point);
 	} else {
 		/*
-		 * Oh my, we have a next-hop router IP.
+		 * Oh my, we have a next-hop router IP, thanks to the all-0s
+		 * IP coming from portolan.
 		 * Set the MAC to the ouid+vid concatenated
 		 * special-router-MAC. Overlay down below will know
-		 * that uport == 0 means the MAC is a special one.
+		 * that uport == 0 and otp_ip == 0 means the MAC is a special
+		 * one. 
+		 */
+		/*
+		 * XXX KEBE ASKS, do we rewrite the MAC for this?  Or do
+		 * we trust the SVP server's answer and just count on the
+		 * all-zeroes {port,IP}?
 		 */
 		if (bcmp(svp->svp_router_oui, nexthop_mac, ETHERADDRL) == 0) {
 			/*
@@ -487,6 +499,7 @@ svp_vl3_lookup_cb(svp_t *svp, svp_status_t status, const uint8_t *vl2mac,
 		nexthop_mac[5] = svp->svp_vid & 0xff;
 		vl2mac = nexthop_mac;
 	}
+	libvarpd_inject_varp(svp->svp_hdl, vl2mac, &point);
 
 	bcopy(vl2mac, svl->svl_u.svl_vl3.svl_out, ETHERADDRL);
 	libvarpd_plugin_arp_reply(svl->svl_u.svl_vl3.svl_vah,
