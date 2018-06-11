@@ -41,9 +41,9 @@
 .\"
 .\"
 .\" Copyright (c) 2008, Sun Microsystems, Inc. All Rights Reserved
-.\" Copyright 2016 Joyent, Inc.
+.\" Copyright 2017 Joyent, Inc.
 .\"
-.TH DLADM 1M "Dec 16, 2016"
+.TH DLADM 1M "Dec 6, 2017"
 .SH NAME
 dladm \- administer data links
 .SH SYNOPSIS
@@ -4903,6 +4903,43 @@ The following general link properties are supported:
 .sp
 .ne 2
 .na
+\fB\fBallow-all-dhcp-cids\fR\fR
+.ad
+.sp .6
+.RS 4n
+One of \fBtrue\fR or \fBfalse\fR, to indicate whether or not all DHCP Client
+Identifiers should be permitted on this interface when DHCP spoofing protection
+is being used. This can be useful in cases where a DHCP client is using RFC
+4361-style Client Identifiers, which are based on a value that is opaque to the
+Global Zone, but enforcement of MAC addresses in DHCP packets is still desired.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBallowed-dhcp-cids\fR\fR
+.ad
+.sp .6
+.RS 4n
+A comma-separated list of DHCP Client Identifiers that are allowed on the
+interface.
+.sp
+Client identifiers can be written in three different formats: a string of
+hexadecimal characters prefixed by \fB0x\fR, indicating the exact bytes used in
+the Client Identifier; an RFC 3315 DUID of the form
+"1.<hardware\ type>.<time>.<link-layer\ address>" (DUID-LLT),
+"2.<enterprise\ number>.<hex\ string>" (DUID-EN), or
+"3.<hardware\ type>.<link-layer\ address>" (DUID-LL); or a string of characters
+whose byte values should be used as the Client Identifier.
+.sp
+When specifying a string of hexadecimal characters prefixed by \fB0x\fR or as
+part of a DUID-EN string, an even number of hexadecimal characters must be
+provided in order to fully specify each byte.
+.RE
+
+.sp
+.ne 2
+.na
 \fB\fBallowed-ips\fR\fR
 .ad
 .sp .6
@@ -4964,6 +5001,24 @@ is not bound to any specific processor or processor set.
 .sp
 .ne 2
 .na
+\fB\fBdynamic-methods\fR\fR
+.ad
+.sp .6
+.RS 4n
+When using IP spoofing protection (see \fBprotection\fR), addresses can be
+learned dynamically by monitoring certain network traffic, like DHCP
+transactions or IPv6 Stateless Address Autoconfiguration (SLAAC). By default,
+all learning methods are permitted, but if \fBallowed-ips\fR contains any
+addresses, then all methods are disabled, and any packets sent from addresses
+previously learned will be dropped. This property allows selecting which ones
+are re-enabled, where valid options are \fBdhcpv4\fR, \fBdhcpv6\fR, and
+\fBslaac\fR. \fBaddrconf\fR is available as an alias for enabling both
+\fBdhcpv6\fR and \fBslaac\fR.
+.RE
+
+.sp
+.ne 2
+.na
 \fB\fBlearn_limit\fR\fR
 .ad
 .sp .6
@@ -5011,6 +5066,67 @@ Mbps. The default is no bandwidth limit.
 .RS 4n
 Sets the relative priority for the link. The value can be given as one of the
 tokens \fBhigh\fR, \fBmedium\fR, or \fBlow\fR. The default is \fBhigh\fR.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBprotection\fR\fR
+.ad
+.sp .6
+.RS 4n
+This property enables various forms of link protections, which prevent sending
+applicable traffic out of this link. Note that since this enforcement happens
+late in the networking stack, some observability tools like \fBsnoop\fR(1M) may
+still see dropped outbound packets.
+
+This property should be set to a comma-separated list of protections to enable
+on this link, where available protections are:
+.sp
+.ne 2
+.na
+\fBip-nospoof\fR
+.ad
+.sp .6
+.RS 4n
+Prevents sending from IPv4 and IPv6 addresses that have not been permitted
+over the NIC. Addresses can be learned dynamically (see \fBdynamic-methods\fR)
+or specified explicitly (see \fBallowed-ips\fR).
+.RE
+.sp
+.ne 2
+.na
+\fBdhcp-nospoof\fR
+.ad
+.sp .6
+.RS 4n
+Prevents sending DHCP packets whose client hardware address
+(CHADDR) field differs from the link-layer address, or from using a Client
+Identifier whose value cannot be confirmed to be derived from the link-layer
+address. Additional Client Identifiers can be permitted through the
+\fBallowed-dhcp-cids\fR and \fBallow-all-dhcp-cids\fR link properties.
+.RE
+.sp
+.ne 2
+.na
+\fBmac-nospoof\fR
+.ad
+.sp .6
+.RS 4n
+Prevents sending packets with a link-layer address that differs from the one
+associated with the NIC. Additional addresses to allow can be added using the
+\fBseconday-macs\fR property.
+.RE
+.sp
+.ne 2
+.na
+\fBrestricted\fR
+.ad
+.sp .6
+.RS 4n
+Prevents using a VLAN ID not associated with the NIC and sending packets that
+are not IPv4, IPv6 or ARP.
+.RE
 .RE
 
 .sp
@@ -5975,6 +6091,16 @@ Interface Stability	Committed
 \fBacctadm\fR(1M), \fBautopush\fR(1M), \fBifconfig\fR(1M), \fBipsecconf\fR(1M),
 \fBndd\fR(1M), \fBpsrset\fR(1M), \fBwpad\fR(1M), \fBzonecfg\fR(1M),
 \fBattributes\fR(5), \fBieee802.3\fR(5), \fBoverlay\fR(5), \fBdlpi\fR(7P)
+.sp
+.LP
+R. Droms, Ed., J. Bound, B. Volz, T. Lemon, C. Perkins, M. Carney. \fIRFC 3315:
+Dynamic Host Configuration Protocol for IPv6 (DHCPv6)\fR. The Internet Society.
+July 2003.
+.sp
+.LP
+T. Lemon, B. Sommerfeld. February 2006. \fIRFC 4361: Node-specific Client
+Identifiers for Dynamic Host Configuration Protocol Version Four (DHCPv4)\fR.
+The Internet Society. January 2006.
 .SH NOTES
 .LP
 The preferred method of referring to an aggregation in the aggregation
