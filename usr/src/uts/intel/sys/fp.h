@@ -20,7 +20,7 @@
  */
 /*
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
- * Copyright 2017 Joyent, Inc.
+ * Copyright (c) 2018, Joyent, Inc.
  *
  * Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
  */
@@ -140,8 +140,8 @@ extern "C" {
 /*
  * masks and flags for SSE/SSE2 MXCSR
  */
-#define	SSE_IE 	0x00000001	/* invalid operation			*/
-#define	SSE_DE 	0x00000002	/* denormalized operand			*/
+#define	SSE_IE	0x00000001	/* invalid operation			*/
+#define	SSE_DE	0x00000002	/* denormalized operand			*/
 #define	SSE_ZE	0x00000004	/* zero divide				*/
 #define	SSE_OE	0x00000008	/* overflow				*/
 #define	SSE_UE	0x00000010	/* underflow				*/
@@ -156,7 +156,7 @@ extern "C" {
 #define	SSE_RC	0x00006000	/* rounding control			*/
 #define	SSE_RD	0x00002000	/* rounding control: round down		*/
 #define	SSE_RU	0x00004000	/* rounding control: round up		*/
-#define	SSE_FZ	0x00008000	/* flush to zero for masked underflow 	*/
+#define	SSE_FZ	0x00008000	/* flush to zero for masked underflow	*/
 
 #define	SSE_MXCSR_EFLAGS	\
 	(SSE_IE|SSE_DE|SSE_ZE|SSE_OE|SSE_UE|SSE_PE)	/* 0x3f */
@@ -303,6 +303,8 @@ extern void fpu_probe(void);
 extern uint_t fpu_initial_probe(void);
 extern int fpu_probe_pentium_fdivbug(void);
 
+extern void fpu_auxv_info(int *, size_t *);
+
 extern void fpnsave_ctxt(void *);
 extern void fpxsave_ctxt(void *);
 extern void xsave_ctxt(void *);
@@ -342,6 +344,9 @@ struct _klwp;
 extern void fp_lwp_init(struct _klwp *);
 extern void fp_lwp_cleanup(struct _klwp *);
 extern void fp_lwp_dup(struct _klwp *);
+
+extern const struct fxsave_state sse_initial;
+extern const struct xsave_state avx_initial;
 
 #endif	/* _KERNEL */
 
