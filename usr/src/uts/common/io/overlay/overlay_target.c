@@ -252,10 +252,10 @@ overlay_ip_avl(const void *a, const void *b)
 
 	if ((ret = memcmp(&l_vl3->otvl3_src, &r_vl3->otvl3_src,
 	    sizeof (l_vl3->otvl3_src))) != 0)
-		return (ret);
+		return (ret < 0 ? -1 : 1);
 	if ((ret = memcmp(&l_vl3->otvl3_dst, &r_vl3->otvl3_dst,
 	    sizeof (l_vl3->otvl3_dst))) != 0)
-		return (ret);
+		return (ret < 0 ? -1 : 1);
 	if (l_vl3->otvl3_src_vlan < r_vl3->otvl3_src_vlan)
 		return (-1);
 	if (l_vl3->otvl3_src_vlan > r_vl3->otvl3_src_vlan)
