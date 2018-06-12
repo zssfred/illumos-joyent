@@ -542,6 +542,8 @@ libvarpd_inject_varp(varpd_provider_handle_t *vph, const uint8_t *mac,
 
 	otc.otc_linkid = inst->vri_linkid;
 	otc.otc_entry.otce_flags = 0;
+	if (IN6_IS_ADDR_UNSPECIFIED(&otp->otp_ip) && otp->otp_port == 0)
+		otc.otc_entry.otce_flags |= OVERLAY_TARGET_CACHE_ROUTER;
 	bcopy(mac, otc.otc_entry.otce_mac.otm_mac, ETHERADDRL);
 	bcopy(otp, &otc.otc_entry.otce_dest, sizeof (overlay_target_point_t));
 
