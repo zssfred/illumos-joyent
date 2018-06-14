@@ -123,8 +123,19 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 		 */
 		fmp = mp;
 		mp = fmp->b_cont;
-		fmp->b_cont = NULL;
-		freemsg(fmp);
+		freeb(fmp);
+
+		/*
+		 * In cases of looped-back vxlan, that tends to have a
+		 * prepended IP+UDP-only mblk, followed by the data.  Parsing
+		 * would've made that mblk a zero-length one (rptr == wptr).
+		 */
+		if (mp->b_rptr == mp->b_wptr && mp->b_cont != NULL) {
+			/* Ended up with zero-length mblk, lose it! */
+			fmp = mp;
+			mp = fmp->b_cont;
+			freeb(fmp);
+		}
 
 		/*
 		 * Decap and deliver.
@@ -152,10 +163,9 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 				if (rem == blkl) {
 					fmp = mp;
 					mp = fmp->b_cont;
-					fmp->b_cont = NULL;
 					OVERLAY_FREEMSG(mp,
 					    "freed a fmp block");
-					freemsg(fmp);
+					freeb(fmp);
 				}
 			}
 			if (mp == NULL) {
