@@ -17,7 +17,6 @@ UTSBASE = ../..
 
 MODULE		= qede
 OBJECTS		= $(QEDE_OBJS:%=$(OBJS_DIR)/%) $(QEDE_GEN_OBJS:%=$(OBJS_DIR)/%)
-LINTS		= $(QEDE_OBJS:%.o=$(LINTS_DIR)/%.ln)
 ROOTMODULE	= $(ROOT_DRV_DIR)/$(MODULE)
 CONF_SRCDIR	= $(UTSBASE)/common/io/qede
 
@@ -50,16 +49,9 @@ CERRWARN	+= -_gcc=-Wno-unused-variable
 CERRWARN	+= -_gcc=-Wno-unused-function
 
 ALL_TARGET	= $(BINARY) $(CONFMOD)
-LINT_TARGET	= $(MODULE).lint
 INSTALL_TARGET	= $(BINARY) $(ROOTMODULE) $(ROOT_CONFFILE)
 
 LDFLAGS		+= -dy -N misc/mac
-
-#
-# We only support the 64-bit version of this driver.
-#
-DEF_BUILDS	= $(DEF_BUILDSONLY64)
-ALL_BUILDS	= $(ALL_BUILDSONLY64)
 
 .KEEP_STATE:
 
@@ -71,11 +63,9 @@ clean:		$(CLEAN_DEPS)
 
 clobber:	$(CLOBBER_DEPS)
 
-lint:		$(LINT_DEPS)
-
-modlintlib:	$(MODLINTLIB_DEPS)
-
-clean.lint:	$(CLEAN_LINT_DEPS)
+lint:
+modlintlib:
+clean.lint:
 
 install:	$(INSTALL_DEPS)
 
