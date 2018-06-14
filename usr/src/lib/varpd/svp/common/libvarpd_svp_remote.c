@@ -376,7 +376,7 @@ svp_remote_vl2_lookup(svp_t *svp, svp_query_t *sqp, const uint8_t *mac,
 	if (sqp->sq_header.svp_id == (id_t)-1)
 		libvarpd_panic("failed to allcoate from svp_idspace: %d",
 		    errno);
-	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_header.svp_crc32 = 0;
 	sqp->sq_rdata = vl2r;
 	sqp->sq_rsize = sizeof (svp_vl2_req_t);
 	sqp->sq_wdata = NULL;
@@ -397,11 +397,15 @@ svp_remote_route_lookup_cb(svp_query_t *sqp, void *arg)
 	svp_t *svp = sqp->sq_svp;
 	svp_route_ack_t *sra = (svp_route_ack_t *)sqp->sq_wdata;
 
+	/*
+	 * Do the ntoh*()-ing here.
+	 */
 	if (sqp->sq_status == SVP_S_OK) {
-		svp->svp_cb.scb_route_lookup(svp, sqp->sq_status,
-		    sra->sra_dcid, sra->sra_vnetid, sra->sra_vlan,
-		    sra->sra_srcmac, sra->sra_dstmac, sra->sra_port,
-		    sra->sra_ip, sra->sra_src_pfx, sra->sra_dst_pfx, arg);
+		svp->svp_cb.scb_route_lookup(svp, ntohl(sqp->sq_status),
+		    ntohl(sra->sra_dcid), ntohl(sra->sra_vnetid),
+		    ntohs(sra->sra_vlan), sra->sra_srcmac, sra->sra_dstmac,
+		    ntohs(sra->sra_port), sra->sra_ip, sra->sra_src_pfx,
+		    sra->sra_dst_pfx, arg);
 	} else {
 		svp->svp_cb.scb_route_lookup(svp, sqp->sq_status,
 		    0, 0, 0, NULL, NULL, 0, NULL, 0, 0, arg);
@@ -427,14 +431,17 @@ svp_remote_route_lookup(svp_t *svp, svp_query_t *sqp,
 	if (sqp->sq_header.svp_id == (id_t)-1)
 		libvarpd_panic("failed to allcoate from svp_idspace: %d",
 		    errno);
-	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_header.svp_crc32 = 0;
 	sqp->sq_rdata = srr;
+	sqp->sq_rsize = sizeof (svp_route_req_t);
+	sqp->sq_wdata = NULL;
+	sqp->sq_wsize = 0;
 
 	bcopy(src, srr->srr_srcip, sizeof (struct in6_addr));
 	bcopy(dst, srr->srr_dstip, sizeof (struct in6_addr));
 	/* Caller should've checked both are the same type... */
-	srr->srr_vnetid = vnetid;
-	srr->srr_vlan = vlan;
+	srr->srr_vnetid = htonl(vnetid);
+	srr->srr_vlan = htons(vlan);
 	srr->srr_pad = 0;
 
 	mutex_enter(&srp->sr_lock);
@@ -478,7 +485,7 @@ svp_remote_vl3_common(svp_remote_t *srp, svp_query_t *sqp,
 	if (sqp->sq_header.svp_id == (id_t)-1)
 		libvarpd_panic("failed to allcoate from svp_idspace: %d",
 		    errno);
-	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_header.svp_crc32 = 0;
 	sqp->sq_rdata = vl3r;
 	sqp->sq_rsize = sizeof (svp_vl3_req_t);
 	sqp->sq_wdata = NULL;
@@ -559,7 +566,7 @@ svp_remote_log_request(svp_remote_t *srp, svp_query_t *sqp, void *buf,
 	if (sqp->sq_header.svp_id == (id_t)-1)
 		libvarpd_panic("failed to allcoate from svp_idspace: %d",
 		    errno);
-	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_header.svp_crc32 = 0;
 	sqp->sq_rdata = logr;
 	sqp->sq_rsize = sizeof (svp_log_req_t);
 	sqp->sq_wdata = buf;
@@ -604,7 +611,7 @@ svp_remote_lrm_request(svp_remote_t *srp, svp_query_t *sqp, void *buf,
 	if (sqp->sq_header.svp_id == (id_t)-1)
 		libvarpd_panic("failed to allcoate from svp_idspace: %d",
 		    errno);
-	sqp->sq_header.svp_crc32 = htonl(0);
+	sqp->sq_header.svp_crc32 = 0;
 	sqp->sq_rdata = buf;
 	sqp->sq_rsize = buflen;
 	sqp->sq_wdata = NULL;

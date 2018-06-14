@@ -572,8 +572,7 @@ svp_conn_pollin_validate(svp_conn_t *scp)
 		    BUNYAN_T_INT32, "operation", nop,
 		    BUNYAN_T_INT32, "response_id", resp->svp_id,
 		    BUNYAN_T_INT32, "response_size", nsize,
-		    BUNYAN_T_INT32, "expected_size", nop == SVP_R_VL2_ACK ?
-		    sizeof (svp_vl2_ack_t) : sizeof (svp_vl3_ack_t),
+		    BUNYAN_T_INT32, "expected_size", expected_size,
 		    BUNYAN_T_INT32, "query_state", sqp->sq_state,
 		    BUNYAN_T_END);
 		return (B_FALSE);

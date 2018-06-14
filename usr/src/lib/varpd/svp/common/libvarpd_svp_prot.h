@@ -292,6 +292,7 @@ typedef struct svp_route_ack {
 	uint8_t	sra_dstmac[ETHERADDRL];	/* Far-remote VL2 dest. */
 	uint8_t		sra_src_pfx;	/* Far-remote VL3 source prefix */
 	uint8_t		sra_dst_pfx;	/* Far-remote VL3 dest. prefix */
+	uint16_t	sra_pad;	/* Must be explicit to 4-bytes. */
 } svp_route_ack_t;
 
 #ifdef __cplusplus
