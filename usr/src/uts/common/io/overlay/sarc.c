@@ -154,6 +154,7 @@ sarc_destroy(sarc_t *s)
 		for (;;) {
 			if ((lnk = list_remove_head(l)) == NULL)
 				break;
+			ASSERT0(lnk->sal_refcnt);
 			obj = link_to_obj(s, lnk);
 			s->sarc_ops.sao_dtor(obj);
 		}
