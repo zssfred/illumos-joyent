@@ -304,6 +304,7 @@ typedef struct overlay_targ_list {
 #define	OVERLAY_TARG_CACHE_REMOVE	(OVERLAY_TARG_IOCTL | 0x32)
 #define	OVERLAY_TARG_CACHE_FLUSH	(OVERLAY_TARG_IOCTL | 0x33)
 #define	OVERLAY_TARG_CACHE_ITER		(OVERLAY_TARG_IOCTL | 0x34)
+#define	OVERLAY_TARG_CACHE_REMOVE_NET	(OVERLAY_TARG_IOCTL | 0x35)
 
 /*
  * This is a pretty arbitrary number that we're constraining ourselves to
@@ -322,10 +323,23 @@ typedef struct overlay_targ_cache_entry {
 	overlay_target_point_t	otce_dest;
 } overlay_targ_cache_entry_t;
 
+typedef struct overlay_targ_cache_net_entry {
+	struct in6_addr		otcne_src;
+	struct in6_addr		otcne_dst;
+	uint16_t		otcne_vlan;		/* src vlan */
+	uint8_t			otcne_src_prefixlen;
+	uint8_t			otcne_dst_prefixlen;
+} overlay_targ_cache_net_entry_t;
+
 typedef struct overlay_targ_cache {
 	datalink_id_t			otc_linkid;
 	overlay_targ_cache_entry_t	otc_entry;
 } overlay_targ_cache_t;
+
+typedef struct overlay_targ_cache_net {
+	datalink_id_t			otcn_linkid;
+	overlay_targ_cache_net_entry_t	otcn_entry;
+} overlay_targ_cache_net_t;
 
 typedef struct overlay_targ_cache_iter {
 	datalink_id_t			otci_linkid;
