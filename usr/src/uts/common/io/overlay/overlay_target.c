@@ -81,7 +81,7 @@ typedef int (*overlay_target_copyin_f)(const void *, void **, size_t *, int);
 typedef int (*overlay_target_ioctl_f)(overlay_target_hdl_t *, void *);
 typedef int (*overlay_target_copyout_f)(void *, void *, size_t, int);
 
-typedef struct overaly_target_ioctl {
+typedef struct overlay_target_ioctl {
 	int		oti_cmd;	/* ioctl id */
 	boolean_t	oti_write;	/* ioctl requires FWRITE */
 	boolean_t	oti_ncopyout;	/* copyout data? */
@@ -877,8 +877,16 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 		OVERLAY_DROP(mp, "VL2 target marked drop");
 		ret = OVERLAY_TARGET_DROP;
 	} else if (entry->ote_flags & OVERLAY_ENTRY_F_ROUTER) {
-		ret = overlay_route_lookup(odd, mp, VLAN_ID(mhi.mhi_tci), sock,
-		    slenp, vidp);
+		if (mhi.mhi_bindsap == ETHERTYPE_ARP) {
+			/*
+			 * Send unicast ARP requests to varpd for processing.
+			 * We will eventually need something similar for IPv6.
+			 */
+			ret = overlay_target_try_queue(entry, mp);
+		} else {
+			ret = overlay_route_lookup(odd, mp,
+			    VLAN_ID(mhi.mhi_tci), sock, slenp, vidp);
+		}
 	} else if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
 		overlay_target_point_t *otp = &entry->ote_u.ote_vl2.otvl2_dest;
 
@@ -1124,7 +1132,16 @@ again:
 	entry = list_remove_head(&overlay_target_list);
 	mutex_exit(&overlay_target_lock);
 	mutex_enter(&entry->ote_lock);
-	if (entry->ote_flags & OVERLAY_ENTRY_F_VALID) {
+	/*
+	 * Router entries may send lookups to varpd even when valid.  For
+	 * example, illumos systems will send unicast ARP queries to cached
+	 * entries (including the router mac address).  To answer those, we
+	 * need to forward on the query to varpd.  IPv6 will eventually
+	 * need something similar for ND requests.
+	 */
+	if ((entry->ote_flags &
+	    (OVERLAY_ENTRY_F_VALID|OVERLAY_ENTRY_F_ROUTER)) ==
+	    OVERLAY_ENTRY_F_VALID) {
 		ASSERT(entry->ote_chead == NULL);
 		mutex_exit(&entry->ote_lock);
 		goto again;
