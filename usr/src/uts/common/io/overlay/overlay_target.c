@@ -1244,9 +1244,20 @@ overlay_target_lookup_respond_vl3(const overlay_targ_resp_t *otr,
 		vl2_entry = kmem_cache_alloc(overlay_entry_cache,
 		    KM_NOSLEEP | KM_NORMALPRI);
 		if (vl2_entry == NULL) {
-			/* XXX: drop */
+			/*
+			 * If we can't allocate a VL2 entry for the VL3
+			 * destination, we just give up for now and drain
+			 * any queued packets.  New packets will retry this
+			 * allocation, so if the memory pressure lets up, we
+			 * should recover.
+			 */
+			freemsgchain(entry->ote_chead);
+			entry->ote_chead = entry->ote_ctail = NULL;
 			return;
 		}
+
+		vl2_entry->ote_ott = ott;
+		vl2_entry->ote_odd = entry->ote_odd;
 
 		bcopy(&otr->otr_answer, &vl2_entry->ote_u.ote_vl2.otvl2_dest,
 		    sizeof (overlay_target_point_t));
