@@ -642,6 +642,8 @@ overlay_route_lookup_vl2(overlay_target_t *ott, overlay_target_entry_t *vl3e,
 		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, vl2e);
 		mutex_exit(&ott->ott_lock);
 
+		vl3e->ote_flags &= ~OVERLAY_ENTRY_F_VALID;
+
 		return (overlay_target_try_queue(vl3e, mp));
 	}
 
