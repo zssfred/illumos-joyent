@@ -348,7 +348,6 @@ static svp_conn_act_t
 svp_conn_poll_connect(port_event_t *pe, svp_conn_t *scp)
 {
 	int ret;
-	svp_conn_error_t version_error;
 
 	if (pe != NULL) {
 		int err;

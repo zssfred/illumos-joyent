@@ -445,7 +445,6 @@ svp_vl3_lookup_cb(svp_t *svp, svp_status_t status, const uint8_t *vl2mac,
 	/* Initialize address-holders to 0 for comparisons-to-zeroes later. */
 	overlay_target_point_t point = { 0 };
 	svp_lookup_t *svl = arg;
-	uint8_t nexthop_mac[6] = { 0, 0, 0, 0, 0, 0 };
 
 	assert(svp != NULL);
 	assert(svl != NULL);

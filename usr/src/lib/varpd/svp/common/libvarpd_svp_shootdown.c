@@ -201,8 +201,6 @@ svp_shootdown_logr_iter(svp_remote_t *srp, void *buf, size_t len,
 	int ret;
 	off_t cboff = 0;
 	uint32_t *typep, type;
-	svp_log_vl2_t *svl2;
-	svp_log_vl3_t *svl3;
 
 	/* Adjust for initial status word */
 	assert(len >= sizeof (uint32_t));

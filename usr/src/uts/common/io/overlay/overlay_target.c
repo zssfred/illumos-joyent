@@ -226,7 +226,7 @@ overlay_target_entry_l2sarc_dtor(void *arg)
 	overlay_target_t *ott = ote->ote_ott;
 
 	ASSERT(MUTEX_HELD(&ott->ott_lock));
-	ASSERT3S((ote->ote_flags & OVERLAY_FLAG_F_VL3), ==, 0);
+	ASSERT3S((ote->ote_flags & OVERLAY_ENTRY_F_VL3), ==, 0);
 
 	avl_remove(&ott->ott_u.ott_dyn.ott_tree, ote);
 	overlay_target_entry_dtor(ote);
@@ -239,7 +239,8 @@ overlay_target_entry_l3sarc_dtor(void *arg)
 	overlay_target_t *ott = ote->ote_ott;
 
 	ASSERT(MUTEX_HELD(&ott->ott_lock));
-	ASSERT3S((ote->ote_flags & OVERLAY_FLAG_F_VL3), ==, OVERLAY_FLAG_F_VL3);
+	ASSERT3S((ote->ote_flags & OVERLAY_ENTRY_F_VL3), ==,
+	    OVERLAY_ENTRY_F_VL3);
 
 	avl_remove(&ott->ott_u.ott_dyn.ott_l3tree, ote);
 	overlay_target_entry_dtor(ote);
