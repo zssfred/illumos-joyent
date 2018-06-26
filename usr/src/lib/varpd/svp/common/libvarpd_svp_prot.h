@@ -213,8 +213,8 @@ typedef struct svp_log_route {
 	uint32_t	svlr_dcid;	/* Remote/dest Data Center ID. */
 	uint8_t		svlr_srcip[16];	/* Source IP address base. */
 	uint8_t		svlr_dstip[16];	/* Destination IP address base. */
-	uint16_t	svlr_dst_vlan;	/* Source VLAN id. */
-	uint16_t	svlr_src_vlan;	/* Destination VLAN id. */
+	uint16_t	svlr_src_vlan;	/* Source VLAN id. */
+	uint16_t	svlr_dst_vlan;	/* Destination VLAN id. */
 	uint8_t		svlr_src_prefixlen;	/* Source IP prefix length. */
 	uint8_t		svlr_dst_prefixlen;	/* Dest. IP prefix length. */
 	uint16_t	svlr_pad;	/* So we can be aligned... */
