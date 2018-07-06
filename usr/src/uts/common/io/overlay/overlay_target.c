@@ -1354,6 +1354,10 @@ overlay_target_lookup_respond_vl3(const overlay_targ_resp_t *otr,
 		vl2_entry->ote_flags |= OVERLAY_ENTRY_F_VALID;
 	}
 	mutex_exit(&vl2_entry->ote_lock);
+
+	mutex_enter(&ott->ott_lock);
+	sarc_rele(mhash, vl2_entry);
+	mutex_exit(&ott->ott_lock);
 }
 
 static int
