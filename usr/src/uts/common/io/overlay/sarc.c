@@ -488,7 +488,7 @@ sarc_rele(sarc_t *s, void *op)
 	ASSERT3U(lp->sal_refcnt, >, 0);
 
 	if (--lp->sal_refcnt == 0 && (lp->sal_flags & SARC_F_DEAD))
-		sarc_remove(s, op);
+		sarc_delete(s, lp);
 }
 
 int
@@ -617,6 +617,9 @@ sarc_adjust_c(sarc_t *s, size_t new_c)
 	return (0);
 }
 
+/*
+ * Return the first entry.  Entry is refheld.
+ */
 void *
 sarc_first(sarc_t *s)
 {
@@ -640,6 +643,10 @@ sarc_first(sarc_t *s)
 	return (lp);
 }
 
+/*
+ * Find the next entry after op.  Assumes op is already refheld.  Releases
+ * reference on op.
+ */
 void *
 sarc_next(sarc_t *s, void *op)
 {
