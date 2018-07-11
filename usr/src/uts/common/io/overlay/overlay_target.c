@@ -64,6 +64,12 @@
 #define	OVERLAY_CACHE_SIZE	512
 
 /*
+ * A somewhat arbitrary value.  The percentage of the target cache dedicated
+ * to MFU entries (i.e. entries that have been looked up more than once).
+ */
+#define	OVERLAY_CACHE_A		60
+
+/*
  * We use this data structure to keep track of what requests have been actively
  * allocated to a given instance so we know what to put back on the pending
  * list.
@@ -220,7 +226,7 @@ overlay_target_entry_dtor(void *arg)
 }
 
 static void
-overlay_target_entry_l2sarc_dtor(void *arg)
+overlay_target_entry_l2qq_dtor(void *arg)
 {
 	overlay_target_entry_t *ote = arg;
 	overlay_target_t *ott = ote->ote_ott;
@@ -233,7 +239,7 @@ overlay_target_entry_l2sarc_dtor(void *arg)
 }
 
 static void
-overlay_target_entry_l3sarc_dtor(void *arg)
+overlay_target_entry_l3qq_dtor(void *arg)
 {
 	overlay_target_entry_t *ote = arg;
 	overlay_target_t *ott = ote->ote_ott;
@@ -338,13 +344,13 @@ overlay_target_free(overlay_dev_t *odd)
 		mutex_enter(&odd->odd_target->ott_lock);
 		/*
 		 * Our VL3 AVL tree and hashtable contain the same elements.
-		 * Additionally, when an entry is removed from the sarc cache,
+		 * Additionally, when an entry is removed from the 2Q cache,
 		 * the entry is removed from the corresponding AVL tree.
-		 * Deleting the sarc cache will destroy any remaining entries,
-		 * so all we need to do is destroy the sarc caches.
+		 * Deleting the 2Q cache will destroy any remaining entries,
+		 * so all we need to do is destroy the 2Q caches.
 		 */
-		sarc_destroy(odd->odd_target->ott_u.ott_dyn.ott_dhash);
-		sarc_destroy(odd->odd_target->ott_u.ott_dyn.ott_l3dhash);
+		qqcache_destroy(odd->odd_target->ott_u.ott_dyn.ott_dhash);
+		qqcache_destroy(odd->odd_target->ott_u.ott_dyn.ott_l3dhash);
 		ASSERT(avl_is_empty(&odd->odd_target->ott_u.ott_dyn.ott_tree));
 		ASSERT(avl_is_empty(
 		    &odd->odd_target->ott_u.ott_dyn.ott_l3tree));
@@ -398,9 +404,9 @@ overlay_target_queue(overlay_target_entry_t *entry)
 	}
 	ott->ott_ocount++;
 	if (is_vl3)
-		sarc_hold(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		qqcache_hold(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 	else
-		sarc_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
+		qqcache_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
 
 	mutex_exit(&ott->ott_lock);
 	list_insert_tail(&overlay_target_list, entry);
@@ -761,7 +767,7 @@ overlay_route_lookup(overlay_dev_t *odd, mblk_t *mp, uint16_t vlan,
 	}
 
 	mutex_enter(&ott->ott_lock);
-	entry = sarc_lookup(ott->ott_u.ott_dyn.ott_l3dhash, &vl3);
+	entry = qqcache_lookup(ott->ott_u.ott_dyn.ott_l3dhash, &vl3);
 	if (entry == NULL) {
 		if ((entry = kmem_cache_alloc(overlay_entry_cache,
 		    KM_NOSLEEP | KM_NORMALPRI)) == NULL) {
@@ -780,19 +786,19 @@ overlay_route_lookup(overlay_dev_t *odd, mblk_t *mp, uint16_t vlan,
 		entry->ote_ott = ott;
 		entry->ote_odd = odd;
 
-		sarc_insert(ott->ott_u.ott_dyn.ott_l3dhash, entry);
-		sarc_hold(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		qqcache_insert(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		qqcache_hold(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 		avl_add(&ott->ott_u.ott_dyn.ott_l3tree, entry);
 		mutex_exit(&ott->ott_lock);
 
 		overlay_target_queue(entry);
 
 		mutex_enter(&ott->ott_lock);
-		sarc_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		qqcache_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 		mutex_exit(&ott->ott_lock);
 		return (OVERLAY_TARGET_ASYNC);
 	}
-	sarc_hold(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+	qqcache_hold(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 	mutex_enter(&entry->ote_lock);
 
 	/*
@@ -802,10 +808,10 @@ overlay_route_lookup(overlay_dev_t *odd, mblk_t *mp, uint16_t vlan,
 	if ((entry->ote_flags &
 	    (OVERLAY_ENTRY_F_DROP|OVERLAY_ENTRY_F_ROUTER|
 	    OVERLAY_ENTRY_F_VALID)) == OVERLAY_ENTRY_F_VALID) {
-		vl2_entry = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+		vl2_entry = qqcache_lookup(ott->ott_u.ott_dyn.ott_dhash,
 		    &entry->ote_u.ote_vl3.otvl3_vl2);
 		if (vl2_entry != NULL)
-			sarc_hold(ott->ott_u.ott_dyn.ott_dhash, vl2_entry);
+			qqcache_hold(ott->ott_u.ott_dyn.ott_dhash, vl2_entry);
 	}
 	mutex_exit(&ott->ott_lock);
 
@@ -833,9 +839,9 @@ overlay_route_lookup(overlay_dev_t *odd, mblk_t *mp, uint16_t vlan,
 	}
 
 	mutex_enter(&ott->ott_lock);
-	sarc_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+	qqcache_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 	if (vl2_entry != NULL)
-		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, vl2_entry);
+		qqcache_rele(ott->ott_u.ott_dyn.ott_dhash, vl2_entry);
 	mutex_exit(&ott->ott_lock);
 	return (ret);
 }
@@ -899,7 +905,7 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 	bcopy(mhi.mhi_daddr, omac.otm_mac, ETHERADDRL);
 
 	mutex_enter(&ott->ott_lock);
-	entry = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash, &omac);
+	entry = qqcache_lookup(ott->ott_u.ott_dyn.ott_dhash, &omac);
 	if (entry == NULL) {
 		overlay_target_vl2_t *vl2p;
 
@@ -924,19 +930,19 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 		entry->ote_ott = ott;
 		entry->ote_odd = odd;
 
-		sarc_insert(ott->ott_u.ott_dyn.ott_dhash, entry);
-		sarc_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
+		qqcache_insert(ott->ott_u.ott_dyn.ott_dhash, entry);
+		qqcache_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
 		avl_add(&ott->ott_u.ott_dyn.ott_tree, entry);
 		mutex_exit(&ott->ott_lock);
 
 		overlay_target_queue(entry);
 
 		mutex_enter(&ott->ott_lock);
-		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
+		qqcache_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
 		mutex_exit(&ott->ott_lock);
 		return (OVERLAY_TARGET_ASYNC);
 	}
-	sarc_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
+	qqcache_hold(ott->ott_u.ott_dyn.ott_dhash, entry);
 	mutex_exit(&ott->ott_lock);
 
 	mutex_enter(&entry->ote_lock);
@@ -972,7 +978,7 @@ overlay_target_lookup(overlay_dev_t *odd, mblk_t *mp, struct sockaddr *sock,
 	}
 
 	mutex_enter(&ott->ott_lock);
-	sarc_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
+	qqcache_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
 	mutex_exit(&ott->ott_lock);
 
 	return (ret);
@@ -1002,22 +1008,6 @@ overlay_target_info(overlay_target_hdl_t *thdl, void *arg)
 	overlay_hold_rele(odd);
 	return (0);
 }
-
-static sarc_ops_t overlay_sarc_l2_ops = {
-	.sao_hash = overlay_mac_hash,
-	.sao_cmp = overlay_mac_cmp,
-	.sao_dtor = overlay_target_entry_l2sarc_dtor,
-	.sao_fetch = sarc_nofetch,
-	.sao_evict = sarc_noevict
-};
-
-static sarc_ops_t overlay_sarc_l3_ops = {
-	.sao_hash = overlay_ip_hash,
-	.sao_cmp = overlay_ip_cmp,
-	.sao_dtor = overlay_target_entry_l3sarc_dtor,
-	.sao_fetch = sarc_nofetch,
-	.sao_evict = sarc_noevict
-};
 
 /* ARGSUSED */
 static int
@@ -1078,8 +1068,10 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 	} else {
 		int ret;
 
-		ret = sarc_create(&ott->ott_u.ott_dyn.ott_dhash,
-		    OVERLAY_CACHE_SIZE, OVERLAY_HSIZE, &overlay_sarc_l2_ops,
+		ret = qqcache_create(&ott->ott_u.ott_dyn.ott_dhash,
+		    OVERLAY_CACHE_SIZE, OVERLAY_CACHE_A, OVERLAY_HSIZE,
+		    overlay_mac_hash, overlay_mac_cmp,
+		    overlay_target_entry_l2qq_dtor,
 		    sizeof (overlay_target_entry_t),
 		    offsetof(overlay_target_entry_t, ote_reflink),
 		    offsetof(overlay_target_entry_t, ote_u.ote_vl2.otvl2_mac),
@@ -1091,14 +1083,16 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 			return (ret);
 		}
 
-		ret = sarc_create(&ott->ott_u.ott_dyn.ott_l3dhash,
-		    OVERLAY_CACHE_SIZE, OVERLAY_HSIZE, &overlay_sarc_l3_ops,
+		ret = qqcache_create(&ott->ott_u.ott_dyn.ott_l3dhash,
+		    OVERLAY_CACHE_SIZE, OVERLAY_CACHE_A, OVERLAY_HSIZE,
+		    overlay_ip_hash, overlay_ip_cmp,
+		    overlay_target_entry_l3qq_dtor,
 		    sizeof (overlay_target_entry_t),
 		    offsetof(overlay_target_entry_t, ote_reflink),
 		    offsetof(overlay_target_entry_t, ote_u.ote_vl3), KM_SLEEP);
 		if (ret != 0) {
 			mutex_exit(&odd->odd_lock);
-			sarc_destroy(ott->ott_u.ott_dyn.ott_dhash);
+			qqcache_destroy(ott->ott_u.ott_dyn.ott_dhash);
 			kmem_cache_free(overlay_target_cache, ott);
 			overlay_hold_rele(odd);
 			return (ret);
@@ -1283,7 +1277,7 @@ overlay_target_lookup_respond_vl3(const overlay_targ_resp_t *otr,
 	overlay_target_entry_t *shared = NULL;
 	overlay_target_entry_t *vl2_entry;
 	overlay_target_t *ott = entry->ote_ott;
-	sarc_t *mhash = ott->ott_u.ott_dyn.ott_dhash;
+	qqcache_t *mhash = ott->ott_u.ott_dyn.ott_dhash;
 	hrtime_t now = gethrtime();
 
 	ASSERT(MUTEX_HELD(&entry->ote_lock));
@@ -1303,8 +1297,8 @@ overlay_target_lookup_respond_vl3(const overlay_targ_resp_t *otr,
 	   sizeof (overlay_target_mac_t));
 
 	mutex_enter(&ott->ott_lock);
-	if ((shared = sarc_lookup(mhash, &otr->otr_mac)) != NULL)
-		sarc_hold(mhash, shared);
+	if ((shared = qqcache_lookup(mhash, &otr->otr_mac)) != NULL)
+		qqcache_hold(mhash, shared);
 	mutex_exit(&ott->ott_lock);
 
 	/*
@@ -1342,16 +1336,16 @@ overlay_target_lookup_respond_vl3(const overlay_targ_resp_t *otr,
 		vl2_entry->ote_vtime = entry->ote_vtime = now;
 
 		mutex_enter(&ott->ott_lock);
-		if ((shared = sarc_lookup(mhash, &otr->otr_mac)) != NULL) {
+		if ((shared = qqcache_lookup(mhash, &otr->otr_mac)) != NULL) {
 			overlay_target_entry_dtor(vl2_entry);
 			kmem_cache_free(overlay_entry_cache, vl2_entry);
-			sarc_hold(mhash, shared);
+			qqcache_hold(mhash, shared);
 
 			vl2_entry = shared;
 		} else {
-			sarc_insert(mhash, vl2_entry);
+			qqcache_insert(mhash, vl2_entry);
 			avl_add(&ott->ott_u.ott_dyn.ott_tree, vl2_entry);
-			sarc_hold(mhash, vl2_entry);
+			qqcache_hold(mhash, vl2_entry);
 		}
 		mutex_exit(&ott->ott_lock);
 	} else {
@@ -1386,7 +1380,7 @@ overlay_target_lookup_respond_vl3(const overlay_targ_resp_t *otr,
 	mutex_exit(&vl2_entry->ote_lock);
 
 	mutex_enter(&ott->ott_lock);
-	sarc_rele(mhash, vl2_entry);
+	qqcache_rele(mhash, vl2_entry);
 	mutex_exit(&ott->ott_lock);
 }
 
@@ -1458,9 +1452,9 @@ overlay_target_lookup_respond(overlay_target_hdl_t *thdl, void *arg)
 	mutex_enter(&ott->ott_lock);
 	ott->ott_ocount--;
 	if (is_vl3)
-		sarc_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		qqcache_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 	else
-		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
+		qqcache_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
 	cv_signal(&ott->ott_cond);
 	mutex_exit(&ott->ott_lock);
 
@@ -1572,13 +1566,13 @@ done:
 	ott->ott_ocount--;
 	if (action == OTLDA_DELETE) {
 		/* overlay_target_entry_dtor() will free the mblk chain */
-		sarc_remove(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		qqcache_remove(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 	}
 
 	if (is_vl3)
-		sarc_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
+		qqcache_rele(ott->ott_u.ott_dyn.ott_l3dhash, entry);
 	else
-		sarc_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
+		qqcache_rele(ott->ott_u.ott_dyn.ott_dhash, entry);
 
 	cv_signal(&ott->ott_cond);
 	mutex_exit(&ott->ott_lock);
@@ -1910,7 +1904,7 @@ overlay_target_cache_get(overlay_target_hdl_t *thdl, void *arg)
 	} else {
 		overlay_target_entry_t *ote;
 
-		if ((ote = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+		if ((ote = qqcache_lookup(ott->ott_u.ott_dyn.ott_dhash,
 		    &otc->otc_entry.otce_mac)) == NULL) {
 			ret = ENOENT;
 			goto done;
@@ -1996,7 +1990,7 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 	mutex_enter(&ott->ott_lock);
 	mutex_exit(&odd->odd_lock);
 
-	if ((ote = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	if ((ote = qqcache_lookup(ott->ott_u.ott_dyn.ott_dhash,
 	    &otc->otc_entry.otce_mac)) == NULL)
 		ote = new;
 
@@ -2017,7 +2011,7 @@ overlay_target_cache_set(overlay_target_hdl_t *thdl, void *arg)
 	}
 
 	if (ote == new) {
-		sarc_insert(ott->ott_u.ott_dyn.ott_dhash, ote);
+		qqcache_insert(ott->ott_u.ott_dyn.ott_dhash, ote);
 		avl_add(&ott->ott_u.ott_dyn.ott_tree, ote);
 	}
 	mutex_exit(&ote->ote_lock);
@@ -2068,7 +2062,7 @@ overlay_target_cache_remove(overlay_target_hdl_t *thdl, void *arg)
 	if (otc->otc_entry.otce_mac.otm_dcid == 0)
 		otc->otc_entry.otce_mac.otm_dcid = odd->odd_dcid;
 
-	ote = sarc_lookup(ott->ott_u.ott_dyn.ott_dhash,
+	ote = qqcache_lookup(ott->ott_u.ott_dyn.ott_dhash,
 	    &otc->otc_entry.otce_mac);
 	if (ote != NULL) {
 		mutex_enter(&ote->ote_lock);
@@ -2401,7 +2395,7 @@ overlay_target_cache_remove_net(overlay_target_hdl_t *thdl, void *arg)
 		    &ote->ote_u.ote_vl3.otvl3_dst, otcne->otcne_dst_prefixlen))
 			continue;
 
-		sarc_remove(ott->ott_u.ott_dyn.ott_l3dhash, ote);
+		qqcache_remove(ott->ott_u.ott_dyn.ott_l3dhash, ote);
 	}
 
 	mutex_exit(&ott->ott_lock);

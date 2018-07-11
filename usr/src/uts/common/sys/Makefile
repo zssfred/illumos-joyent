@@ -23,7 +23,7 @@
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2014, Joyent, Inc. All rights reserved.
 # Copyright 2013 Garrett D'Amore <garrett@damore.org>
-# Copyright 2015, Joyent, Inc. All rights reserved.
+# Copyright 2018, Joyent, Inc. All rights reserved.
 # Copyright 2013 Saso Kiselkov. All rights reserved.
 # Copyright 2015 Igor Kozhukhov <ikozhukhov@gmail.com>
 # Copyright 2016 Nexenta Systems, Inc.
@@ -489,6 +489,8 @@ CHKHDRS=			\
 	ptem.h			\
 	ptms.h			\
 	ptyvar.h		\
+	qqcache.h		\
+	qqcache_impl.h	\
 	raidioctl.h		\
 	ramdisk.h		\
 	random.h		\

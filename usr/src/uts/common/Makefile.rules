@@ -23,7 +23,7 @@
 # Copyright (c) 1991, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright 2016 Garrett D'Amore <garrett@damore.org>
 # Copyright 2013 Saso Kiselkov. All rights reserved.
-# Copyright 2017 Joyent, Inc.
+# Copyright 2018 Joyent, Inc.
 # Copyright 2016 Nexenta Systems, Inc.
 # Copyright (c) 2016 by Delphix. All rights reserved.
 #
@@ -1609,6 +1609,10 @@ $(OBJS_DIR)/%.o:		$(UTSBASE)/common/pcmcia/pcs/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)
 
+$(OBJS_DIR)/%.o:        $(UTSBASE)/common/qqcache/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
+
 $(OBJS_DIR)/%.o:		$(UTSBASE)/common/refhash/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)
@@ -2778,6 +2782,9 @@ $(LINTS_DIR)/%.ln:		$(COMMONBASE)/nvpair/%.c
 	@($(LHEAD) $(LINT.c) $< $(LTAIL))
 
 $(LINTS_DIR)/%.ln:		$(UTSBASE)/common/os/%.c
+	@($(LHEAD) $(LINT.c) $< $(LTAIL))
+
+$(LINTS_DIR)/%.ln:		$(UTSBASE)/common/qqcache/%.c
 	@($(LHEAD) $(LINT.c) $< $(LTAIL))
 
 $(LINTS_DIR)/%.ln:		$(UTSBASE)/common/rpc/%.c

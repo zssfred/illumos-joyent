@@ -31,8 +31,7 @@
 #include <sys/socket.h>
 #include <sys/ethernet.h>
 #include <sys/list.h>
-
-#include "sarc.h"
+#include <sys/qqcache.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,8 +81,8 @@ typedef struct overlay_target {
 	union {					/* ott_lock */
 		overlay_target_point_t	ott_point;
 		struct overlay_target_dyn {
-			sarc_t		*ott_dhash;
-			sarc_t		*ott_l3dhash;
+			qqcache_t	*ott_dhash;
+			qqcache_t	*ott_l3dhash;
 			avl_tree_t	ott_tree;
 			avl_tree_t	ott_l3tree;
 		} ott_dyn;
@@ -158,7 +157,7 @@ typedef struct overlay_target_vl2 {
 
 struct overlay_target_entry {
 	kmutex_t		ote_lock;
-	sarc_link_t		ote_reflink;	/* hashtable link */
+	qqcache_link_t		ote_reflink;	/* hashtable link */
 	avl_node_t		ote_avllink;	/* iteration link */
 	list_node_t		ote_qlink;
 	overlay_target_entry_flags_t ote_flags;	/* RW: state flags */

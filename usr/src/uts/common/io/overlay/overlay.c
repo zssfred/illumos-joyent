@@ -499,7 +499,7 @@
  * On the other hand, when we have an instance of OVERLAY_TARGET_DYNAMIC, things
  * are much more interesting and as a result, more complicated. We primarily
  * store lists of overlay_target_entry_t's which are stored in both an avl tree
- * and a sarc_t. The primary look up path uses the sarc_t and the avl tree
+ * and a qqcache_t. The primary look up path uses the qqcache_t and the avl tree
  * is only used for a few of the target ioctls used to dump data such that we
  * can get a consistent iteration order for things like dladm show-overlay -t.
  * The key that we use for the reference hashtable is based on the mac address

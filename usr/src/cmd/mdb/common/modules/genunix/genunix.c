@@ -21,7 +21,7 @@
 /*
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2017, Joyent, Inc.
+ * Copyright (c) 2018, Joyent, Inc.
  * Copyright (c) 2013 by Delphix. All rights reserved.
  */
 
@@ -96,6 +96,7 @@
 #include "netstack.h"
 #include "nvpair.h"
 #include "pg.h"
+#include "qqcache.h"
 #include "rctl.h"
 #include "sobj.h"
 #include "streams.h"
@@ -4680,6 +4681,12 @@ static const mdb_walker_t walkers[] = {
 	/* from nvpair.c */
 	{ NVPAIR_WALKER_NAME, NVPAIR_WALKER_DESCR,
 		nvpair_walk_init, nvpair_walk_step, NULL },
+
+	/* from qqcache.c */
+	{ QQCACHE_WALK_NAME, QQCACHE_WALK_DESC,
+		qqcache_walk_init_cache, qqcache_walk_step, qqcache_walk_fini },
+	{ QQCACHE_HASH_WALK_NAME, QQCACHE_HASH_WALK_DESC,
+		qqcache_walk_init_hash, qqcache_walk_step, qqcache_walk_fini },
 
 	/* from rctl.c */
 	{ "rctl_dict_list", "walk all rctl_dict_entry_t's from rctl_lists",
