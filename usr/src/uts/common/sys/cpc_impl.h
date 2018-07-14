@@ -204,7 +204,7 @@ enum dcpc_mask_attr {
 #ifdef __sparc
 extern uint64_t ultra_gettick(void);
 #define	KCPC_GET_TICK ultra_gettick
-#elif __x86
+#elif defined(__i386) || defined(__amd64) /* __x86 */
 extern hrtime_t tsc_read(void);
 #define	KCPC_GET_TICK tsc_read
 #elif __arm__

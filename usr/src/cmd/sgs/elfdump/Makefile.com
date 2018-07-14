@@ -32,7 +32,7 @@ COMOBJ =	main.o			corenote.o \
 		dwarf.o			struct_layout.o \
 		struct_layout_i386.o 	struct_layout_amd64.o \
 		struct_layout_sparc.o 	struct_layout_sparcv9.o \
-		armattrs.o
+		armattrs.o		aarch64attrs.o
 
 COMOBJ32 =	elfdump32.o fake_shdr32.o
 

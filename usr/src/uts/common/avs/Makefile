@@ -42,6 +42,8 @@ clobber:=   TARGET= clobber
 
 install_h check: $(AVS_SUBDIRS)
 
+clean:
+
 clobber: ns/rdc
 
 $(AVS_SUBDIRS): FRC

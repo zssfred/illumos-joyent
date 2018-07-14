@@ -75,6 +75,7 @@
 #include "phdr_msg.h"
 #include "relocate_amd64_msg.h"
 #include "relocate_arm_msg.h"
+#include "relocate_aarch64_msg.h"
 #include "relocate_i386_msg.h"
 #include "relocate_sparc_msg.h"
 #include "sections_msg.h"
@@ -113,6 +114,7 @@ foo()
 	USE(_sgs_msg_libconv_phdr);
 	USE(_sgs_msg_libconv_relocate_amd64);
 	USE(_sgs_msg_libconv_relocate_arm);
+	USE(_sgs_msg_libconv_relocate_aarch64);
 	USE(_sgs_msg_libconv_relocate_i386);
 	USE(_sgs_msg_libconv_relocate_sparc);
 	USE(_sgs_msg_libconv_sections);

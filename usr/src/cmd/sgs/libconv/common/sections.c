@@ -32,6 +32,7 @@
 #include	<sys/elf_SPARC.h>
 #include	<sys/elf_amd64.h>
 #include	<sys/elf_ARM.h>
+#include	<sys/elf_AARCH64.h>
 #include	<_conv.h>
 #include	<sections_msg.h>
 
@@ -274,6 +275,28 @@ sec_type_strings(conv_iter_osabi_t osabi, Half mach, Conv_fmt_flags_t fmt_flags)
 	static const conv_ds_msg_t ds_arm_nf = {
 	    CONV_DS_MSG_INIT(SHT_ARM_EXIDX, arm_nf) };
 
+	/* aarch64 processor range */
+	static const Msg aarch64_def[] = {
+		MSG_SHT_AARCH64_ATTRIBUTES,
+	};
+	static const Msg aarch64_dmp[] = {
+		MSG_SHT_AARCH64_ATTRIBUTES_DMP,
+	};
+	static const Msg aarch64_cf[] = {
+		MSG_SHT_AARCH64_ATTRIBUTES_CF,
+	};
+	static const Msg aarch64_nf[] = {
+		MSG_SHT_AARCH64_ATTRIBUTES_NF,
+	};
+	static const conv_ds_msg_t ds_aarch64_def = {
+	    CONV_DS_MSG_INIT(SHT_AARCH64_ATTRIBUTES, aarch64_def) };
+	static const conv_ds_msg_t ds_aarch64_dmp = {
+	    CONV_DS_MSG_INIT(SHT_AARCH64_ATTRIBUTES, aarch64_dmp) };
+	static const conv_ds_msg_t ds_aarch64_cf = {
+	    CONV_DS_MSG_INIT(SHT_AARCH64_ATTRIBUTES, aarch64_cf) };
+	static const conv_ds_msg_t ds_aarch64_nf = {
+	    CONV_DS_MSG_INIT(SHT_AARCH64_ATTRIBUTES, aarch64_nf) };
+
 	static const conv_ds_t	*retarr[MAX_RET];
 	int			retndx = 0;
 
@@ -380,6 +403,23 @@ sec_type_strings(conv_iter_osabi_t osabi, Half mach, Conv_fmt_flags_t fmt_flags)
 			break;
 		default:
 			retarr[retndx++] = CONV_DS_ADDR(ds_arm_def);
+			break;
+		}
+	}
+
+	if (mach == EM_AARCH64) {
+		switch (CONV_TYPE_FMT_ALT(fmt_flags)) {
+		case CONV_FMT_ALT_DUMP:
+			retarr[retndx++] = CONV_DS_ADDR(ds_aarch64_dmp);
+			break;
+		case CONV_FMT_ALT_CF:
+			retarr[retndx++] = CONV_DS_ADDR(ds_aarch64_cf);
+			break;
+		case CONV_FMT_ALT_NF:
+			retarr[retndx++] = CONV_DS_ADDR(ds_aarch64_nf);
+			break;
+		default:
+			retarr[retndx++] = CONV_DS_ADDR(ds_aarch64_def);
 			break;
 		}
 	}

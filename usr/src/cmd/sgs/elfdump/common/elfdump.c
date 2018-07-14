@@ -5164,6 +5164,8 @@ regular(const char *file, int fd, Elf *elf, uint_t flags,
 	if ((flags & FLG_SHOW_ATTRIBUTES) && (ehdr->e_machine == EM_ARM))
 		dump_arm_attributes(cache, shnum,
 		    _elf_sys_encoding() != ehdr->e_ident[EI_DATA]);
+	if ((flags & FLG_SHOW_ATTRIBUTES) && (ehdr->e_machine == EM_AARCH64))
+		dump_aarch64_attributes(cache, shnum);
 
 	/* Release the memory used to cache section headers */
 done:

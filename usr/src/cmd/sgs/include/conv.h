@@ -900,6 +900,8 @@ extern	const char	*conv_reloc_386_type(Word, Conv_fmt_flags_t,
 			    Conv_inv_buf_t *);
 extern	const char	*conv_reloc_arm_type(Word, Conv_fmt_flags_t,
 			    Conv_inv_buf_t *);
+extern	const char	*conv_reloc_aarch64_type(Word, Conv_fmt_flags_t,
+			    Conv_inv_buf_t *);
 extern	const char	*conv_reloc_amd64_type(Word, Conv_fmt_flags_t,
 			    Conv_inv_buf_t *);
 extern	const char	*conv_reloc_SPARC_type(Word, Conv_fmt_flags_t,

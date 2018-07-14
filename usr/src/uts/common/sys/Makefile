@@ -205,6 +205,7 @@ CHKHDRS=			\
 	elf.h			\
 	elf_386.h		\
 	elf_ARM.h		\
+	elf_AARCH64.h		\
 	elf_SPARC.h		\
 	elf_notes.h		\
 	elf_amd64.h		\
@@ -683,7 +684,7 @@ BSCHDRS=			\
 
 MDESCHDRS=			\
 	mdesc.h			\
-	mdesc_impl.h		
+	mdesc_impl.h
 
 CPUDRVHDRS=			\
 	cpudrv.h
@@ -821,7 +822,7 @@ LVMHDRS=			\
 	md_stripe.h		\
 	md_trans.h		\
 	mdio.h			\
-	mdvar.h			
+	mdvar.h
 
 ALL_LVMHDRS=			\
 	$(LVMHDRS)		\

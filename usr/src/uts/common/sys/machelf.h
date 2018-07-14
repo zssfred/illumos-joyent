@@ -39,6 +39,8 @@ extern "C" {
 #include <sys/elf_SPARC.h>
 #elif defined(__arm)
 #include <sys/elf_ARM.h>
+#elif defined(__aarch64__)
+#include <sys/elf_AARCH64.h>
 #endif
 #ifndef	_ASM
 #include <sys/types.h>

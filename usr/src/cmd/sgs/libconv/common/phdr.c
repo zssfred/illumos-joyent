@@ -30,6 +30,7 @@
 #include	<stdio.h>
 #include	<string.h>
 #define	ELF_TARGET_ARM
+#define ELF_TARGET_AARCH64
 #include	<sys/elf.h>
 #include	<_conv.h>
 #include	<phdr_msg.h>
@@ -42,6 +43,7 @@ conv_phdr_type_strings(Conv_fmt_flags_t fmt_flags)
 #define	SOL	ELFOSABI_SOLARIS, EM_NONE
 #define	LIN	ELFOSABI_LINUX, EM_NONE
 #define	ARM	ELFOSABI_NONE, EM_ARM
+#define AARCH64	ELFSOABI_NONE, EM_AARCH64
 
 	static const Msg	phdrs_def[] = {
 		MSG_PT_NULL,			MSG_PT_LOAD,
@@ -159,19 +161,27 @@ error "PT_NUM has grown. Update phdrs[]"
 	static const Val_desc2 phdrs_mach_def[] = {
 	    { PT_ARM_ARCHEXT,	ARM, MSG_PT_ARM_ARCHEXT },
 	    { PT_ARM_EXIDX,	ARM, MSG_PT_ARM_EXIDX },
+	    { PT_AARCH64_ARCHEXT, AARCH64, MSG_PT_AARCH64_ARCHEXT },
+	    { PT_AARCH64_UNWIND, AARCH64, MSG_PT_AARCH64_UNWIND },
 	    { 0 },
 	};
 	static const Val_desc2 phdrs_mach_cf[] = {
 	    { PT_ARM_ARCHEXT,	ARM, MSG_PT_ARM_ARCHEXT_CF },
 	    { PT_ARM_EXIDX,	ARM, MSG_PT_ARM_EXIDX_CF },
+	    { PT_AARCH64_ARCHEXT, AARCH64, MSG_PT_AARCH64_ARCHEXT_CF },
+	    { PT_AARCH64_UNWIND, AARCH64, MSG_PT_AARCH64_UNWIND_CF },
 	};
 	static const Val_desc2 phdrs_mach_cfnp[] = {
 	    { PT_ARM_ARCHEXT,	ARM, MSG_PT_ARM_ARCHEXT_CFNP },
 	    { PT_ARM_EXIDX,	ARM, MSG_PT_ARM_EXIDX_CFNP },
+	    { PT_AARCH64_ARCHEXT, AARCH64, MSG_PT_AARCH64_ARCHEXT_CFNP },
+	    { PT_AARCH64_UNWIND, AARCH64, MSG_PT_AARCH64_UNWIND_CFNP },
 	};
 	static const Val_desc2 phdrs_mach_nf[] = {
 	    { PT_ARM_ARCHEXT,	ARM, MSG_PT_ARM_ARCHEXT_NF },
 	    { PT_ARM_EXIDX,	ARM, MSG_PT_ARM_EXIDX_NF },
+	    { PT_AARCH64_ARCHEXT, AARCH64, MSG_PT_AARCH64_ARCHEXT_NF },
+	    { PT_AARCH64_UNWIND, AARCH64, MSG_PT_AARCH64_UNWIND_NF },
 	};
 
 	static const conv_ds_vd2_t ds_phdrs_mach_def = {
@@ -223,6 +233,7 @@ error "PT_NUM has grown. Update phdrs[]"
 #undef SOL
 #undef LIN
 #undef ARM
+#undef AARCH64
 }
 
 const char *

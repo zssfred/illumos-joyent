@@ -70,15 +70,22 @@ PATCH_BUILD=				$(POUND_SIGN)
 
 # SPARC_BLD is '#' for an Intel build.
 # INTEL_BLD is '#' for a Sparc build.
+SPARC_BLD_3=    $(MACH:aarch64=$(POUND_SIGN))
 SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
 SPARC_BLD=      $(SPARC_BLD_1:sparc=)
+INTEL_BLD_3=    $(MACH:aarch64=$(POUND_SIGN))
 INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 INTEL_BLD_1=    $(MACH:sparc=$(POUND_SIGN))
 INTEL_BLD=      $(INTEL_BLD_1:i386=)
+ARM_BLD_3=	$(MACH:aarch64=$(POUND_SIGN))
 ARM_BLD_2=	$(MACH:i386=$(POUND_SIGN))
 ARM_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
 ARM_BLD=	$(ARM_BLD_1:arm=)
+AARCH64_BLD_3=	$(MACH:arm=$(POUND_SIGN))
+AARCH64_BLD_2=	$(MACH:i386=$(POUND_SIGN))
+AARCH64_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
+AARCH64_BLD=	$(AARCH64_BLD_1:aarch64=)
 
 # CROSS_BLD is "#" if NATIVE_MACH and MACH are the same, and the empty string
 # otherwise.  NATIVE_BLD is the opposite
@@ -117,16 +124,18 @@ CLOSED=		$(SRC)/../closed
 BUILD_TOOLS=		/ws/onnv-tools
 ONBLD_TOOLS=		$(BUILD_TOOLS)/onbld
 
-JAVA_ROOT=	/usr/java
+# JAVA_ROOT=	/usr/java
+JAVA_ROOT=	/opt/local
 
-SFW_ROOT=	/usr/sfw
+SFW_ROOT=	/opt/local #/usr/sfw
 SFWINCDIR=	$(SFW_ROOT)/include
 SFWLIBDIR=	$(SFW_ROOT)/lib
 SFWLIBDIR64=	$(SFW_ROOT)/lib/$(MACH64)
 
-i386_GCC_ROOT=	/opt/gcc/4.4.4
-sparc_GCC_ROOT=	/opt/gcc/4.4.4
-arm_GCC_ROOT=	/opt/gcc/4.4.4
+i386_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
+sparc_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
+arm_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
+aarch64_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 
 NATIVE_GCC_ROOT=	$($(NATIVE_MACH)_GCC_ROOT)
 
@@ -183,8 +192,9 @@ FIND=		/usr/bin/find
 PERL=		/usr/bin/perl
 PERL_VERSION=	5.10.0
 PERL_PKGVERS=	-510
-PYTHON_26=	/usr/bin/python2.6
-PYTHON=		$(PYTHON_26)
+PYTHON_26=/opt/local/bin/python2.7#	/usr/bin/python2.6
+# PYTHON=		$(PYTHON_26)
+PYTHON=/opt/local/bin/python2.7
 SORT=		/usr/bin/sort
 TOUCH=		/usr/bin/touch
 WC=		/usr/bin/wc
@@ -277,7 +287,8 @@ MACH32=		$(MACH32_1:i386=i86)
 
 sparc_BUILD64=
 i386_BUILD64=
-arm_BUILD64=	$(POUND_SIGN)
+arm_BUILD64=	$(POUND_SIGN) #XXXAARCH64: combine arm, aarch64?
+aarch64_BUILD64= #XXXAARCH64 this correct?
 BUILD64=	$($(MACH)_BUILD64)
 
 #
@@ -353,6 +364,7 @@ sparcv9_XARCH=	-m64
 i386_XARCH=
 amd64_XARCH=	-m64 -Ui386 -U__i386
 arm_XARCH=
+aarch64_XARCH=
 
 # assembler '-xarch' flag.  Different from compiler '-xarch' flag.
 sparc_AS_XARCH=		-xarch=v8plus
@@ -360,6 +372,7 @@ sparcv9_AS_XARCH=	-xarch=v9
 i386_AS_XARCH=
 amd64_AS_XARCH=		-xarch=amd64 -P -Ui386 -U__i386
 arm_AS_XARCH=
+aarch64_AS_XARCH=
 
 #
 # These flags define what we need to be 'standalone' i.e. -not- part
@@ -376,6 +389,7 @@ NO_SIMD=		-_gcc=-mno-mmx -_gcc=-mno-sse
 i386_STAND_FLAGS=	-_gcc=-ffreestanding $(NO_SIMD)
 amd64_STAND_FLAGS=	-xmodel=kernel $(NO_SIMD)
 arm_STAND_FLAGS=	-_gcc=-ffreestanding
+aarch64_STAND_FLAGS=	-_gcc=-ffreestanding
 
 SAVEARGS=		-Wu,-save_args
 amd64_STAND_FLAGS	+= $(SAVEARGS)
@@ -430,12 +444,14 @@ sparcv9_CFLAGS=	$(sparcv9_XARCH) -dalign $(CCVERBOSE) $(V9ABIWARN) $(CCREGSYM) \
 i386_CFLAGS=	$(i386_XARCH)
 amd64_CFLAGS=	$(amd64_XARCH)
 arm_CFLAGS=	$(arm_XARCH)
+aarch64_CFLAGS=	$(aarch64_XARCH)
 
 sparc_ASFLAGS=	$(sparc_AS_XARCH)
 sparcv9_ASFLAGS=$(sparcv9_AS_XARCH)
 i386_ASFLAGS=	$(i386_AS_XARCH)
 amd64_ASFLAGS=	$(amd64_AS_XARCH)
 arm_ASFLAGS=	$(arm_AS_XARCH)
+aarch64_ASFLAGS=$(aarch64_AS_XARCH)
 
 #
 sparc_COPTFLAG=		-xO3
@@ -443,6 +459,7 @@ sparcv9_COPTFLAG=	-xO3
 i386_COPTFLAG=		-O
 amd64_COPTFLAG=		-xO3
 arm_COPTFLAG=		-xO3
+aarch64_COPTFLAG=	-xO3
 
 COPTFLAG= $($(MACH)_COPTFLAG)
 COPTFLAG64= $($(MACH64)_COPTFLAG)
@@ -479,6 +496,7 @@ CTF_FLAGS_arm	= -g $(C99MODE) $(CNOGLOBAL) $(CDWARFSTR)
 
 CTF_FLAGS_sparcv9	= $(CTF_FLAGS_sparc)
 CTF_FLAGS_amd64		= $(CTF_FLAGS_i386)
+CTF_FLAGS_aarch64	= $(CTF_FLAGS_arm)
 
 # Sun Studio produces broken userland code when saving arguments.
 $(__GNUC)CTF_FLAGS_amd64 += $(SAVEARGS)
@@ -508,6 +526,7 @@ sparcv9_SPACEFLAG	= -xspace -W0,-Lt
 i386_SPACEFLAG		= -xspace
 amd64_SPACEFLAG		=
 arm_SPACFLAGE		=	#XXXARM: Really?
+aarch64_SPACFLAGE		=	#XXXAARCH64: why is above commented "really?"
 
 SPACEFLAG		= $($(MACH)_SPACEFLAG)
 SPACEFLAG64		= $($(MACH64)_SPACEFLAG)
@@ -522,6 +541,7 @@ sparcv9_IROPTFLAG	= -W2,-xwrap_int
 i386_IROPTFLAG		=
 amd64_IROPTFLAG		=
 arm_IROPTFLAG		=
+aarch64_IROPTFLAG		=
 
 IROPTFLAG		= $($(MACH)_IROPTFLAG)
 IROPTFLAG64		= $($(MACH64)_IROPTFLAG)
@@ -531,6 +551,7 @@ sparcv9_XREGSFLAG	= -xregs=no%appl
 i386_XREGSFLAG		=
 amd64_XREGSFLAG		=
 arm_XREGSFLAG		=
+aarch64_XREGSFLAG		=
 
 XREGSFLAG		= $($(MACH)_XREGSFLAG)
 XREGSFLAG64		= $($(MACH64)_XREGSFLAG)
@@ -562,7 +583,7 @@ $(SRCDBGBLD)CCSOURCEDEBUGFLAGS	= -g -xs
 CFLAGS=         $(COPTFLAG) $($(MACH)_CFLAGS) $(SPACEFLAG) $(CCMODE) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
-		$(CUSERFLAGS)
+		$(CUSERFLAGS) # -I/root/smartos-live/proto/usr/include
 CFLAGS64=       $(COPTFLAG64) $($(MACH64)_CFLAGS) $(SPACEFLAG64) $(CCMODE64) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG64) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
@@ -631,12 +652,15 @@ amd64_CCFLAGS=		$(amd64_XARCH) -compat=5 \
 			-Qoption ccfe -features=no%conststrings \
 			$(CCERRWARN)
 arm_CCFLAGS=		$(CCERRWARN)
+aarch64_CCFLAGS=		$(CCERRWARN)
+
 
 sparc_CCOPTFLAG=	-O
 sparcv9_CCOPTFLAG=	-O
 i386_CCOPTFLAG=		-O
 amd64_CCOPTFLAG=	-O
 arm_CCOPTFLAG=		-O
+aarch64_CCOPTFLAG=	-O
 
 CCOPTFLAG=	$($(MACH)_CCOPTFLAG)
 CCOPTFLAG64=	$($(MACH64)_CCOPTFLAG)
@@ -681,6 +705,10 @@ $(__GNUC64)MAPFILE.NGB_amd64= \
 			$(SRC)/common/mapfiles/gen/amd64_gcc_map.noexeglobs
 MAPFILE.NGB_arm= \
 			$(SRC)/common/mapfiles/gen/arm_gcc_map.noexeglobs
+MAPFILE.NGB_aarch64= \
+			$(SRC)/common/mapfiles/gen/aarch64_gcc_map.noexeglobs
+$(__GNUC64)MAPFILE.NGB_aarch64= \
+			$(SRC)/common/mapfiles/gen/aarch64_gcc_map.noexeglobs
 MAPFILE.NGB =		$(MAPFILE.NGB_$(MACH))
 
 #
@@ -699,7 +727,7 @@ MAPFILE.INT =		mapfile-intf
 #	LDLIBS64=-YP,$ROOT/lib/$MACH64:$ROOT/usr/lib/$MACH64
 #
 LDLIBS32 =	$(ENVLDLIBS1) $(ENVLDLIBS2) $(ENVLDLIBS3)
-LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib)
+LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib) -L/root/smartos-live/proto.strap/lib -L/opt/local/lib
 LDLIBS.cmd = 	$(LDLIBS32)
 LDLIBS.lib =	$(LDLIBS32)
 
@@ -711,8 +739,9 @@ LDLIBS64 +=     $(ADJUNCT_PROTO:%=-L%/usr/lib/$(MACH64) -L%/lib/$(MACH64))
 #
 # Define compilation macros.
 #
-COMPILE.c=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
-COMPILE64.c=	$(CC) $(CFLAGS64) $(CPPFLAGS) -c
+#COMPILE.C=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
+COMPILE.c=	$(CC) $(CFLAGS) $(CPPFLAGS) -I/root/smartos-live/proto.strap/usr/include -c
+COMPILE64.c=	$(CC) $(CFLAGS64) $(CPPFLAGS) -I/root/smartos-live/proto.strap/usr/include/64  -c
 COMPILE.cc=	$(CCC) $(CCFLAGS) $(CPPFLAGS) -c
 COMPILE64.cc=	$(CCC) $(CCFLAGS64) $(CPPFLAGS) -c
 COMPILE.s=	$(AS) $(ASFLAGS) $(AS_CPPFLAGS)
@@ -795,6 +824,7 @@ SPRO_VROOT=		$(SPRO_ROOT)/SS12
 i386_GNU_ROOT=		$(SFW_ROOT)
 sparc_GNU_ROOT=		$(SFW_ROOT)
 arm_GNU_ROOT=		$(SFW_ROOT)
+aarch64_GNU_ROOT=	$(SFW_ROOT)
 
 GNU_ROOT=		$($(MACH)_GNU_ROOT)
 NATIVE_GNU_ROOT=	$($(NATIVE_MACH)_GNU_ROOT)
@@ -933,6 +963,7 @@ sparcv9_C_PICFLAGS =	-K pic
 i386_C_PICFLAGS =	-K pic
 amd64_C_PICFLAGS =	-K pic
 arm_C_PICFLAGS =	-K pic
+aarch64_C_PICFLAGS =	-K pic
 C_PICFLAGS =		$($(MACH)_C_PICFLAGS)
 C_PICFLAGS64 =		$($(MACH64)_C_PICFLAGS)
 
@@ -941,6 +972,7 @@ sparcv9_C_BIGPICFLAGS =	-K PIC
 i386_C_BIGPICFLAGS =	-K PIC
 amd64_C_BIGPICFLAGS =	-K PIC
 arm_C_BIGPICFLAGS =	-K PIC
+aarch64_C_BIGPICFLAGS =	-K PIC
 C_BIGPICFLAGS =		$($(MACH)_C_BIGPICFLAGS)
 C_BIGPICFLAGS64 =	$($(MACH64)_C_BIGPICFLAGS)
 
@@ -950,6 +982,7 @@ sparcv9_CC_PICFLAGS =	-KPIC
 i386_CC_PICFLAGS = 	-Kpic
 amd64_CC_PICFLAGS = 	-Kpic
 arm_CC_PICFLAGS =	-Kpic
+aarch64_CC_PICFLAGS =	-Kpic
 CC_PICFLAGS =		$($(MACH)_CC_PICFLAGS)
 CC_PICFLAGS64 =		$($(MACH64)_CC_PICFLAGS)
 
@@ -1036,7 +1069,7 @@ STRIP_STABS=			   :
 $(RELEASE_BUILD)STRIP_STABS=	   $(STRIP) -x $@
 $(SRCDBGBLD)STRIP_STABS=	   :
 
-POST_PROCESS_O=	
+POST_PROCESS_O=
 POST_PROCESS_A=
 POST_PROCESS_SO=	$(PROCESS_COMMENT) $@ ; $(STRIP_STABS) ; \
 			$(ELFSIGN_OBJECT)
