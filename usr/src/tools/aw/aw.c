@@ -758,7 +758,9 @@ main(int argc, char *argv[])
 	 */
 #if defined(AW_TARGET_arm)
 	if (as64) {
-		return (error("no 64-bit aw target for arm"));
+		// return (error("no 64-bit aw target for arm"));
+		newae(as, "--64");
+		newae(as, "-march=armv8-a");
 	} else {
 		newae(as, "-march=armv7-a");
 		newae(as, "-mfpu=vfpv3-d16");
@@ -791,8 +793,13 @@ main(int argc, char *argv[])
 			newae(cpp, "-D__i386");
 		}
 #elif defined(AW_TARGET_arm)
-		newae(cpp, "-Darm");
-		newae(cpp, "-D__arm");
+		if (as64) {
+			newae(cpp, "-D__aarch64__");
+			//XXXAARCH64 need any others?
+		} else {
+			newae(cpp, "-Darm");
+			newae(cpp, "-D__arm");
+		}
 #else
 #error	"need isa-dependent defines"
 #endif

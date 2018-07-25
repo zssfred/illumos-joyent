@@ -33,7 +33,7 @@ COMOBJ =	main.o
 
 MACHOBJ =	machine.sparc.o	machine.sparcv9.o \
 		machine.i386.o	machine.amd64.o \
-		machine.arm.o
+		machine.arm.o	machine.aarch64.o
 
 COMOBJ32 =	elfwrap32.o
 

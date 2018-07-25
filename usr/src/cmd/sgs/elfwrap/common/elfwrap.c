@@ -246,6 +246,8 @@ output(const char *prog, int fd, const char *ofile, ushort_t mach,
 		case EM_ARM:
 			target_init_arm(&tdesc);
 			break;
+		case EM_AARCH64:
+			target_init_aarch64(&tdesc);
 #else
 		default:
 			target_init(&tdesc);

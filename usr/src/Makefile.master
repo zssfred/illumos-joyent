@@ -70,22 +70,15 @@ PATCH_BUILD=				$(POUND_SIGN)
 
 # SPARC_BLD is '#' for an Intel build.
 # INTEL_BLD is '#' for a Sparc build.
-SPARC_BLD_3=    $(MACH:aarch64=$(POUND_SIGN))
 SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
 SPARC_BLD=      $(SPARC_BLD_1:sparc=)
-INTEL_BLD_3=    $(MACH:aarch64=$(POUND_SIGN))
 INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 INTEL_BLD_1=    $(MACH:sparc=$(POUND_SIGN))
 INTEL_BLD=      $(INTEL_BLD_1:i386=)
-ARM_BLD_3=	$(MACH:aarch64=$(POUND_SIGN))
 ARM_BLD_2=	$(MACH:i386=$(POUND_SIGN))
 ARM_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
 ARM_BLD=	$(ARM_BLD_1:arm=)
-AARCH64_BLD_3=	$(MACH:arm=$(POUND_SIGN))
-AARCH64_BLD_2=	$(MACH:i386=$(POUND_SIGN))
-AARCH64_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
-AARCH64_BLD=	$(AARCH64_BLD_1:aarch64=)
 
 # CROSS_BLD is "#" if NATIVE_MACH and MACH are the same, and the empty string
 # otherwise.  NATIVE_BLD is the opposite
@@ -135,7 +128,6 @@ SFWLIBDIR64=	$(SFW_ROOT)/lib/$(MACH64)
 i386_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 sparc_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 arm_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
-aarch64_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 
 NATIVE_GCC_ROOT=	$($(NATIVE_MACH)_GCC_ROOT)
 
@@ -279,16 +271,19 @@ INS.pyfile=	$(INS.file); $(TOUCH) -r $< $@
 # Set BUILD64=# in the environment to disable 64-bit amd64
 # builds on i386 machines.
 
-MACH64_1=	$(MACH:sparc=sparcv9)
+
+#XXXAARCH64 this seems right
+MACH64_2=	$(MACH:arm=aarch64)
+MACH64_1=	$(MACX64_2:sparc=sparcv9)
 MACH64=		$(MACH64_1:i386=amd64)
 
+MACH32_2=	$(MACH:arm=arm) #XXXAARCH64 this too
 MACH32_1=	$(MACH:sparc=sparcv7)
 MACH32=		$(MACH32_1:i386=i86)
 
 sparc_BUILD64=
 i386_BUILD64=
-arm_BUILD64=	$(POUND_SIGN) #XXXAARCH64: combine arm, aarch64?
-aarch64_BUILD64= #XXXAARCH64 this correct?
+arm_BUILD64=
 BUILD64=	$($(MACH)_BUILD64)
 
 #
@@ -364,7 +359,7 @@ sparcv9_XARCH=	-m64
 i386_XARCH=
 amd64_XARCH=	-m64 -Ui386 -U__i386
 arm_XARCH=
-aarch64_XARCH=
+aarch64_XARCH=	-m64 #XXXAARCH64 this seems right
 
 # assembler '-xarch' flag.  Different from compiler '-xarch' flag.
 sparc_AS_XARCH=		-xarch=v8plus
@@ -372,7 +367,7 @@ sparcv9_AS_XARCH=	-xarch=v9
 i386_AS_XARCH=
 amd64_AS_XARCH=		-xarch=amd64 -P -Ui386 -U__i386
 arm_AS_XARCH=
-aarch64_AS_XARCH=
+aarch64_AS_XARCH=	-xarch=aarch64 #XXXAARCH64 this seems right
 
 #
 # These flags define what we need to be 'standalone' i.e. -not- part
@@ -526,7 +521,7 @@ sparcv9_SPACEFLAG	= -xspace -W0,-Lt
 i386_SPACEFLAG		= -xspace
 amd64_SPACEFLAG		=
 arm_SPACFLAGE		=	#XXXARM: Really?
-aarch64_SPACFLAGE		=	#XXXAARCH64: why is above commented "really?"
+aarch64_SPACFLAGE	=	#XXXAARCH64: why is above commented "really?"
 
 SPACEFLAG		= $($(MACH)_SPACEFLAG)
 SPACEFLAG64		= $($(MACH64)_SPACEFLAG)
@@ -541,7 +536,7 @@ sparcv9_IROPTFLAG	= -W2,-xwrap_int
 i386_IROPTFLAG		=
 amd64_IROPTFLAG		=
 arm_IROPTFLAG		=
-aarch64_IROPTFLAG		=
+aarch64_IROPTFLAG	=
 
 IROPTFLAG		= $($(MACH)_IROPTFLAG)
 IROPTFLAG64		= $($(MACH64)_IROPTFLAG)
@@ -551,7 +546,7 @@ sparcv9_XREGSFLAG	= -xregs=no%appl
 i386_XREGSFLAG		=
 amd64_XREGSFLAG		=
 arm_XREGSFLAG		=
-aarch64_XREGSFLAG		=
+aarch64_XREGSFLAG	=
 
 XREGSFLAG		= $($(MACH)_XREGSFLAG)
 XREGSFLAG64		= $($(MACH64)_XREGSFLAG)
@@ -652,7 +647,7 @@ amd64_CCFLAGS=		$(amd64_XARCH) -compat=5 \
 			-Qoption ccfe -features=no%conststrings \
 			$(CCERRWARN)
 arm_CCFLAGS=		$(CCERRWARN)
-aarch64_CCFLAGS=		$(CCERRWARN)
+aarch64_CCFLAGS=	$(CCERRWARN)
 
 
 sparc_CCOPTFLAG=	-O
@@ -707,8 +702,8 @@ MAPFILE.NGB_arm= \
 			$(SRC)/common/mapfiles/gen/arm_gcc_map.noexeglobs
 MAPFILE.NGB_aarch64= \
 			$(SRC)/common/mapfiles/gen/aarch64_gcc_map.noexeglobs
-$(__GNUC64)MAPFILE.NGB_aarch64= \
-			$(SRC)/common/mapfiles/gen/aarch64_gcc_map.noexeglobs
+#$(__GNUC64)MAPFILE.NGB_aarch64= \ ###XXXAARCH64 not really sure, but seems like were just going to be using gcc not cc regardless
+#			$(SRC)/common/mapfiles/gen/aarch64_cc_map.noexeglobs
 MAPFILE.NGB =		$(MAPFILE.NGB_$(MACH))
 
 #
@@ -824,7 +819,6 @@ SPRO_VROOT=		$(SPRO_ROOT)/SS12
 i386_GNU_ROOT=		$(SFW_ROOT)
 sparc_GNU_ROOT=		$(SFW_ROOT)
 arm_GNU_ROOT=		$(SFW_ROOT)
-aarch64_GNU_ROOT=	$(SFW_ROOT)
 
 GNU_ROOT=		$($(MACH)_GNU_ROOT)
 NATIVE_GNU_ROOT=	$($(NATIVE_MACH)_GNU_ROOT)
@@ -892,6 +886,15 @@ arm_LD=			/opt/armtc/usr/bin/ld
 arm_LINT=		/bin/false
 arm_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.arm
 arm_CTFMERGE=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.arm
+
+aarch64_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_gcc
+aarch64_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_g++
+aarch64_CPP=		/usr/ccs/lib/cpp
+aarch64_AS=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/aw.arm
+aarch64_LD=		/opt/armtc/usr/bin/ld
+aarch64_LINT=		/bin/false
+aarch64_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.arm
+aarch64_CTFMERGE=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.arm
 
 NATIVECC=		$($(NATIVE_MACH)_CC)
 NATIVECCC=		$($(NATIVE_MACH)_CCC)

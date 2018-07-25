@@ -13,8 +13,8 @@
  * Copyright 2013, Richard Lowe
  */
 
-#ifndef _SYS_ELF_ARM_H
-#define	_SYS_ELF_ARM_H
+#ifndef _SYS_ELF_AARCH64_H
+#define	_SYS_ELF_AARCH64_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -185,32 +185,34 @@ extern "C" {
 #define	PT_AARCH64_UNWIND	0x70000001
 
 //XXXAARCH64: comment out this until its an issue, cuz idk what they do
-// /*
-//  * There are consumers of this file that want to include elf defines for
-//  * all architectures.  This is a problem for the defines below, because
-//  * while they are architecture specific they have common names.  Hence to
-//  * prevent attempts to redefine these variables we'll check if any of
-//  * the other elf architecture header files have been included.  If
-//  * they have then we'll just stick with the existing definitions.
-//  */
-// #if !defined(_SYS_ELF_MACH_COMMON)
-// #define	_SYS_ELF_MACH_COMMON
-// #define	_SYS_ELF_MACH_ARM
+/*
+ * There are consumers of this file that want to include elf defines for
+ * all architectures.  This is a problem for the defines below, because
+ * while they are architecture specific they have common names.  Hence to
+ * prevent attempts to redefine these variables we'll check if any of
+ * the other elf architecture header files have been included.  If
+ * they have then we'll just stick with the existing definitions.
+ */
+#if !defined(_SYS_ELF_MACH_COMMON)
+#define	_SYS_ELF_MACH_COMMON
+#define	_SYS_ELF_MACH_AARCH64
 
-// #define	M_PLT_ENTSIZE	12	/* PLT entry size in bytes */
-// #define	M_PLT_INSSIZE	4	/* Size of each PLT insn */
-// #define	M_PLT_ALIGN	4	/* PLT is word aligned, since it's ARM code */
+#define	M_PLT_ENTSIZE	16	/* PLT entry size in bytes */
+#define	M_PLT_INSSIZE	4	/* Size of each PLT insn */
+#define	M_PLT_ALIGN	4	/* PLT is word aligned, since it's ARM code */
 
-// #define	M_PLT_XNumber	1	/* 1 reserved PLT entry, PLT[0] */
-// #define	M_PLT_RESERVSZ	20	/* plt[0] is 5 insns, rather than the usual 3 */
+#define	M_PLT_XNumber	1	/* 1 reserved PLT entry, PLT[0] */
+#define	M_PLT_RESERVSZ	20	/* plt[0] is 5 insns, rather than the usual 4, but 28 aligns weirdly so use 32 */
 
-// #define	M_GOT_XNumber	3	/* 3 reserved got entries */
-// #define	M_GOT_XDYNAMIC	0	/* got[0] == _DYNAMIC */
-// #define	M_GOT_XLINKMAP	1	/* got[1] == link map */
-// #define	M_GOT_XRTLD	2	/* got[2] == rtbinder */
-// #define	M_GOT_ENTSIZE	4
-// #define	M_WORD_ALIGN	4
-// #endif
+	/* XXXAARCH64: no idea on htis stuff :( */
+#define	M_GOT_XNumber	3	/* 3 reserved got entries */
+#define	M_GOT_XDYNAMIC	0	/* got[0] == _DYNAMIC */
+#define	M_GOT_XLINKMAP	1	/* got[1] == link map */
+#define	M_GOT_XRTLD	2	/* got[2] == rtbinder */
+#define	M_GOT_ENTSIZE	8
+
+#define	M_WORD_ALIGN	8
+#endif
 
 #ifdef __cplusplus
 }

@@ -47,7 +47,11 @@
 #endif
 #if	defined(ELFWRAP_ARM)
 #include	<arm/machdep_arm.h>
+#if	defined(_ELF64)
+#define	target_init	target_init_aarch64
+#else
 #define	target_init	target_init_arm
+#endif
 #endif
 #endif
 

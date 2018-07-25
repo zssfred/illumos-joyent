@@ -414,6 +414,8 @@ static const xarch_table_t xtbl[] = {
 	{ "sparcvis2",	SS12, { "-mcpu=ultrasparc3", "-mvis" } }
 #elif defined(CW_TARGET_arm)
 	{ "generic",	SS12, { "-march=armv7-a", "-mfpu=vfpv3-d16", "-mhard-float" } }
+	//XXXAARCH64: not really sure what im doing here
+	{ "generic64",	(SS12|M64), { "-m64", "-march=armv8-a", } }
 #else
 #error Unknown CW_TARGET
 #endif

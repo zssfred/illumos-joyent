@@ -98,6 +98,7 @@ extern	void	target_init_sparcv9(TargDesc_t *);
 extern	void	target_init_i386(TargDesc_t *);
 extern	void	target_init_amd64(TargDesc_t *);
 extern	void	target_init_arm(TargDesc_t *);
+extern	void	target_init_aarch64(TargDesc_t *);
 #endif
 
 #ifdef	__cplusplus

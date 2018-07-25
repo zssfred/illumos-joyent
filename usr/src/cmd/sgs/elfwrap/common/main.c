@@ -138,8 +138,10 @@ main(int argc, char **argv, char **envp)
 			else
 				mach = EM_386;
 		} else if (strcasecmp(pstr, MSG_ORIG(MSG_TARG_ARM)) == 0) {
-			/* XXXARM: 64 */
-			mach = EM_ARM;
+			if (class == ELFCLASS64)
+				mach = EM_AARCH64;
+			else
+				mach = EM_ARM;
 		} else {
 			(void) fprintf(stderr, MSG_INTL(MSG_ARG_BADTARG), prog,
 			    pstr);

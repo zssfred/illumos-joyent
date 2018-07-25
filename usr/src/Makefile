@@ -96,7 +96,6 @@ check :=		TARGET= check
 i386_CLOSEDBINS=closedbins
 sparc_CLOSEDBINS=closedbins
 arm_CLOSEDBINS=
-aarch64_CLOSEDBINS=
 
 #
 # Note: install does not cause a build in pkg.  To build packages,

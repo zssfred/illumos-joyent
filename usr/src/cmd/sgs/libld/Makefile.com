@@ -52,7 +52,7 @@ AVLOBJ =	avl.o
 # Relocation engine objects. These are kept separate from the L_XXX_MACHOBJS
 # lists below in order to facilitate linting them.
 G_MACHOBJS32 =	doreloc_sparc_32.o doreloc_x86_32.o doreloc_arm_32.o
-G_MACHOBJS64 =	doreloc_sparc_64.o doreloc_x86_64.o
+G_MACHOBJS64 =	doreloc_sparc_64.o doreloc_x86_64.o doreloc_arm_64.o
 
 # Target specific objects (sparc/sparcv9)
 L_SPARC_MACHOBJS32 =	machrel.sparc32.o	machsym.sparc32.o
@@ -65,7 +65,7 @@ L_X86_MACHOBJS64 =	machrel.amd64.o
 
 # Target specific objects (arm)
 L_ARM_MACHOBJS32 =	machrel.arm32.o
-L_ARM_MACHOBJS64 =	# There's no 64bit ARM
+L_ARM_MACHOBJS64 =	machrel.aarch64.o
 
 # All target specific objects rolled together
 E_TOOLOBJS =	$(E_SPARC_TOOLOBJS) \
@@ -103,6 +103,7 @@ KRTLD_ARM = $(SRCBASE)/uts/$(VAR_PLAT_arm)/krtld
 KRTLD_I386 = $(SRCBASE)/uts/$(VAR_PLAT_i386)/krtld
 KRTLD_AMD64 = $(SRCBASE)/uts/$(VAR_PLAT_amd64)/krtld
 KRTLD_SPARC = $(SRCBASE)/uts/$(VAR_PLAT_sparc)/krtld
+KRTLD_AARCH64 =  $(SRCBASE)/uts/$(VAR_PLAT_aarch64)/krtld
 
 
 CPPFLAGS +=	-DUSE_LIBLD_MALLOC -I$(SRCBASE)/lib/libc/inc \
@@ -143,6 +144,7 @@ CHKSRCS =	$(SRCBASE)/uts/common/krtld/reloc.h \
 		$(L_MACHOBJS64:%64.o=../common/%.c) \
 		$(KRTLD_I386)/doreloc.c \
 		$(KRTLD_ARM)/doreloc.c \
+		$(KRTLD_AARCH64)/doreloc.c \
 		$(KRTLD_AMD64)/doreloc.c \
 		$(KRTLD_SPARC)/doreloc.c
 
@@ -170,7 +172,8 @@ $(LINTLIB64) :=	CPPFLAGS += -DDO_RELOC_LIBLD -D_ELF64
 LINTSRCS32 +=	$(KRTLD_ARM)/doreloc.c \
 		$(KRTLD_I386)/doreloc.c	\
 		$(KRTLD_SPARC)/doreloc.c
-LINTSRCS64 +=	$(KRTLD_AMD64)/doreloc.c \
+LINTSRCS64 +=	$(KRTLD_AARCH64)/doreloc.c \
+		$(KRTLD_AMD64)/doreloc.c \
 		$(KRTLD_SPARC)/doreloc.c
 
 CLEANFILES +=	$(LINTOUTS) $(BLTFILES)

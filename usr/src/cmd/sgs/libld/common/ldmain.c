@@ -124,6 +124,7 @@ ld_init_target(Lm_list *lml, Half mach)
 		break;
 
 	case EM_ARM:
+	case EM_AARCH64:
 		ld_targ = *ld_targ_init_arm();
 		break;
 

@@ -162,7 +162,7 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	mcr	p15, 0, r0, c13, c0, 4
 
 	/*
-	 * Go ahead now and enable the L1 I/D caches.  
+	 * Go ahead now and enable the L1 I/D caches.
 	 */
 	mrc	p15, 0, r0, c1, c0, 0
 	orr	r0, #0x04	/* D-cache */

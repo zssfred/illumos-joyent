@@ -77,7 +77,7 @@ $(MACH)_gcc_map.noexeglobs :=	CC = $(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.$(MACH) 
 $(MACH)_gcc_map.noexeglobs :=	LINK =	$(LINK.c)
 $(MACH64)_gcc_map.noexeglobs :=	CC = $(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.$(MACH) -_gcc
 $(MACH64)_gcc_map.noexeglobs :=	LINK =	$(LINK64.c)
- 
+
 # This generic target creates two dynamic executables from an empty "main"
 # program.  These objects are not executed, but are analyzed to determine the
 # global symbols each provides.
@@ -114,6 +114,6 @@ $(MACH64)_gcc_map.noexeglobs :=	LINK =	$(LINK64.c)
 # build. However, this is a part of dmake setup but not used in uts. As such for
 # now we generate a simple file and watch as this fails marvelously.
 #
-arm_cc_map.noexeglobs arm_gcc_map.noexeglobs:
+arm_cc_map.noexeglobs arm_gcc_map.noexeglobs aarch64_gcc_map.noexeglobs: ##XXXAARCH64 seems right
 	echo "This is not a valid mapfile. See common/mapfiles/gen/Makefile" > \
 	    $@

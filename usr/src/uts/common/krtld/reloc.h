@@ -82,7 +82,8 @@ extern "C" {
 
 #define	DO_RELOC_LIBLD
 #if	defined(_ELF64)
-#error	"XXXARM: Surely this shouldn't ever happen?"
+#define	do_reloc_ld		do64_reloc_ld_arm
+#define	reloc_table		reloc64_table_arm
 #else
 #define	do_reloc_ld		do32_reloc_ld_arm
 #define	reloc_table		reloc32_table_arm
@@ -128,6 +129,9 @@ extern	const Rel_entry	reloc_table[];
 #define	IS_TLS_LE(X)		RELTAB_IS_TLS_LE(X, reloc_table)
 #define	IS_LOCALBND(X)		RELTAB_IS_LOCALBND(X, reloc_table)
 #define	IS_SIZE(X)		RELTAB_IS_SIZE(X, reloc_table)
+#define	IS_PLT(X)		RELTAB_IS_PLT(X, reloc_table)
+#define	IS_PCPAGE_RELATIVE(X)	RELTAB_IS_PCPAGE_RELATIVE(X, reloc_table)
+#define	IS_GOTPAGE_RELATIVE(X)	RELTAB_IS_GOTPAGE_RELATIVE(X, reloc_table)
 
 /*
  * Relocation engine.

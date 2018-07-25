@@ -44,10 +44,10 @@ extern "C" {
  * Structure used to build the reloc_table[]
  */
 typedef struct {
-	Xword	re_mask;	/* mask to apply to reloc (sparc only) */
+	Xword	re_mask;	/* mask to apply to reloc (sparc & arm only) */
 	Word	re_flags;	/* relocation attributes */
 	uchar_t	re_fsize;	/* field size (in bytes) */
-	uchar_t	re_bshift;	/* number of bits to shift (sparc only) */
+	uchar_t	re_bshift;	/* number of bits to shift (sparc & arm only) */
 	uchar_t	re_sigbits;	/* number of significant bits */
 } Rel_entry;
 
@@ -85,6 +85,10 @@ typedef struct {
 #define	FLG_RE_LOCLBND		0x02000000	/* relocation must bind */
 						/*    locally */
 
+#define	FLG_RE_PCPAGEREL	0x10000000	/* Same as PCREL but subtract PC & ~0xfff */
+#define	FLG_RE_GOTPAGEREL	0x20000000	/* Same as GOTREL but subtract GOT & ~0Xfff */
+// #define	FLG_RE_PAGEOPERATION	0x40000000	 Apply mask ~0xfff to result of relocation
+
 /*
  * Relocation table and macros for testing relocation table flags.
  */
@@ -103,17 +107,18 @@ typedef struct {
 	(FLG_RE_GOTPC | FLG_RE_GOTADD))
 
 #define	RELTAB_IS_GOT_BASED(X, _reltab) \
-	((_reltab[(X)].re_flags & FLG_RE_GOTREL) != 0)
+	((_reltab[(X)].re_flags & (FLG_RE_GOTREL | FLG_RE_GOTPAGEREL)) != 0)
+		//XXX: think this is right
 
 #define	RELTAB_IS_GOT_OPINS(X, _reltab) \
 	((_reltab[(X)].re_flags & FLG_RE_GOTOPINS) != 0)
 
 #define	RELTAB_IS_GOT_REQUIRED(X, _reltab) \
 	((_reltab[(X)].re_flags & (FLG_RE_GOTADD | FLG_RE_GOTREL | \
-	FLG_RE_GOTPC | FLG_RE_GOTOPINS)) != 0)
+	FLG_RE_GOTPC | FLG_RE_GOTOPINS | FLG_RE_GOTPAGEREL)) != 0)
 
 #define	RELTAB_IS_PC_RELATIVE(X, _reltab) \
-	((_reltab[(X)].re_flags & FLG_RE_PCREL) != 0)
+	((_reltab[(X)].re_flags & (FLG_RE_PCREL | FLG_RE_PCPAGEREL)) != 0)
 
 #define	RELTAB_IS_ADD_RELATIVE(X, _reltab) \
 	((_reltab[(X)].re_flags & FLG_RE_ADDRELATIVE) != 0)
@@ -154,6 +159,12 @@ typedef struct {
 
 #define	RELTAB_IS_SIZE(X, _reltab) \
 	((_reltab[(X)].re_flags & FLG_RE_SIZE) != 0)
+
+#define	RELTAB_IS_PCPAGE_RELATIVE(X, _reltab) \
+	((_reltab[(X)].re_flags & FLG_RE_PCPAGEREL) != 0)
+
+#define	RELTAB_IS_GOTPAGE_RELATIVE(X, _reltab) \
+	((_reltab[(X)].re_flags & FLG_RE_GOTPAGEREL) != 0)
 
 #ifdef	__cplusplus
 }

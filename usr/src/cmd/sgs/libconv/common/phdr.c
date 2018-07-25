@@ -43,7 +43,7 @@ conv_phdr_type_strings(Conv_fmt_flags_t fmt_flags)
 #define	SOL	ELFOSABI_SOLARIS, EM_NONE
 #define	LIN	ELFOSABI_LINUX, EM_NONE
 #define	ARM	ELFOSABI_NONE, EM_ARM
-#define AARCH64	ELFSOABI_NONE, EM_AARCH64
+#define AARCH64	0, EM_AARCH64
 
 	static const Msg	phdrs_def[] = {
 		MSG_PT_NULL,			MSG_PT_LOAD,

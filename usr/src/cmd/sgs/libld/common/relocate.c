@@ -46,7 +46,7 @@
  */
 #define	IS_PLT(X)	RELTAB_IS_PLT(X, ld_targ.t_mr.mr_reloc_table)
 #define	IS_GOT_RELATIVE(X) \
-	RELTAB_IS_GOT_RELATIVE(X, ld_targ.t_mr.mr_reloc_table)
+	(RELTAB_IS_GOT_RELATIVE(X, ld_targ.t_mr.mr_reloc_table))
 #define	IS_GOT_PC(X)	RELTAB_IS_GOT_PC(X, ld_targ.t_mr.mr_reloc_table)
 #define	IS_GOTPCREL(X)	RELTAB_IS_GOTPCREL(X, ld_targ.t_mr.mr_reloc_table)
 #define	IS_GOT_BASED(X)	RELTAB_IS_GOT_BASED(X, ld_targ.t_mr.mr_reloc_table)
@@ -70,6 +70,8 @@
 #define	IS_TLS_LE(X)	RELTAB_IS_TLS_LE(X, ld_targ.t_mr.mr_reloc_table)
 #define	IS_LOCALBND(X)	RELTAB_IS_LOCALBND(X, ld_targ.t_mr.mr_reloc_table)
 #define	IS_SIZE(X)	RELTAB_IS_SIZE(X, ld_targ.t_mr.mr_reloc_table)
+#define	IS_PCPAGE_RELATIVE(X)	RELTAB_IS_PCPAGE_RELATIVE(X, ld_targ.t_mr.mr_reloc_table)
+#define	IS_GOTPAGE_RELATIVE(X)	RELTAB_IS_GOTPAGE_RELATIVE(X, ld_targ.t_mr.mr_reloc_table)
 
 /*
  * Structure to hold copy relocation items.
