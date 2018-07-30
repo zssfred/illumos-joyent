@@ -281,6 +281,7 @@ SYMBOL_VERSION SUNWprivate_1.1 {
 	dladm_overlay_status;
 	dladm_overlay_prop_info;
 	dladm_overlay_get_prop;
+	dladm_overlay_setprop;
 	dladm_overlay_walk_prop;
 
 	dladm_overlay_cache_set;

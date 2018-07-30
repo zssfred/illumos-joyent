@@ -1055,6 +1055,13 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 		}
 	}
 
+	mutex_enter(&odd->odd_lock);
+	if (odd->odd_flags & OVERLAY_F_VARPD) {
+		mutex_exit(&odd->odd_lock);
+		overlay_hold_rele(odd);
+		return (EEXIST);
+	}
+
 	ott = kmem_cache_alloc(overlay_target_cache, KM_SLEEP);
 	ott->ott_flags = 0;
 	ott->ott_ocount = 0;
@@ -1069,7 +1076,7 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 		int ret;
 
 		ret = qqcache_create(&ott->ott_u.ott_dyn.ott_dhash,
-		    OVERLAY_CACHE_SIZE, OVERLAY_CACHE_A, OVERLAY_HSIZE,
+		    odd->odd_vl2sz, odd->odd_vl2a, OVERLAY_HSIZE,
 		    overlay_mac_hash, overlay_mac_cmp,
 		    overlay_target_entry_l2qq_dtor,
 		    sizeof (overlay_target_entry_t),
@@ -1084,7 +1091,7 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 		}
 
 		ret = qqcache_create(&ott->ott_u.ott_dyn.ott_l3dhash,
-		    OVERLAY_CACHE_SIZE, OVERLAY_CACHE_A, OVERLAY_HSIZE,
+		    odd->odd_routesz, odd->odd_routea, OVERLAY_HSIZE,
 		    overlay_ip_hash, overlay_ip_cmp,
 		    overlay_target_entry_l3qq_dtor,
 		    sizeof (overlay_target_entry_t),
@@ -1092,7 +1099,7 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 		    offsetof(overlay_target_entry_t, ote_u.ote_vl3), KM_SLEEP);
 		if (ret != 0) {
 			mutex_exit(&odd->odd_lock);
-			qqcache_destroy(ott->ott_u.ott_dyn.ott_dhash);
+			qqcache_destroy(ott->ott_u.ott_dyn.ott_l3dhash);
 			kmem_cache_free(overlay_target_cache, ott);
 			overlay_hold_rele(odd);
 			return (ret);
@@ -1105,21 +1112,12 @@ overlay_target_associate(overlay_target_hdl_t *thdl, void *arg)
 		    sizeof (overlay_target_entry_t),
 		    offsetof(overlay_target_entry_t, ote_avllink));
 	}
-	mutex_enter(&odd->odd_lock);
-	if (odd->odd_flags & OVERLAY_F_VARPD) {
-		mutex_exit(&odd->odd_lock);
-		kmem_cache_free(overlay_target_cache, ott);
-		overlay_hold_rele(odd);
-		return (EEXIST);
-	}
 
 	odd->odd_flags |= OVERLAY_F_VARPD;
 	odd->odd_target = ott;
 	mutex_exit(&odd->odd_lock);
 
 	overlay_hold_rele(odd);
-
-
 	return (0);
 }
 

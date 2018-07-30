@@ -120,6 +120,10 @@ typedef struct overlay_dev {
 	avl_node_t	odd_muxnode;		/* managed by mux */
 	overlay_target_t *odd_target;		/* See big theory statement */
 	uint32_t	odd_dcid;		/* RO if active else odd_lock */
+    uint32_t	odd_vl2sz;      /* protected by odd_lock */
+    uint32_t    odd_vl2a;       /* protected by odd_lock */
+    uint32_t	odd_routesz;    /* protected by odd_lock */
+    uint32_t    odd_routea;     /* protected by odd_lock */
 	uint8_t		odd_macaddr[ETHERADDRL]; /* RO same as odd_dcid */
 	char		odd_fmamsg[OVERLAY_STATUS_BUFLEN];	/* odd_lock */
 } overlay_dev_t;

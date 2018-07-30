@@ -891,21 +891,60 @@ typedef enum overlay_dev_prop {
 	OVERLAY_DEV_P_VNETID,
 	OVERLAY_DEV_P_ENCAP,
 	OVERLAY_DEV_P_VARPDID,
-	OVERLAY_DEV_P_DCID
+	OVERLAY_DEV_P_DCID,
+	OVERLAY_DEV_P_VL2_CACHE_SIZE,
+	OVERLAY_DEV_P_VL2_CACHE_A,
+	OVERLAY_DEV_P_ROUTE_CACHE_SIZE,
+	OVERLAY_DEV_P_ROUTE_CACHE_A
 } overlay_dev_prop_t;
 
-#define	OVERLAY_DEV_NPROPS	5
+#define	OVERLAY_DEV_NPROPS	9
 static const char *overlay_dev_props[] = {
 	"mtu",
 	"vnetid",
 	"encap",
 	"varpd/id",
-	"dcid"
+	"dcid",
+	"vl2_cache_size",
+	"_vl2_cache_a",
+	"route_cache_size",
+	"_route_cache_a"
 };
+
+/* properties that can be changed live */
+static boolean_t overlay_dev_liveprop[] = {
+	B_FALSE,	/* mtu */
+	B_FALSE,	/* vnetid */
+	B_FALSE,	/* encap */
+	B_FALSE,	/* varpd/id */
+	B_FALSE,	/* dcid */
+	B_TRUE,		/* vl2_cache_size */
+	B_TRUE,		/* _vl2_cache_a */
+	B_TRUE,		/* route_cache_size */
+	B_TRUE		/* _route_cache_a */
+};
+
+CTASSERT(ARRAY_SIZE(overlay_dev_props) == OVERLAY_DEV_NPROPS);
+CTASSERT(ARRAY_SIZE(overlay_dev_liveprop) == OVERLAY_DEV_NPROPS);
 
 #define	OVERLAY_MTU_MIN	576
 #define	OVERLAY_MTU_DEF	1400
 #define	OVERLAY_MTU_MAX	8900
+
+/* The 2Q parameter 'a' is a percentage */
+#define	OVERLAY_CACHE_MAX_A 100
+/* An somewhat arbitrary default, biasing towards storing more MFU entries */
+#define	OVERLAY_CACHE_A_DEF 75
+
+/* Somewhat arbitrary min and max values */
+#define	OVERLAY_VL2_CACHE_MIN	256
+#define	OVERLAY_VL2_CACHE_MAX	10240
+#define	OVERLAY_VL2_CACHE_DEF	OVERLAY_VL2_CACHE_MIN
+
+/* Somewhat arbitrary min and max values */
+#define	OVERLAY_ROUTE_CACHE_MIN	256
+#define	OVERLAY_ROUTE_CACHE_MAX 10240
+#define	OVERLAY_ROUTE_CACHE_DEF	OVERLAY_ROUTE_CACHE_MIN
 
 overlay_dev_t *
 overlay_hold_by_dlid(datalink_id_t id)
@@ -1329,6 +1368,11 @@ overlay_i_create(void *karg, intptr_t arg, int mode, cred_t *cred, int *rvalp)
 	}
 	odd->odd_dcid = oicp->oic_dcid;
 
+	odd->odd_vl2sz = OVERLAY_VL2_CACHE_DEF;
+	odd->odd_vl2a = OVERLAY_CACHE_A_DEF;
+	odd->odd_routesz = OVERLAY_ROUTE_CACHE_DEF;
+	odd->odd_routea = OVERLAY_CACHE_A_DEF;
+
 	mac = mac_alloc(MAC_VERSION);
 	if (mac == NULL) {
 		mutex_exit(&overlay_dev_lock);
@@ -1682,6 +1726,7 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 	int ret;
 	mac_perim_handle_t mph;
 	uint_t propid = UINT_MAX;
+	uint32_t def;
 	overlay_ioc_propinfo_t *oip = karg;
 	overlay_prop_handle_t phdl = (overlay_prop_handle_t)oip;
 
@@ -1769,6 +1814,36 @@ overlay_i_propinfo(void *karg, intptr_t arg, int mode, cred_t *cred,
 		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
 		overlay_prop_set_nodefault(phdl);
 		overlay_prop_set_range_uint32(phdl, 0, UINT32_MAX);
+		break;
+	case OVERLAY_DEV_P_VL2_CACHE_SIZE:
+		def = OVERLAY_VL2_CACHE_DEF;
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_default(phdl, &def, sizeof (def));
+		overlay_prop_set_range_uint32(phdl, OVERLAY_VL2_CACHE_MIN,
+		    OVERLAY_VL2_CACHE_MAX);
+		break;
+	case OVERLAY_DEV_P_VL2_CACHE_A:
+		def = OVERLAY_CACHE_A_DEF;
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_default(phdl, &def, sizeof (def));
+		overlay_prop_set_range_uint32(phdl, 0, OVERLAY_CACHE_MAX_A);
+		break;
+	case OVERLAY_DEV_P_ROUTE_CACHE_SIZE:
+		def = OVERLAY_ROUTE_CACHE_DEF;
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_default(phdl, &def, sizeof (def));
+		overlay_prop_set_range_uint32(phdl, OVERLAY_ROUTE_CACHE_MIN,
+		    OVERLAY_ROUTE_CACHE_MAX);
+		break;
+	case OVERLAY_DEV_P_ROUTE_CACHE_A:
+		def = OVERLAY_CACHE_A_DEF;
+		overlay_prop_set_prot(phdl, OVERLAY_PROP_PERM_RW);
+		overlay_prop_set_type(phdl, OVERLAY_PROP_T_UINT);
+		overlay_prop_set_default(phdl, &def, sizeof (def));
+		overlay_prop_set_range_uint32(phdl, 0, OVERLAY_CACHE_MAX_A);
 		break;
 	default:
 		overlay_hold_rele(odd);
@@ -1890,7 +1965,30 @@ overlay_i_getprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 		mutex_exit(&odd->odd_lock);
 		oip->oip_size = sizeof (uint32_t);
 		break;
-
+	case OVERLAY_DEV_P_VL2_CACHE_SIZE:
+		mutex_enter(&odd->odd_lock);
+		bcopy(&odd->odd_vl2sz, oip->oip_value, sizeof (uint32_t));
+		mutex_exit(&odd->odd_lock);
+		oip->oip_size = sizeof (uint32_t);
+		break;
+	case OVERLAY_DEV_P_VL2_CACHE_A:
+		mutex_enter(&odd->odd_lock);
+		bcopy(&odd->odd_vl2a, oip->oip_value, sizeof (uint32_t));
+		mutex_exit(&odd->odd_lock);
+		oip->oip_size = sizeof (uint32_t);
+		break;
+	case OVERLAY_DEV_P_ROUTE_CACHE_SIZE:
+		mutex_enter(&odd->odd_lock);
+		bcopy(&odd->odd_routesz, oip->oip_value, sizeof (uint32_t));
+		mutex_exit(&odd->odd_lock);
+		oip->oip_size = sizeof (uint32_t);
+		break;
+	case OVERLAY_DEV_P_ROUTE_CACHE_A:
+		mutex_enter(&odd->odd_lock);
+		bcopy(&odd->odd_routea, oip->oip_value, sizeof (uint32_t));
+		mutex_exit(&odd->odd_lock);
+		oip->oip_size = sizeof (uint32_t);
+		break;
 	default:
 		ret = ENOENT;
 	}
@@ -1964,6 +2062,114 @@ overlay_setprop_dcid(overlay_dev_t *odd, uint32_t dcid)
 	mutex_exit(&odd->odd_lock);
 }
 
+static int
+overlay_setprop_vl2_cachesz(overlay_dev_t *odd, uint32_t sz)
+{
+	overlay_target_t *ott = NULL;
+	int ret = 0;
+
+	if (sz == 0)
+		sz = OVERLAY_VL2_CACHE_DEF;
+
+	/* Caller should have validated this */
+	ASSERT3U(sz, >=, OVERLAY_VL2_CACHE_MIN);
+	ASSERT3U(sz, <=, OVERLAY_VL2_CACHE_MAX);
+
+	mutex_enter(&odd->odd_lock);
+	ott = odd->odd_target;
+
+	/* ott_mode is RO if the target exists */
+	if (ott != NULL && ott->ott_mode == OVERLAY_TARGET_DYNAMIC) {
+		mutex_enter(&ott->ott_lock);
+		ret = qqcache_adjust_size(ott->ott_u.ott_dyn.ott_dhash, sz);
+		mutex_exit(&ott->ott_lock);
+	}
+
+	if (ret == 0)
+		odd->odd_vl2sz = sz;
+	mutex_exit(&odd->odd_lock);
+
+	return (ret);
+}
+
+static int
+overlay_setprop_vl2_cachea(overlay_dev_t *odd, uint32_t a)
+{
+	overlay_target_t *ott = NULL;
+	int ret = 0;
+
+	/* Caller should have validated this */
+	ASSERT3U(a, <=, 100);
+
+	mutex_enter(&odd->odd_lock);
+	ott = odd->odd_target;
+
+	/* ott_mode is RO if the target exists */
+	if (ott != NULL && ott->ott_mode == OVERLAY_TARGET_DYNAMIC) {
+		mutex_enter(&ott->ott_lock);
+		ret = qqcache_adjust_a(ott->ott_u.ott_dyn.ott_dhash, a);
+		mutex_exit(&ott->ott_lock);
+	}
+	if (ret == 0)
+		odd->odd_vl2a = a;
+	mutex_exit(&odd->odd_lock);
+
+	return (ret);
+}
+
+static int
+overlay_setprop_route_cachesz(overlay_dev_t *odd, uint32_t sz)
+{
+	overlay_target_t *ott = NULL;
+	int ret = 0;
+
+	if (sz == 0)
+		sz = OVERLAY_ROUTE_CACHE_DEF;
+
+	ASSERT3U(sz, >=, OVERLAY_ROUTE_CACHE_MIN);
+	ASSERT3U(sz, <=, OVERLAY_ROUTE_CACHE_MAX);
+
+	mutex_enter(&odd->odd_lock);
+	ott = odd->odd_target;
+
+	/* ott_mode is RO if the target exists */
+	if (ott != NULL && ott->ott_mode == OVERLAY_TARGET_DYNAMIC) {
+		mutex_enter(&ott->ott_lock);
+		ret = qqcache_adjust_size(ott->ott_u.ott_dyn.ott_l3dhash, sz);
+		mutex_exit(&ott->ott_lock);
+	}
+	if (ret == 0)
+		odd->odd_routesz = sz;
+	mutex_exit(&odd->odd_lock);
+
+	return (ret);
+}
+
+static int
+overlay_setprop_route_cachea(overlay_dev_t *odd, uint32_t a)
+{
+	overlay_target_t *ott = NULL;
+	int ret = 0;
+
+	/* Caller should have validated this */
+	ASSERT3U(a, <=, 100);
+
+	mutex_enter(&odd->odd_lock);
+	ott = odd->odd_target;
+
+	/* ott_mode is RO if the target exists */
+	if (ott != NULL && ott->ott_mode == OVERLAY_TARGET_DYNAMIC) {
+		mutex_enter(&ott->ott_lock);
+		ret = qqcache_adjust_a(ott->ott_u.ott_dyn.ott_l3dhash, a);
+		mutex_exit(&ott->ott_lock);
+	}
+	if (ret == 0)
+		odd->odd_routea = a;
+	mutex_exit(&odd->odd_lock);
+
+	return (ret);
+}
+
 /* ARGSUSED */
 static int
 overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
@@ -1974,7 +2180,7 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 	overlay_ioc_prop_t *oip = karg;
 	uint_t propid = UINT_MAX;
 	mac_perim_handle_t mph;
-	uint64_t maxid, *vidp, *dcidp;
+	uint64_t maxid, *vidp, *dcidp, *vl2szp, *vl2ap, *routeszp, *routeap;
 
 	if (oip->oip_size > OVERLAY_PROP_SIZEMAX)
 		return (EINVAL);
@@ -1984,31 +2190,48 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 		return (ENOENT);
 
 	oip->oip_name[OVERLAY_PROP_NAMELEN-1] = '\0';
-	mac_perim_enter_by_mh(odd->odd_mh, &mph);
-	mutex_enter(&odd->odd_lock);
-	if (odd->odd_flags & OVERLAY_F_ACTIVATED) {
-		mac_perim_exit(mph);
-		mutex_exit(&odd->odd_lock);
-		return (ENOTSUP);
-	}
-	mutex_exit(&odd->odd_lock);
+
+	/*
+	 * Currently, only certain overlay properties (and no encapsulation
+	 * properties) can be changed while the overlay device is active.
+	 */
 	if (oip->oip_id == -1) {
 		int i;
 
 		for (i = 0; i < OVERLAY_DEV_NPROPS; i++) {
 			if (strcmp(overlay_dev_props[i], oip->oip_name) == 0)
 				break;
-			if (i == OVERLAY_DEV_NPROPS) {
-				ret = odd->odd_plugin->ovp_ops->ovpo_setprop(
-				    odd->odd_pvoid, oip->oip_name,
-				    oip->oip_value, oip->oip_size);
-				overlay_hold_rele(odd);
-				mac_perim_exit(mph);
-				return (ret);
-			}
 		}
 
-		propid = i;
+		if (i < OVERLAY_DEV_NPROPS)
+			propid = i;
+	} else if (oip->oip_id < OVERLAY_DEV_NPROPS) {
+		propid = oip->oip_id;
+	}
+
+	/*
+	 * A bit tricky, but propid is initalized to UINT_MAX, so we know we
+	 * have an overlay property whenever propid < OVERLAY_DEV_NPROPS,
+	 * otherwise we have a plugin property.
+	 */
+	mac_perim_enter_by_mh(odd->odd_mh, &mph);
+	mutex_enter(&odd->odd_lock);
+	if ((odd->odd_flags & OVERLAY_F_ACTIVATED) &&
+	    ((propid >= OVERLAY_DEV_NPROPS || !overlay_dev_liveprop[propid]))) {
+		mutex_exit(&odd->odd_lock);
+		mac_perim_exit(mph);
+		overlay_hold_rele(odd);
+		return (ENOTSUP);
+	}
+	mutex_exit(&odd->odd_lock);
+
+	if (oip->oip_id == -1 && propid >= OVERLAY_DEV_NPROPS) {
+		ret = odd->odd_plugin->ovp_ops->ovpo_setprop(
+		    odd->odd_pvoid, oip->oip_name,
+		    oip->oip_value, oip->oip_size);
+		mac_perim_exit(mph);
+		overlay_hold_rele(odd);
+		return (ret);
 	} else if (oip->oip_id >= OVERLAY_DEV_NPROPS) {
 		uint_t id = oip->oip_id - OVERLAY_DEV_NPROPS;
 
@@ -2072,7 +2295,56 @@ overlay_i_setprop(void *karg, intptr_t arg, int mode, cred_t *cred,
 		}
 		overlay_setprop_dcid(odd, *dcidp);
 		break;
-
+	case OVERLAY_DEV_P_VL2_CACHE_SIZE:
+		if (oip->oip_size != sizeof (uint64_t)) {
+			ret = EINVAL;
+			break;
+		}
+		vl2szp = (uint64_t *)oip->oip_value;
+		if (*vl2szp != 0 && (*vl2szp < OVERLAY_VL2_CACHE_MIN ||
+		    *vl2szp > OVERLAY_VL2_CACHE_MAX)) {
+			ret = EINVAL;
+			break;
+		}
+		ret = overlay_setprop_vl2_cachesz(odd, *vl2szp);
+		break;
+	case OVERLAY_DEV_P_VL2_CACHE_A:
+		if (oip->oip_size != sizeof (uint64_t)) {
+			ret = EINVAL;
+			break;
+		}
+		vl2ap = (uint64_t *)oip->oip_value;
+		if (*vl2ap > OVERLAY_CACHE_MAX_A) {
+			ret = EINVAL;
+			break;
+		}
+		ret = overlay_setprop_vl2_cachea(odd, *vl2ap);
+		break;
+	case OVERLAY_DEV_P_ROUTE_CACHE_SIZE:
+		if (oip->oip_size != sizeof (uint64_t)) {
+			ret = EINVAL;
+			break;
+		}
+		routeszp = (uint64_t *)oip->oip_value;
+		if (*routeszp != 0 && (*routeszp < OVERLAY_ROUTE_CACHE_MIN ||
+		   OVERLAY_ROUTE_CACHE_MAX)) {
+			ret = EINVAL;
+			break;
+		}
+		ret = overlay_setprop_route_cachesz(odd, *routeszp);
+		break;
+	case OVERLAY_DEV_P_ROUTE_CACHE_A:
+		if (oip->oip_size != sizeof (uint64_t)) {
+			ret = EINVAL;
+			break;
+		}
+		routeap = (uint64_t *)oip->oip_value;
+		if (*routeap > OVERLAY_CACHE_MAX_A) {
+			ret = EINVAL;
+			break;
+		}
+		ret = overlay_setprop_route_cachea(odd, *routeap);
+		break;
 	default:
 		ret = ENOENT;
 	}

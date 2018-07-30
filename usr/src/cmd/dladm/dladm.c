@@ -426,7 +426,7 @@ static cmd_t	cmds[] = {
 	    "    delete-overlay   <overlay>"			},
 	{ "modify-overlay",	do_modify_overlay,
 	    "    modify-overlay   -d [dcid/]mac | -f | -s [dcid/]mac=ip:port "
-	    "<overlay>"						},
+	    " | -p prop=value[,...] <overlay>"						},
 	{ "show-overlay",	do_show_overlay,
 	    "    show-overlay     [-f | -t] [[-p] -o <field>,...] "
 	    "[<overlay>]\n"						},
@@ -1471,6 +1471,7 @@ static const struct option overlay_create_lopts[] = {
 static const struct option overlay_modify_lopts[] = {
 	{ "delete-entry",	required_argument,	NULL,	'd' },
 	{ "flush-table",	no_argument,		NULL,	'f' },
+	{ "prop",		required_argument,	NULL,	'p' },
 	{ "set-entry",		required_argument,	NULL,	's' },
 	{ NULL,			0,			NULL,	0 }
 };
@@ -10557,15 +10558,16 @@ static void
 do_modify_overlay(int argc, char *argv[], const char *use)
 {
 	int			opt, ocnt = 0;
-	boolean_t		flush, set, delete;
+	boolean_t		flush, set, delete, setprop;
 	uint32_t		dcid = 0;
 	struct ether_addr	e;
 	char			*dest;
 	datalink_id_t		linkid = DATALINK_ALL_LINKID;
 	dladm_status_t		status;
+	char			propstr[DLADM_STRSIZE] = { 0 };
 
-	flush = set = delete = B_FALSE;
-	while ((opt = getopt_long(argc, argv, ":fd:s:", overlay_modify_lopts,
+	flush = set = delete = setprop = B_FALSE;
+	while ((opt = getopt_long(argc, argv, ":fd:p:s:", overlay_modify_lopts,
 	    NULL)) != -1) {
 		switch (opt) {
 		case 'd':
@@ -10579,6 +10581,16 @@ do_modify_overlay(int argc, char *argv[], const char *use)
 			if (flush == B_TRUE)
 				die_optdup('f');
 			flush = B_TRUE;
+			ocnt++;
+			break;
+		case 'p':
+			if (setprop == B_TRUE)
+				die_optdup('p');
+			setprop = B_TRUE;
+			(void) strlcat(propstr, optarg, DLADM_STRSIZE);
+			if (strlcat(propstr, ",", DLADM_STRSIZE) >=
+			    DLADM_STRSIZE)
+				die("property list too long '%s'", propstr);
 			ocnt++;
 			break;
 		case 's':
@@ -10600,9 +10612,9 @@ do_modify_overlay(int argc, char *argv[], const char *use)
 	}
 
 	if (ocnt == 0)
-		die("need to specify one of -d, -f, or -s");
+		die("need to specify one of -d, -f, -p, or -s");
 	if (ocnt > 1)
-		die("only one of -d, -f, or -s may be used");
+		die("only one of -d, -f, -p, or -s may be used");
 
 	if (argv[optind] == NULL)
 		die("missing required overlay device\n");
@@ -10637,4 +10649,29 @@ do_modify_overlay(int argc, char *argv[], const char *use)
 			    "target cache %s", optarg, argv[optind]);
 	}
 
+	if (setprop == B_TRUE) {
+		dladm_arg_list_t *proplist = NULL;
+		uint_t i;
+
+		if (dladm_parse_link_props(propstr, &proplist, B_FALSE)
+		    != DLADM_STATUS_OK)
+			die("invalid overlay property");
+
+		for (i = 0; i < proplist->al_count; i++) {
+			dladm_status_t status;
+
+			status = dladm_overlay_setprop(handle, linkid,
+			    proplist->al_info[i].ai_name,
+			    proplist->al_info[i].ai_val,
+			    proplist->al_info[i].ai_count);
+
+			if (status != DLADM_STATUS_OK) {
+				die_dlerr(status, "failed to set property %s "
+				    "for overlay device %s",
+				    proplist->al_info[i].ai_name, argv[optind]);
+			}
+		}
+
+		dladm_free_props(proplist);
+	}
 }

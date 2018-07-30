@@ -208,16 +208,16 @@ dladm_overlay_setprop(dladm_handle_t handle, datalink_id_t linkid,
 	prop.oip_linkid = linkid;
 	prop.oip_id = info.oipi_id;
 	prop.oip_name[0] = '\0';
-	if ((ret = dladm_overlay_parse_prop(info.oipi_type, prop.oip_value,
+	if ((status = dladm_overlay_parse_prop(info.oipi_type, prop.oip_value,
 	    &prop.oip_size, valp[0])) != DLADM_STATUS_OK)
-		return (ret);
+		return (status);
 
 	status = DLADM_STATUS_OK;
 	ret = ioctl(dladm_dld_fd(handle), OVERLAY_IOC_SETPROP, &prop);
 	if (ret != 0)
 		status = dladm_errno2status(errno);
 
-	return (ret);
+	return (status);
 }
 
 /*

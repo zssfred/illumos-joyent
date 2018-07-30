@@ -72,6 +72,8 @@ extern dladm_status_t dladm_overlay_prop_info(dladm_overlay_propinfo_handle_t,
     const mac_propval_range_t **);
 extern dladm_status_t dladm_overlay_get_prop(dladm_handle_t, datalink_id_t,
     dladm_overlay_propinfo_handle_t, void *buf, size_t *bufsize);
+extern dladm_status_t dladm_overlay_setprop(dladm_handle_t, datalink_id_t,
+    const char *, char *const *, uint_t);
 
 typedef int (*dladm_overlay_prop_f)(dladm_handle_t, datalink_id_t,
     dladm_overlay_propinfo_handle_t, void *);
