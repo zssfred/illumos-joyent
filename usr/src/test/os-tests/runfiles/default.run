@@ -73,6 +73,7 @@ tests = ['acquire-compare', 'acquire-spray']
 
 [/opt/os-tests/tests/OS-6097.32]
 [/opt/os-tests/tests/OS-6097.64]
+[/opt/os-tests/tests/qqcache]
 
 [/opt/os-tests/tests/i386]
 user = root

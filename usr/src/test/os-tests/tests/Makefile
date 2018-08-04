@@ -17,7 +17,7 @@
 SUBDIRS_i386 = i386
 
 SUBDIRS = poll secflags sigqueue spoof-ras sdevfs sockfs stress timer tmpfs \
-	file-locking pf_key $(SUBDIRS_$(MACH))
+	file-locking pf_key qqcache $(SUBDIRS_$(MACH))
 
 PROGS = \
 	OS-6097

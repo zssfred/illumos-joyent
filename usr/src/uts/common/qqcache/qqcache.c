@@ -20,7 +20,20 @@
 #include <sys/qqcache.h>
 #include <sys/qqcache_impl.h>
 #include <sys/stddef.h>
+
+/*
+ * Currently, the non _KERNEL pieces are to support testing in usr/src/test.
+ */
+#ifdef _KERNEL
 #include <sys/kmem.h>
+#define	ZALLOC kmem_zalloc
+#define	FREE kmem_free
+#else
+#include <umem.h>
+#define	ZALLOC umem_zalloc
+#define	FREE umem_free
+#endif
+
 
 /*
  * The *_overflow functions mimic the gcc/clang intrinsic functions.  Once
@@ -101,7 +114,7 @@ qqcache_create(qqcache_t **qp, size_t sz, size_t a, size_t buckets,
 	if (uadd_overflow(sizeof (*qc), len, &len))
 		return (EINVAL);
 
-	if ((qc = kmem_zalloc(len, kmflags)) == NULL)
+	if ((qc = ZALLOC(len, kmflags)) == NULL)
 		return (ENOMEM);
 
 	qc->qqc_hash_fn = hash_fn;
@@ -158,7 +171,7 @@ qqcache_destroy(qqcache_t *qc)
 		}
 	}
 
-	kmem_free(qc, len);
+	FREE(qc, len);
 }
 
 /*
