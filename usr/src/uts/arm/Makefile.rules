@@ -14,51 +14,56 @@
 #
 
 
+$(OBJS_DIR)/%.o:	$(SRC)/common/fs/%.c
+	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)
+
+
 #
 # Kernel runtime-linker
 #
-KRTLD_INC_PATH	= -I$(UTSBASE)/common/krtld -I$(UTSBASE)/arm/sys
-KRTLD_INC_PATH	+= -I$(UTSBASE)/arm/krtld
+# KRTLD_INC_PATH	= -I$(UTSBASE)/common/krtld -I$(UTSBASE)/arm/sys
+# KRTLD_INC_PATH	+= -I$(UTSBASE)/arm/krtld
 
-KRTLD_CPPFLAGS_32	= -DELF_TARGET_ARM
-KRTLD_CPPFLAGS		= $(KRTLD_CPPFLAGS_$(CLASS)) -D_KRTLD
+# KRTLD_CPPFLAGS_32	= -DELF_TARGET_ARM
+# KRTLD_CPPFLAGS		= $(KRTLD_CPPFLAGS_$(CLASS)) -D_KRTLD
 
-$(OBJS_DIR)/%.o:	$(UTSBASE)/common/krtld/%.c
-	$(COMPILE.c) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
-	$(CTFCONVERT_O)
+# $(OBJS_DIR)/%.o:	$(UTSBASE)/common/krtld/%.c
+# 	$(COMPILE.c) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
+# 	$(CTFCONVERT_O)
 
-$(OBJS_DIR)/%.o:	$(UTSBASE)/arm/krtld/%.c
-	$(COMPILE.c) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
-	$(CTFCONVERT_O)
+# $(OBJS_DIR)/%.o:	$(UTSBASE)/arm/krtld/%.c
+# 	$(COMPILE.c) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
+# 	$(CTFCONVERT_O)
 
-$(OBJS_DIR)/%.o:	$(UTSBASE)/arm/krtld/%.s
-	$(COMPILE.s) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
-	$(CTFCONVERT_O)
+# $(OBJS_DIR)/%.o:	$(UTSBASE)/arm/krtld/%.s
+# 	$(COMPILE.s) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
+# 	$(CTFCONVERT_O)
 
-$(OBJS_DIR)/%.o:	$(UTSBASE)/arm/ml/%.s
-	$(COMPILE.s) -o $@ $<
-	$(CTFCONVERT_O)
+# $(OBJS_DIR)/%.o:	$(UTSBASE)/arm/ml/%.s
+# 	$(COMPILE.s) -o $@ $<
+# 	$(CTFCONVERT_O)
 
-$(OBJS_DIR)/%.o:		$(UTSBASE)/arm/promif/%.c
-	$(COMPILE.c) -o $@ $<
-	$(CTFCONVERT_O)
+# $(OBJS_DIR)/%.o:		$(UTSBASE)/arm/promif/%.c
+# 	$(COMPILE.c) -o $@ $<
+# 	$(CTFCONVERT_O)
 
 
-$(OBJS_DIR)/%.o:		$(SRC)/common/fs/%.c
-	$(COMPILE.c) -o $@ $<
-	$(CTFCONVERT_O)
+# $(OBJS_DIR)/%.o:		$(SRC)/common/fs/%.c
+# 	$(COMPILE.c) -o $@ $<
+# 	$(CTFCONVERT_O)
 
-$(OBJS_DIR)/%.o:		$(UTSBASE)/arm/misc/%.c
-	$(COMPILE.c) -o $@ $<
-	$(CTFCONVERT_O)
+# $(OBJS_DIR)/%.o:		$(UTSBASE)/arm/misc/%.c
+# 	$(COMPILE.c) -o $@ $<
+# 	$(CTFCONVERT_O)
 
-# XXX Do we keep this CPPFLAG?
-$(OBJS_DIR)/kobj.o		:= CPPFLAGS += -D_DBOOT
+# # XXX Do we keep this CPPFLAG?
+# $(OBJS_DIR)/kobj.o		:= CPPFLAGS += -D_DBOOT
 
-#
-# XXX We are actually building intel's prom modules. We should really make these
-# some more common place that's not quite uts/common.
-#
-$(OBJS_DIR)/%.o:		$(SRC)/psm/promif/fake1275/%.c
-	$(COMPILE.c) -o $@ $<
-	$(CTFCONVERT_O)
+# #
+# # XXX We are actually building intel's prom modules. We should really make these
+# # some more common place that's not quite uts/common.
+# #
+# $(OBJS_DIR)/%.o:		$(SRC)/psm/promif/fake1275/%.c
+# 	$(COMPILE.c) -o $@ $<
+# 	$(CTFCONVERT_O)

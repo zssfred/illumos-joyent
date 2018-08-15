@@ -46,6 +46,9 @@ extern "C" {
  * the traditional REG_<reg>
  */
 
+/*
+ * Aarch64 defines registers r0-30, whereas arm only has 15.
+ */
 #define	REG_ARM_R0	0
 #define	REG_ARM_R1	1
 #define	REG_ARM_R2	2
@@ -62,16 +65,47 @@ extern "C" {
 #define	REG_ARM_R13	13
 #define	REG_ARM_R14	14
 #define	REG_ARM_R15	15
+
+#ifdef __aarch64__
+#define	REG_ARM_R16	16 /* aka IP0 */
+#define	REG_ARM_R17	17 /* aka IP1 */
+#define	REG_ARM_R18	18
+#define	REG_ARM_R19	19
+#define	REG_ARM_R20	20
+#define	REG_ARM_R21	21
+#define	REG_ARM_R22	22
+#define	REG_ARM_R23	23
+#define	REG_ARM_R24	24
+#define	REG_ARM_R25	25
+#define	REG_ARM_R26	26
+#define	REG_ARM_R27	27
+#define	REG_ARM_R28	28
+#define	REG_ARM_R29	29 /* aka LR */
+#define	REG_ARM_R30	30 /* aka FP */
+	/* XXX: i thnk the following are right */
+#define	REG_ARM_SP	31
+#define	REG_ARM_PC	32
+#define	REG_ARM_CPSR	33
+#else
 #define	REG_ARM_CPSR	16
+#endif /* __aarch64__ */
 
 /* Portable Aliases */
-
+#ifdef __aarch64__
+#define	REG_PC	REG_ARM_PC
+#define	REG_SP	REG_ARM_SP
+#define	REG_FP	REG_ARM_R30
+#define	REG_PS	REG_ARM_CPSR
+#define	REG_R0	REG_ARM_R0
+#define	REG_R1	REG_ARM_R1
+#else
 #define	REG_PC	REG_ARM_R15
 #define	REG_SP	REG_ARM_R13
 #define	REG_FP	REG_ARM_R9
 #define	REG_PS	REG_ARM_CPSR
 #define	REG_R0	REG_ARM_R0
 #define	REG_R1	REG_ARM_R1
+#endif /* __aarch64__ */
 
 #endif	/* !defined(_XPG4_2) || defined(__EXTENSIONS__) */
 
@@ -80,7 +114,12 @@ extern "C" {
  * source. This is important due to differences in the way the C language
  * treats arrays and structures as parameters.
  */
+#ifdef __aarch64__
+#define	_NGREG	34
+#else
 #define	_NGREG	17
+#endif
+
 #if !defined(_XPG4_2) || defined(__EXTENSIONS__)
 #define	NGREG	_NGREG
 #endif	/* !defined(_XPG4_2) || defined(__EXTENSIONS__) */
@@ -95,8 +134,21 @@ typedef greg_t	gregset_t[_NGREG];
  * XXX Fix these later
  */
 typedef struct fpu {
+	#ifdef __aarch64__
+	/*
+	 * XXX There are 32 128-bit registers in AARCH64, v0-v31, so we store
+	 * these as the low and high halves of the arrays... this is prob
+	 * not how we want to do it
+	 */
+	uint64_t f_fpregs_lo[32];		
+	uint64_t f_fpregs_hi[32];
+
+	uint32_t f_fpcr; /* FP Control Register */
+	uint32_t f_fpsr; /* FP Status Register */
+	#else
 	/* 32 64-bit register for VFP3 / NEON */
 	uint64_t f_fpregs[32];
+	#endif
 } fpregset_t;
 
 #if !defined(_XPG4_2) || defined(__EXTENSIONS__)

@@ -101,8 +101,8 @@ OBJS_DIR	= $(OBJS_DIR_$(BUILD_TYPE))
 #	Create defaults so empty rules don't
 #	confuse make
 #
-CLASS_		= 32
-OBJS_DIR_	= debug32
+CLASS_		= 64#32
+OBJS_DIR_	= debug64#debug32
 
 #
 #	Build tools
@@ -115,6 +115,7 @@ CC_i386_64	= $(amd64_CC)
 CC_amd64_64	= $(amd64_CC)
 
 CC_arm_32	= $(arm_CC)
+CC_arm_64	= $(aarch64_CC)
 
 CC		= $(CC_$(MACH)_$(CLASS))
 
@@ -126,6 +127,7 @@ AS_i386_64	= $(amd64_AS)
 AS_amd64_64	= $(amd64_AS)
 
 AS_arm_32	= $(arm_AS)
+AS_arm_64	= $(aarch64_AS)
 
 AS		= $(AS_$(MACH)_$(CLASS))
 
@@ -137,6 +139,7 @@ LD_i386_64	= $(amd64_LD)
 LD_amd64_64	= $(amd64_LD)
 
 LD_arm_32	= $(arm_LD)
+LD_arm_64	= $(aarch64_LD)
 
 LD		= $(LD_$(MACH)_$(CLASS))
 
@@ -189,7 +192,7 @@ LINT_MODULE=	$(MODULE)
 #
 #	Build the compile/assemble lines:
 #
-EXTRA_OPTIONS		= 
+EXTRA_OPTIONS		=
 AS_DEFS			= -D_ASM -D__STDC__=0
 
 ALWAYS_DEFS_32		= -D_KERNEL -D_SYSCALL32 -D_DDI_STRICT

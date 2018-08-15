@@ -26,7 +26,16 @@
 include ../../../Makefile.master
 
 HDRS = \
-	asm_linkage.h
+	clock.h \
+	fdt.h	\
+	machcpuvar.h \
+	machflush.h \
+	machparam.h \
+	machsystm.h \
+	memnode.h \
+	privregs.h \
+	vm_machparam.h
+
 
 ROOTDIR=	$(ROOT)/usr/include/sys
 ROOTHDRS=	$(HDRS:%=$(ROOTDIR)/%)

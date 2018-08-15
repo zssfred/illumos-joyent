@@ -114,6 +114,6 @@ $(MACH64)_gcc_map.noexeglobs :=	LINK =	$(LINK64.c)
 # build. However, this is a part of dmake setup but not used in uts. As such for
 # now we generate a simple file and watch as this fails marvelously.
 #
-arm_cc_map.noexeglobs arm_gcc_map.noexeglobs aarch64_gcc_map.noexeglobs: ##XXXAARCH64 seems right
+arm_cc_map.noexeglobs arm_gcc_map.noexeglobs aarch64_gcc_map.noexeglobs aarch64_cc_map.noexeglobs: ##XXXAARCH64 seems right
 	echo "This is not a valid mapfile. See common/mapfiles/gen/Makefile" > \
 	    $@

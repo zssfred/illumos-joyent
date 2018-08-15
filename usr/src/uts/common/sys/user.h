@@ -190,6 +190,13 @@ typedef struct {		/* kernel syscall set type */
 #define	__KERN_NAUXV_IMPL 22
 #elif defined(__arm__)
 #define	__KERN_NAUXV_IMPL 20	/* XXX TOTAL GUESS */
+#elif defined(__aarch64__)
+#define	__KERN_NAUXV_IMPL 20	/*
+				 * XXX: /usr/include/aarch64-linux-gnu/bits/auxv.h 
+				 * on ubuntu defines 38 of these. It seems like
+				 * we can just use the 20 that illumos knows about
+				 * for now and if we need more update this
+				 */
 #endif
 
 struct execsw;

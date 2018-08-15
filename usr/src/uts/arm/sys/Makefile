@@ -15,32 +15,54 @@
 
 include ../../../Makefile.master
 
-HDRS = 				\
-	arm_archext.h 		\
-	asm_linkage.h 		\
-	bootconf.h 		\
-	bootsvcs.h 		\
-	bootvfs.h 		\
-	ddi_isa.h 		\
-	flush.h 		\
-	frame.h			\
-	kdi_machimpl.h 		\
-	machlock.h 		\
-	machsig.h 		\
-	machtypes.h 		\
-	mutex_impl.h 		\
-	obpdefs.h 		\
-	pcb.h 			\
-	privregs.h 		\
-	procfs_isa.h 		\
-	promif.h 		\
-	promimpl.h 		\
-	regset.h 		\
-	synch32.h		\
-	spl.h 			\
-	stack.h 		\
-	vmparam.h		\
-	ucontext.h 		\
+# HDRS = 				\
+# 	arm_archext.h 		\
+# 	asm_linkage.h 		\
+# 	bootconf.h 		\
+# 	bootsvcs.h 		\
+# 	bootvfs.h 		\
+# 	ddi_isa.h 		\
+# 	flush.h 		\
+# 	frame.h			\
+# 	kdi_machimpl.h 		\
+# 	machlock.h 		\
+# 	machsig.h 		\
+# 	machtypes.h 		\
+# 	mutex_impl.h 		\
+# 	obpdefs.h 		\
+# 	pcb.h 			\
+# 	privregs.h 		\
+# 	procfs_isa.h 		\
+# 	promif.h 		\
+# 	promimpl.h 		\
+# 	regset.h 		\
+# 	synch32.h		\
+# 	spl.h 			\
+# 	stack.h 		\
+# 	vmparam.h		\
+# 	ucontext.h 		\
+# 	utrap.h
+HDRS =	\
+	archsystm.h		\
+	asm_linkage.h		\
+	boot_console.h		\
+	bootconf.h		\
+	bootsvcs.h		\
+	bootvfs.h		\
+	ddi_isa.h		\
+	flush.h			\
+	kdi_machimpl.h		\
+	machbrand.h		\
+	machlock.h		\
+	machsig.h		\
+	machtypes.h		\
+	obpdefs.h		\
+	pcb.h			\
+	promif.h		\
+	regset.h		\
+	stack.h			\
+	stat_impl.h		\
+	ucontext.h		\
 	utrap.h
 
 

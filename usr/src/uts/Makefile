@@ -39,7 +39,8 @@ sparc_ARCHITECTURES = sun4v sun4u sparc
 
 i386_ARCHITECTURES = i86pc i86xpv intel
 
-arm_ARCHITECTURES = armv7 arm aarch64
+arm_ARCHITECTURES = aarch64 #arm armv7
+# arm_ARCHITECTURES = aarch64 arm
 
 #
 # For i386 all architectures can be compiled in parallel.
@@ -61,7 +62,7 @@ sparc_PARALLEL = $(sparc_ARCHITECTURES)
 #
 # For ARM all architectures can be compiled in parallel.
 #
-arm_PREREQ = arm
+arm_PREREQ = aarch64
 arm_PARALLEL = $(arm_ARCHITECTURES)
 
 #
@@ -187,7 +188,7 @@ DYNHDRDIRS =	common/avs \
 
 sparc_HDRDIRS= sun/sys
 i386_HDRDIRS= i86pc/vm i86xpv/vm
-arm_HDRDIRS= armv7/sys aarch64/sys #XXXAARCH64 doesn't seem like there's a super consistent way to organize this. probalby makes sense to put it in its own folder + handle later. I already made aarch64/krtld so using that.
+arm_HDRDIRS= arm/sys aarch64/sys #XXXAARCH64 doesn't seem like there's a super consistent way to organize this. probalby makes sense to put it in its own folder + handle later. I already made aarch64/krtld so using that.
 
 HDRDIRS= $(COMMON_HDRDIRS) $($(MACH)_HDRDIRS)
 install_h check: $(HDRDIRS) $($(MACH)_ARCHITECTURES)

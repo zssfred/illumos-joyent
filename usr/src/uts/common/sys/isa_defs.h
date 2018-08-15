@@ -519,6 +519,54 @@ extern "C" {
 #define	_RTC_CONFIG
 #define	_SOFT_HOSTID
 
+#elif defined(__aarch64__)
+
+/*
+ * These are all taken from the Procedure Call Architecture for the ARM 64-bit
+ * Architecture (IHI0055C_beta)
+ */
+
+#define	_LITTLE_ENDIAN
+#define	_STACK_GROWS_DOWNWARD
+#define	_LONG_LONG_LTOH
+#define	_BIT_FIELDS_LTOH
+#define	_IEEE_754
+#define	_CHAR_IS_UNSIGNED
+
+#define	_BOOL_ALIGNMENT				1
+#define	_CHAR_ALIGNMENT				1
+#define	_SHORT_ALIGNMENT			2
+#define	_INT_ALIGNMENT				4
+#define	_LONG_ALIGNMENT				8
+#define	_LONG_LONG_ALIGNMENT			16
+
+#define	_FLOAT_ALIGNMENT			4
+#define	_FLOAT_COMPLEX_ALIGNMENT		4
+#define	_DOUBLE_ALIGNMENT			8
+#define	_DOUBLE_COMPLEX_ALIGNMENT		8
+#define	_LONG_DOUBLE_ALIGNMENT			16
+#define	_LONG_DOUBLE_COMPLEX_ALIGNMENT		16
+
+#define	_POINTER_ALIGNMENT			8
+
+#define	_MAX_ALIGNMENT				16
+#define	_ALIGNMENT_REQUIRED			1
+
+#define	_LONG_LONG_ALIGNMENT_32			_LONG_LONG_ALIGNMENT
+	/* XXX: not sure on this one, but seems right */
+
+#if !defined(_LP64)
+#define	_LP64
+#endif
+
+/* XXX: Seems like arm32 copies intel so we'll do the same */
+#define	_SUNOS_VTOC_16
+#define	_DMA_USES_PHYSADDR
+#define	_FIRMWARE_NEEDS_FDISK
+#define	_DONT_USE_1275_GENERIC_NAMES
+#define	_RTC_CONFIG
+#define	_SOFT_HOSTID
+
 /*
  * #error is strictly ansi-C, but works as well as anything for K&R systems.
  */

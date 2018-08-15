@@ -39,6 +39,8 @@
 
 #include <sys/dditypes.h>
 
+#include <sys/ccompile.h>
+
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -110,6 +112,7 @@ extern void panic(const char *, ...)
 
 extern void vpanic(const char *, __va_list)
     __KVPRINTFLIKE(1) __NORETURN;
+	//__attribute__((__format__(printf, 1, 0)));
 
 #endif /* _KERNEL */
 #endif /* !_ASM */

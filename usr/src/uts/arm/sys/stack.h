@@ -36,12 +36,32 @@ extern "C" {
 #define	STACK_RESERVE32		0
 #define	MINFRAME32		0
 
+#if defined(__aarch64__)
+
+#define	STACK_ALIGN64		16 /* Quad word aligned */
+#define	STACK_ENTRY_ALIGN64 	8
+#define	STACK_BIAS64		0
+#define	SA64(x)			(((x)+(STACK_ALIGN64-1)) & ~(STACK_ALIGN64-1))
+#define	STACK_RESERVE64		0
+#define	MINFRAME64		0
+
+#define	STACK_ALIGN		STACK_ALIGN64
+#define	STACK_ENTRY_ALIGN	STACK_ENTRY_ALIGN64
+#define	STACK_BIAS		STACK_BIAS64
+#define	SA(x)			SA64(x)
+#define	STACK_RESERVE		STACK_RESERVE64
+#define	MINFRAME		MINFRAME64
+
+#elif defined(__arm)
+
 #define	STACK_ALIGN		STACK_ALIGN32
 #define	STACK_ALIGN_ENTRY	STACK_ALIGN_ENTRY32
 #define	STACK_BIAS		STACK_BIAS32
 #define	SA(x)			SA32(x)
 #define	STACK_RESERVE		STACK_RESERVE32
 #define	MINFRAME		MINFRAME32
+
+#endif
 
 #define	STACK_GROWTH_DOWN /* stacks grow from high to low addresses */
 

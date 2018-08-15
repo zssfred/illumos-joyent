@@ -42,7 +42,7 @@ extern void reset(void) __NORETURN;
 
 /* ARM specific synchronization barriers */
 extern void instr_sbarrier(void);
-extern void data_sbarrier(void);
+extern void data_sbarrier(void); //XXXAARCH64: not sure if needed
 
 #endif /* _KERNEL */
 

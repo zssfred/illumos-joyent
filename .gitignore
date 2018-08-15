@@ -1,6 +1,7 @@
 *.o
 .make.state
 .make.state.arm
+.make.state.aarch64
 *.po
 *.so
 *.so.1
@@ -3054,6 +3055,8 @@ usr/src/common/mapfiles/gen/amd64_cc_map.noexeglobs
 usr/src/common/mapfiles/gen/amd64_gcc_map.noexeglobs
 usr/src/common/mapfiles/gen/arm_cc_map.noexeglobs
 usr/src/common/mapfiles/gen/arm_gcc_map.noexeglobs
+usr/src/common/mapfiles/gen/aarch64_cc_map.noexeglobs
+usr/src/common/mapfiles/gen/aarch64_gcc_map.noexeglobs
 usr/src/common/mapfiles/gen/i386_cc_map.noexeglobs
 usr/src/common/mapfiles/gen/i386_gcc_map.noexeglobs
 usr/src/grub/grub-0.97/grub/grub
@@ -3380,6 +3383,7 @@ usr/src/lib/libc/amd64/lint.out
 usr/src/lib/libc/amd64/llib-lc.ln
 usr/src/lib/libc/extract-copyright
 usr/src/lib/libc/arm/assym.h
+usr/src/lib/libc/aarch64/assym.h
 usr/src/lib/libc/i386/assym.h
 usr/src/lib/libc/i386/crt/_rtbootld.s
 usr/src/lib/libc/i386/etc/caplib

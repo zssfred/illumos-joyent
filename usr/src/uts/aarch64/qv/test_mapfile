@@ -1,0 +1,49 @@
+$mapfile_version 2
+
+HDR_NOALLOC;
+
+LOAD_SEGMENT text {
+	#PADDR = 0x40010000;
+	#VADDR = 0x40010000;
+
+	VADDR = 0x40080000;
+	PADDR = 0x00080000;
+
+	ASSIGN_SECTION hello {
+		FILE_BASENAME = locore.o;
+		IS_NAME = .text;
+	};
+
+	# ASSIGN_SECTION {
+ #                IS_NAME = .text;
+ #        };
+ #        ASSIGN_SECTION {
+ #                IS_NAME = .rodata;
+ #        };
+ #        ASSIGN_SECTION {
+ #                IS_NAME = .data;
+ #        };
+ #        ASSIGN_SECTION {
+ #                IS_NAME = .got;
+ #        };
+ #        ASSIGN_SECTION {
+ #                IS_NAME = .got.plt;
+ #        };
+ #        ASSIGN_SECTION {
+ #                IS_NAME = .data.rel.local;
+ #        };
+ #        ASSIGN_SECTION {
+ #                IS_NAME = .bss;
+ #        };
+
+        IS_ORDER = hello;
+
+        #OS_ORDER = .hello .text .rodata .data .got .got.plt .data.rel.local .bss;
+};
+
+LOAD_SEGMENT data {
+	#PADDR = 0x40011000;
+	#VADDR = 0x40011000;
+	VADDR = 0x40090000;
+	PADDR = 0x00090000;
+};

@@ -274,11 +274,11 @@ INS.pyfile=	$(INS.file); $(TOUCH) -r $< $@
 
 #XXXAARCH64 this seems right
 MACH64_2=	$(MACH:arm=aarch64)
-MACH64_1=	$(MACX64_2:sparc=sparcv9)
+MACH64_1=	$(MACH64_2:sparc=sparcv9)
 MACH64=		$(MACH64_1:i386=amd64)
 
 MACH32_2=	$(MACH:arm=arm) #XXXAARCH64 this too
-MACH32_1=	$(MACH:sparc=sparcv7)
+MACH32_1=	$(MACH32_2:sparc=sparcv7)
 MACH32=		$(MACH32_1:i386=i86)
 
 sparc_BUILD64=
@@ -359,7 +359,7 @@ sparcv9_XARCH=	-m64
 i386_XARCH=
 amd64_XARCH=	-m64 -Ui386 -U__i386
 arm_XARCH=
-aarch64_XARCH=	-m64 #XXXAARCH64 this seems right
+aarch64_XARCH=	#-m64 #XXXAARCH64 this seems right
 
 # assembler '-xarch' flag.  Different from compiler '-xarch' flag.
 sparc_AS_XARCH=		-xarch=v8plus
@@ -722,7 +722,7 @@ MAPFILE.INT =		mapfile-intf
 #	LDLIBS64=-YP,$ROOT/lib/$MACH64:$ROOT/usr/lib/$MACH64
 #
 LDLIBS32 =	$(ENVLDLIBS1) $(ENVLDLIBS2) $(ENVLDLIBS3)
-LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib) -L/root/smartos-live/proto.strap/lib -L/opt/local/lib
+LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib) #-L/root/smartos-live/proto.strap/lib -L/opt/local/lib
 LDLIBS.cmd = 	$(LDLIBS32)
 LDLIBS.lib =	$(LDLIBS32)
 
@@ -735,8 +735,8 @@ LDLIBS64 +=     $(ADJUNCT_PROTO:%=-L%/usr/lib/$(MACH64) -L%/lib/$(MACH64))
 # Define compilation macros.
 #
 #COMPILE.C=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
-COMPILE.c=	$(CC) $(CFLAGS) $(CPPFLAGS) -I/root/smartos-live/proto.strap/usr/include -c
-COMPILE64.c=	$(CC) $(CFLAGS64) $(CPPFLAGS) -I/root/smartos-live/proto.strap/usr/include/64  -c
+COMPILE.c=	$(CC) -I/root/smartos-live/proto.strap/usr/include $(CFLAGS) $(CPPFLAGS) -c
+COMPILE64.c=	$(CC) $(CFLAGS64) $(CPPFLAGS)  -c
 COMPILE.cc=	$(CCC) $(CCFLAGS) $(CPPFLAGS) -c
 COMPILE64.cc=	$(CCC) $(CCFLAGS64) $(CPPFLAGS) -c
 COMPILE.s=	$(AS) $(ASFLAGS) $(AS_CPPFLAGS)
@@ -891,7 +891,7 @@ aarch64_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_gcc
 aarch64_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_g++
 aarch64_CPP=		/usr/ccs/lib/cpp
 aarch64_AS=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/aw.arm
-aarch64_LD=		/opt/armtc/usr/bin/ld
+aarch64_LD=		/opt/arm64tc/usr/bin/ld
 aarch64_LINT=		/bin/false
 aarch64_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.arm
 aarch64_CTFMERGE=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.arm

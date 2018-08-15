@@ -56,14 +56,22 @@ extern "C" {
 /*
  * These constants can be used to compute offsets into pointer arrays.
  */
-/* XXX arm64 */
+#ifdef __aarch64__
+#define	CLONGSHIFT	3
+#define	CPTRSHIFT	3
+#elif __arm
 #define	CPTRSHIFT	2
 #define	CLONGSHIFT	2
+#else
+#error "unkown arm assembly"
+#endif
 
 #define	CPTRSIZE	(1<<CPTRSHIFT)
 #define	CLONGSIZE	(1<<CLONGSHIFT)
 #define	CPTRMASK	(CPTRSIZE - 1)
 #define	CLONGMASK	(CLONGSIZE - 1)
+
+/* XXAARCH64 - entry align?  XMM? */
 
 
 /*

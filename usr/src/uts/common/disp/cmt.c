@@ -147,7 +147,7 @@ static char		*pg_cmt_policy_name(pg_t *);
 static void		pg_cmt_hier_sort(pg_cmt_t **, int);
 static pg_cmt_t		*pg_cmt_hier_rank(pg_cmt_t *, pg_cmt_t *);
 static int		pg_cmt_cpu_belongs(pg_t *, cpu_t *);
-static int		pg_cmt_hw(pghw_type_t);
+// static int		pg_cmt_hw(pghw_type_t);
 static cmt_lgrp_t	*pg_cmt_find_lgrp(lgrp_handle_t);
 static cmt_lgrp_t	*pg_cmt_lgrp_create(lgrp_handle_t);
 static void		cmt_ev_thread_swtch(pg_t *, cpu_t *, hrtime_t,

@@ -31,6 +31,14 @@ extern "C" {
 
 #define	REG_LABEL_PC	0
 #define	REG_LABEL_SP	1
+#if defined(__aarch64__)
+#define REG_LABEL_IP0	2
+#define REG_LABEL_IP1	3
+#define REG_LABEL_FP	4
+#define REG_LABEL_LR	5
+#define	REG_LABEL_MAX	6
+//XXX not sure what else to add
+#else
 #define	REG_LABEL_R4	2
 #define	REG_LABEL_R5	3
 #define	REG_LABEL_R6	4
@@ -40,6 +48,7 @@ extern "C" {
 #define	REG_LABEL_R10	8
 #define	REG_LABEL_R11	9
 #define	REG_LABEL_MAX	10
+#endif
 
 typedef	struct _label_t { long val[REG_LABEL_MAX]; } label_t;
 

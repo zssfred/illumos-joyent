@@ -33,6 +33,12 @@
 /*
  * Adopted from uts/intel/sys/machsig.h for ARM
  * XXX Most of this probably needs to be revisited.
+ *
+ * XXXAARCH64. there are two differences in this file between it and intel,
+ * 	FPE_FLTDEN 9 is defined in intel, and not here.
+ * 	(Sparc doesnt have this either)
+ *
+ * 	the other is the VM include in intel which we don't do in arm (yet?)
  */
 
 #ifndef	_SYS_MACHSIG_H

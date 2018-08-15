@@ -109,6 +109,10 @@ extern volatile int hres_lock;
  * While the definition of the Generic Interrupt Controller (GIC) on ARM allows
  * for more than 16 levels of interrupt priority, we know that we always have at
  * least 16 and thus we do not go longer than that.
+ *
+ *
+ * XXXAARCH64: not sure why this would change, as its pretty consistent
+ * 	across architectures already.
  */
 #define	PIL_MAX		15
 

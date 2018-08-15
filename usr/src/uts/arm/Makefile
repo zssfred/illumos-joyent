@@ -99,6 +99,6 @@ $(XMODS):	FRC
 
 install_h check:	FRC
 	@cd sys; pwd; $(MAKE) $(TARGET)
-	#@cd asm; pwd; $(MAKE) $(TARGET) # XXX: We should have this, and will right soon...
+	# @cd asm; pwd; $(MAKE) $(TARGET) # XXX: We should have this, and will right soon...
 
 include ../Makefile.targ

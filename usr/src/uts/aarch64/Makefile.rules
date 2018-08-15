@@ -1,0 +1,51 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2018 (c) Joyent, Inc.  All rights reserved.
+#
+
+
+KRTLD_INC_PATH = -I$(UTSBASE)/common/krtld -I$(UTSBASE)/aarch64/sys
+KRTLD_INC_PATH += -I$(UTSBASE)/aarch64/krtld
+
+KRTLD_CPPFLAGS_64 = -DELF_TARGET_AARCH64
+KRTLD_CPPFLAGS = $(KRTLD_CPPFLAGS_$(CLASS)) -D_KRTLD
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/common/krtld/%.c
+	$(COMPILE64.c) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
+	$(CTFCONVERT_O)
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/krtld/%.c
+	$(COMPILE64.c) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
+	$(CTFCONVERT_O)
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/krtld/%.s
+	$(COMPILE64.s) $(KRTLD_INC_PATH) $(KRTLD_CPPFLAGS) -o $@ $<
+	$(CTFCONVERT_O)
+
+#Not sure this is needed
+#$(OBJS_DIR)/kobj.o	:= CPPFLAGS += -D_BOOT
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/boot/%.c
+	$(COMPILE64.c) -o $@ $<
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/misc/%.c
+	$(COMPILE64.c) -o $@ $<
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/ml/%.c
+	$(COMPILE64.c) -o $@ $<
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/ml/%.s
+	$(COMPILE64.s) -o $@ $<
+
+$(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/os/%.c
+	$(COMPILE64.c) -o $@ $<

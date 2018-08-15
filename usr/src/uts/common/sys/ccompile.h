@@ -59,18 +59,32 @@ extern "C" {
 /*
  * Handle the kernel printf routines that can take '%b' too
  */
+
+
 #if __GNUC_VERSION < 30402
 /*
  * XX64 at least this doesn't work correctly yet with 3.4.1 anyway!
  */
 #define	__sun_attr___KPRINTFLIKE__	__sun_attr___PRINTFLIKE__
 #define	__sun_attr___KVPRINTFLIKE__	__sun_attr___VPRINTFLIKE__
+#elif __GNUC_VERSION >= 40805
+/* XXX: i think this is the right thing to do for our arm64 gcc version
+ * based on https://gcc.gnu.org/onlinedocs/gcc-4.8.5/gcc/Function-Attributes.html
+ * which i think is because gcc wasnt specified for solaris
+ */
+#define	__sun_attr___KPRINTFLIKE__	__sun_attr___PRINTFLIKE__
+#define	__sun_attr___KVPRINTFLIKE__	__sun_attr___VPRINTFLIKE__
 #else
-#define	__sun_attr___KPRINTFLIKE__(__n)	\
+#define	__sun_attr___KPRINTFLIKE__(__n) \
 		__attribute__((__format__(cmn_err, __n, (__n)+1)))
 #define	__sun_attr___KVPRINTFLIKE__(__n) \
 		__attribute__((__format__(cmn_err, __n, 0)))
 #endif
+
+// #define	__sun_attr___KPRINTFLIKE__	__sun_attr___PRINTFLIKE__
+// #define	__sun_attr___KVPRINTFLIKE__	__sun_attr___VPRINTFLIKE__
+
+
 
 /*
  * This one's pretty obvious -- the function never returns

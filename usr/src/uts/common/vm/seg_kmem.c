@@ -157,6 +157,7 @@ static	segkmem_lpcb_t segkmem_lpcb;
  * we allow for large page heap.
  */
 size_t  segkmem_kmemlp_max;
+
 static  uint_t  segkmem_kmemlp_pcnt;
 
 /*
@@ -1094,6 +1095,7 @@ kmem_freepages(void *addr, pgcnt_t npages)
 	kmem_free(addr, ptob(npages));
 }
 
+
 /*
  * segkmem_page_create_large() allocates a large page to be used for the kmem
  * caches. If kpr is enabled we ask for a relocatable page unless requested
@@ -1240,7 +1242,6 @@ segkmem_free_one_lp(caddr_t addr, size_t size)
 
 	/* page_unresv() is done by the caller */
 }
-
 /*
  * This function is called to import new spans into the vmem arenas like
  * kmem_default_arena and kmem_oversize_arena. It first tries to import

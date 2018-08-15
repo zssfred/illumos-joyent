@@ -1,0 +1,49 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2018 (c) Joyent, Inc.  All rights reserved.
+#
+
+KRTLD_OBJS += \
+	bootrd.o	\
+ 	ufsops.o	\
+ 	hsfs.o		\
+ 	doreloc.o	\
+ 	kobj_boot.o	\
+ 	kobj_convrelstr.o \
+ 	kobj_crt.o	\
+ 	kobj_isa.o	\
+ 	kobj_reloc.o
+
+BOOT_OBJS += \
+	fdt.o
+
+MISC_OBJS += \
+	aarch64_subr.o \
+	copy.o
+
+OS_OBJS += \
+	fakebop.o \
+	flush.o
+
+ML_OBJS += \
+	byteorder.o \
+	cache.o
+
+CORE_OBJS = \
+	$(BOOT_OBJS) \
+	$(MISC_OBJS) \
+	$(ML_OBJS) \
+	$(OS_OBJS) \
+	string.o
+
+INC_PATH += -I$(UTSBASE)/aarch64 -I$(SRC)/common

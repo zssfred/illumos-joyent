@@ -62,7 +62,7 @@
 #include <sys/sunddi.h>
 #if defined(__sparc)
 #include <sys/machsystm.h>
-#elif defined(__x86) || defined(__arm__)
+#elif defined(__x86) || defined(__arm__) || defined(__aarch64__)
 #include <sys/archsystm.h>
 #else
 #error "port me"
@@ -83,8 +83,8 @@
 #define	IDLE_STATE_NORMAL	0
 #endif
 #define	CPU_IDLE_STATE_NORMAL	IDLE_STATE_NORMAL
-#elif defined(__arm__)
-/* XXXARM Uh, really? */
+#elif defined(__arm__) || defined(__aarch64__)
+/* XXXARM Uh, really? ...same XXXAARCH64 */
 #define	CPU_IDLE_STATE_NORMAL	0
 #else
 #error "port me"

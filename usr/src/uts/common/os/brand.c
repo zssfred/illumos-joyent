@@ -47,7 +47,7 @@ struct brand_mach_ops native_mach_ops  = {
 struct brand_mach_ops native_mach_ops  = {
 		NULL, NULL, NULL, NULL
 };
-#elif defined(__arm__)
+#elif defined(__arm__) || defined(__aarch64__)
 struct brand_mach_ops native_mach_ops  = {
 		NULL
 };

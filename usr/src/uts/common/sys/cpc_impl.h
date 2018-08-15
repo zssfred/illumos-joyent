@@ -211,7 +211,9 @@ extern hrtime_t tsc_read(void);
 extern hrtime_t arm_gettick(void);
 #define	KCPC_GET_TICK arm_gettick
 #else
-#error "port me"
+//extern hrtime_t arm_gettick(void);
+//#define	KCPC_GET_TICK arm_gettick
+//#error "port me"
 #endif /* __sparc */
 
 #define	PCBE_NAMELEN 30 /* Enough room for "pcbe." plus full PCBE name spec */

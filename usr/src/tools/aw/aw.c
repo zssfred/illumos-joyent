@@ -666,6 +666,7 @@ main(int argc, char *argv[])
 			 * architectures.
 			 */
 			if (strcmp(arg, "-xarch=amd64") == 0 ||
+			    strcmp(arg, "-xarch=aarch64") == 0 ||
 			    strcmp(arg, "-xarch=generic64") == 0) {
 				as64++;
 				fixae_arg(as->ael_head, as64_pgm);
@@ -759,7 +760,6 @@ main(int argc, char *argv[])
 #if defined(AW_TARGET_arm)
 	if (as64) {
 		// return (error("no 64-bit aw target for arm"));
-		newae(as, "--64");
 		newae(as, "-march=armv8-a");
 	} else {
 		newae(as, "-march=armv7-a");

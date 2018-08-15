@@ -246,7 +246,7 @@ static int	lpl_rset_contains(lpl_t *, lpl_t *);
 static void	lpl_cpu_adjcnt(lpl_act_t, struct cpu *);
 static void	lpl_child_update(lpl_t *, struct cpupart *);
 static int	lpl_pick(lpl_t *, lpl_t *);
-static void	lpl_verify_wrapper(struct cpupart *);
+// static void	lpl_verify_wrapper(struct cpupart *);
 
 /*
  * defines for lpl topology verifier return codes
