@@ -95,9 +95,9 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 	[R_AARCH64_ADD_ABS_LO12_NC] =		{ 0xfff, FLG_RE_NOTREL, 8, 0, 10 },
 	[R_AARCH64_LDST8_ABS_LO12_NC] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_LDST16_ABS_LO12_NC] =	{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
-	[R_AARCH64_LDST32_ABS_LO12_NC] =	{ 0, FLG_RE_NOTSUP, 8, 0, 0 },
-	[R_AARCH64_LDST64_ABS_LO12_NC] =	{ 0, FLG_RE_NOTSUP, 8, 0, 0 },
-	[R_AARCH64_LDST128_ABS_LO12_NC] =	{ 0, FLG_RE_NOTSUP, 8, 0, 0 },
+	[R_AARCH64_LDST32_ABS_LO12_NC] =	{ 0xffc, FLG_RE_NOTREL, 8, 2, 10 },
+	[R_AARCH64_LDST64_ABS_LO12_NC] =	{ 0xff8, FLG_RE_NOTREL, 8, 3, 10 },
+	[R_AARCH64_LDST128_ABS_LO12_NC] =	{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 
 	/* Table 4-10: Relocations for control-flow instructions */
 	[R_AARCH64_TSTBR14] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
@@ -233,6 +233,8 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
  * R_AARCH64_CALL26		283	word64	S + A - P		[27:2]
  * R_AARCH64_LD64_GOTPAGE_LO15	313	word64	G(GDAT(S+A)) -Page(GOT)	[14:3]
  *
+ * R_AARCH64_LDST32_ABS_LO12_NC 285	word64	S + A			[11:3]
+ *
  * These relocations are from tables 4-5 through 4-20 in ELF for the ARM 64-bit
  * Architecture (AARCH64), ARM IHI 0056C_beta, current through ABI release 1.0,
  * issued 6th November 2013.
@@ -334,8 +336,8 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 
 	uvalue = *value;
 
-	printf("Type: %d\n", rtype);
-	printf("Base: 0x%x, Val: 0x%x\n", base, uvalue);
+	// printf("Type: %d\n", rtype);
+	// printf("Base: 0x%x, Val: 0x%x\n", base, uvalue);
 
 	if (rep->re_mask != 0) {
 		uvalue &= rep->re_mask;
@@ -360,7 +362,7 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 
 	base = base + uvalue;
 
-	printf("Result: 0x%x, Val: 0x%x\n", base, uvalue);
+	// printf("Result: 0x%x, Val: 0x%x\n", base, uvalue);
 
 	switch (rep->re_fsize) {
 	case 8:

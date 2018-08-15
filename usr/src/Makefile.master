@@ -70,15 +70,15 @@ PATCH_BUILD=				$(POUND_SIGN)
 
 # SPARC_BLD is '#' for an Intel build.
 # INTEL_BLD is '#' for a Sparc build.
-SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
-SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
-SPARC_BLD=      $(SPARC_BLD_1:sparc=)
-INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
+# SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
+# SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
+SPARC_BLD=   	$(POUND_SIGN) # $(SPARC_BLD_1:sparc=)
+# INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 INTEL_BLD_1=    $(MACH:sparc=$(POUND_SIGN))
 INTEL_BLD=      $(INTEL_BLD_1:i386=)
-ARM_BLD_2=	$(MACH:i386=$(POUND_SIGN))
-ARM_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
-ARM_BLD=	$(ARM_BLD_1:arm=)
+# ARM_BLD_2=	$(MACH:i386=$(POUND_SIGN))
+# ARM_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
+ARM_BLD=	$(POUND_SIGN) #$(ARM_BLD_1:arm=)
 
 # CROSS_BLD is "#" if NATIVE_MACH and MACH are the same, and the empty string
 # otherwise.  NATIVE_BLD is the opposite
@@ -274,11 +274,11 @@ INS.pyfile=	$(INS.file); $(TOUCH) -r $< $@
 
 #XXXAARCH64 this seems right
 MACH64_2=	$(MACH:arm=aarch64)
-MACH64_1=	$(MACX64_2:sparc=sparcv9)
+MACH64_1=	$(MACH64_2:sparc=sparcv9)
 MACH64=		$(MACH64_1:i386=amd64)
 
 MACH32_2=	$(MACH:arm=arm) #XXXAARCH64 this too
-MACH32_1=	$(MACH:sparc=sparcv7)
+MACH32_1=	$(MACH32_2:sparc=sparcv7)
 MACH32=		$(MACH32_1:i386=i86)
 
 sparc_BUILD64=
