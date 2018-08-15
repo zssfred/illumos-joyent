@@ -34,11 +34,11 @@
 static Word
 ld_init_rel(Rel_desc *reld, Word *typedata, void *reloc)
 {
-	Rel	*rel = (Rel *)reloc;
+	Rela	*rel = (Rela *)reloc;
 
 	reld->rel_rtype = (Word)ELF_R_TYPE(rel->r_info, M_MACH);
 	reld->rel_roffset = rel->r_offset;
-	reld->rel_raddend = 0;
+	reld->rel_raddend = rel->r_addend;
 	*typedata = (Word)ELF_R_TYPE_DATA(rel->r_info);
 
 	return ((Word)ELF_R_SYM(rel->r_info));
@@ -433,8 +433,41 @@ ld_do_activerelocs(Ofl_desc *ofl)
 		Gotref		gref;
 		Os_desc		*osp;
 
+		// printf("\n\nSymobl Info:\n");
+		// printf("Section: %s, ", arsp->rel_isdesc->is_osdesc->os_name);
+		// printf("Symbol: 0x%x, ", arsp->rel_sym);
+		// printf("Offset: 0x%x, ", arsp->rel_roffset);
+		// printf("Addend: 0x%x, ", arsp->rel_raddend);
+		// printf("Flags: 0x%x, ", arsp->rel_flags);
+		// printf("Type: %d\n", arsp->rel_rtype);
+		// printf("Aux: 0x%x\n", arsp->rel_aux);
 
-		/*
+		// Sym_desc *sym = arsp->rel_sym;
+
+		// printf("GOTndx: 0x%x, ", sym->sd_GOTndxs);
+		// printf("Sym Table Entry: 0x%x, ", sym->sd_sym);
+		// printf("Orig. Sym Entry: 0x%x, ", sym->sd_osym);
+		// printf("Move Info: 0x%x, ", sym->sd_move);
+		// printf("Name: %s, ", sym->sd_name);
+		// printf("File: 0x%x, ", sym->sd_file);
+		// printf("Input Sec: 0x%x, ", sym->sd_isc);
+		// printf("Aux: 0x%x, ", sym->sd_aux);
+		// printf("Sym Ndx: 0x%x, ", sym->sd_symndx);
+		// printf("Shndx: 0x%x, ", sym->sd_shndx);
+		// printf("Flags: 0x%x, ", sym->sd_flags);
+		// printf("Ref: 0x%x\n", sym->sd_ref);
+
+		// Os_desc	*ra_osdesc = RELAUX_GET_OSDESC(arsp);
+		// Sym_desc *ra_usym = RELAUX_GET_USYM(arsp);
+		// Mv_reloc *ra_mov = RELAUX_GET_MOVE(arsp);
+		// Word ra_typedata = RELAUX_GET_TYPEDATA(arsp);
+
+		// printf("Osdesc: 0x%x, ", ra_osdesc);
+		// printf("Usym: 0x%x, ", ra_usym);
+		// printf("Mov: 0x%x, ", ra_mov);
+		// printf("Typedata: 0x%x\n", ra_typedata);
+
+ 		/*
 		 * If the section this relocation is against has been discarded
 		 * (-zignore), then discard (skip) the relocation itself.
 		 */
@@ -499,6 +532,7 @@ ld_do_activerelocs(Ofl_desc *ofl)
 				 */
 				value = sym->sd_sym->st_value;
 				moved = 1;
+
 				/*
 				 * The original raddend covers the displacement
 				 * from the section start to the desired

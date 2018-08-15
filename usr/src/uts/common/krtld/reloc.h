@@ -185,13 +185,13 @@ extern	const Rel_entry	reloc_table[];
  * conditionalize any code not used by all three versions.
  */
 #if defined(_KERNEL)
-extern	int	do_reloc_krtld(uchar_t, uchar_t *, Xword *, const char *,
+extern	int	do_reloc_krtld(Word, uchar_t *, Xword *, const char *,
 		    const char *);
 #elif defined(DO_RELOC_LIBLD)
 extern	int	do_reloc_ld(Rel_desc *, uchar_t *, Xword *,
 		    rel_desc_sname_func_t, const char *, int, void *);
 #else
-extern	int	do_reloc_rtld(uchar_t, uchar_t *, Xword *, const char *,
+extern	int	do_reloc_rtld(Word, uchar_t *, Xword *, const char *,
 		    const char *, void *);
 #endif
 
