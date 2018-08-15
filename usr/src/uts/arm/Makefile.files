@@ -39,10 +39,11 @@
 # 	kobj_isa.o	\
 # 	kobj_reloc.o
 
-# CORE_OBJS += \
-# 	arm_subr.o \
-# 	lock_prim.o \
-# 	decompress.o
+CORE_OBJS += \
+	decompress.o
+	# arm_subr.o \
+	# lock_prim.o \
+	# decompress.o
 
 # #
 # # These are stubs that we use for the moment to help deal with

@@ -162,7 +162,14 @@ extern char stubs_end[];
  *	D_LOADING	- display information about each module as it
  *			  is loaded.
  */
+#ifdef __aarch64__
+int kobj_debug = D_DEBUG | D_LOADING | D_SYMBOLS | D_RELOCATIONS;
+#else
 int kobj_debug = 0;
+#endif
+// int kobj_debug = 0;
+
+
 
 #define	KOBJ_MARK(s)	if (kobj_debug & D_DEBUG)	\
 	(_kobj_printf(ops, "%d", __LINE__), _kobj_printf(ops, ": %s\n", s))
@@ -1101,6 +1108,8 @@ getmodpath(const char *filename)
 {
 	char *path = kobj_zalloc(MAXPATHLEN, KM_WAIT);
 
+	_kobj_printf(NULL, "Path is: 0x%llx\n", (uintptr_t) path);
+
 	/*
 	 * Platform code gets first crack, then add
 	 * the default components
@@ -1108,6 +1117,7 @@ getmodpath(const char *filename)
 	mach_modpath(path, filename);
 	if (*path != '\0')
 		(void) strcat(path, " ");
+
 	return (strcat(path, MOD_DEFPATH));
 }
 
@@ -4048,10 +4058,12 @@ kobj_zalloc(size_t size, int flag)
 {
 	void *v;
 
+
 	if ((v = kobj_alloc(size, flag)) != 0) {
 		bzero(v, size);
 	}
 
+	_kobj_printf(ops, "Zalloced: 0x%llx\n", (uintptr_t) v);
 	return (v);
 }
 
@@ -4149,6 +4161,7 @@ kobj_segbrk(caddr_t *spp, size_t size, size_t align, caddr_t limit)
 		uintptr_t npva;
 
 		alloc_size = P2ROUNDUP(size - (pva - va), alloc_pgsz);
+
 		/*
 		 * Check for overlapping segments.
 		 */
@@ -4159,6 +4172,8 @@ kobj_segbrk(caddr_t *spp, size_t size, size_t align, caddr_t limit)
 		npva = (uintptr_t)BOP_ALLOC(ops, (caddr_t)pva,
 		    alloc_size, alloc_align);
 
+		_kobj_printf(ops, " Allocated at 0x%llx\n", npva);
+
 		if (npva == NULL) {
 			_kobj_printf(ops, "BOP_ALLOC failed, 0x%lx bytes",
 			    alloc_size);
@@ -4168,6 +4183,8 @@ kobj_segbrk(caddr_t *spp, size_t size, size_t align, caddr_t limit)
 		}
 	}
 	*spp = (caddr_t)(va + size);
+
+	_kobj_printf(ops, "VA is: 0x%llx. size: 0x%llx, spp: 0x%llx\n", va, size, spp);
 
 	return ((caddr_t)va);
 }

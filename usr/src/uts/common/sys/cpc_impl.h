@@ -207,13 +207,11 @@ extern uint64_t ultra_gettick(void);
 #elif defined(__i386) || defined(__amd64) /* __x86 */
 extern hrtime_t tsc_read(void);
 #define	KCPC_GET_TICK tsc_read
-#elif __arm__
+#elif  defined(__arm__) || defined(__aarch64__)
 extern hrtime_t arm_gettick(void);
 #define	KCPC_GET_TICK arm_gettick
 #else
-//extern hrtime_t arm_gettick(void);
-//#define	KCPC_GET_TICK arm_gettick
-//#error "port me"
+#error "port me"
 #endif /* __sparc */
 
 #define	PCBE_NAMELEN 30 /* Enough room for "pcbe." plus full PCBE name spec */

@@ -15,14 +15,21 @@
 
 UTSBASE = ../..
 
-UNIX = unix
+UNIX		= unix
+UNIX_BIN	= $(OBJS_DIR)/$(UNIX)
+GENUNIX		= genunix
+GENUNIX_DIR	= ../../arm/$(GENUNIX)
+#LIBOPTS	= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
+LIBOPTS		= -L $(OBJS_DIR) -l $(GENUNIX)
+LIBGENUNIX	= $(OBJS_DIR)/libgenunix.so
 
 #
 # Include common rules
 #
-include $(SRC)/Makefile.master
-include $(UTSBASE)/aarch64/qv/Makefile.files
-include $(UTSBASE)/aarch64/Makefile.aarch64
+include $(UTSBASE)/aarch64/qv/Makefile.qv
+
+ALL_TARGET = $(UNIX_BIN)
+INSTALL_TARGET = $(UNIX_BIN)
 
 OBJECTS	= \
 	$(QV_OBJS:%=$(OBJS_DIR)/%) \
@@ -32,7 +39,8 @@ OBJECTS	= \
 
 CLEANFILES += \
 	$(OBJECTS) \
-	$(UNIX)
+	$(UNIX) \
+	$(LIBGENUNIX)
 
 CERRWARN	+= -_gcc=-Wno-parentheses
 CERRWARN	+= -_gcc=-Wno-uninitialized
@@ -41,15 +49,14 @@ CERRWARN	+= -_gcc=-Wno-unused-function
 CERRWARN	+= -_gcc=-Wno-unused-variable
 CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 
-#
-# XXX We have no CTF support, so override CTFCONVERT_O for now.
-#
-CTFCONVERT_O = /bin/true
-CTFMERGE = /bin/true
+#XXX for some reason CTF_FLAGS arent getting set
+# ASFLAGS += $(CTF_FLAGS)
+CFLAGS += $(CTF_FLAGS)
+CFLAGS64 += $(CTF_FLAGS)
 
 OBJCOPY=$(GNU_ROOT)/bin/objcopy
 
-all: def $(UNIX) $(UNIX).bin
+all: $(ALL_DEPS)
 
 def: $(DEF_DEPS)
 
@@ -59,11 +66,21 @@ clobber: $(CLOBBER_DEPS)
 
 install_h:
 
-$(UNIX): $(OBJECTS)
-	$(LD) -dn -e _start -o $@ $(OBJECTS) -M test_mapfile
+$(LIBGENUNIX): ../misc/fake_stubs.c
+	$(COMPILE64.c) -o $(OBJS_DIR)/fake_stubs.o ../misc/fake_stubs.c
+	$(LD) -r $(LDFLAGS) -o $(OBJS_DIR)/genunix $(OBJS_DIR)/fake_stubs.o
+	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
 
-%.bin: %
-	$(OBJCOPY) $< -O binary $@
+$(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
+	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
+	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
+	$(POST_PROCESS)
+	pfexec ./tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
+	mv boot_archive $(OBJS_DIR)/
+
+# %.bin: %
+# 	$(OBJCOPY) $< -O binary $@
+# 	pfexec ./tools/mkplatform.sh $@ debug64/genunix
 
 #
 # Include common targets

@@ -56,12 +56,6 @@ cons_polledio(void)
 }
 
 void
-bzero(void)
-{
-	bop_panic("bzero");
-}
-
-void
 kcred(void)
 {
 	bop_panic("kcred");
@@ -206,12 +200,6 @@ default_path(void)
 }
 
 void
-mach_modpath(void)
-{
-	bop_panic("mach_modpath");
-}
-
-void
 kern_bootfile(void)
 {
 	bop_panic("kern_bootfile");
@@ -245,12 +233,6 @@ void
 fop_close(void)
 {
 	bop_panic("fop_close");
-}
-
-void
-cf_check_compressed(void)
-{
-	bop_panic("cf_check_compressed");
 }
 
 void
@@ -314,12 +296,6 @@ hat_unload(void)
 }
 
 void
-memcpy(void)
-{
-	bop_panic("memcpy");
-}
-
-void
 kmem_zalloc(void)
 {
 	bop_panic("kmem_zalloc");
@@ -377,18 +353,6 @@ void
 stubs_base(void)
 {
 	bop_panic("stubs_base");
-}
-
-void
-cf_read(void)
-{
-	bop_panic("cf_read");
-}
-
-void
-cf_seek(void)
-{
-	bop_panic("cf_seek");
 }
 
 void
@@ -458,12 +422,6 @@ SHA1Init(void)
 }
 
 void
-cf_close(void)
-{
-	bop_panic("cf_close");
-}
-
-void
 membar_producer(void)
 {
 	bop_panic("membar_producer");
@@ -485,12 +443,6 @@ void
 segkmem_alloc(void)
 {
 	bop_panic("segkmem_alloc");
-}
-
-void
-boot_compinfo(void)
-{
-	bop_panic("boot_compinfo");
 }
 
 void
@@ -587,4 +539,27 @@ void
 kobj_vmem_init(void)
 {
 	bop_panic("kobj_vmem_init");
+}
+
+void
+assfail(void)
+{
+	bop_panic("assfail");
+}
+
+void
+mutex_owned(void)
+{
+	bop_panic("mutex_owned");
+}
+
+/*
+* prom_printf and co. are supposed to come from genunix. Further rather than
+* reinvent the wheel here, we should move uts/intel/promif to psm/non1275/ and
+* make a common set of code here rather than just reinvent everything.
+*/
+void
+prom_printf(void)
+{
+	bop_panic("prom_prinf");
 }

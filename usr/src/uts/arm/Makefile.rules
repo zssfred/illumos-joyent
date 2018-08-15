@@ -13,6 +13,9 @@
 # Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
+$(OBJS_DIR)/%.o:	$(UTSBASE)/arm/promif/%.c
+	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:	$(SRC)/common/fs/%.c
 	$(COMPILE64.c) -o $@ $<

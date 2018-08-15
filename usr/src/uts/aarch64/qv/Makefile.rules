@@ -15,8 +15,10 @@
 
 $(OBJS_DIR)/%.o:	$(UTSBASE)/$(PLATFORM)/qv/%.c
 	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:	$(UTSBASE)/$(PLATFORM)/qv/%.s
 	$(COMPILE64.s) -o $@ $<
+	$(CTFCONVERT_O)
 
 INC_PATH += -I$(UTSBASE)/$(PLATFORM) -I$(UTSBASE)/$(PLATFORM)/qv/

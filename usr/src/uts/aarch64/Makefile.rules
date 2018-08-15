@@ -37,15 +37,24 @@ $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/krtld/%.s
 
 $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/boot/%.c
 	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/misc/%.c
 	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/ml/%.c
 	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/ml/%.s
 	$(COMPILE64.s) -o $@ $<
+	$(CTFCONVERT_O)
 
 $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/os/%.c
 	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)
+
+# %.o: ../../common/util/%.c
+# 	$(COMPILE64.c) -o $@ -c $<
+# 	$(CTFCONVERT_O)

@@ -29,16 +29,17 @@ BOOT_OBJS += \
 
 MISC_OBJS += \
 	aarch64_subr.o \
-	copy.o \
-	fake_stubs.o
+	copy.o
 
 OS_OBJS += \
 	fakebop.o \
-	flush.o
+	flush.o \
+	mlsetup.o
 
 ML_OBJS += \
 	byteorder.o \
-	cache.o
+	cache.o \
+	glocore.o
 
 CORE_OBJS = \
 	$(BOOT_OBJS) \
@@ -46,5 +47,13 @@ CORE_OBJS = \
 	$(ML_OBJS) \
 	$(OS_OBJS) \
 	string.o
+
+#
+ # XXX this is also specified in uts/arm/Makefile.files, but note the = sign for
+ # CORE_OBJS above. Right now we're not quite ready to build everything from
+ # uts/common yet, so we instead clobber it with our stuff.
+ #
+CORE_OBJS += \
+	decompress.o
 
 INC_PATH += -I$(UTSBASE)/aarch64 -I$(SRC)/common

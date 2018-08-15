@@ -58,8 +58,10 @@ HDRS =	\
 	machtypes.h		\
 	obpdefs.h		\
 	pcb.h			\
+	procfs_isa.h 		\
 	promif.h		\
 	regset.h		\
+	spl.h 			\
 	stack.h			\
 	stat_impl.h		\
 	ucontext.h		\

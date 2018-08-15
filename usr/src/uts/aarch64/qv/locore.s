@@ -30,10 +30,6 @@
  *  	      (1024 MB), so we set the stack top to 0x80000000
  *
  */
-.data
-.comm	t0stack, DEFAULTSTKSZ, 32
-.comm	t0, 4094, 32
-
 ENTRY(_start)
 /* Set SP to top of stack */
 ldr x9, =t0stack
