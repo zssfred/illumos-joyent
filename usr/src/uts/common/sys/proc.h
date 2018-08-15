@@ -134,7 +134,7 @@ struct corectl_content;
  * out.  Other per-process data (user.h) is also inside the proc structure.
  * Lightweight-process data (lwp.h) and the kernel stack may be swapped out.
  */
-typedef struct	proc {
+typedef struct proc {
 	/*
 	 * Fields requiring no explicit locking
 	 */

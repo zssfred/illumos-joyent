@@ -140,7 +140,7 @@ typedef struct fpu {
 	 * these as the low and high halves of the arrays... this is prob
 	 * not how we want to do it
 	 */
-	uint64_t f_fpregs_lo[32];		
+	uint64_t f_fpregs_lo[32];
 	uint64_t f_fpregs_hi[32];
 
 	uint32_t f_fpcr; /* FP Control Register */

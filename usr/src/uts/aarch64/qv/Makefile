@@ -50,7 +50,6 @@ CERRWARN	+= -_gcc=-Wno-unused-variable
 CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 
 #XXX for some reason CTF_FLAGS arent getting set
-# ASFLAGS += $(CTF_FLAGS)
 CFLAGS += $(CTF_FLAGS)
 CFLAGS64 += $(CTF_FLAGS)
 
@@ -75,7 +74,8 @@ $(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
 	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
 	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
 	$(POST_PROCESS)
-	pfexec ./tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
+	$(OBJCOPY) $(UNIX_BIN) -O binary $(UNIX_BIN).bin
+	pfexec ./tools/mkplatform.sh $(UNIX_BIN).bin $(OBJS_DIR)/genunix
 	mv boot_archive $(OBJS_DIR)/
 
 # %.bin: %

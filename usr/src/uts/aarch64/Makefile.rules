@@ -13,8 +13,8 @@
 # Copyright 2018 (c) Joyent, Inc.  All rights reserved.
 #
 
-
-KRTLD_INC_PATH = -I$(UTSBASE)/common/krtld -I$(UTSBASE)/aarch64/sys
+	###not sure
+KRTLD_INC_PATH = -I$(UTSBASE)/common/krtld -I$(UTSBASE)/arm/sys -I$(UTSBASE)/aarch64/sys
 KRTLD_INC_PATH += -I$(UTSBASE)/aarch64/krtld
 
 KRTLD_CPPFLAGS_64 = -DELF_TARGET_AARCH64

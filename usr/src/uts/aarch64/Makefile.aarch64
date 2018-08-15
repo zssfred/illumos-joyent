@@ -27,7 +27,14 @@ include $(UTSTREE)/arm/Makefile.files
 include $(UTSTREE)/aarch64/Makefile.files
 include $(UTSBASE)/Makefile.uts
 
+OFFSETS_SRC = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
+PLATFORM_OFFSETS_32 =
+PLATFORM_OFFSETS_64 = $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
+PLATFORM_OFFSETS_SRC = $(PLATFORM_OFFSETS_$(CLASS))
+DSF_DIR = $(UTSBASE)/$(PLATFORM)/genassym
+
 MACHINE_DEFS = -D$(PLATFORM) -D_MACHDEP
+AS_INC_PATH += -I$(DSF_DIR)/$(OBJS_DIR)
 
 DEF_BUILDS = $(DEF_BUILDS64)
 ALL_BUILDS = $(ALL_BUILDS64)
