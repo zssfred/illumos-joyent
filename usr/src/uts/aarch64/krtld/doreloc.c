@@ -67,7 +67,7 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 
 	/* Table 4-6 - Static Data Relocations */
 	[R_AARCH64_ABS64] =			{ 0, FLG_RE_NOTREL, 8, 0, 0 },
-	[R_AARCH64_ABS32] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
+	[R_AARCH64_ABS32] =			{ 0, FLG_RE_NOTREL, 8, 0, 0 },
 	[R_AARCH64_ABS16] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL64] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL32] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
