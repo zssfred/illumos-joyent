@@ -67,7 +67,7 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 
 	/* Table 4-6 - Static Data Relocations */
 	[R_AARCH64_ABS64] =			{ 0, FLG_RE_NOTREL, 8, 0, 0 },
-	[R_AARCH64_ABS32] =			{ 0, FLG_RE_NOTREL, 8, 0, 0 },
+	[R_AARCH64_ABS32] =			{ 0, FLG_RE_NOTREL, 4, 0, 0 }, //XXX 4 seems to be right for this so need to go back to all of thse + doubble check size...
 	[R_AARCH64_ABS16] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL64] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL32] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
@@ -322,6 +322,19 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 #else
 		if (bswap) {
 			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_BSWAP_XWORD(b_bytes, off);
+		} else {
+			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_XWORD(b_bytes, off);
+		}
+#endif
+		break;
+	case 4:
+#if defined(DORELOC_NATIVE)
+		base = *(Word *)off;
+#else
+		if (bswap) {
+			uchar_t *b_bytes = (uchar_t *)&base;
 			UL_ASSIGN_BSWAP_WORD(b_bytes, off);
 		} else {
 			uchar_t *b_bytes = (uchar_t *)&base;
@@ -371,12 +384,25 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 #else
 		if (bswap) {
 			uchar_t *b_bytes = (uchar_t *)&base;
-			UL_ASSIGN_BSWAP_WORD(off, b_bytes);
+			UL_ASSIGN_BSWAP_XWORD(off, b_bytes);
 		} else {
 			uchar_t *b_bytes = (uchar_t *)&base;
-			UL_ASSIGN_WORD(off, b_bytes);
+			UL_ASSIGN_XWORD(off, b_bytes);
 		}
 #endif
+case 4:
+#if defined(DORELOC_NATIVE)
+		*(Word *)off = (Word)(base);
+#else
+		if (bswap) {
+			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_BSWAP_WORD(b_bytes, off);
+		} else {
+			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_WORD(b_bytes, off);
+		}
+#endif
+		break;
 		break;
 	}
 
