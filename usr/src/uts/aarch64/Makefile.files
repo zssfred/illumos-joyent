@@ -29,7 +29,8 @@ BOOT_OBJS += \
 
 MISC_OBJS += \
 	aarch64_subr.o \
-	copy.o
+	copy.o \
+	fake_stubs.o
 
 OS_OBJS += \
 	fakebop.o \

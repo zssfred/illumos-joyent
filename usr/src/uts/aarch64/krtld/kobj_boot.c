@@ -27,7 +27,7 @@
 /*
  * Kernel's current entry point.
  */
-extern void _fakebbop_locore_start();
+extern void _fakebop_locore_start();
 
 /*
  * This is the bridge that gets us between the initial kernel and into
@@ -46,7 +46,7 @@ _kobj_boot(struct boot_syscalls *bsysp, void *dvec, struct bootops *bops,
 	for (i = 0; i < BA_NUM; i++)
 		auxv[i].ba_val = NULL;
 
-	auxv[BA_ENTRY].ba_ptr = _fakebbop_locore_start;
+	auxv[BA_ENTRY].ba_ptr = _fakebop_locore_start;
 	auxv[BA_IFLUSH].ba_val = 1;
 
 	// auxv[BA_PAGESZ].ba_val = MMU_PAGESIZE;
