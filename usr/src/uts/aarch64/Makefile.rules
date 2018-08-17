@@ -54,7 +54,3 @@ $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/ml/%.s
 $(OBJS_DIR)/%.o:	$(UTSBASE)/aarch64/os/%.c
 	$(COMPILE64.c) -o $@ $<
 	$(CTFCONVERT_O)
-
-# %.o: ../../common/util/%.c
-# 	$(COMPILE64.c) -o $@ -c $<
-# 	$(CTFCONVERT_O)

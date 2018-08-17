@@ -85,7 +85,7 @@ extern "C" {
 	/* XXX: i thnk the following are right */
 #define	REG_ARM_SP	31
 #define	REG_ARM_PC	32
-#define	REG_ARM_CPSR	33
+// #define	REG_ARM_CPSR	33
 #else
 #define	REG_ARM_CPSR	16
 #endif /* __aarch64__ */
@@ -95,7 +95,7 @@ extern "C" {
 #define	REG_PC	REG_ARM_PC
 #define	REG_SP	REG_ARM_SP
 #define	REG_FP	REG_ARM_R30
-#define	REG_PS	REG_ARM_CPSR
+// #define	REG_PS	REG_ARM_CPSR
 #define	REG_R0	REG_ARM_R0
 #define	REG_R1	REG_ARM_R1
 #else
@@ -115,7 +115,7 @@ extern "C" {
  * treats arrays and structures as parameters.
  */
 #ifdef __aarch64__
-#define	_NGREG	34
+#define	_NGREG	33
 #else
 #define	_NGREG	17
 #endif

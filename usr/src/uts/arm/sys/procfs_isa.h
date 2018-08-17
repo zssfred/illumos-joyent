@@ -90,7 +90,7 @@ typedef	uint32_t	instr32_t;
 #define	R_PC	REG_ARM_PC
 #define	R_SP	REG_ARM_SP
 #define	R_FP	REG_ARM_R30
-#define	R_PS	REG_ARM_CPSR
+// #define	R_PS	REG_ARM_CPSR
 #define	R_R0	REG_ARM_R0
 #define	R_R1	REG_ARM_R1
 #else

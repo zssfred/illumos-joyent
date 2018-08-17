@@ -19,6 +19,13 @@
  */
 extern void bop_panic(const char *);
 
+
+void
+panic(const char *msg)
+{
+	bop_panic(msg);
+}
+
 void
 p0(void)
 {
@@ -65,12 +72,6 @@ void
 kvseg(void)
 {
 	bop_panic("kvseg");
-}
-
-void
-panic(void)
-{
-	bop_panic("panic");
 }
 
 void
@@ -554,6 +555,12 @@ void
 mutex_owned(void)
 {
 	bop_panic("mutex_owned");
+}
+
+void
+main(void)
+{
+	bop_panic("main!");
 }
 
 /*

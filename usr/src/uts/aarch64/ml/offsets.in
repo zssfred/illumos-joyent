@@ -26,6 +26,7 @@
 
 #include <sys/types.h>
 #include <sys/machcpuvar.h>
+#include <sys/fdt.h>
 
 \
 \ XXX Token entry to allow us to make forward progress (we'll need it later to
@@ -35,3 +36,6 @@
 machcpu
 	garbage
 
+fdt_reserve_entry
+	fdt_address
+	fdt_size

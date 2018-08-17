@@ -32,9 +32,9 @@ ALL_TARGET = $(UNIX_BIN)
 INSTALL_TARGET = $(UNIX_BIN)
 
 OBJECTS	= \
-	$(QV_OBJS:%=$(OBJS_DIR)/%) \
-	$(CORE_OBJS:%=$(OBJS_DIR)/%) \
+	$(QV_OBJS:%=$(OBJS_DIR)/%)\
 	$(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
+	$(CORE_OBJS:%=$(OBJS_DIR)/%) \
 	$(OBJS_DIR)/zlib_obj.o
 
 CLEANFILES += \
@@ -67,7 +67,6 @@ $(LIBGENUNIX): ../misc/fake_stubs.c
 	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
 
 $(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
-	# $(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
 	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
 	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
 	$(POST_PROCESS)

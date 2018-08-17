@@ -72,7 +72,7 @@ struct regs {
 	greg_t	r_fp;
 	greg_t	r_sp;
 	greg_t	r_pc;
-	greg_t	r_cpsr;
+	// greg_t	r_cpsr;
 };
 
 #endif /* _ASM */

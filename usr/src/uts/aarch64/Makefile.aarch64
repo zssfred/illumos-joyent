@@ -47,7 +47,8 @@ GENLIB		= $(GENLIB_DIR)/$(OBJS_DIR)/libgenunix.so
 #	to be used in preference over a machine independent version
 #	(Such as a machine specific optimization, which preserves the
 #	interfaces.)
-include $(UTSTREE)/$(PLATFORM)/Makefile.files
+# include $(UTSTREE)/$(PLATFORM)/Makefile.files
+## xxx this was causing duplicates, i think seemed like a hack tho
 include $(UTSTREE)/arm/Makefile.files
 include $(UTSTREE)/common/Makefile.files
 include $(UTSTREE)/aarch64/Makefile.files
