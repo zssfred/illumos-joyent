@@ -202,7 +202,10 @@ extern "C" {
 #define	M_PLT_ALIGN	4	/* PLT is word aligned, since it's ARM code */
 
 #define	M_PLT_XNumber	1	/* 1 reserved PLT entry, PLT[0] */
-#define	M_PLT_RESERVSZ	20	/* plt[0] is 5 insns, rather than the usual 4, but 28 aligns weirdly so use 32 */
+#define	M_PLT_RESERVSZ	32	/* plt[0] is 5 insns, rather than the usual 4.
+				 * However, It seems like it must be aligned to
+				 * a multiple of M_PLT_ENTSIZE to work properly
+				 */
 
 	/* XXXAARCH64: no idea on htis stuff :( */
 #define	M_GOT_XNumber	3	/* 3 reserved got entries */
