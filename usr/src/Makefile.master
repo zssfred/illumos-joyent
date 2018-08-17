@@ -39,7 +39,7 @@ ADJUNCT_PROTO=
 #
 # Adjunct for building things that run on the build machine.
 #
-NATIVE_ADJUNCT=	/usr
+NATIVE_ADJUNCT= /root/smartos-live/proto.strap/usr #/usr
 
 #
 # RELEASE_BUILD should be cleared for final release builds.
@@ -593,7 +593,7 @@ $(SRCDBGBLD)CCSOURCEDEBUGFLAGS	= -g -xs
 CFLAGS=         $(COPTFLAG) $($(MACH)_CFLAGS) $(SPACEFLAG) $(CCMODE) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
-		$(CUSERFLAGS) $(CTF_FLAGS) # -I/root/smartos-live/proto/usr/include
+		$(CUSERFLAGS) $(CTF_FLAGS)
 CFLAGS64=       $(COPTFLAG64) $($(MACH64)_CFLAGS) $(SPACEFLAG64) $(CCMODE64) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG64) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
@@ -737,7 +737,7 @@ MAPFILE.INT =		mapfile-intf
 #	LDLIBS64=-YP,$ROOT/lib/$MACH64:$ROOT/usr/lib/$MACH64
 #
 LDLIBS32 =	$(ENVLDLIBS1) $(ENVLDLIBS2) $(ENVLDLIBS3)
-LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib) #-L/root/smartos-live/proto.strap/lib -L/opt/local/lib
+LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib)
 LDLIBS.cmd = 	$(LDLIBS32)
 LDLIBS.lib =	$(LDLIBS32)
 
@@ -749,8 +749,7 @@ LDLIBS64 +=     $(ADJUNCT_PROTO:%=-L%/usr/lib/$(MACH64) -L%/lib/$(MACH64))
 #
 # Define compilation macros.
 #
-#COMPILE.C=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
-COMPILE.c=	$(CC) -I/root/smartos-live/proto.strap/usr/include $(CFLAGS) $(CPPFLAGS) -c
+COMPILE.c=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
 COMPILE64.c=	$(CC) $(CFLAGS64) $(CPPFLAGS)  -c
 COMPILE.cc=	$(CCC) $(CCFLAGS) $(CPPFLAGS) -c
 COMPILE64.cc=	$(CCC) $(CCFLAGS64) $(CPPFLAGS) -c

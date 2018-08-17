@@ -62,11 +62,13 @@ clobber: $(CLOBBER_DEPS)
 install_h:
 
 $(LIBGENUNIX): ../misc/fake_stubs.c
-	$(COMPILE64.c) -o $(OBJS_DIR)/fake_stubs.o ../misc/fake_stubs.c
+	$(COMPILE.c) -o $(OBJS_DIR)/fake_stubs.o ../misc/fake_stubs.c
 	$(LD) -r $(LDFLAGS) -o $(OBJS_DIR)/genunix $(OBJS_DIR)/fake_stubs.o
 	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
 
 $(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
+	echo $(MACH)
+	echo $(MACH64)
 	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
 	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
 	$(POST_PROCESS)

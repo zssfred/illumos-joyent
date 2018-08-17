@@ -50,8 +50,8 @@ CORE_OBJS += \
 # # dependencies and implementation pieces that we need, but don't have
 # # yet.
 # #
-# GENUNIX_OBJS += \
-# 	fake_stubs.o \
+GENUNIX_OBJS = \
+	fake_stubs.o
 # 	fake_data.o
 
 # #
