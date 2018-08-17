@@ -10,7 +10,7 @@
 \
 
 \
-\ Copyright (c) 2018  Joyent, Inc.  All rights reserved.
+\ Copyright (c) 2013  Joyent, Inc.  All rights reserved.
 \
 
 \
@@ -23,22 +23,15 @@
 
 #define	SIZES	1
 
-#include <sys/proc.h>
+
 #include <sys/types.h>
-#include <sys/thread.h>
-#include <sys/cpuvar.h>
-#include <sys/fdt.h>
+#include <sys/machcpuvar.h>
+
 \
 \ XXX Token entry to allow us to make forward progress (we'll need it later to
 \ be sure)
 \
 
-fdt_reserve_entry
-	fdt_address
-	fdt_size
+machcpu
+	garbage
 
-
-\ typedef struct fdt_reserve_entry {
-\ 	uint64_t	fdt_address;
-\ 	uint64_t	fdt_size;
-\ } fdt_reserve_entry_t;

@@ -852,6 +852,21 @@ fakebop_dump_fdt(fdt_header_t *hdr)
 
 				}
 				bop_printf(NULL, "\n");
+			} else if (strcmp(prop_name, "ranges") == 0
+			    && strcmp(token_name, "platform@c000000") == 0) {
+					for (j = 0; j < level; j++) {
+						bcons_puts("\t");
+					}
+
+				uint64_t int1 =
+				    ntohll(*(uint64_t *)(token_iter));
+				uint64_t int2 =
+				    ntohll(*(uint64_t *)(token_iter + 8));
+
+				bop_printf(NULL, "Range 1: %llx",
+				    bootinfo.bi_memstart);
+				bop_printf(NULL, "\tRange 2: %llx\n",
+				    bootinfo.bi_memsize);
 			}
 
 			level--;
@@ -904,6 +919,11 @@ _fakebop_start(fdt_header_t *arg1)
 	have_console = 1;
 
 	DBG_MSG("\nWelcome to fakebop -- AARCH64 Edition");
+
+	///XXX: qemu hacks
+	// arg1 = (fdt_header_t *) 0x40000000;
+	// bootinfo.bi_rdstart = 0x48000000;
+	// bootinfo.bi_rdend = 0x48000000 + 0x400000; //4MB
 
 	DBG_MSG("Args we were passed: ");
 	fakebop_put_uint64( (uintptr_t) arg1);

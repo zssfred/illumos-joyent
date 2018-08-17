@@ -21,31 +21,190 @@ UNAME_M = $(PLATFORM)
 
 IMPLEMENTATIONS = qv
 
+UNIX_DIR = $(UTSBASE)/$(PLATFORM)/qv/unix
+UNIX_DIR	= $(UTSBASE)/$(PLATFORM)/qv/unix
+GENLIB_DIR	= $(UTSBASE)/arm/genunix
+MODSTUBS_DIR	= $(UNIX_DIR)
+DSF_DIR		= $(UTSBASE)/$(PLATFORM)/genassym
 
-include $(UTSTREE)/common/Makefile.files
+DTRACESTUBS_O	= $(OBJS_DIR)/dtracestubs.o
+DTRACESTUBS	= $(OBJS_DIR)/dtracestubs.so
+
+SYM_MOD		= $(OBJS_DIR)/unix.sym
+
+UNIX_O		= $(UNIX_DIR)/$(OBJS_DIR)/unix.o
+MODSTUB_O	= $(MODSTUBS_DIR)/$(OBJS_DIR)/modstubs.o
+GENLIB		= $(GENLIB_DIR)/$(OBJS_DIR)/libgenunix.so
+
+
+#
+#	Include the makefiles which define build rule templates, the
+#	collection of files per module, and a few specific flags. Note
+#	that order is significant, just as with an include path. The
+#	first build rule template which matches the files name will be
+#	used. By including these in order from most machine dependent
+#	to most machine independent, we allow a machine dependent file
+#	to be used in preference over a machine independent version
+#	(Such as a machine specific optimization, which preserves the
+#	interfaces.)
+include $(UTSTREE)/$(PLATFORM)/Makefile.files
 include $(UTSTREE)/arm/Makefile.files
+include $(UTSTREE)/common/Makefile.files
 include $(UTSTREE)/aarch64/Makefile.files
+
+
 include $(UTSBASE)/Makefile.uts
 
-OFFSETS_SRC = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
-PLATFORM_OFFSETS_32 =
-PLATFORM_OFFSETS_64 = $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
-PLATFORM_OFFSETS_SRC = $(PLATFORM_OFFSETS_$(CLASS))
-DSF_DIR = $(UTSBASE)/$(PLATFORM)/genassym
+DEF_BUILDS = $(DEF_BUILDS64)
+ALL_BUILDS = debug64 #$(ALL_BUILDS64)
+
+# OFFSETS_SRC = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
+# PLATFORM_OFFSETS_32 =
+# PLATFORM_OFFSETS_64 = $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
+# PLATFORM_OFFSETS_SRC = $(PLATFORM_OFFSETS_$(CLASS))
+# DSF_DIR = $(UTSBASE)/$(PLATFORM)/genassym
 
 MACHINE_DEFS = -D$(PLATFORM) -D_MACHDEP
-AS_INC_PATH += -I$(DSF_DIR)/$(OBJS_DIR)
+# AS_INC_PATH += -I$(DSF_DIR)/$(OBJS_DIR)
 
-DEF_BUILDS = $(DEF_BUILDS64)
-ALL_BUILDS = $(ALL_BUILDS64)
+CFLAGS_XARCH_64		= $(aarch64_CFLAGS)
+CFLAGS_XARCH		= $(CFLAGS_XARCH_$(CLASS))
+
+COPTFLAG_64		= $(COPTFLAG)
+COPTIMIZE		= $(COPTFLAG_$(CLASS))
+
+CFLAGS64			= $(CFLAGS_XARCH)
+CFLAGS64			+= $(COPTIMIZE)
+CFLAGS64			+= $(INLINES) -D_ASM_INLINES
+CFLAGS64			+= $(CCMODE)
+CFLAGS64			+= $(SPACEFLAG)
+CFLAGS64			+= $(CCUNBOUND)
+CFLAGS64			+= $(CFLAGS_uts)
+CFLAGS64			+= -xstrconst
+CFLAGS64 += $(CTF_FLAGS)
+# CFLAGS += $(CTF_FLAGS)
+
+ASFLAGS_XARCH_64	= $(aarch64_ASFLAGS)
+ASFLAGS_XARCH		= $(ASFLAGS_XARCH_$(CLASS))
+
+ASFLAGS			+= $(ASFLAGS_XARCH)
+
+AS_INC_PATH		+= -I$(DSF_DIR)/$(OBJS_DIR)
+
+
+MAPFILE		 = $(UTSBASE)/$(PLATFORM)/qv/test_mapfile
+MODSTUBS	 = $(UTSBASE)/arm/ml/modstubs.s
+GENASSYM_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/genassym.c
+OFFSETS_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
+PLATFORM_OFFSETS_64	= $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
+PLATFORM_OFFSETS_SRC	= $(PLATFORM_OFFSETS_$(CLASS))
+KDI_OFFSETS_SRC	 = $(UTSBASE)/arm/kdi/kdi_offsets.in
+
+MACHINE_DEFS = -D$(PLATFORM) -D_MACHDEP
+
+# BASE_INS_DIR
 
 #
 # Debugging
 #
-DEBUG_DEFS_OBJ32	=
-DEBUG_DEFS_DBG32	= -DDEBUG
+# DEBUG_DEFS_OBJ32	=
+# DEBUG_DEFS_DBG32	= -DDEBUG
 DEBUG_DEFS_OBJ64	=
 DEBUG_DEFS_DBG64	= -DDEBUG
 DEBUG_DEFS		= $(DEBUG_DEFS_$(BUILD_TYPE))
 
-ALL_DEFS = $(MACHINE_DEFS) $(DEBUG_DEFS)
+DEBUG_COND_OBJ64	:sh = echo \\043
+DEBUG_COND_DBG64	=
+IF_DEBUG_OBJ		= $(DEBUG_COND_$(BUILD_TYPE))$(OBJS_DIR)/
+
+#
+#	Collect the preprocessor definitions to be associated with *all*
+#	files.
+#
+ALL_DEFS	 = $(MACHINE_DEFS) $(WORKAROUND_DEFS) $(DEBUG_DEFS) \
+		   $(OPTION_DEFS)
+GENASSYM_DEFS	 = $(MACHINE_DEFS) $(OPTION_DEFS) \
+			-_gcc=-fno-eliminate-unused-debug-symbols \
+			-_gcc=-fno-eliminate-unused-debug-types
+
+#
+# ----- TRANSITIONAL SECTION --------------------------------------------------
+#
+
+#
+#	Not everything which *should* be a module is a module yet. The
+#	following is a list of such objects which are currently part of
+#	the base kernel but should soon become kmods.
+#
+#	XXX: $(KMACCT_OBJS) is neither in the MT kernel nor was it ever
+#	     made into a module. If it is made MT safe before being made
+#	     into a module, it should be added to this list. It was in
+#	     this list pre ON-4.0.
+#
+#
+MACH_NOT_YET_KMODS	= $(AUTOCONF_OBJS)
+
+#
+# ----- END OF TRANSITIONAL SECTION -------------------------------------------
+#
+
+#
+#	The kernels modules which are "implementation architecture"
+#	specific for this machine are enumerated below. Note that most
+#	of these modules must exist (in one form or another) for each
+#	architecture.
+#
+#	Machine Specific Driver Modules (/kernel/drv)
+#	DRV_KMODS are built both 32-bit and 64-bit
+#	DRV_KMODS_32 are built only 32-bit
+#	DRV_KMODS_64 are built only 64-bit
+#
+DRV_KMODS	+=
+
+#
+#	CPU Modules
+#
+CPU_KMODS	+=
+
+#
+#	Exec Class Modules (/kernel/exec):
+#
+EXEC_KMODS	+=
+
+#
+#	Scheduling Class Modules (/kernel/sched):
+#
+SCHED_KMODS	+=
+
+#
+#	File System Modules (/kernel/fs):
+#
+FS_KMODS	+=
+
+#
+#	Streams Modules (/kernel/strmod):
+#
+STRMOD_KMODS	+=
+
+#
+#	'System' Modules (/kernel/sys):
+#
+SYS_KMODS	+=
+
+#
+#	'Misc' Modules (/kernel/misc):
+#
+MISC_KMODS	+=
+
+#
+#	'Dacf' modules (/kernel/dacf)
+#
+DACF_KMODS	+=
+
+#
+#	'Mach' Modules (/kernel/mach):
+#
+MACH_KMODS     	+=
+
+
+# ALL_DEFS = $(MACHINE_DEFS) $(DEBUG_DEFS)

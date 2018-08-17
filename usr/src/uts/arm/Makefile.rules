@@ -22,6 +22,11 @@ $(OBJS_DIR)/%.o:	$(SRC)/common/fs/%.c
 	$(CTFCONVERT_O)
 
 
+# $(OBJS_DIR)/%.o:
+  # $(COMPILE64.c) -o $@ $<
+  # $(CTFCONVERT_O)
+
+
 #
 # Kernel runtime-linker
 #

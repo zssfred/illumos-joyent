@@ -52,18 +52,12 @@ ALL_TARGET	= $(ASSYM_H) $(KDI_ASSYM_H)
 #
 DSF_DIR		= .
 
-
 #
 #	Overrides
 #
 CLEANFILES	= $(GENASSYM) Nothing_to_remove
 CLOBBERFILES	= $(ASSYM_H) $(KDI_ASSYM.H) $(CLEANFILES) Nothing_to_remove
 
-#
-# XXX We should have CTF_FLAGS passed in but we don't for some reason
-#
-CFLAGS += $(CTF_FLAGS)
-CFLAGS64 += $(CTF_FLAGS)
 
 #
 #	Default build targets.
@@ -88,8 +82,9 @@ install:	def
 #
 
 $(ASSYM_H): $(OFFSETS_SRC) $(PLATFORM_OFFSETS_SRC)
-	$(OFFSETS_CREATE64) <$(OFFSETS_SRC) >$@
-	$(OFFSETS_CREATE64) <$(PLATFORM_OFFSETS_SRC) >>$@
+	/bin/true
+	#$(OFFSETS_CREATE64) <$(OFFSETS_SRC) >$@
+	#$(OFFSETS_CREATE64) <$(PLATFORM_OFFSETS_SRC) >>$@
 
 $(KDI_ASSYM_H):
 	/bin/true
@@ -97,4 +92,4 @@ $(KDI_ASSYM_H):
 #
 #	Include common targets.
 #
-include $(UTSBASE)/aarch64/Makefile.targ
+include $(UTSBASE)/arm/Makefile.targ

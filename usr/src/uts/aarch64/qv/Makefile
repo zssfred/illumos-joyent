@@ -49,10 +49,6 @@ CERRWARN	+= -_gcc=-Wno-unused-function
 CERRWARN	+= -_gcc=-Wno-unused-variable
 CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
 
-#XXX for some reason CTF_FLAGS arent getting set
-CFLAGS += $(CTF_FLAGS)
-CFLAGS64 += $(CTF_FLAGS)
-
 OBJCOPY=$(GNU_ROOT)/bin/objcopy
 
 all: $(ALL_DEPS)
@@ -71,11 +67,12 @@ $(LIBGENUNIX): ../misc/fake_stubs.c
 	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
 
 $(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
-	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
+	# $(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
+	$(LD) -dy -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
 	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
 	$(POST_PROCESS)
-	$(OBJCOPY) $(UNIX_BIN) -O binary $(UNIX_BIN).bin
-	pfexec ./tools/mkplatform.sh $(UNIX_BIN).bin $(OBJS_DIR)/genunix
+	$(OBJCOPY) --image-base 0x40000000 $(UNIX_BIN) -O binary $(UNIX_BIN).bin
+	pfexec ./tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
 	mv boot_archive $(OBJS_DIR)/
 
 # %.bin: %

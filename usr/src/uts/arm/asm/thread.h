@@ -37,7 +37,8 @@ threadp(void)
 	    "mrc p15, 0, %0, c13, c0, 4"
 	    : "=r" (__value));
 #else
-#error	"port me"
+// #error	"port me"
+	//XXXX: todo
 #endif
 	return (__value);
 }

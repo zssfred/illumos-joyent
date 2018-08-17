@@ -50,10 +50,10 @@ _kobj_boot(struct boot_syscalls *bsysp, void *dvec, struct bootops *bops,
 	auxv[BA_IFLUSH].ba_val = 1;
 	auxv[BA_PAGESZ].ba_val = MMU_PAGESIZE;
 
-	// auxv[BA_STEXT].ba_ptr = stext;
-	// auxv[BA_SDATA].ba_ptr = sdata;
-	// auxv[BA_ETEXT].ba_ptr = etext;
-	// auxv[BA_EDATA].ba_ptr = edata;
+	// auxv[BA_STEXT].ba_ptr = (caddr_t) 0x0000000040000000;
+	// auxv[BA_SDATA].ba_ptr = (caddr_t) 0x0000000040000000;
+	// auxv[BA_ETEXT].ba_ptr = (caddr_t) 0x0000000040000000;
+	// auxv[BA_EDATA].ba_ptr = (caddr_t) 0x0000000040082000;
 	// auxv[BA_ELIMIT].ba_ptr = limit;
 
 	kobj_init(bsysp, dvec, bops, auxv);

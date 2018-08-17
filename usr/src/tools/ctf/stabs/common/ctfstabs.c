@@ -163,12 +163,18 @@ find_type(char *name)
 	char fullname[WORD_LEN];
 	ctf_id_t id;
 
+	parse_warn("Looking up name: %s\n", name);
+
 	if ((id = ctf_lookup_by_name(ctf, name)) != CTF_ERR)
 		return (id);
+
+	parse_warn("Looking up struct %s\n", name);
 
 	(void) snprintf(fullname, WORD_LEN, "struct %s", name);
 	if ((id = ctf_lookup_by_name(ctf, fullname)) != CTF_ERR)
 		return (id);
+
+	parse_warn("Looking up union %s...\n", name);
 
 	(void) snprintf(fullname, WORD_LEN, "union %s", name);
 	if ((id = ctf_lookup_by_name(ctf, fullname)) != CTF_ERR)

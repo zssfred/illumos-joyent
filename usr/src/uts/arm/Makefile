@@ -82,7 +82,7 @@ $(PRIVS_C): $(PRIVS_AWK) $(PRIVS_DEF)
 #   prerequisites.
 #
 all.prereq install.prereq def.prereq: genunix FRC
-	@cd ../armv7/genassym; pwd; $(MAKE) $(@:%.prereq=%)
+	@cd ../aarch64/genassym; pwd; $(MAKE) $(@:%.prereq=%)
 
 #
 # Nothing to do for any other prerequisite targets.

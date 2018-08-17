@@ -461,11 +461,15 @@ kobj_init(
 #endif	/* !_UNIX_KRTLD */
 #endif	/* _OBP */
 
+	KOBJ_MARK("MADE IT HERE tho");
+
 	/*
 	 * Save the interesting attribute-values
 	 * (scanned by kobj_boot).
 	 */
 	attr_val(bootaux);
+
+	KOBJ_MARK("MADE IT HERE");
 
 	/*
 	 * Set the module search path.
@@ -473,6 +477,7 @@ kobj_init(
 	kobj_module_path = getmodpath(filename);
 
 	boot_cpu_compatible_list = find_libmacro("CPU");
+
 
 	/*
 	 * These two modules have actually been
@@ -483,6 +488,7 @@ kobj_init(
 
 	mp = load_exec(bootaux, filename);
 	load_linker(bootaux);
+
 
 	/*
 	 * Load all the primary dependent modules.
@@ -674,7 +680,10 @@ attr_val(val_t *bootaux)
 	for (i = 0; i < phnum; i++) {
 		phdr = (Phdr *)(bootaux[BA_PHDR].ba_val + i * phsize);
 
+		// KOBJ_MARK("attr_val() 1");
+
 		if (phdr->p_type != PT_LOAD) {
+			// KOBJ_MARK("attr_val() 2");
 			continue;
 		}
 		/*
@@ -695,14 +704,20 @@ attr_val(val_t *bootaux)
 #endif
 		} else {
 			if (phdr->p_flags & PF_W) {
+				// KOBJ_MARK("attr_val() 8");
 				_data = (caddr_t)phdr->p_vaddr;
 				_edata = _data + phdr->p_memsz;
 			} else {
+				// KOBJ_MARK("attr_val() 9");
 				_text = (caddr_t)phdr->p_vaddr;
 				_etext = _text + phdr->p_memsz;
 			}
 		}
+
+		// KOBJ_MARK("attr_val() 3");
 	}
+
+	// KOBJ_MARK("attr_val() 4");
 
 	if (bootaux[BA_STEXT].ba_ptr != NULL)
 		_text = bootaux[BA_STEXT].ba_ptr;
@@ -721,6 +736,7 @@ attr_val(val_t *bootaux)
 
 	/* To do the kobj_alloc, _edata needs to be set. */
 	for (i = 0; i < NLIBMACROS; i++) {
+		// KOBJ_MARK("attr_val() 6");
 		if (bootaux[libmacros[i].lmi_ba_index].ba_ptr != NULL) {
 			libmacros[i].lmi_list = kobj_alloc(
 			    strlen(bootaux[libmacros[i].lmi_ba_index].ba_ptr) +
@@ -730,6 +746,8 @@ attr_val(val_t *bootaux)
 		}
 		libmacros[i].lmi_macrolen = strlen(libmacros[i].lmi_macroname);
 	}
+
+	// KOBJ_MARK("attr_val() 5");
 }
 
 /*

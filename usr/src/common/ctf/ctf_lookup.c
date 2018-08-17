@@ -30,6 +30,8 @@
 #include <sys/sysmacros.h>
 #include <ctf_impl.h>
 
+#include <stdio.h>
+
 /*
  * Compare the given input string and length against a table of known C storage
  * qualifier keywords.  We just ignore these in ctf_lookup_by_name, below.  To

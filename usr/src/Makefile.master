@@ -191,7 +191,7 @@ JAR=		$(JAVA_ROOT)/bin/jar
 CTFSTABS=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfstabs
 CTFSTRIP=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfstrip
 NDRGEN=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ndrgen
-GENOFFSETS=	$(ONBLD_TOOLS)/bin/genoffsets
+GENOFFSETS=	$(ONBLD_TOOLS)/bin/genoffsets -v
 CTFCVTPTBL=	$(ONBLD_TOOLS)/bin/ctfcvtptbl
 CTFFINDMOD=	$(ONBLD_TOOLS)/bin/ctffindmod
 XREF=		$(ONBLD_TOOLS)/bin/xref
@@ -593,11 +593,11 @@ $(SRCDBGBLD)CCSOURCEDEBUGFLAGS	= -g -xs
 CFLAGS=         $(COPTFLAG) $($(MACH)_CFLAGS) $(SPACEFLAG) $(CCMODE) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
-		$(CUSERFLAGS) # -I/root/smartos-live/proto/usr/include
+		$(CUSERFLAGS) $(CTF_FLAGS) # -I/root/smartos-live/proto/usr/include
 CFLAGS64=       $(COPTFLAG64) $($(MACH64)_CFLAGS) $(SPACEFLAG64) $(CCMODE64) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG64) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
-		$(CUSERFLAGS64)
+		$(CUSERFLAGS64) $(CTF_FLAGS) ###xxx where am i actually supposed to add ctf flags
 #
 # Flags that are used to build parts of the code that are subsequently
 # run on the build machine (also known as the NATIVE_BUILD).

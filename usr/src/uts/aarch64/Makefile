@@ -27,8 +27,29 @@ check		:=	TARGET= check
 clean		:=	TARGET= clean
 clobber		:=	TARGET= clobber
 install_h	:=	TARGET= install_h
+modlist	:=	TARGETf= modlist
+modlist	modlist.arm	:=	NO_STATE= -k $$MODSTATE$$$$
 
-all def clean clobber: genassym $(IMPLEMENTATIONS)
+
+.KEEP_STATE:
+
+.PARALLEL: $(PARALLEL_KMODS) $(XMODS) modlist modlist.arm
+
+INITIAL_TARGETS = \
+	genassym
+	#unix would be here...
+
+all def clean clobber: genassym .WAIT $(KMODS) $(XMODS) $(IMPLEMENTATIONS)
+install: install_platforms genassym .WAIT $(KMODS) $(XMODS) $(IMPLEMENTATIONS)
+
+modlist: $(KMODS) $(XMODS) $(IMPLEMENTATIONS)
+
+modlist.karch: modlist modlist.arm
+
+modlist.arm:
+	@cd $(SRC)/uts/arm; pwd; $(MAKE) $(NO_STATE) modlist
+
+setup: FRC
 
 genassym: FRC
 	@cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET)
@@ -36,10 +57,28 @@ genassym: FRC
 $(IMPLEMENTATIONS): FRC
 	@cd $@; pwd; THISIMPL=$@ $(MAKE) $(NO_STATE) $(TARGET)
 
+$(XMODS): FRC
+	@cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET); \
+
+
+
 install_h check: $(IMPLEMENTATIONS) FRC
 	cd sys; pwd; $(MAKE) $(TARGET)
 
-FRC:
+PLAT_LINKS =
+
+install_platforms: $(ROOT_PSM_DIR) $(USR_PSM_DIR) \
+	$(ROOT_PLAT_LINKS) $(USR_PLAT_LINKS) \
+	$(OEM_USR_PLAT_LINKS)
+
+include ../Makefile.targ
+
+XRDIRS = ../aarch64 ../arm ../common
+
+XRPRUNE = sun4u sun4v sun sffmu i86pc i86xpv intel sparc armv7
+
+cscope.out tags: FRC
+	$(XREF) -x $@
 
 # AS_CPPFLAGS = \
 # 	-D_ASM \
