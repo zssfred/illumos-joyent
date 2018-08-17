@@ -68,7 +68,7 @@ $(LIBGENUNIX): ../misc/fake_stubs.c
 
 $(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
 	# $(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
-	$(LD) -dy -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
+	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
 	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
 	$(POST_PROCESS)
 	$(OBJCOPY) --image-base 0x40000000 $(UNIX_BIN) -O binary $(UNIX_BIN).bin
