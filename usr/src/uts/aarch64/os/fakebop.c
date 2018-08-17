@@ -956,7 +956,7 @@ _fakebop_start(fdt_header_t *arg1)
 }
 
 void
-_fakebop_locore_start(struct boot_syscalls *sysp, struct bootops *bops)
+_fakebop_locore_start(void)
 {
 	bop_panic("Made it back to _fakebop_locore_start!");
 }

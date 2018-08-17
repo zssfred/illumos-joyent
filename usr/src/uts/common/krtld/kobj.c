@@ -163,7 +163,7 @@ extern char stubs_end[];
  *			  is loaded.
  */
 #ifdef __aarch64__
-int kobj_debug = D_DEBUG | D_LOADING | D_SYMBOLS | D_RELOCATIONS;
+int kobj_debug = 0;
 #else
 int kobj_debug = 0;
 #endif
@@ -461,15 +461,11 @@ kobj_init(
 #endif	/* !_UNIX_KRTLD */
 #endif	/* _OBP */
 
-	KOBJ_MARK("MADE IT HERE tho");
-
 	/*
 	 * Save the interesting attribute-values
 	 * (scanned by kobj_boot).
 	 */
 	attr_val(bootaux);
-
-	KOBJ_MARK("MADE IT HERE");
 
 	/*
 	 * Set the module search path.
@@ -496,11 +492,15 @@ kobj_init(
 	if (load_primary(mp, KOBJ_LM_PRIMARY) == -1)
 		goto fail;
 
+	KOBJ_MARK("Post load_primary");
+
 	/*
 	 * Glue it together.
 	 */
 	if (bind_primary(bootaux, KOBJ_LM_PRIMARY) == -1)
 		goto fail;
+
+	KOBJ_MARK("Post bind-primary");
 
 	entry = bootaux[BA_ENTRY].ba_val;
 
@@ -940,6 +940,8 @@ load_exec(val_t *bootaux, char *filename)
 static void
 load_linker(val_t *bootaux)
 {
+	KOBJ_MARK("load_linker start");
+
 	struct module *kmp = (struct module *)kobj_modules->mod_mp;
 	struct module *mp;
 	struct modctl *cp;
@@ -952,8 +954,10 @@ load_linker(val_t *bootaux)
 	/*
 	 * On some architectures, krtld is compiled into the kernel.
 	 */
-	if (dlname == NULL)
+	if (dlname == NULL) {
+		KOBJ_MARK("KRTLD is in already");
 		return;
+	}
 
 	cp = add_primary(dlname, KOBJ_LM_PRIMARY);
 
@@ -1026,6 +1030,7 @@ load_linker(val_t *bootaux)
 	 * Insert the symbols into the hash table.
 	 */
 	for (i = 0; i < mp->nsyms; i++) {
+
 		sp = (Sym *)(mp->symtbl + i * mp->symhdr->sh_entsize);
 
 		if (sp->st_name == 0 || sp->st_shndx == SHN_UNDEF)
@@ -1036,7 +1041,6 @@ load_linker(val_t *bootaux)
 		}
 		sym_insert(mp, mp->strings + sp->st_name, i);
 	}
-
 }
 
 static kobj_notify_list_t **
@@ -1196,7 +1200,6 @@ bind_primary(val_t *bootaux, int lmid)
 	 */
 	for (lp = linkmap; lp; lp = lp->modl_next) {
 		mp = mod(lp);
-
 		/*
 		 * Don't do common section relocations for modules that
 		 * don't need it.
@@ -4081,7 +4084,7 @@ kobj_zalloc(size_t size, int flag)
 		bzero(v, size);
 	}
 
-	_kobj_printf(ops, "Zalloced: 0x%llx\n", (uintptr_t) v);
+	// _kobj_printf(ops, "Zalloced: 0x%llx\n", (uintptr_t) v);
 	return (v);
 }
 
@@ -4190,7 +4193,7 @@ kobj_segbrk(caddr_t *spp, size_t size, size_t align, caddr_t limit)
 		npva = (uintptr_t)BOP_ALLOC(ops, (caddr_t)pva,
 		    alloc_size, alloc_align);
 
-		_kobj_printf(ops, " Allocated at 0x%llx\n", npva);
+		// _kobj_printf(ops, " Allocated at 0x%llx\n", npva);
 
 		if (npva == NULL) {
 			_kobj_printf(ops, "BOP_ALLOC failed, 0x%lx bytes",
@@ -4202,7 +4205,7 @@ kobj_segbrk(caddr_t *spp, size_t size, size_t align, caddr_t limit)
 	}
 	*spp = (caddr_t)(va + size);
 
-	_kobj_printf(ops, "VA is: 0x%llx. size: 0x%llx, spp: 0x%llx\n", va, size, spp);
+	// _kobj_printf(ops, "VA is: 0x%llx. size: 0x%llx, spp: 0x%llx\n", va, size, spp);
 
 	return ((caddr_t)va);
 }

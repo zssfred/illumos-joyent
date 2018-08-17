@@ -259,11 +259,14 @@ cv_signal(void)
 	bop_panic("cv_signal");
 }
 
-void
-boothowto(void)
-{
-	bop_panic("boothowto");
-}
+
+int boothowto = 0; //XXX: This stub was causing boothowto & kmdb to be true
+// I think kmdb won't work. idk.
+// void
+// boothowto(void)
+// {
+// 	bop_panic("boothowto");
+// }
 
 void
 kdi_dvec_mod_unloading(void)
