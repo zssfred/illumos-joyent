@@ -68,7 +68,7 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 	/* Table 4-6 - Static Data Relocations */
 	[R_AARCH64_ABS64] =			{ 0, FLG_RE_NOTREL, 8, 0, 0 },
 	[R_AARCH64_ABS32] =			{ 0, FLG_RE_NOTREL, 4, 0, 0 }, //XXX 4 seems to be right for this so need to go back to all of thse + doubble check size...
-	[R_AARCH64_ABS16] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
+	[R_AARCH64_ABS16] =			{ 0, FLG_RE_NOTREL, 2, 0, 0 },
 	[R_AARCH64_PREL64] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL32] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL16] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
@@ -90,20 +90,20 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 	/* Table 4-9: Relocations for 19, 21 and 33 bit PC rel addresses */
 	[R_AARCH64_LD_PREL_LO19] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_ADR_PREL_LO21] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
-	[R_AARCH64_ADR_PREL_PG_HI21] =		{ 0x1fffff000, FLG_RE_PCPAGEREL, 8, 0, 0 },
+	[R_AARCH64_ADR_PREL_PG_HI21] =		{ 0x1fffff000UL, FLG_RE_PCPAGEREL, 4, 0, 0 },
 	[R_AARCH64_ADR_PREL_PG_HI21_NC] =	{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
-	[R_AARCH64_ADD_ABS_LO12_NC] =		{ 0xfff, FLG_RE_NOTREL, 8, 0, 10 },
-	[R_AARCH64_LDST8_ABS_LO12_NC] =		{ 0xfff, FLG_RE_NOTREL, 8, 0, 10 },
-	[R_AARCH64_LDST16_ABS_LO12_NC] =	{ 0xffe, FLG_RE_NOTREL, 8, 1, 10 },
-	[R_AARCH64_LDST32_ABS_LO12_NC] =	{ 0xffc, FLG_RE_NOTREL, 8, 2, 10 },
-	[R_AARCH64_LDST64_ABS_LO12_NC] =	{ 0xff8, FLG_RE_NOTREL, 8, 3, 10 },
+	[R_AARCH64_ADD_ABS_LO12_NC] =		{ 0xfff, FLG_RE_NOTREL, 4, 0, 10 },
+	[R_AARCH64_LDST8_ABS_LO12_NC] =		{ 0xfff, FLG_RE_NOTREL, 4, 0, 10 },
+	[R_AARCH64_LDST16_ABS_LO12_NC] =	{ 0xffe, FLG_RE_NOTREL, 4, 1, 10 },
+	[R_AARCH64_LDST32_ABS_LO12_NC] =	{ 0xffc, FLG_RE_NOTREL, 4, 2, 10 },
+	[R_AARCH64_LDST64_ABS_LO12_NC] =	{ 0xff8, FLG_RE_NOTREL, 4, 3, 10 },
 	[R_AARCH64_LDST128_ABS_LO12_NC] =	{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 
 	/* Table 4-10: Relocations for control-flow instructions */
 	[R_AARCH64_TSTBR14] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_CONDBR19] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
-	[R_AARCH64_JUMP26] =			{ 0x0ffffffc, FLG_RE_PCREL, 8, 2, 0 },
-	[R_AARCH64_CALL26] =			{ 0x0ffffffc, FLG_RE_PCREL, 8, 2, 0 },
+	[R_AARCH64_JUMP26] =			{ 0x0ffffffc, FLG_RE_PCREL, 4, 2, 0 },
+	[R_AARCH64_CALL26] =			{ 0x0ffffffc, FLG_RE_PCREL, 4, 2, 0 },
 
 	/* Table 4-11 Group relocations to create PC-relative offsets inline */
 	[R_AARCH64_MOVW_PREL_G0] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
@@ -132,7 +132,7 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 	[R_AARCH64_LD64_GOTOFF_LO15] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_ADR_GOT_PAGE] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_LD64_GOT_LO12_NC] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
-	[R_AARCH64_LD64_GOTPAGE_LO15] =		{ 0x7ff8, FLG_RE_GOTADD | FLG_RE_GOTPAGEREL, 8, 0, 7 },
+	[R_AARCH64_LD64_GOTPAGE_LO15] =		{ 0x7ff8, FLG_RE_GOTADD | FLG_RE_GOTPAGEREL, 4, 0, 7 },
 
 	/* Table 4-15: General Dynamic TLS relocations */
 	[R_AARCH64_TLSGD_ADR_PREL21] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
@@ -342,6 +342,19 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 		}
 #endif
 		break;
+	case 2:
+#if defined(DORELOC_NATIVE)
+		base = *(Half *)off;
+#else
+		if (bswap) {
+			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_BSWAP_HALF(b_bytes, off);
+		} else {
+			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_HALF(b_bytes, off);
+		}
+#endif
+		break;
 	default:
 		REL_ERR_UNSUPSZ(lml, file, sym, rtype, rep->re_fsize);
 		return (0);
@@ -349,8 +362,8 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 
 	uvalue = *value;
 
-	// printf("Type: %d\n", rtype);
-	// printf("Base: 0x%x, Val: 0x%x\n", base, uvalue);
+	// printf("Type: %ld\n", rtype);
+	// printf("Base: 0x%lx, Val: 0x%lx\n", base, uvalue);
 
 	if (rep->re_mask != 0) {
 		uvalue &= rep->re_mask;
@@ -374,8 +387,7 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 	}
 
 	base = base + uvalue;
-
-	// printf("Result: 0x%x, Val: 0x%x\n", base, uvalue);
+	// printf("Result: 0x%lx, Val: 0x%lx\n", base, uvalue);
 
 	switch (rep->re_fsize) {
 	case 8:
@@ -390,19 +402,34 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 			UL_ASSIGN_XWORD(off, b_bytes);
 		}
 #endif
-case 4:
+		break;
+
+	case 4:
 #if defined(DORELOC_NATIVE)
 		*(Word *)off = (Word)(base);
 #else
 		if (bswap) {
 			uchar_t *b_bytes = (uchar_t *)&base;
-			UL_ASSIGN_BSWAP_WORD(b_bytes, off);
+			UL_ASSIGN_BSWAP_WORD(off, b_bytes);
 		} else {
 			uchar_t *b_bytes = (uchar_t *)&base;
-			UL_ASSIGN_WORD(b_bytes, off);
+			UL_ASSIGN_WORD(off, b_bytes);
 		}
 #endif
 		break;
+
+	case 2:
+#if defined(DORELOC_NATIVE)
+		*(Half *)off = (Half)(base);
+#else
+		if (bswap) {
+			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_BSWAP_HALF(off, b_bytes);
+		} else {
+			uchar_t *b_bytes = (uchar_t *)&base;
+			UL_ASSIGN_HALF(off, b_bytes);
+		}
+#endif
 		break;
 	}
 
