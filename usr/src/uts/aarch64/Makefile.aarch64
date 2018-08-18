@@ -23,7 +23,7 @@ IMPLEMENTATIONS = qv
 
 UNIX_DIR = $(UTSBASE)/$(PLATFORM)/qv/unix
 UNIX_DIR	= $(UTSBASE)/$(PLATFORM)/qv/unix
-GENLIB_DIR	= $(UTSBASE)/arm/genunix
+GENLIB_DIR	= $(UTSBASE)/armv8/genunix
 MODSTUBS_DIR	= $(UNIX_DIR)
 DSF_DIR		= $(UTSBASE)/$(PLATFORM)/genassym
 
@@ -48,9 +48,10 @@ GENLIB		= $(GENLIB_DIR)/$(OBJS_DIR)/libgenunix.so
 #	(Such as a machine specific optimization, which preserves the
 #	interfaces.)
 # include $(UTSTREE)/$(PLATFORM)/Makefile.files
-## xxx this was causing duplicates, i think seemed like a hack tho
-include $(UTSTREE)/arm/Makefile.files
+include $(UTSTREE)/armv8/Makefile.files
 include $(UTSTREE)/common/Makefile.files
+# XXX: We need this to be included last, too, because we clobber stuff.  When we
+# stop clobbering stuff, remove this one, and uncomment the other.
 include $(UTSTREE)/aarch64/Makefile.files
 
 
@@ -65,7 +66,7 @@ ALL_BUILDS = debug64 #$(ALL_BUILDS64)
 # PLATFORM_OFFSETS_SRC = $(PLATFORM_OFFSETS_$(CLASS))
 # DSF_DIR = $(UTSBASE)/$(PLATFORM)/genassym
 
-MACHINE_DEFS = -D$(PLATFORM) -D_MACHDEP
+# MACHINE_DEFS = -D$(PLATFORM) -D_MACHDEP
 # AS_INC_PATH += -I$(DSF_DIR)/$(OBJS_DIR)
 
 CFLAGS_XARCH_64		= $(aarch64_CFLAGS)
@@ -74,16 +75,15 @@ CFLAGS_XARCH		= $(CFLAGS_XARCH_$(CLASS))
 COPTFLAG_64		= $(COPTFLAG)
 COPTIMIZE		= $(COPTFLAG_$(CLASS))
 
-CFLAGS64			= $(CFLAGS_XARCH)
-CFLAGS64			+= $(COPTIMIZE)
-CFLAGS64			+= $(INLINES) -D_ASM_INLINES
-CFLAGS64			+= $(CCMODE)
-CFLAGS64			+= $(SPACEFLAG)
-CFLAGS64			+= $(CCUNBOUND)
-CFLAGS64			+= $(CFLAGS_uts)
-CFLAGS64			+= -xstrconst
-CFLAGS64 += $(CTF_FLAGS)
-# CFLAGS += $(CTF_FLAGS)
+CFLAGS			= $(CFLAGS_XARCH)
+CFLAGS			+= $(COPTIMIZE)
+CFLAGS			+= $(INLINES) -D_ASM_INLINES
+CFLAGS			+= $(CCMODE)
+CFLAGS			+= $(SPACEFLAG)
+CFLAGS			+= $(CCUNBOUND)
+CFLAGS			+= $(CFLAGS_uts)
+CFLAGS			+= -xstrconst
+# CFLAGS 		+= $(CTF_FLAGS)
 
 ASFLAGS_XARCH_64	= $(aarch64_ASFLAGS)
 ASFLAGS_XARCH		= $(ASFLAGS_XARCH_$(CLASS))
@@ -92,18 +92,25 @@ ASFLAGS			+= $(ASFLAGS_XARCH)
 
 AS_INC_PATH		+= -I$(DSF_DIR)/$(OBJS_DIR)
 
-
-MAPFILE		 = $(UTSBASE)/$(PLATFORM)/qv/test_mapfile
-MODSTUBS	 = $(UTSBASE)/arm/ml/modstubs.s
+#
+#	The following must be defined for all implementations:
+#
+#	MAPFILE:	ld mapfile for the build of kernel/unix.
+#	MODSTUBS:	Module stubs source file.
+#	GENASSYM_SRC:	genassym.c
+#
+# XXX: A bunch of this is probably only reasonable because we expect to build
+# a 'unix' here.
+MAPFILE		 = $(UTSBASE)/$(PLATFORM)/qv/conf/Mapfile
+MODSTUBS	 = $(UTSBASE)/armv8/ml/modstubs.s
 GENASSYM_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/genassym.c
 OFFSETS_SRC	 = $(UTSBASE)/$(PLATFORM)/ml/offsets.in
-PLATFORM_OFFSETS_64	= $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
+PLATFORM_OFFSETS_32	= $(UTSBASE)/$(PLATFORM)/ml/mach_offsets.in
 PLATFORM_OFFSETS_SRC	= $(PLATFORM_OFFSETS_$(CLASS))
-KDI_OFFSETS_SRC	 = $(UTSBASE)/arm/kdi/kdi_offsets.in
+KDI_OFFSETS_SRC	 = $(UTSBASE)/armv8/kdi/kdi_offsets.in
 
 MACHINE_DEFS = -D$(PLATFORM) -D_MACHDEP
 
-# BASE_INS_DIR
 
 #
 # Debugging

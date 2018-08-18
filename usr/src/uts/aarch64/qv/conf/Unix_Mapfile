@@ -1,0 +1,90 @@
+$mapfile_version 2
+
+HDR_NOALLOC;
+
+#our entry must be at 0x40080000 for qemu
+#and since the loader loads us into mem base starting at 0x00080000
+#we use	VADDR = 0x40080000, PADDR = 0x00080000
+
+#every segment needs a PADDR to load properly in qemu as well.
+
+LOAD_SEGMENT pretext {
+	VADDR = 0x40080000;
+	# PADDR = 0x40180000;
+
+	FLAGS = READ EXECUTE;
+
+	ASSIGN_SECTION {
+		FILE_BASENAME = locore.o;
+		IS_NAME = .text;
+	};
+};
+
+# LOAD_SEGMENT text {
+
+# 	FLAGS = READ EXECUTE;
+
+# 	PADDR = 0x40080000;
+# 	VADDR = 0x40080000;
+
+# 	# VADDR = 0x40181000;
+# 	# PADDR = 0x40181000;
+
+# 	# ASSIGN_SECTION hello {
+# 	# 	FILE_BASENAME = locore.o;
+# 	# 	IS_NAME = .text;
+# 	# };
+
+# 	# ASSIGN_SECTION {
+#  #                IS_NAME = .text;
+#  #        };
+#  #        ASSIGN_SECTION {
+#  #                IS_NAME = .rodata;
+#  #        };
+#  #        ASSIGN_SECTION {
+#  #                IS_NAME = .data;
+#  #        };
+#  #        ASSIGN_SECTION {
+#  #                IS_NAME = .got;
+#  #        };
+#  #        ASSIGN_SECTION {
+#  #                IS_NAME = .got.plt;
+#  #        };
+#  #        ASSIGN_SECTION {
+#  #                IS_NAME = .data.rel.local;
+#  #        };
+#  #        ASSIGN_SECTION {
+#  #                IS_NAME = .bss;
+#  #        };
+
+#  	OS_ORDER = .text;
+
+#  	ASSIGN_SECTION {
+#  		TYPE = PROGBITS;
+#  		FLAGS = ALLOC !WRITE;
+#  	};
+
+#         #IS_ORDER = hello;
+
+#         #OS_ORDER = .hello .text .rodata .data .got .got.plt .data.rel.local .bss;
+# };
+
+# LOAD_SEGMENT data {
+
+# 	FLAGS = READ WRITE EXECUTE;
+
+# 	PADDR = 0x40180000;
+# 	VADDR = 0x40180000;
+
+# 	OS_ORDER = .data;
+
+# 	ASSIGN_SECTION {
+# 		TYPE = PROGBITS;
+# 		FLAGS = ALLOC WRITE;
+# 	};
+
+# 	#PADDR = 0x40011000;
+# 	#VADDR = 0x40011000;
+# 	# VADDR = 0x401b0000;
+# 	# PADDR = 0x401b0000;
+# };

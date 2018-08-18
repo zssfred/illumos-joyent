@@ -739,8 +739,11 @@ fakebop_dump_fdt(fdt_header_t *hdr)
 
 		uint32_t token = ntohl(*(uint32_t *)token_iter);
 		uint32_t prop_len = 0;
-		for (j = 0; j < level; j++) {
-			bcons_puts("\t");
+
+		if (have_console) {
+			for (j = 0; j < level; j++) {
+				bcons_puts("\t");
+			}
 		}
 
 		switch (token) {
@@ -792,9 +795,11 @@ fakebop_dump_fdt(fdt_header_t *hdr)
 			//XXX process property
 			if (strcmp(token_name, "chosen") == 0) {
 
-				for (j = 0; j < level; j++) {
-						bcons_puts("\t");
-				}
+					if (have_console) {
+						for (j = 0; j < level; j++) {
+							bcons_puts("\t");
+						}
+					}
 				if (strcmp(prop_name, "stdout-path") == 0) {
 
 					bootinfo.bi_cmdline = (char *) token_iter;
@@ -815,21 +820,27 @@ fakebop_dump_fdt(fdt_header_t *hdr)
 
 			 	}
 			} else if (strcmp(prop_name, "#size-cells") == 0) {
-				    	for (j = 0; j < level; j++) {
-						bcons_puts("\t");
+					if (have_console) {
+						for (j = 0; j < level; j++) {
+							bcons_puts("\t");
+						}
 					}
 				bop_printf(NULL, "Size Cells: %x\n",
 				    token);
 			} else if (strcmp(prop_name, "#address-cells") == 0) {
-				    	for (j = 0; j < level; j++) {
-						bcons_puts("\t");
+					if (have_console) {
+						for (j = 0; j < level; j++) {
+							bcons_puts("\t");
+						}
 					}
 				bop_printf(NULL, "Address Cells: %x\n",
 				    token);
 			} else if (strcmp(token_name, "memory") == 0
 			    && strcmp(prop_name, "reg") == 0) {
-				    	for (j = 0; j < level; j++) {
-						bcons_puts("\t");
+					if (have_console) {
+						for (j = 0; j < level; j++) {
+							bcons_puts("\t");
+						}
 					}
 				bootinfo.bi_memstart =
 				    ntohll(*(uint64_t *)(token_iter));
@@ -842,8 +853,10 @@ fakebop_dump_fdt(fdt_header_t *hdr)
 				    bootinfo.bi_memsize);
 
 			} else if (strcmp(prop_name, "compatible") == 0) {
-					for (j = 0; j < level; j++) {
-						bcons_puts("\t");
+					if (have_console) {
+						for (j = 0; j < level; j++) {
+							bcons_puts("\t");
+						}
 					}
 
 				for (j = 0; j < prop_len; j++) {
@@ -854,8 +867,10 @@ fakebop_dump_fdt(fdt_header_t *hdr)
 				bop_printf(NULL, "\n");
 			} else if (strcmp(prop_name, "ranges") == 0
 			    && strcmp(token_name, "platform@c000000") == 0) {
-					for (j = 0; j < level; j++) {
-						bcons_puts("\t");
+					if (have_console) {
+						for (j = 0; j < level; j++) {
+							bcons_puts("\t");
+						}
 					}
 
 				uint64_t int1 =
@@ -880,9 +895,11 @@ fakebop_dump_fdt(fdt_header_t *hdr)
 			token_iter += sizeof(uint32_t);
 			break;
 		default:
-			bcons_puts("Token broken at addr: ");
-			fakebop_put_uint64(token_iter);
-			DBG_MSG("");
+			if (have_console) {
+				bcons_puts("Token broken at addr: ");
+				fakebop_put_uint64(token_iter);
+				DBG_MSG("");
+			}
 			bop_panic(":(");
 			break;
 		}

@@ -39,7 +39,7 @@
  mkp_lofi=
  mkp_unix=
  mkp_genunix=
- mkp_upath="/platform/aarch64/kernel/"
+ mkp_upath=""
  mkp_genpath="/kernel"
 
 
@@ -97,7 +97,17 @@
  	chown $USER boot_archive
  }
 
- [[ -n "$1" ]] || fatal "missing name of unix"
+while getopts u: name; do
+    case $name in
+        u) mkp_upath="$OPTARG";;
+        ?) printf "Usage: %s -u <unix path>\n" $0
+           exit 2;;
+    esac
+done
+
+ shift $(($OPTIND - 1))
+
+[[ -n "$1" ]] || fatal "missing name of unix"
  mkp_unix="$1"
 [[ -n "$2" ]] || fatal "missing name of genunix"
  mkp_genunix="$2"

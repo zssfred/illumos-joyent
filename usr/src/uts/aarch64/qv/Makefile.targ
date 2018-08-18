@@ -13,5 +13,66 @@
 # Copyright 2018 (c) Joyent, Inc.  All rights reserved.
 #
 
-include $(UTSBASE)/$(PLATFORM)/qv/Makefile.rules
-include $(UTSBASE)/$(PLATFORM)/Makefile.targ
+.KEEP_STATE:
+
+$(ROOT_QV_DIR): $(ROOT_PLAT_DIR)
+	-$(INS.dir)
+
+$(ROOT_QV_MOD_DIR): $(ROOT_QV_DIR)
+	-$(INS.dir)
+
+$(ROOT_QV_CPU_DIR_64): $(ROOT_QV_MOD_DIR)
+	-$(INS.dir)
+
+$(ROOT_QV_CPU_DIR_64): $(ROOT_QV_CPU_DIR_64)
+	-$(INS.dir)
+
+$(ROOT_QV_DRV_DIR_64): $(ROOT_QV_MOD_DIR)
+	-$(INS.dir)
+
+$(ROOT_QV_DRV_DIR_64): $(ROOT_QV_DRV_DIR_64)
+	-$(INS.dir)
+
+$(ROOT_QV_MISC_DIR_64): $(ROOT_QV_MOD_DIR)
+	-$(INS.dir)
+
+$(ROOT_QV_MISC_DIR_64): $(ROOT_QV_MISC_DIR_64)
+	-$(INS.dir)
+
+$(ROOT_QV_CRYPTO_DIR_64): $(ROOT_QV_MOD_DIR)
+	-$(INS.dir)
+
+$(ROOT_QV_CRYPTO_DIR_64): $(ROOT_QV_CRYPTO_DIR_64)
+	-$(INS.dir)
+
+$(USR_QV_DIR): $(USR_PLAT_DIR)
+	-$(INS.dir)
+
+$(USR_QV_INC_DIR): $(USR_QV_DIR)
+	$(INS.slink4)
+
+$(USR_QV_SBIN_DIR): $(USR_QV_DIR)
+	-$(INS.slink5)
+
+$(USR_QV_LIB_DIR): $(USR_QV_DIR)
+	-$(INS.dir)
+
+$(USR_QV_ISYS_DIR): $(USR_QV_INC_DIR)
+	$(INS.dir)
+
+$(ROOT_QV_KERN_DIR)/%: $(OBJS_DIR)/% $(ROOT_QV_KERN_DIR) FRC
+	$(INS.file)
+
+$(ROOT_QV_DRV_DIR)/%: $(OBJS_DIR)/% $(ROOT_QV_DRV_DIR) FRC
+	$(INS.file)
+
+$(ROOT_QV_CPU_DIR)/%: $(OBJS_DIR)/% $(ROOT_QV_CPU_DIR) FRC
+	$(INS.file)
+
+$(ROOT_QV_MISC_DIR)/%: $(OBJS_DIR)/% $(ROOT_QV_MISC_DIR) FRC
+	$(INS.file)
+
+
+
+include $(UTSBASE)/aarch64/qv/Makefile.rules
+include $(UTSBASE)/aarch64/Makefile.targ

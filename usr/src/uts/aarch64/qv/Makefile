@@ -15,72 +15,118 @@
 
 UTSBASE = ../..
 
-UNIX		= unix
-UNIX_BIN	= $(OBJS_DIR)/$(UNIX)
-GENUNIX		= genunix
-GENUNIX_DIR	= ../../arm/$(GENUNIX)
-#LIBOPTS	= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
-LIBOPTS		= -L $(OBJS_DIR) -l $(GENUNIX)
-LIBGENUNIX	= $(OBJS_DIR)/libgenunix.so
-
 #
 # Include common rules
 #
 include $(UTSBASE)/aarch64/qv/Makefile.qv
 
-ALL_TARGET = $(UNIX_BIN)
-INSTALL_TARGET = $(UNIX_BIN)
+def		:=	TARGET= def
+all		:=	TARGET= all
+install		:=	TARGET= install
+install_h	:=	TARGET= install_h
+clean		:=	TARGET= clean
+clobber		:=	TARGET= clobber
+lint		:=	TARGET= lint
+lintlib		:=	TARGET= lintlib
+modlintlib	:=	TARGET= modlintlib
+modlist		:=	TARGET= modlist
+modlist		:=	NO_STATE= -k $$MODSTATE$$$$
+clean.lint	:=	TARGET= clean.lint
+check		:=	TARGET= check
 
-OBJECTS	= \
-	$(QV_OBJS:%=$(OBJS_DIR)/%)\
-	$(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
-	$(CORE_OBJS:%=$(OBJS_DIR)/%) \
-	$(OBJS_DIR)/zlib_obj.o
 
-CLEANFILES += \
-	$(OBJECTS) \
-	$(UNIX) \
-	$(LIBGENUNIX)
+.KEEP_STATE:
 
-CERRWARN	+= -_gcc=-Wno-parentheses
-CERRWARN	+= -_gcc=-Wno-uninitialized
-CERRWARN	+= -_gcc=-Wno-unused-label
-CERRWARN	+= -_gcc=-Wno-unused-function
-CERRWARN	+= -_gcc=-Wno-unused-variable
-CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
+def all clean clobber clean.lint: unix .WAIT \
+	$(QV_CPU_KMODS) $(QV_KMODS)
 
-OBJCOPY=$(GNU_ROOT)/bin/objcopy
+modlist: unix \
+	$(QV_CPU_KMODS) $(QV_KMODS)
 
-all: $(ALL_DEPS)
+IMPLEMENTED_PLATFORM = Qemu,Virt
 
-def: $(DEF_DEPS)
+install: $(ROOT_QV_DIR) $(USR_QV_DIR) \
+	$(USR_QV_INC_DIR) \
+	$(USR_QV_SBIN_DIR) \
+	$(USR_QV_LIB_DIR) \
+	$(QV_CRYPTO_LINKS) \
+	unix .WAIT $(QV_CPU_KMODS) \
+	$(QV_KMODS)
 
-clean: $(CLEAN_DEPS)
+unix $(QV_KMODS) $(QV_CPU_KMODS): FRC
+	cd $@; pwd; $(MAKE) $(NO_STATE) $(TARGET)
 
-clobber: $(CLOBBER_DEPS)
-
-install_h:
-
-$(LIBGENUNIX): ../misc/fake_stubs.c
-	$(COMPILE.c) -o $(OBJS_DIR)/fake_stubs.o ../misc/fake_stubs.c
-	$(LD) -r $(LDFLAGS) -o $(OBJS_DIR)/genunix $(OBJS_DIR)/fake_stubs.o
-	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
-
-$(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
-	echo $(MACH)
-	echo $(MACH64)
-	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
-	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
-	$(POST_PROCESS)
-	$(OBJCOPY) --image-base 0x40000000 $(UNIX_BIN) -O binary $(UNIX_BIN).bin
-	pfexec ./tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
-	mv boot_archive $(OBJS_DIR)/
-
-# %.bin: %
-# 	$(OBJCOPY) $< -O binary $@
-# 	pfexec ./tools/mkplatform.sh $@ debug64/genunix
+install_h check:	FRC
 
 #
 # Include common targets
 #
 include $(UTSBASE)/aarch64/qv/Makefile.targ
+
+
+# UNIX		= unix
+# UNIX_BIN	= $(OBJS_DIR)/$(UNIX)
+# GENUNIX		= genunix
+# GENUNIX_DIR	= ../../armv8/$(GENUNIX)
+# #LIBOPTS	= -L $(GENUNIX_DIR)/$(OBJS_DIR) -l $(GENUNIX)
+# LIBOPTS		= -L $(OBJS_DIR) -l $(GENUNIX)
+# LIBGENUNIX	= $(OBJS_DIR)/libgenunix.so
+
+
+
+# ALL_TARGET = $(UNIX_BIN)
+# INSTALL_TARGET = $(UNIX_BIN)
+
+# OBJECTS	= \
+# 	$(QV_OBJS:%=$(OBJS_DIR)/%)\
+# 	$(KRTLD_OBJS:%=$(OBJS_DIR)/%) \
+# 	$(CORE_OBJS:%=$(OBJS_DIR)/%) \
+# 	$(OBJS_DIR)/zlib_obj.o
+
+# CLEANFILES += \
+# 	$(OBJECTS) \
+# 	$(UNIX) \
+# 	$(LIBGENUNIX)
+
+# CERRWARN	+= -_gcc=-Wno-parentheses
+# CERRWARN	+= -_gcc=-Wno-uninitialized
+# CERRWARN	+= -_gcc=-Wno-unused-label
+# CERRWARN	+= -_gcc=-Wno-unused-function
+# CERRWARN	+= -_gcc=-Wno-unused-variable
+# CERRWARN	+= -_gcc=-Wno-unused-but-set-variable
+
+# OBJCOPY=$(GNU_ROOT)/bin/objcopy
+
+# all: $(ALL_DEPS)
+
+# def: $(DEF_DEPS)
+
+# clean: $(CLEAN_DEPS)
+
+# clobber: $(CLOBBER_DEPS)
+
+# install_h:
+
+# $(LIBGENUNIX): ../misc/fake_stubs.c
+# 	$(COMPILE.c) -o $(OBJS_DIR)/fake_stubs.o ../misc/fake_stubs.c
+# 	$(LD) -r $(LDFLAGS) -o $(OBJS_DIR)/genunix $(OBJS_DIR)/fake_stubs.o
+# 	$(BUILD.SO) genunix $(OBJS_DIR)/genunix
+
+# $(UNIX_BIN): $(OBJECTS) $(LIBGENUNIX)
+# 	echo $(MACH)
+# 	echo $(MACH64)
+# 	$(LD) -dy -b -znointerp -e _start -o $@ $(OBJECTS) $(LIBOPTS) -M test_mapfile
+# 	$(CTFMERGE) $(CTFMRGFLAGS) -L VERSION -o $@ $(OBJECTS)
+# 	$(POST_PROCESS)
+# 	$(OBJCOPY) --image-base 0x40000000 $(UNIX_BIN) -O binary $(UNIX_BIN).bin
+# 	pfexec ./tools/mkplatform.sh $(UNIX_BIN) $(OBJS_DIR)/genunix
+# 	mv boot_archive $(OBJS_DIR)/
+
+# # %.bin: %
+# # 	$(OBJCOPY) $< -O binary $@
+# # 	pfexec ./tools/mkplatform.sh $@ debug64/genunix
+
+# #
+# # Include common targets
+# #
+# include $(UTSBASE)/aarch64/qv/Makefile.targ

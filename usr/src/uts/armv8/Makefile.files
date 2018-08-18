@@ -10,13 +10,21 @@
 #
 
 #
-# Copyright 2018 (c) Joyent, Inc.  All rights reserved.
+# Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
-UTSTREE=$(UTSBASE)
+CORE_OBJS += \
+	decompress.o
+	# arm_subr.o \
+	# lock_prim.o \
+	# decompress.o
 
-include $(UTSBASE)/Makefile.targ
+#
+# These are stubs that we use for the moment to help deal with
+# dependencies and implementation pieces that we need, but don't have
+# yet.
+#
+GENUNIX_OBJS = \
+	fake_stubs.o
 
-include $(UTSTREE)/aarch64/Makefile.rules
-include $(UTSTREE)/armv8/Makefile.rules
-include $(UTSTREE)/common/Makefile.rules
+INC_PATH	+= -I$(UTSBASE)/armv8

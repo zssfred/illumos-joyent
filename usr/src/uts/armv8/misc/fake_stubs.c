@@ -19,6 +19,14 @@
  */
 extern void bop_panic(const char *);
 
+// #define	STUB(x) void x(void) { bop_panic(#x); }
+
+// STUB(mod_release_mod)
+// STUB(last_module_id)
+// STUB(mod_lock)
+// STUB(moddebug)
+// STUB(mod_load_requisite)
+// STUB(modrootloaded)
 
 void
 panic(const char *msg)

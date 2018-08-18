@@ -39,7 +39,7 @@ sparc_ARCHITECTURES = sun4v sun4u sparc
 
 i386_ARCHITECTURES = i86pc i86xpv intel
 
-arm_ARCHITECTURES = aarch64 arm # armv7
+arm_ARCHITECTURES = aarch64 armv8 # armv7
 # arm_ARCHITECTURES = aarch64 arm
 
 #
@@ -62,7 +62,7 @@ sparc_PARALLEL = $(sparc_ARCHITECTURES)
 #
 # For ARM all architectures can be compiled in parallel.
 #
-arm_PREREQ = arm
+arm_PREREQ = armv8
 arm_PARALLEL = $(arm_ARCHITECTURES)
 
 #

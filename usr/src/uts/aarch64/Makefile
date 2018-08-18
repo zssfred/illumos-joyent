@@ -17,8 +17,6 @@
 
 UTSBASE = ..
 
-# BUILD_TYPE = DBG64
-
 include Makefile.aarch64
 
 all		:=	TARGET= all
@@ -28,7 +26,7 @@ clean		:=	TARGET= clean
 clobber		:=	TARGET= clobber
 install_h	:=	TARGET= install_h
 modlist	:=	TARGETf= modlist
-modlist	modlist.arm	:=	NO_STATE= -k $$MODSTATE$$$$
+modlist	modlist.armv8	:=	NO_STATE= -k $$MODSTATE$$$$
 
 
 .KEEP_STATE:
@@ -44,10 +42,10 @@ install: install_platforms genassym .WAIT $(KMODS) $(XMODS) $(IMPLEMENTATIONS)
 
 modlist: $(KMODS) $(XMODS) $(IMPLEMENTATIONS)
 
-modlist.karch: modlist modlist.arm
+modlist.karch: modlist modlist.armv8
 
-modlist.arm:
-	@cd $(SRC)/uts/arm; pwd; $(MAKE) $(NO_STATE) modlist
+modlist.armv8:
+	@cd $(SRC)/uts/armv8; pwd; $(MAKE) $(NO_STATE) modlist
 
 setup: FRC
 
@@ -73,90 +71,15 @@ install_platforms: $(ROOT_PSM_DIR) $(USR_PSM_DIR) \
 
 include ../Makefile.targ
 
-XRDIRS = ../aarch64 ../arm ../common
+XRDIRS = ../aarch64 ../armv8 ../common
 
-XRPRUNE = sun4u sun4v sun sffmu i86pc i86xpv intel sparc armv7
+XRPRUNE = sun4u sun4v sun sffmu i86pc i86xpv intel sparc armv7 arm
 
 cscope.out tags: FRC
 	$(XREF) -x $@
-
-# AS_CPPFLAGS = \
-# 	-D_ASM \
-# 	-D_KERNEL \
-# 	-I$(ROOT)/usr/include \
-# 	-xarch=aarch64
-
-# # XXX these override makefile.master but i think that's fine.
-# CPPFLAGS = \
-# 	-D_KERNEL \
-# 	-I$(ROOT)/usr/include \
-# 	-I$(UTSBASE)/common
-
-# GEN_OBJS = \
-# 	misc/copy.o \
-# 	misc/string.o \
-# 	boot/fdt.o \
-# 	os/fakebop.o \
-# 	ml/byteorder.o
-
-# COM_OBJS = \
-# 	string.o #Contains vsnprintf
-
-# QEMU_VIRT_OBJS = \
-# 	qv/locore.o \
-# 	qv/boot_console.o
-
-# OBJS = \
-# 	$(QEMU_VIRT_OBJS) \
-# 	$(GEN_OBJS) \
-# 	$(COM_OBJS)
-
-
-# OBJCOPY=$(GNU_ROOT)/bin/objcopy
-
-# CERRWARN += -_gcc=-Wno-parentheses
-# CERRWARN += -_gcc=-Wno-uninitialized
-
-# all: unix.elf unix.bin
-
-# %.o: %.s
-# 	$(AS) -P $(AS_CPPFLAGS) -o $@ $<
-
-# %.o: %.c
-# 	$(COMPILE64.c) -o $@ -c $<
-
-# %.o: ../../common/util/%.c
-# 	$(COMPILE64.c) -o $@ -c $<
-
-# %.o: ../common/krtld/%.c
-# 	$(COMPILE64.c) -o $@ -c $<
-
-# unix: $(OBJS)
-# 	$(LD) -dn -e _start -o $@.elf $(OBJS) -M test_mapfile
-
-# %.bin: %.elf
-# 	$(OBJCOPY) $< -O binary $@
-
-# #While the elf file is great to have, and qemu is fine loading and running it,
-# #Qemu assumes elf files are not kernels and so loads them differently (ie doesnt
-# #pass boot args). Fun stuff.
-# %.elf: %
-# 	elfdump -e $@
-
-# clean:
-# 	rm -f $(OBJS)
-
-# clobber: clean
-# 	rm -f unix unix.bin
-
-# install_h check:
-# 	@cd sys; pwd; $(MAKE) $(TARGET)
 
 all.prereq install.prereq def.prereq install_h.prereq clean.prereq:
 	echo "Don't think any pre-reqs yet"
 
 %.prereq:
 	echo "Don't think any pre-reqs yet2"
-
-# def: $(KMODS) $(XMODS) #XXX: config
-

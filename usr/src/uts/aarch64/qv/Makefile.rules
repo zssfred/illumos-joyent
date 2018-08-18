@@ -13,12 +13,12 @@
 # Copyright 2018 (c) Joyent, Inc.  All rights reserved.
 #
 
-$(OBJS_DIR)/%.o:	$(UTSBASE)/$(PLATFORM)/qv/%.c
-	$(COMPILE64.c) -o $@ $<
+$(OBJS_DIR)/%.o:	$(UTSBASE)/$(PLATFORM)/qv/os/%.c
+	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)
 
-$(OBJS_DIR)/%.o:	$(UTSBASE)/$(PLATFORM)/qv/%.s
-	$(COMPILE64.s) -o $@ $<
+$(OBJS_DIR)/%.o:	$(UTSBASE)/$(PLATFORM)/qv/ml/%.s
+	$(COMPILE.s) -o $@ $<
 	$(CTFCONVERT_O)
 
 INC_PATH += -I$(UTSBASE)/$(PLATFORM) -I$(UTSBASE)/$(PLATFORM)/qv/

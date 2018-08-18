@@ -10,13 +10,19 @@
 #
 
 #
-# Copyright 2018 (c) Joyent, Inc.  All rights reserved.
+# Copyright (c) 2013, Joyent, Inc.  All rights reserved.
 #
 
-UTSTREE=$(UTSBASE)
+$(OBJS_DIR)/%.o:	$(UTSBASE)/armv8/promif/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
 
-include $(UTSBASE)/Makefile.targ
+$(OBJS_DIR)/%.o:	$(SRC)/common/fs/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
 
-include $(UTSTREE)/aarch64/Makefile.rules
-include $(UTSTREE)/armv8/Makefile.rules
-include $(UTSTREE)/common/Makefile.rules
+
+#Genunix doesnt build yet, so we use fakestubs
+$(OBJS_DIR)/%.o:	$(UTSBASE)/armv8/misc/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)

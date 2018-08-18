@@ -13,5 +13,64 @@
 # Copyright 2018 (c) Joyent, Inc.  All rights reserved.
 #
 
+#
+#	Define directories.
+#
+ROOT_QV_DIR	= $(ROOT_PLAT_DIR)/qv
+ROOT_QV_MOD_DIR	= $(ROOT_QV_DIR)/kernel
+ROOT_QV_KERN_DIR_64 = $(ROOT_QV_MOD_DIR)
+ROOT_QV_MISC_DIR_64 = $(ROOT_QV_MOD_DIR)/misc
+ROOT_QV_DRV_DIR_64 = $(ROOT_QV_MOD_DIR)/drv
+ROOT_QV_CPU_DIR_64 = $(ROOT_QV_MOD_DIR)/cpu
+ROOT_QV_CRYPTO_DIR_64 = $(ROOT_QV_MOD_DIR)/crypto
+
+ROOT_QV_KERN_DIR	= $(ROOT_QV_KERN_DIR_$(CLASS))
+ROOT_QV_MISC_DIR	= $(ROOT_QV_MISC_DIR_$(CLASS))
+ROOT_QV_DRV_DIR	= $(ROOT_QV_DRV_DIR_$(CLASS))
+ROOT_QV_CPU_DIR	= $(ROOT_QV_CPU_DIR_$(CLASS))
+ROOT_QV_CRYPTO_DIR	= $(ROOT_QV_CRYPTO_DIR_$(CLASS))
+
+ROOT_PLAT_MOD_DIRS	+= $(ROOT_QV_MOD_DIR)
+ROOT_PLAT_MISC_DIRS_64	+= $(ROOT_QV_MISC_DIR_64)
+
+USR_QV_DIR	= $(USR_PLAT_DIR)/qv
+USR_QV_LIB_DIR	= $(USR_QV_DIR)/lib
+USR_QV_SBIN_DIR	= $(USR_QV_DIR)/sbin
+USR_QV_INC_DIR	= $(USR_QV_DIR)/include
+USR_QV_ISYS_DIR	= $(USR_QV_INC_DIR)/sys
+
+#
+#	Include the makefiles which define build rule templates, the
+#	collection of files per module, and a few specific flags. Note
+#	that order is significant, just as with an include path. The
+#	first build rule template which matches the files name will be
+#	used. By including these in order from most machine dependent
+#	to most machine independent, we allow a machine dependent file
+#	to be used in preference over a machine independent version
+#	(Such as a machine specific optimization, which preserves the
+#	interfaces.)
+#
+
+# Modules
+QV_KMODS +=
+
+# CPU modules
+QV_CPU_KMODS +=
+
+#
+#	Everybody needs to know how to build modstubs.o and to locate unix.o
+#
+UNIX_DIR	= $(UTSBASE)/$(PLATFORM)/qv/unix
+MODSTUBS_DIR	= $(UNIX_DIR)
+DSF_DIR		= $(UTSBASE)/$(PLATFORM)/genassym # XXX: Really ok?
+
+UNIX_O		= $(UNIX_DIR)/$(OBJS_DIR)/unix.o
+
+#
+#	Define the actual specific platforms
+#
+MACHINE_DEFS	= -D$(PLATFORM) -D_MACHDEP -DMP
+
+
 include $(UTSBASE)/aarch64/qv/Makefile.files
 include $(UTSBASE)/aarch64/Makefile.aarch64

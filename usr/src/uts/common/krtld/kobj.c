@@ -163,7 +163,7 @@ extern char stubs_end[];
  *			  is loaded.
  */
 #ifdef __aarch64__
-int kobj_debug = 0;
+int kobj_debug = D_DEBUG | D_LOADING;
 #else
 int kobj_debug = 0;
 #endif
