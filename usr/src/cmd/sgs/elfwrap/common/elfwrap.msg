@@ -75,6 +75,7 @@
 @ MSG_TARG_SPARC	"sparc"
 @ MSG_TARG_X86		"x86"
 @ MSG_TARG_ARM		"arm"
+@ MSG_TARG_AARCH64	"aarch64"
 
 @ MSG_STR_AWRAPO	"a.wrap.o"
 @ MSG_STR_EMPTY		""

@@ -81,13 +81,19 @@ extern "C" {
 #elif	defined(DO_RELOC_LIBLD_ARM)
 
 #define	DO_RELOC_LIBLD
-#if	defined(_ELF64)
-#define	do_reloc_ld		do64_reloc_ld_arm
-#define	reloc_table		reloc64_table_arm
-#else
+// #if	defined(_ELF64)
+// #define	do_reloc_ld		do64_reloc_ld_arm
+// #define	reloc_table		reloc64_table_arm
+// #else
 #define	do_reloc_ld		do32_reloc_ld_arm
 #define	reloc_table		reloc32_table_arm
-#endif
+// #endif
+
+#elif defined(DO_RELOC_LIBLD_AARCH64)
+
+#define	DO_RELOC_LIBLD
+#define	do_reloc_ld		do64_reloc_ld_aarch64
+#define	reloc_table		reloc64_table_aarch64
 
 #else				/* rtld */
 

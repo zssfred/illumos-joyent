@@ -27,6 +27,11 @@ pics/%.o:	../common/%.c
 		$(COMPILE.c) -o $@ $<
 		$(POST_PROCESS_O)
 
+# pics/machrel.aarch64.o: ../common/machrel.aarch64.c
+# 		echo "HELLO\n\n\n"
+# 		$(COMPILE.c) -o pics/machrel.aarch64.o -D_ELF64 ../common/machrel.aarch64.c
+# 		$(POST_PROCESS_O)
+
 pics/%32.o:	../common/%.c
 		$(COMPILE.c) -o $@ $<
 		$(POST_PROCESS_O)
@@ -71,7 +76,7 @@ pics/%_arm_32.o: $(KRTLD_ARM)/%.c
 		$(COMPILE.c) -o $@ -DDO_RELOC_LIBLD $<
 		$(POST_PROCESS_O)
 
-pics/%_arm_64.o: $(KRTLD_AARCH64)/%.c
+pics/%_aarch64_64.o: $(KRTLD_AARCH64)/%.c
 		$(COMPILE.c) -o $@ -D_ELF64 -DDO_RELOC_LIBLD $<
 		$(POST_PROCESS_O)
 

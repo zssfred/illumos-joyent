@@ -49,6 +49,7 @@ HDRS=	\
 
 # XXXARM: Not playing this game
 $(ARM_BLD)HDRS=
+$(AARCH64_BLD)HDRS=
 
 HDRDIR32= $(MACH)/include/ast
 HDRDIR64= $(MACH64)/include/ast

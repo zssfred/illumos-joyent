@@ -35,6 +35,7 @@ sparc_CC=		$(SPRO_VROOT)/bin/cc
 $(__GNUC)i386_CC=	$(i386_GCC_ROOT)/bin/gcc
 $(__GNUC)sparc_CC=	$(sparc_GCC_ROOT)/bin/gcc
 arm_CC=			$(arm_GCC_ROOT)/bin/gcc
+aarch64_CC=		$(aarch64_GCC_ROOT)/bin/gcc
 
 CFLAGS += $(CCVERBOSE)
 

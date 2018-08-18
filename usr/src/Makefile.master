@@ -39,7 +39,7 @@ ADJUNCT_PROTO=
 #
 # Adjunct for building things that run on the build machine.
 #
-NATIVE_ADJUNCT=	/usr
+NATIVE_ADJUNCT= /root/smartos-live/proto.strap/usr #/usr
 
 #
 # RELEASE_BUILD should be cleared for final release builds.
@@ -68,17 +68,40 @@ RELEASE_BUILD=				$(POUND_SIGN)
 $(RELEASE_BUILD)NOT_RELEASE_BUILD=	$(POUND_SIGN)
 PATCH_BUILD=				$(POUND_SIGN)
 
-# SPARC_BLD is '#' for an Intel build.
-# INTEL_BLD is '#' for a Sparc build.
-# SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
-# SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
-SPARC_BLD=   	$(POUND_SIGN) # $(SPARC_BLD_1:sparc=)
-# INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
+ # SPARC_BLD is '#' for an Intel build.
+ # INTEL_BLD is '#' for a Sparc build.
+SPARC_BLD_3=    $(MACH:aarch64=$(POUND_SIGN))
+SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
+SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
+SPARC_BLD=     $(SPARC_BLD_1:sparc=)
+
+INTEL_BLD_3=    $(MACH:aarch64=$(POUND_SIGN))
+INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
 INTEL_BLD_1=    $(MACH:sparc=$(POUND_SIGN))
 INTEL_BLD=      $(INTEL_BLD_1:i386=)
-# ARM_BLD_2=	$(MACH:i386=$(POUND_SIGN))
-# ARM_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
-ARM_BLD=	$(POUND_SIGN) #$(ARM_BLD_1:arm=)
+
+ARM_BLD_3=     $(MACH:aarch64=$(POUND_SIGN))
+ARM_BLD_2=     $(MACH:i386=$(POUND_SIGN))
+ARM_BLD_1=     $(MACH:sparc=$(POUND_SIGN))
+ARM_BLD=       $(ARM_BLD_1:arm=)
+
+AARCH64_BLD_3=     $(MACH:arm=$(POUND_SIGN))
+AARCH64_BLD_2=     $(MACH:i386=$(POUND_SIGN))
+AARCH64_BLD_1=     $(MACH:sparc=$(POUND_SIGN))
+AARCH64_BLD=       $(AARCH64_BLD_1:aarch64=)
+
+
+# # SPARC_BLD is '#' for an Intel build.
+# # INTEL_BLD is '#' for a Sparc build.
+# # SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
+# # SPARC_BLD_1=    $(MACH:i386=$(POUND_SIGN))
+# SPARC_BLD=   	$(POUND_SIGN) # $(SPARC_BLD_1:sparc=)
+# # INTEL_BLD_2=    $(MACH:arm=$(POUND_SIGN))
+# INTEL_BLD_1=    $(MACH:sparc=$(POUND_SIGN))
+# INTEL_BLD=      $(INTEL_BLD_1:i386=)
+# # ARM_BLD_2=	$(MACH:i386=$(POUND_SIGN))
+# # ARM_BLD_1=	$(MACH:sparc=$(POUND_SIGN))
+# ARM_BLD=	$(POUND_SIGN) #$(ARM_BLD_1:arm=)
 
 # CROSS_BLD is "#" if NATIVE_MACH and MACH are the same, and the empty string
 # otherwise.  NATIVE_BLD is the opposite
@@ -128,6 +151,7 @@ SFWLIBDIR64=	$(SFW_ROOT)/lib/$(MACH64)
 i386_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 sparc_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 arm_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
+aarch64_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 
 NATIVE_GCC_ROOT=	$($(NATIVE_MACH)_GCC_ROOT)
 
@@ -176,7 +200,7 @@ JAR=		$(JAVA_ROOT)/bin/jar
 CTFSTABS=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfstabs
 CTFSTRIP=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfstrip
 NDRGEN=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ndrgen
-GENOFFSETS=	$(ONBLD_TOOLS)/bin/genoffsets
+GENOFFSETS=	$(ONBLD_TOOLS)/bin/genoffsets -v
 CTFCVTPTBL=	$(ONBLD_TOOLS)/bin/ctfcvtptbl
 CTFFINDMOD=	$(ONBLD_TOOLS)/bin/ctffindmod
 XREF=		$(ONBLD_TOOLS)/bin/xref
@@ -283,7 +307,8 @@ MACH32=		$(MACH32_1:i386=i86)
 
 sparc_BUILD64=
 i386_BUILD64=
-arm_BUILD64=
+arm_BUILD64=    $(POUND_SIGN)
+aarch64_BUILD64=
 BUILD64=	$($(MACH)_BUILD64)
 
 #
@@ -359,7 +384,7 @@ sparcv9_XARCH=	-m64
 i386_XARCH=
 amd64_XARCH=	-m64 -Ui386 -U__i386
 arm_XARCH=
-aarch64_XARCH=	-m64 #XXXAARCH64 this seems right
+aarch64_XARCH=	#-m64 #XXXAARCH64 this seems right
 
 # assembler '-xarch' flag.  Different from compiler '-xarch' flag.
 sparc_AS_XARCH=		-xarch=v8plus
@@ -578,11 +603,11 @@ $(SRCDBGBLD)CCSOURCEDEBUGFLAGS	= -g -xs
 CFLAGS=         $(COPTFLAG) $($(MACH)_CFLAGS) $(SPACEFLAG) $(CCMODE) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
-		$(CUSERFLAGS) # -I/root/smartos-live/proto/usr/include
+		$(CUSERFLAGS) $(CTF_FLAGS)
 CFLAGS64=       $(COPTFLAG64) $($(MACH64)_CFLAGS) $(SPACEFLAG64) $(CCMODE64) \
 		$(ILDOFF) $(CERRWARN) $(C99MODE) $(CCUNBOUND) $(IROPTFLAG64) \
 		$(CGLOBALSTATIC) $(CCNOAUTOINLINE) $(CSOURCEDEBUGFLAGS) \
-		$(CUSERFLAGS64)
+		$(CUSERFLAGS64) $(CTF_FLAGS) ###xxx where am i actually supposed to add ctf flags
 #
 # Flags that are used to build parts of the code that are subsequently
 # run on the build machine (also known as the NATIVE_BUILD).
@@ -722,7 +747,7 @@ MAPFILE.INT =		mapfile-intf
 #	LDLIBS64=-YP,$ROOT/lib/$MACH64:$ROOT/usr/lib/$MACH64
 #
 LDLIBS32 =	$(ENVLDLIBS1) $(ENVLDLIBS2) $(ENVLDLIBS3)
-LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib) -L/root/smartos-live/proto.strap/lib -L/opt/local/lib
+LDLIBS32 +=	$(ADJUNCT_PROTO:%=-L%/usr/lib -L%/lib)
 LDLIBS.cmd = 	$(LDLIBS32)
 LDLIBS.lib =	$(LDLIBS32)
 
@@ -734,9 +759,8 @@ LDLIBS64 +=     $(ADJUNCT_PROTO:%=-L%/usr/lib/$(MACH64) -L%/lib/$(MACH64))
 #
 # Define compilation macros.
 #
-#COMPILE.C=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
-COMPILE.c=	$(CC) $(CFLAGS) $(CPPFLAGS) -I/root/smartos-live/proto.strap/usr/include -c
-COMPILE64.c=	$(CC) $(CFLAGS64) $(CPPFLAGS) -I/root/smartos-live/proto.strap/usr/include/64  -c
+COMPILE.c=	$(CC) $(CFLAGS) $(CPPFLAGS) -c
+COMPILE64.c=	$(CC) $(CFLAGS64) $(CPPFLAGS)  -c
 COMPILE.cc=	$(CCC) $(CCFLAGS) $(CPPFLAGS) -c
 COMPILE64.cc=	$(CCC) $(CCFLAGS64) $(CPPFLAGS) -c
 COMPILE.s=	$(AS) $(ASFLAGS) $(AS_CPPFLAGS)
@@ -819,6 +843,7 @@ SPRO_VROOT=		$(SPRO_ROOT)/SS12
 i386_GNU_ROOT=		$(SFW_ROOT)
 sparc_GNU_ROOT=		$(SFW_ROOT)
 arm_GNU_ROOT=		$(SFW_ROOT)
+aarch64_GNU_ROOT=	$(SFW_ROOT)
 
 GNU_ROOT=		$($(MACH)_GNU_ROOT)
 NATIVE_GNU_ROOT=	$($(NATIVE_MACH)_GNU_ROOT)
@@ -887,14 +912,14 @@ arm_LINT=		/bin/false
 arm_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.arm
 arm_CTFMERGE=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.arm
 
-aarch64_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_gcc
-aarch64_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.arm -_g++
+aarch64_CC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.aarch64 -_gcc
+aarch64_CCC=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/cw.aarch64 -_g++
 aarch64_CPP=		/usr/ccs/lib/cpp
-aarch64_AS=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/aw.arm
-aarch64_LD=		/opt/armtc/usr/bin/ld
+aarch64_AS=		$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/aw.aarch64
+aarch64_LD=		/opt/arm64tc/usr/bin/ld
 aarch64_LINT=		/bin/false
-aarch64_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.arm
-aarch64_CTFMERGE=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.arm
+aarch64_CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfconvert.aarch64
+aarch64_CTFMERGE=	$(ONBLD_TOOLS)/bin/$(NATIVE_MACH)/ctfmerge.aarch64
 
 NATIVECC=		$($(NATIVE_MACH)_CC)
 NATIVECCC=		$($(NATIVE_MACH)_CCC)

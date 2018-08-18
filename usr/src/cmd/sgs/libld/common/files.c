@@ -34,6 +34,7 @@
 #define	ELF_TARGET_AMD64
 #define	ELF_TARGET_SPARC
 #define	ELF_TARGET_ARM
+#define ELF_TARGET_AARCH64
 
 #include	<stdio.h>
 #include	<string.h>

@@ -14,20 +14,20 @@
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 
-#define	DO_RELOC_LIBLD_ARM
-#ifndef _ELF64
-#define _ELF64
+#define	DO_RELOC_LIBLD_AARCH64
+// #ifndef _ELF64
+// #define _ELF64
 /*
  * Seems to be necessary for getting the correct machdep_arm data when
  * cross building
  */
-#endif
+// #endif
 
 #include	<sys/elf_AARCH64.h>
 #include	<stdio.h>
 #include	<debug.h>
 #include	<reloc.h>
-#include	<arm/machdep_arm.h>
+#include	<aarch64/machdep_aarch64.h>
 #include	"msg.h"
 #include	"_libld.h"
 
@@ -634,10 +634,11 @@ ld_do_activerelocs(Ofl_desc *ofl)
 			gnp = ld_find_got_ndx(sdp->sd_GOTndxs, gref, ofl, arsp);
 			assert(gnp);
 
-			if (arsp->rel_rtype == R_AMD64_DTPOFF64)
-				gotndx = gnp->gn_gotndx + 1;
-			else
-				gotndx = gnp->gn_gotndx;
+			//XXXX: not sure
+			// if (arsp->rel_rtype == R_AMD64_DTPOFF64)
+			// 	gotndx = gnp->gn_gotndx + 1;
+			// else
+			// 	gotndx = gnp->gn_gotndx;
 
 			R1addr = (Xword)(gotndx * M_GOT_ENTSIZE);
 
@@ -736,8 +737,8 @@ ld_do_activerelocs(Ofl_desc *ofl)
 			 * Since this code is fixed up, it assumes a negative
 			 * offset that can be added to the thread pointer.
 			 */
-			if (arsp->rel_rtype == R_AMD64_TPOFF32)
-				value = -value;
+			// if (arsp->rel_rtype == R_AMD64_TPOFF32)
+			// 	value = -value;
 		}
 
 		if (arsp->rel_isdesc->is_file)
@@ -1224,7 +1225,7 @@ static const uchar_t nullfunc_tmpl[] = {
 };
 
 const Target *
-ld_targ_init_arm(void)
+ld_targ_init_aarch64(void)
 {
 	static const Target _ld_targ = {
 		.t_m = {
