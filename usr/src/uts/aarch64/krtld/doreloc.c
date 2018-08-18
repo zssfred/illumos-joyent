@@ -90,7 +90,7 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 	/* Table 4-9: Relocations for 19, 21 and 33 bit PC rel addresses */
 	[R_AARCH64_LD_PREL_LO19] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_ADR_PREL_LO21] =		{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
-	[R_AARCH64_ADR_PREL_PG_HI21] =		{ 0x1fffff000UL, FLG_RE_PCPAGEREL, 4, 0, 0 },
+	[R_AARCH64_ADR_PREL_PG_HI21] =		{ 0x1fffff000UL, FLG_RE_PCPAGEREL, 8, 0, 0 },
 	[R_AARCH64_ADR_PREL_PG_HI21_NC] =	{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_ADD_ABS_LO12_NC] =		{ 0xfff, FLG_RE_NOTREL, 4, 0, 10 },
 	[R_AARCH64_LDST8_ABS_LO12_NC] =		{ 0xfff, FLG_RE_NOTREL, 4, 0, 10 },
@@ -362,8 +362,8 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 
 	uvalue = *value;
 
-	// printf("Type: %ld\n", rtype);
-	// printf("Base: 0x%lx, Val: 0x%lx\n", base, uvalue);
+	// printf("Type: %lld\n", rtype);
+	// printf("Base: 0x%llx, Val: 0x%llx\n", base, uvalue);
 
 	if (rep->re_mask != 0) {
 		uvalue &= rep->re_mask;
@@ -379,15 +379,26 @@ do_reloc_rtld(Word rtype, uchar_t *off, Xword *value,
 		Xword hibits = (uvalue & 0x1ffffc) >> 2;
 		Xword lobits = uvalue & 0x3;
 		uvalue = (lobits << 29) | (hibits << 5);
+
+		/* zero out the base properly */
+		base &= ~((0x3 << 29) | (0x1ffffc << 3));
 		break;
 	default:
+		if (rep->re_mask != 0) {
+			/* zero out the base properly */
+			base &= ~((rep->re_mask >> rep->re_bshift) << rep->re_sigbits);
+		}
 		uvalue >>= rep->re_bshift;
 		uvalue <<= rep->re_sigbits;
 		break;
 	}
 
+	// if (rtype == R_AARCH64_ABS64 || rtype == R_AARCH64_ABS32 || rtype == R_AARCH64_ABS16) {
+	// 	base = uvalue;
+	// } else {
 	base = base + uvalue;
-	// printf("Result: 0x%lx, Val: 0x%lx\n", base, uvalue);
+	// }
+	// printf("Result: 0x%llx, Val: 0x%llx\n", base, uvalue);
 
 	switch (rep->re_fsize) {
 	case 8:
