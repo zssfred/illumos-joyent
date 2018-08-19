@@ -66,9 +66,10 @@ const Rel_entry reloc_table[R_AARCH64_NUM] = {
 	[R_AARCH64_NONE_ALT] =			{ 0, FLG_RE_NOTREL, 0, 0, 0 },
 
 	/* Table 4-6 - Static Data Relocations */
-	[R_AARCH64_ABS64] =			{ 0, FLG_RE_NOTREL, 8, 0, 0 },
-	[R_AARCH64_ABS32] =			{ 0, FLG_RE_NOTREL, 4, 0, 0 }, //XXX 4 seems to be right for this so need to go back to all of thse + doubble check size...
-	[R_AARCH64_ABS16] =			{ 0, FLG_RE_NOTREL, 2, 0, 0 },
+	/* XXX: i think these are pure replacements, so set mask as such */
+	[R_AARCH64_ABS64] =			{ 0xffffffffffffffffUL, FLG_RE_NOTREL, 8, 0, 0 },
+	[R_AARCH64_ABS32] =			{ 0xffffffff, FLG_RE_NOTREL, 4, 0, 0 }, //XXX 4 seems to be right for this so need to go back to all of thse + doubble check size...
+	[R_AARCH64_ABS16] =			{ 0xffff, FLG_RE_NOTREL, 2, 0, 0 },
 	[R_AARCH64_PREL64] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL32] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
 	[R_AARCH64_PREL16] =			{ 0, FLG_RE_NOTSUP, 0, 0, 0 },
