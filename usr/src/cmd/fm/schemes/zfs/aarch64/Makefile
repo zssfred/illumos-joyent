@@ -24,9 +24,8 @@
 #
 
 include ../../Makefile.com
-include $(SRC)/Makefile.master.64
 include ../../Makefile.targ
 
 LDLIBS += -lzfs
 
-install: all $(ROOTPROG64)
+install: all $(ROOTPROG)

@@ -26,7 +26,7 @@
 
 include		../../Makefile.tools
 
-SUBDIRS	= arm i386 sparc
+SUBDIRS	= aarch64 arm i386 sparc
 
 all	:= TARGET= all
 install	:= TARGET= install

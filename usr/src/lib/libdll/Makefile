@@ -49,6 +49,7 @@ HDRS= \
 
 # XXXARM: ... pabst blue ribbon
 $(ARM_BLD)HDRS=
+$(AARCH64_BLD)HDRS=
 
 HDRDIR32= $(MACH)/src/lib/libdll
 HDRDIR64= $(MACH64)/src/lib/libdll

@@ -758,7 +758,7 @@ extern Sdf_desc		*sdf_find(const char *, APlist *);
 #define	ld_targ			ld64_targ
 #define	ld_targ_init_sparc	ld64_targ_init_sparc
 #define	ld_targ_init_x86	ld64_targ_init_x86
-#define	ld_targ_init_arm	ld64_targ_init_arm
+#define	ld_targ_init_aarch64	ld64_targ_init_aarch64
 #define	ld_unwind_make_hdr	ld64_unwind_make_hdr
 #define	ld_unwind_populate_hdr	ld64_unwind_populate_hdr
 #define	ld_unwind_register	ld64_unwind_register
@@ -1003,6 +1003,7 @@ extern uintptr_t	ld_sym_spec(Ofl_desc *);
 
 extern Target		ld_targ;
 extern const Target	*ld_targ_init_arm(void);
+extern const Target	*ld_targ_init_aarch64(void);
 extern const Target	*ld_targ_init_sparc(void);
 extern const Target	*ld_targ_init_x86(void);
 

@@ -52,7 +52,7 @@ AVLOBJ =	avl.o
 # Relocation engine objects. These are kept separate from the L_XXX_MACHOBJS
 # lists below in order to facilitate linting them.
 G_MACHOBJS32 =	doreloc_sparc_32.o doreloc_x86_32.o doreloc_arm_32.o
-G_MACHOBJS64 =	doreloc_sparc_64.o doreloc_x86_64.o doreloc_arm_64.o
+G_MACHOBJS64 =	doreloc_sparc_64.o doreloc_x86_64.o doreloc_aarch64_64.o
 
 # Target specific objects (sparc/sparcv9)
 L_SPARC_MACHOBJS32 =	machrel.sparc32.o	machsym.sparc32.o
@@ -65,15 +65,19 @@ L_X86_MACHOBJS64 =	machrel.amd64.o
 
 # Target specific objects (arm)
 L_ARM_MACHOBJS32 =	machrel.arm32.o
-L_ARM_MACHOBJS64 =	machrel.aarch64.o
+L_ARM_MACHOBJS64 =
+
+# Target specific objects (aarch64)
+L_AARCH64_MACHOBJS32 =
+L_AARCH64_MACHOBJS64 =	machrel.aarch64.o
 
 # All target specific objects rolled together
 E_TOOLOBJS =	$(E_SPARC_TOOLOBJS) \
 	$(E_X86_TOOLOBJS)
 L_MACHOBJS32 =	$(L_SPARC_MACHOBJS32) \
-	$(L_X86_MACHOBJS32) $(L_ARM_MACHOBJS32)
+	$(L_X86_MACHOBJS32) $(L_ARM_MACHOBJS32) $(L_AARCH64_MACHOBJS32)
 L_MACHOBJS64 =	$(L_SPARC_MACHOBJS64) \
-	$(L_X86_MACHOBJS64) $(L_ARM_MACHOBJS64)
+	$(L_X86_MACHOBJS64) $(L_ARM_MACHOBJS64) $(L_AARCH64_MACHOBJS64)
 
 
 

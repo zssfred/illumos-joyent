@@ -16,11 +16,11 @@
 #define	ELF_TARGET_AARCH64
 #if defined(DO_RELOC_LIBLD)
 #undef DO_RELOC_LIBLD
-#define	DO_RELOC_LIBLD_ARM
+#define	DO_RELOC_LIBLD_AARCH64
 #endif
 #include <stdio.h>
 #include "sgs.h"
-#include <arm/machdep_arm.h>
+#include <aarch64/machdep_aarch64.h>
 #include "libld.h"
 #include "reloc.h"
 #include "conv.h"

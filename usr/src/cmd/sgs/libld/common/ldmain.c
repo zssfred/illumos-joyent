@@ -122,12 +122,15 @@ ld_init_target(Lm_list *lml, Half mach)
 	case EM_SPARCV9:
 		ld_targ = *ld_targ_init_sparc();
 		break;
-
-	case EM_ARM:
+#ifdef _ELF64
 	case EM_AARCH64:
+		ld_targ = *ld_targ_init_aarch64();
+		break;
+#else
+	case EM_ARM:
 		ld_targ = *ld_targ_init_arm();
 		break;
-
+#endif
 	default:
 		{
 			Conv_inv_buf_t	inv_buf;

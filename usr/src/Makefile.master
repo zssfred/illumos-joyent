@@ -82,7 +82,6 @@ ARM_BLD_2=     $(MACH:i386=$(POUND_SIGN))
 ARM_BLD_1=     $(MACH:sparc=$(POUND_SIGN))
 ARM_BLD=       $(ARM_BLD_1:arm=)
 
-
 # # SPARC_BLD is '#' for an Intel build.
 # # INTEL_BLD is '#' for a Sparc build.
 # # SPARC_BLD_2=    $(MACH:arm=$(POUND_SIGN))
@@ -143,6 +142,7 @@ SFWLIBDIR64=	$(SFW_ROOT)/lib/$(MACH64)
 i386_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 sparc_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 arm_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
+aarch64_GCC_ROOT=	/root/smartos-live/proto.strap/usr #/opt/gcc/4.4.4
 
 NATIVE_GCC_ROOT=	$($(NATIVE_MACH)_GCC_ROOT)
 
@@ -298,7 +298,8 @@ MACH32=		$(MACH32_1:i386=i86)
 
 sparc_BUILD64=
 i386_BUILD64=
-arm_BUILD64=
+arm_BUILD64=    $(POUND_SIGN)
+aarch64_BUILD64=
 BUILD64=	$($(MACH)_BUILD64)
 
 #
@@ -833,6 +834,7 @@ SPRO_VROOT=		$(SPRO_ROOT)/SS12
 i386_GNU_ROOT=		$(SFW_ROOT)
 sparc_GNU_ROOT=		$(SFW_ROOT)
 arm_GNU_ROOT=		$(SFW_ROOT)
+aarch64_GNU_ROOT=	$(SFW_ROOT)
 
 GNU_ROOT=		$($(MACH)_GNU_ROOT)
 NATIVE_GNU_ROOT=	$($(NATIVE_MACH)_GNU_ROOT)

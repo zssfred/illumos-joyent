@@ -25,7 +25,6 @@
 #
 
 include ../../Makefile.com
-include $(SRC)/Makefile.master.64
 include ../../Makefile.targ
 
-install: all $(ROOTPROG64)
+install: all $(ROOTPROG)

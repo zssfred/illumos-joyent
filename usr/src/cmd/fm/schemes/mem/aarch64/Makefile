@@ -25,10 +25,9 @@
 #
 
 include ../Makefile.com
-include $(SRC)/Makefile.master.64
 include ../../Makefile.targ
 
-LDLIBS += -L$(ROOTLIB)/fm/$(MACH64) -lfmd_agent -ltopo
-LDFLAGS += -R/usr/lib/fm/$(MACH64)
+LDLIBS += -L$(ROOTLIB)/fm -lfmd_agent -ltopo
+LDFLAGS += -R/usr/lib/fm
 
-install: all $(ROOTPROG64)
+install: all $(ROOTPROG)

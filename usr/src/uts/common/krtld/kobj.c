@@ -163,7 +163,7 @@ extern char stubs_end[];
  *			  is loaded.
  */
 #ifdef __aarch64__
-int kobj_debug = D_DEBUG | D_LOADING;
+int kobj_debug = D_DEBUG | D_LOADING | D_RELOCATIONS | D_SYMBOLS;
 #else
 int kobj_debug = 0;
 #endif
@@ -415,6 +415,9 @@ kobj_init(
 	}
 
 #if defined(_OBP)
+
+	KOBJ_MARK("here()1");
+
 	/*
 	 * OBP allows us to read both the ramdisk and
 	 * the underlying root fs when root is a disk.
@@ -433,7 +436,6 @@ kobj_init(
 			_kobj_printf(ops, "can't mount boot fs\n");
 			goto fail;
 		}
-
 		/*
 		 * Now that the ramdisk is mounted, finish boot property
 		 * initialization.
@@ -442,6 +444,7 @@ kobj_init(
 	}
 
 #if !defined(_UNIX_KRTLD)
+
 	/*
 	 * 'unix' is linked together with 'krtld' into one executable and
 	 * the early boot code does -not- hand us any of the dynamic metadata
@@ -461,6 +464,7 @@ kobj_init(
 #endif	/* !_UNIX_KRTLD */
 #endif	/* _OBP */
 
+	KOBJ_MARK("Entered right here()");
 	/*
 	 * Save the interesting attribute-values
 	 * (scanned by kobj_boot).

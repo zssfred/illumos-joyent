@@ -61,7 +61,7 @@
 		$(POST_PROCESS_O)
 
 %.aarch64.o:	../common/%.c
-		$(COMPILE.c) -DELFWRAP_ARM -D_ELF64 -o $@ $<
+		$(COMPILE.c) -DELFWRAP_AARCH64 -D_ELF64 -o $@ $<
 		$(POST_PROCESS_O)
 
 $(PROG):	$(OBJS) $(MAPFILES)

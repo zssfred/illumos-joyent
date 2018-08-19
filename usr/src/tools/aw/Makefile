@@ -9,7 +9,7 @@
 # http://www.illumos.org/license/CDDL.
 #
 
-SUBDIRS= arm i386 sparc
+SUBDIRS= aarch64 arm i386 sparc
 
 install := TARGET = install
 all	:= TARGET = all

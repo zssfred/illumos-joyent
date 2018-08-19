@@ -759,12 +759,26 @@ main(int argc, char *argv[])
 	 */
 #if defined(AW_TARGET_arm)
 	if (as64) {
+<<<<<<< HEAD
 		// return (error("no 64-bit aw target for arm"));
 		newae(as, "-march=armv8-a");
+=======
+		return (error("no 64-bit aw target for arm"));
+
+>>>>>>> linker_repo/arm-gate
 	} else {
 		newae(as, "-march=armv7-a");
 		newae(as, "-mfpu=vfpv3-d16");
 		newae(as, "-mfloat-abi=hard");
+	}
+#endif
+
+#if defined(AW_TARGET_aarch64)
+	if (as64) {
+		newae(as, "--64");
+		newae(as, "-march=armv8-a");
+	} else {
+		return (error("no 32-bit aw target for aarch64"));
 	}
 #endif
 
@@ -793,13 +807,10 @@ main(int argc, char *argv[])
 			newae(cpp, "-D__i386");
 		}
 #elif defined(AW_TARGET_arm)
-		if (as64) {
-			newae(cpp, "-D__aarch64__");
-			//XXXAARCH64 need any others?
-		} else {
-			newae(cpp, "-Darm");
-			newae(cpp, "-D__arm");
-		}
+		newae(cpp, "-Darm");
+		newae(cpp, "-D__arm");
+#elif defined(AW_TARGET_aarch64)
+		newae(cpp, "-D__aarch64__");
 #else
 #error	"need isa-dependent defines"
 #endif

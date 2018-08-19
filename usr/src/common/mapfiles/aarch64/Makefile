@@ -26,9 +26,8 @@
 include		$(SRC)/Makefile.master
 
 ROOTDIR=	$(ROOT)/usr/lib/ld
-ROOTDIR64=	$(ROOT)/usr/lib/ld/$(MACH64)
+DIRS=		$(ROOTDIR)
 
-DIRS=		$(ROOTDIR) $(ROOTDIR64)
 FILES=
 
 install: $(DIRS) $(FILES)

@@ -2658,6 +2658,8 @@ reloc(Cache *cache, Word shnum, Ehdr *ehdr, const char *file)
 					    (reltype != R_ARM_BASE_PREL) &&
 					    (reltype != R_ARM_BASE_ABS))
 						badrel++;
+				} else if (mach == EM_AARCH64) {
+					//XXXAARCH64: not sure
 				}
 
 				if (badrel) {

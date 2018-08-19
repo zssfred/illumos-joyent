@@ -25,15 +25,14 @@
 #
 
 include ../../Makefile.com
-include $(SRC)/Makefile.master.64
 
 SRCS = cpu.c
 LDLIBS += -lkstat \
-	-L$(ROOTLIB)/fm/$(MACH64) -ltopo
-LDFLAGS += -R/usr/lib/fm/$(MACH64)
+	-L$(ROOTLIB)/fm -ltopo
+LDFLAGS += -R/usr/lib/fm
 
 CERRWARN += -_gcc=-Wno-parentheses
 
 include ../../Makefile.targ
 
-install: all $(ROOTPROG64)
+install: all $(ROOTPROG)

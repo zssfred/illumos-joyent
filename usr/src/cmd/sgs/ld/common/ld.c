@@ -337,6 +337,10 @@ getmore:
 				} else if (strcasecmp(pstr,
 				    MSG_ORIG(MSG_TARG_ARM)) == 0) {
 					mach32 = EM_ARM;
+					mach64 = EM_NONE;
+				} else if (strcasecmp(pstr,
+				    MSG_ORIG(MSG_TARG_AARCH64)) == 0) {
+					mach32 = EM_NONE;
 					mach64 = EM_AARCH64;
 				} else {
 					eprintf(0, ERR_FATAL,

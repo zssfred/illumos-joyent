@@ -42,9 +42,13 @@
 
 #include <i386/machdep_x86.h>
 
-#elif defined(__arm) || defined(__aarch64__)
+#elif defined(__arm)
 
 #include <arm/machdep_arm.h>
+
+#elif defined(__aarch64__)
+
+#include <aarch64/machdep_aarch64.h>
 
 #else
 

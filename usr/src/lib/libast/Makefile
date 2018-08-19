@@ -149,6 +149,7 @@ include ../Makefile.asthdr
 
 # XXXARM: I'm not wading into this swamp right now.
 $(ARM_BLD)HDRS=
+$(AARCH64_BLD)HDRS=
 
 install_h: $(ROOTHDRS)
 

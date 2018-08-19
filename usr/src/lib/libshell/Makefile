@@ -51,6 +51,7 @@ HDRS= \
 
 # XXXARM: ... damn spot
 $(ARM_BLD)HDRS=
+$(AARCH64_BLD)HDRS=
 
 HDRDIR32= $(MACH)/include/ast
 HDRDIR64= $(MACH64)/include/ast
