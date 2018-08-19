@@ -35,7 +35,7 @@
  mkp_tmpdir="/tmp/create_ramdisk.$$"
  mkp_rdfile="$mkp_tmpdir/rd.file.64"
  mkp_rdmnt="$mkp_tmpdir/rd.mnt.64"
- mkp_size=4096	# 4 MB in KB
+ mkp_size=8192	# 8 MB in KB
  mkp_lofi=
  mkp_unix=
  mkp_genunix=

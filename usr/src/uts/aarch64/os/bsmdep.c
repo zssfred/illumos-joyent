@@ -12,19 +12,33 @@
 /*
  * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
-
 #include <sys/types.h>
-#include <sys/bootconf.h>
-#include <sys/obpdefs.h>
-
-struct bootops		*bootops = 0;	/* passed in from boot */
-struct bootops		**bootopsp;
-struct boot_syscalls	*sysp;		/* passed in from boot */
-
-char kern_bootargs[OBP_MAXPATHLEN];
-char kern_bootfile[OBP_MAXPATHLEN];
+#include <sys/time.h>
 
 /*
- * Some CPUs have holes in the middle of the 64-bit virtual address range.
+ * Board Specific Module dependencies.
  */
- uintptr_t hole_start, hole_end;
+
+/*
+ * XXX: armv8. Seems like armv6/7 relied on board specific code to do time
+ * need to look into for armv8
+ */
+static hrtime_t
+dummy_hrtime(void)
+{
+	return (0);
+}
+
+/*
+ * Functions for a BSM to initialize
+ */
+hrtime_t (*gethrtimeunscaledf)(void) = dummy_hrtime;
+
+/*
+ * General entry points
+ */
+hrtime_t
+gethrtime_unscaled(void)
+{
+	return (gethrtimeunscaledf());
+}

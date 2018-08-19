@@ -10,24 +10,15 @@
  */
 
 /*
- * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2014 Joyent, Inc.  All rights reserved.
  */
-
-#ifndef _SYS_MACHSYSTM_H
-#define	_SYS_MACHSYSTM_H
 
 /*
- * Add things as needed - for aarch64 things that don't have another place
+ * ARMv8 mappings between memory nodes and physical addressese.
+ *
+ * XXX Fill this in when we know much more about what it looks like.
  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <sys/memnode.h>
 
-extern uintptr_t hole_start, hole_end;
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* _SYS_MACHSYSTM_H */
+int max_mem_nodes = 1;

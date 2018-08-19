@@ -33,6 +33,7 @@ HDRS =	\
 	pcb.h			\
 	procfs_isa.h 		\
 	promif.h		\
+	promimpl.h		\
 	regset.h		\
 	spl.h 			\
 	stack.h			\

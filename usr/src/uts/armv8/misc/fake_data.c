@@ -14,6 +14,22 @@
 #include <vm/seg.h>
 #include <vm/as.h>
 
+short maxclsyspri;
+
+uint_t rctlproc_flags[7]; //0x1c
+int rctlproc_signals[7]; //0x1c
+
+int ncpus;
+int native_brand[8];
+int in_sync;
+int max_cpuid;
+int ncpus_online;
+int max_ncpus;
+int panic_bootfcn;
+int panic_forced;
+int boot_max_ncpus;
+char panic_bootstr[8];
+
 uint_t adj_shift = ADJ_SHIFT;
 void *segkp = NULL;
 int interrupts_unleashed;

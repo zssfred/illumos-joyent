@@ -397,6 +397,8 @@ main(void)
 	ASSERT(curthread == CPU->cpu_thread);
 	ASSERT_STACK_ALIGNED();
 
+	bop_printf(NULL, "\n\nReached main!! Now we get to call panic from here :)\n\n");
+
 	/*
 	 * We take the ualock until we have completed the startup
 	 * to prevent kadmin() from disrupting this work. In particular,

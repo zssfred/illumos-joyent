@@ -21,8 +21,19 @@ $(OBJS_DIR)/%.o:	$(SRC)/common/fs/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)
 
+$(OBJS_DIR)/%.o:	$(UTSBASE)/armv8/ml/%.s
+	$(COMPILE.s) -o $@ $<
+	$(CTFCONVERT_O)
 
 #Genunix doesnt build yet, so we use fakestubs
 $(OBJS_DIR)/%.o:	$(UTSBASE)/armv8/misc/%.c
+	$(COMPILE.c) -o $@ $<
+	$(CTFCONVERT_O)
+
+#
+# XXX We are actually building intel's prom modules. We should really make these
+# some more common place that's not quite uts/common.
+#
+$(OBJS_DIR)/%.o:		$(SRC)/psm/promif/fake1275/%.c
 	$(COMPILE.c) -o $@ $<
 	$(CTFCONVERT_O)

@@ -203,8 +203,10 @@ struct mobj_stats {
  * processes, and 64 bit x86 processes.  For 32 bit x86, the stack is not at the
  * top of the address space and thus this check wil always return false for 32
  * bit x86 processes.
+ *
+ * XXXARCH64: seems right to copy sparc/arm
  */
-#if defined(__sparc) || defined(__arm__)
+#if defined(__sparc) || defined(__arm__) || defined(__aarch64__)
 #define	OVERLAPS_STACK(addr, p)						\
 	(addr >= (p->p_usrstack - ((p->p_stk_ctl + PAGEOFFSET) & PAGEMASK)))
 #elif defined(__amd64)

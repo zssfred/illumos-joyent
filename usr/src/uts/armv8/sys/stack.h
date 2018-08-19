@@ -27,15 +27,15 @@ extern "C" {
 /*
  * On ARM the stack ends up layed out as:
  *
- * XXX but dont think we need 32 bit yet?
+ * XXX not sure about 32 bit...
  */
 
-// #define	STACK_ALIGN32		8
-// #define	STACK_ENTRY_ALIGN32	4
-// #define	STACK_BIAS32		0
-// #define	SA32(X)			(((X)+(STACK_ALIGN32-1)) & ~(STACK_ALIGN32-1))
-// #define	STACK_RESERVE32		0
-// #define	MINFRAME32		0
+#define	STACK_ALIGN32		8
+#define	STACK_ENTRY_ALIGN32	4
+#define	STACK_BIAS32		0
+#define	SA32(X)			(((X)+(STACK_ALIGN32-1)) & ~(STACK_ALIGN32-1))
+#define	STACK_RESERVE32		0
+#define	MINFRAME32		0
 
 #if defined(__aarch64__)
 
@@ -63,7 +63,7 @@ extern "C" {
 #if defined(DEBUG)
 #define	ASSERT_STACK_ALIGNED()						\
 	{								\
-		uint64_t __tmp;						\
+		upad128_t __tmp;					\
 		ASSERT((((uintptr_t)&__tmp) & (STACK_ALIGN - 1)) == 0);	\
 	}
 #else /* DEBUG */

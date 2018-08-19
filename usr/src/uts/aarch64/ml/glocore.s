@@ -58,9 +58,10 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
  * Here, we need to do the following:
  *	1. XXX:
  *		- Reset the stack for main + ensure its alignment
+ *		- Save boot syscalls/bootops for later?
  *		- Enable unaligned access? -- i think enabled by default. otherwise set SCTLR_EL1.A (bit 1) to 0
  *		- Enable I/D caches
- *		- Save boot syscalls/bootops for later?
+ *		- save t0 as curthread
  * 	2. Call mlsetup(struct regs) initializing various thread/CPU state data
  *	3. Enter main!
  *		3.5. Main should never return, panic if we do :(
@@ -90,7 +91,10 @@ _locore_start(struct boot_syscalls *sysp, struct bootops *bop)
 	//XXX do this once we have assym.h working
 	// str x0, [x9, #REGOFF_R0]
 	// str x1, [x9, #REGOFF_R1]
-	//XXX proccess state is complicated...going to need to come back to that
+
+	/* Setup t0 as our curthread pointer */
+	ldr x20, =t0
+	msr tpidr_el0, x20
 
 	/*
 	 * Make sure our caches + unaligned access is enabled (for instructions

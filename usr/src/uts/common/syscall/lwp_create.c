@@ -105,6 +105,8 @@ syslwp_create(ucontext_t *ucp, int flags, id_t *new_lwp)
 		sigutok(&uc32.uc_sigmask, &sigmask);
 #if defined(__sparc)
 		ucontext_32ton(&uc32, &uc, NULL, NULL);
+#elif defined(__aarch64__)
+		/* XXXAARCH64: no idea on this one.... */
 #else	/* __amd64 */
 		ucontext_32ton(&uc32, &uc);
 		/*

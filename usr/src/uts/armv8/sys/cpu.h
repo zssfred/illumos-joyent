@@ -13,21 +13,21 @@
  * Copyright (c) 2013 Joyent, Inc.  All rights reserved.
  */
 
-#ifndef _SYS_MACHSYSTM_H
-#define	_SYS_MACHSYSTM_H
+#ifndef _SYS_CPU_H
+#define	_SYS_CPU_H
 
 /*
- * Add things as needed - for aarch64 things that don't have another place
+ * This header is generally Obsolete across different architectures. We should
+ * include the bare minimum for compatability and nothing more. If you're adding
+ * something here, think twice about that.
  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// /*
+//  * Include generic bustype cookies.
+//  */
+// #include <sys/bustypes.h>
 
-extern uintptr_t hole_start, hole_end;
+// extern void arm_smt_pause(void);
+// #define	SMT_PAUSE()	arm_smt_pause()
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* _SYS_MACHSYSTM_H */
+#endif /* _SYS_CPU_H */
