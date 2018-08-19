@@ -33,7 +33,7 @@
 #define	_SYS_VM_MACHPARAM_H
 
 /*
- *XXXXAARCH64 copied from arm/amd64 mostly?
+ * XXXXAARCH64 copied from arm/amd64 mostly
  */
 
 #ifdef __cplusplus

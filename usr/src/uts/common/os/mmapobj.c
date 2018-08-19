@@ -203,8 +203,6 @@ struct mobj_stats {
  * processes, and 64 bit x86 processes.  For 32 bit x86, the stack is not at the
  * top of the address space and thus this check wil always return false for 32
  * bit x86 processes.
-
- * XXXAARCH64 probably right
  */
 #if defined(__sparc) || defined(__arm__)
 #define	OVERLAPS_STACK(addr, p)						\

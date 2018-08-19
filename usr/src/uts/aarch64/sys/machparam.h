@@ -113,6 +113,16 @@ extern "C" {
 
 /* XXXAARCH64: missing many defiens from this file, we'll fill in as needed. */
 
+/* This is where amd64 defines theirs... */
+#define	KERNELBASE	ADDRESS_C(0xfffffd8000000000)
+
+/* XXX some archs leave a redzone. Not sure about this one*/
+#define	USERLIMIT	KERNELBASE
+#define	USERLIMIT32	USERLIMIT
+
+/* XXX: really not sure about this one but amd64, i386 and armv7 all agree on this one */
+#define	ARGSBASE	ADDRESS_C(0xffc00000)
+
 #ifdef __cplusplus
 }
 #endif

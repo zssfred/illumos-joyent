@@ -83,8 +83,9 @@ install:	def
 
 $(ASSYM_H): $(OFFSETS_SRC) $(PLATFORM_OFFSETS_SRC)
 	/bin/true
-	# $(OFFSETS_CREATE64) <$(OFFSETS_SRC) >$@
-	# $(OFFSETS_CREATE64) <$(PLATFORM_OFFSETS_SRC) >>$@
+	#XXX: still broken
+	# $(OFFSETS_CREATE) <$(OFFSETS_SRC) >$@
+	# $(OFFSETS_CREATE) <$(PLATFORM_OFFSETS_SRC) >>$@
 
 $(KDI_ASSYM_H):
 	/bin/true
@@ -92,4 +93,4 @@ $(KDI_ASSYM_H):
 #
 #	Include common targets.
 #
-include $(UTSBASE)/arm/Makefile.targ
+include $(UTSBASE)/armv8/Makefile.targ

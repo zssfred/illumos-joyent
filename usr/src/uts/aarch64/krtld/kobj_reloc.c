@@ -31,10 +31,10 @@
  * ARM relocation code
  */
 
-// #include <sys/types.h>
-// #include <sys/param.h>
-// #include <sys/sysmacros.h>
-// #include <sys/systm.h>
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/sysmacros.h>
+#include <sys/systm.h>
 
 #include "reloc.h"
 
@@ -44,37 +44,36 @@
  * is being left behind. No reason to add it.
  */
 
-// #define	SDT_NOP	0x1ea00000
+#define	SDT_NOP	0x1ea00000
 
 static int
 sdt_reloc_resolve(struct module *mp, char *symname, uint32_t *instr)
 {
-	_kobj_printf(ops, "NYI: sdt_reloc_resolve");
-	return (1);
+	/*
+	 * The "statically defined tracing" (SDT) provider for DTrace uses
+	 * a mechanism similar to TNF, but somewhat simpler.  (Surprise,
+	 * surprise.)  The SDT mechanism works by replacing calls to the
+	 * undefined routine __dtrace_probe_[name] with nop instructions.
+	 * The relocations are logged, and SDT itself will later patch the
+	 * running binary appropriately.
+	 *
+	 * However, because we're in such an ur-phase of this project we're
+	 * going to nop out the location, but not record it. We should do that
+	 * at some point.
+	 */
 
-// 	 * The "statically defined tracing" (SDT) provider for DTrace uses
-// 	 * a mechanism similar to TNF, but somewhat simpler.  (Surprise,
-// 	 * surprise.)  The SDT mechanism works by replacing calls to the
-// 	 * undefined routine __dtrace_probe_[name] with nop instructions.
-// 	 * The relocations are logged, and SDT itself will later patch the
-// 	 * running binary appropriately.
-// 	 *
-// 	 * However, because we're in such an ur-phase of this project we're
-// 	 * going to nop out the location, but not record it. We should do that
-// 	 * at some point.
+	if (strncmp(symname, sdt_prefix, strlen(sdt_prefix)) != 0)
+		return (1);
 
-// 	if (strncmp(symname, sdt_prefix, strlen(sdt_prefix)) != 0)
-// 		return (1);
+#ifdef	KOBJ_DEBUG
+	if (kobj_debug & D_DEBUG) {
+		_kobj_printf(ops, "sdt_reloc_resolve: not recording %s\n",
+		    symname);
+	}
+#endif /* KOBJ_DEBUG */
 
-// #ifdef	KOBJ_DEBUG
-// 	if (kobj_debug & D_DEBUG) {
-// 		_kobj_printf(ops, "sdt_reloc_resolve: not recording %s\n",
-// 		    symname);
-// 	}
-// #endif /* KOBJ_DEBUG */
-
-// 	*instr = SDT_NOP;
-// 	return (0);
+	*instr = SDT_NOP;
+	return (0);
 }
 
 /* Again, largely copied from amd64 */

@@ -20,6 +20,14 @@
 #include <sys/promif.h>
 #include <sys/bootconf.h>
 #include <sys/privregs.h>
+#include <sys/cpuvar.h>
+#include <sys/stack.h>
+#include <sys/vmparam.h>
+
+extern void *romp;
+extern struct bootops *ops;
+extern struct bootops *bootops;
+extern struct boot_syscalls *sysp;
 
 /*
  * We've been given the name of the kernel. From this we should construct the
@@ -36,7 +44,6 @@ void
 mach_modpath(char *path, const char *filename)
 {
 	bop_printf(NULL, "\nPath: %s, Filename: %s\n", path, filename);
-//Path: <null string>, Filename: /platform/aarch64/kernel/unix.bin
 	char *p;
 
 	if ((p = strrchr(filename, '/')) == NULL)
@@ -62,5 +69,7 @@ extern void bop_panic(const char *);
 void
 mlsetup(struct regs *rp)
 {
+	cpu[0]->cpu_self = cpu[0];
+
 	bop_panic("mlsetup!");
 }

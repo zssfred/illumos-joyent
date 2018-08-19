@@ -557,6 +557,10 @@ char architecture[] = "arm";
 char architecture_32[] = "arm";
 char hw_provider[SYS_NMLN] = "";
 
+#elif defined(__aarch64__)
+char architecture[] = "aarch64";
+char architecture_32[] = "aarch32?";
+char hw_provider[SYS_NMLN] = "";
 #else
 #error "unknown processor architecture"
 #endif

@@ -32,7 +32,12 @@
  * under license from the Regents of the University of California.
  */
 /*
- * Copyright (c) 2013, Joyent, Inc.  All rights reserved.
+ * Copyright (c) 2018, Joyent, Inc.  All rights reserved.
+ */
+
+
+/*
+ * XXXaarch64: based on otherse, these seem right
  */
 
 #ifndef _SYS_VMPARAM_H
@@ -46,39 +51,39 @@
 extern "C" {
 #endif
 
-// #define	SSIZE		4096		/* initial stack size */
-// #define	SINCR		4096		/* increment of stack */
+#define	SSIZE		4096		/* initial stack size */
+#define	SINCR		4096		/* increment of stack */
 
-// /*
-//  * USRSTACK is the top (end) of the user stack.
-//  */
-// #define	USRSTACK	USERLIMIT
-// #define	USRSTACK32	USRSTACK
-// #define	USRSTACK64_32	USRSTACK
+/*
+ * USRSTACK is the top (end) of the user stack.
+ */
+#define	USRSTACK	USERLIMIT
+#define	USRSTACK32	USRSTACK
+#define	USRSTACK64_32	USRSTACK
 
-// /*
-//  * Implementation architecture independent sections of the kernel use
-//  * this section.
-//  */
-// #if (defined(_KERNEL) || defined(_KMEMUSER)) && !defined(_MACHDEP)
+/*
+ * Implementation architecture independent sections of the kernel use
+ * this section.
+ */
+#if (defined(_KERNEL) || defined(_KMEMUSER)) && !defined(_MACHDEP)
 
-// #if defined(_KERNEL) && !defined(_ASM)
-// extern const unsigned int	_diskrpm;
-// extern const unsigned long	_dsize_limit;
-// extern const unsigned long	_ssize_limit;
-// extern const unsigned long	_pgthresh;
-// extern const unsigned int	_maxslp;
-// extern const unsigned long	_maxhandspreadpages;
-// #endif	/* defined(_KERNEL) && !defined(_ASM) */
+#if defined(_KERNEL) && !defined(_ASM)
+extern const unsigned int	_diskrpm;
+extern const unsigned long	_dsize_limit;
+extern const unsigned long	_ssize_limit;
+extern const unsigned long	_pgthresh;
+extern const unsigned int	_maxslp;
+extern const unsigned long	_maxhandspreadpages;
+#endif	/* defined(_KERNEL) && !defined(_ASM) */
 
-// #define	DISKRPM		_diskrpm
-// #define	DSIZE_LIMIT	_dsize_limit
-// #define	SSIZE_LIMIT	_ssize_limit
-// #define	PGTHRESH	_pgthresh
-// #define	MAXSLP		_maxslp
-// #define	MAXHANDSPREADPAGES	_maxhandspreadpages
+#define	DISKRPM		_diskrpm
+#define	DSIZE_LIMIT	_dsize_limit
+#define	SSIZE_LIMIT	_ssize_limit
+#define	PGTHRESH	_pgthresh
+#define	MAXSLP		_maxslp
+#define	MAXHANDSPREADPAGES	_maxhandspreadpages
 
-// #endif	/* (defined(_KERNEL) || defined(_KMEMUSER)) && !defined(_MACHDEP) */
+#endif	/* (defined(_KERNEL) || defined(_KMEMUSER)) && !defined(_MACHDEP) */
 
 #ifdef	__cplusplus
 }

@@ -196,13 +196,8 @@ EXTRA_OPTIONS		=
 AS_DEFS			= -D_ASM -D__STDC__=0
 
 ALWAYS_DEFS_32		= -D_KERNEL -D_SYSCALL32 -D_DDI_STRICT
-# ALWAYS_DEFS_64		= -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL -D_ELF64 \
+ALWAYS_DEFS_64		= -D_KERNEL -D_SYSCALL32 -D_SYSCALL32_IMPL -D_ELF64 \
 			-D_DDI_STRICT
-ALWAYS_DEFS_64		= -D_KERNEL -D_ELF64 \
-			-D_DDI_STRICT
-	##XXXAARCH64 So I think at some point we'll want to support SYSCALL32
-	## and _SYSCALL32_IMPL, to support 32 bit user mode system calls
-	## however that seems pretty far away on arm for now...
 
 # XX64	This should be defined by the compiler!
 #

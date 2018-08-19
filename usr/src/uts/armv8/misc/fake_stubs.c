@@ -19,14 +19,40 @@
  */
 extern void bop_panic(const char *);
 
-// #define	STUB(x) void x(void) { bop_panic(#x); }
+#define	STUB(x) void x(void) { bop_panic(#x); }
 
-// STUB(mod_release_mod)
-// STUB(last_module_id)
-// STUB(mod_lock)
-// STUB(moddebug)
-// STUB(mod_load_requisite)
-// STUB(modrootloaded)
+STUB(binit)
+STUB(finit)
+STUB(sys_init)
+STUB(clock_realtime_init)
+STUB(dnlc_init)
+STUB(deadman_init)
+STUB(flk_init)
+STUB(clock_tick_mp_init)
+STUB(schedctl_init)
+STUB(serializer_init)
+STUB(anon_init)
+STUB(clock_timer_init)
+STUB(physmem)
+STUB(callout_mp_init)
+STUB(as_init)
+STUB(softcall_init)
+STUB(space_init)
+STUB(ftrace_init)
+STUB(sys_classfuncs)
+STUB(cmn_err)
+STUB(fdb_init)
+STUB(cu_init)
+STUB(strinit)
+STUB(ttyinit)
+STUB(cyclic_mp_init)
+STUB(vmem_size)
+STUB(vfsinit)
+STUB(segvn_init)
+STUB(pvn_init)
+STUB(system_taskq_init)
+STUB(cpu_seq_tbl_init)
+STUB(clock_highres_init)
 
 void
 panic(const char *msg)
@@ -209,18 +235,6 @@ default_path(void)
 }
 
 void
-kern_bootfile(void)
-{
-	bop_panic("kern_bootfile");
-}
-
-void
-kern_bootargs(void)
-{
-	bop_panic("kern_bootargs");
-}
-
-void
 mod_lock(void)
 {
 	bop_panic("mod_lock");
@@ -270,12 +284,6 @@ cv_signal(void)
 
 
 int boothowto = 0; //XXX: This stub was causing boothowto & kmdb to be true
-// I think kmdb won't work. idk.
-// void
-// boothowto(void)
-// {
-// 	bop_panic("boothowto");
-// }
 
 void
 kdi_dvec_mod_unloading(void)

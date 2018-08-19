@@ -121,7 +121,27 @@ extern "C" {
 #if !defined(_ASM)
 
 typedef long	greg_t;
+
+#if defined(_SYSCALL32)
+
+/* XXX:  */
+typedef int32_t greg32_t;
+typedef int64_t	greg64_t;
+
+#endif	/* _SYSCALL32 */
+
+
 typedef greg_t	gregset_t[_NGREG];
+
+#if defined(_SYSCALL32)
+
+#define	_NGREG32	16 //XXX: i think these are right
+#define	_NGREG64	33
+
+typedef greg32_t gregset32_t[_NGREG32];
+typedef	greg64_t gregset64_t[_NGREG64];
+
+#endif	/* _SYSCALL32 */
 
 /*
  * Floating point definitions
@@ -144,11 +164,29 @@ typedef struct fpu {
 	#endif
 } fpregset_t;
 
+#if defined(_SYSCALL32)
+
+typedef struct fpu32 {
+	void *garbage; /* XXX: handle 32 bit state */
+} fpregset32_t;
+
+#endif	/* _SYSCALL32 */
+
 #if !defined(_XPG4_2) || defined(__EXTENSIONS__)
 
 typedef struct {
 	gregset_t	gregs;	/* General register set */
+	fpregset_t	fpregs;
 } mcontext_t;
+
+#if defined(_SYSCALL32)
+
+typedef struct {
+	gregset32_t	gregs;		/* general register set */
+	fpregset32_t	fpregs;		/* floating point register set */
+} mcontext32_t;
+
+#endif	/* _SYSCALL32 */
 
 #endif	/* _ASM */
 #endif	/* !defined(_XPG4_2) || defined(__EXTENSIONS__) */

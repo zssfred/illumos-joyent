@@ -31,6 +31,10 @@
 
 	.globl _locore_start
 	.globl mlsetup
+	.globl sysp
+	.globl bootops
+	.globl bootopsp
+	.globl t0
 
 .data
 .comm	t0stack, DEFAULTSTKSZ, 32

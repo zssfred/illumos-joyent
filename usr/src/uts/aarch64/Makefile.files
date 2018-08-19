@@ -34,7 +34,9 @@ MISC_OBJS += \
 OS_OBJS += \
 	fakebop.o \
 	flush.o \
-	mlsetup.o
+	mlsetup.o \
+	mp_startup.o \
+	startup.o
 
 ML_OBJS += \
 	byteorder.o \
@@ -54,6 +56,7 @@ CORE_OBJS = \
 # uts/common yet, so we instead clobber it with our stuff.
 #
 CORE_OBJS += \
-	decompress.o
+	decompress.o \
+	param.o
 
 INC_PATH += -I$(UTSBASE)/aarch64 -I$(SRC)/common

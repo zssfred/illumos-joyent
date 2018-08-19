@@ -38,7 +38,8 @@ HDRS =	\
 	stack.h			\
 	stat_impl.h		\
 	ucontext.h		\
-	utrap.h
+	utrap.h			\
+	vmparam.h
 
 
 ROOTDIR=	$(ROOT)/usr/include/sys
