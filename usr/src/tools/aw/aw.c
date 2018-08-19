@@ -759,13 +759,7 @@ main(int argc, char *argv[])
 	 */
 #if defined(AW_TARGET_arm)
 	if (as64) {
-<<<<<<< HEAD
-		// return (error("no 64-bit aw target for arm"));
 		newae(as, "-march=armv8-a");
-=======
-		return (error("no 64-bit aw target for arm"));
-
->>>>>>> linker_repo/arm-gate
 	} else {
 		newae(as, "-march=armv7-a");
 		newae(as, "-mfpu=vfpv3-d16");

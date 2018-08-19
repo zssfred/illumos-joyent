@@ -163,7 +163,7 @@ extern char stubs_end[];
  *			  is loaded.
  */
 #ifdef __aarch64__
-int kobj_debug = D_DEBUG | D_LOADING | D_RELOCATIONS | D_SYMBOLS;
+int kobj_debug = 0;
 #else
 int kobj_debug = 0;
 #endif
@@ -297,7 +297,8 @@ static caddr_t _elimit;
  * variable to modify it - within krtld, of course -
  * outside of krtld, e_data is used in all kernels.
  */
-#if defined(__sparc)
+#if defined(__sparc) || defined(__aarch64__)
+///XXXXAARCH64 I think this is the case as well.
 static caddr_t _edata;
 #else
 extern caddr_t _edata;
@@ -415,9 +416,6 @@ kobj_init(
 	}
 
 #if defined(_OBP)
-
-	KOBJ_MARK("here()1");
-
 	/*
 	 * OBP allows us to read both the ramdisk and
 	 * the underlying root fs when root is a disk.
@@ -464,7 +462,6 @@ kobj_init(
 #endif	/* !_UNIX_KRTLD */
 #endif	/* _OBP */
 
-	KOBJ_MARK("Entered right here()");
 	/*
 	 * Save the interesting attribute-values
 	 * (scanned by kobj_boot).
@@ -496,15 +493,11 @@ kobj_init(
 	if (load_primary(mp, KOBJ_LM_PRIMARY) == -1)
 		goto fail;
 
-	KOBJ_MARK("Post load_primary");
-
 	/*
 	 * Glue it together.
 	 */
 	if (bind_primary(bootaux, KOBJ_LM_PRIMARY) == -1)
 		goto fail;
-
-	KOBJ_MARK("Post bind-primary");
 
 	entry = bootaux[BA_ENTRY].ba_val;
 
@@ -673,7 +666,6 @@ attr_val(val_t *bootaux)
 	int phnum, phsize;
 	int i;
 
-	KOBJ_MARK("attr_val()");
 	kobj_mmu_pagesize = bootaux[BA_PAGESZ].ba_val;
 	lg_pagesize = bootaux[BA_LPAGESZ].ba_val;
 	use_iflush = bootaux[BA_IFLUSH].ba_val;
@@ -683,8 +675,6 @@ attr_val(val_t *bootaux)
 	phsize = bootaux[BA_PHENT].ba_val;
 	for (i = 0; i < phnum; i++) {
 		phdr = (Phdr *)(bootaux[BA_PHDR].ba_val + i * phsize);
-
-		// KOBJ_MARK("attr_val() 1");
 
 		if (phdr->p_type != PT_LOAD) {
 			// KOBJ_MARK("attr_val() 2");
@@ -708,17 +698,14 @@ attr_val(val_t *bootaux)
 #endif
 		} else {
 			if (phdr->p_flags & PF_W) {
-				// KOBJ_MARK("attr_val() 8");
 				_data = (caddr_t)phdr->p_vaddr;
 				_edata = _data + phdr->p_memsz;
 			} else {
-				// KOBJ_MARK("attr_val() 9");
 				_text = (caddr_t)phdr->p_vaddr;
 				_etext = _text + phdr->p_memsz;
 			}
 		}
 
-		// KOBJ_MARK("attr_val() 3");
 	}
 
 	// KOBJ_MARK("attr_val() 4");
@@ -750,8 +737,6 @@ attr_val(val_t *bootaux)
 		}
 		libmacros[i].lmi_macrolen = strlen(libmacros[i].lmi_macroname);
 	}
-
-	// KOBJ_MARK("attr_val() 5");
 }
 
 /*
@@ -1133,8 +1118,6 @@ static char *
 getmodpath(const char *filename)
 {
 	char *path = kobj_zalloc(MAXPATHLEN, KM_WAIT);
-
-	_kobj_printf(NULL, "Path is: 0x%llx\n", (uintptr_t) path);
 
 	/*
 	 * Platform code gets first crack, then add
@@ -4083,12 +4066,10 @@ kobj_zalloc(size_t size, int flag)
 {
 	void *v;
 
-
 	if ((v = kobj_alloc(size, flag)) != 0) {
 		bzero(v, size);
 	}
 
-	// _kobj_printf(ops, "Zalloced: 0x%llx\n", (uintptr_t) v);
 	return (v);
 }
 
@@ -4207,9 +4188,8 @@ kobj_segbrk(caddr_t *spp, size_t size, size_t align, caddr_t limit)
 			return (NULL);
 		}
 	}
-	*spp = (caddr_t)(va + size);
 
-	// _kobj_printf(ops, "VA is: 0x%llx. size: 0x%llx, spp: 0x%llx\n", va, size, spp);
+	*spp = (caddr_t)(va + size);
 
 	return ((caddr_t)va);
 }

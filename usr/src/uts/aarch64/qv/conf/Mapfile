@@ -30,10 +30,10 @@ LOAD_SEGMENT data {
 	PADDR = 0x40180000;
 	VADDR = 0x40180000;
 
-	OS_ORDER = .data;
+	# OS_ORDER = .bss .data;
 
-	# ASSIGN_SECTION {
-	# 	TYPE = PROGBITS;
-	# 	FLAGS = ALLOC WRITE;
-	# };
+	ASSIGN_SECTION {
+		TYPE = PROGBITS;
+		FLAGS = ALLOC WRITE;
+	};
 };
