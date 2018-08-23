@@ -1193,6 +1193,7 @@ f lib/amd64/libctf.so.1 0755 root bin
 s lib/amd64/libctf.so=libctf.so.1
 f lib/amd64/libcurses.so.1 0755 root bin
 s lib/amd64/libcurses.so=libcurses.so.1
+f lib/amd64/libcustr.so.1 0755 root bin
 f lib/amd64/libdevice.so.1 0755 root bin
 s lib/amd64/libdevice.so=libdevice.so.1
 f lib/amd64/libdevid.so.1 0755 root bin
@@ -1374,6 +1375,7 @@ f lib/libcmdutils.so.1 0755 root bin
 s lib/libcmdutils.so=libcmdutils.so.1
 f lib/libcontract.so.1 0755 root bin
 s lib/libcontract.so=libcontract.so.1
+f lib/libcustr.so.1 0755 root bin
 f lib/libcryptoutil.so.1 0755 root bin
 s lib/libcryptoutil.so=libcryptoutil.so.1
 f lib/libctf.so.1 0755 root bin
@@ -1853,11 +1855,16 @@ s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.29=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.30=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.31=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.37=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.38=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.39=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.42=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.44=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.45=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.46=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.47=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.53=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.54=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.55=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.58=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.60=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.61=pcbe.GenuineIntel.6.15
@@ -1866,9 +1873,18 @@ s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.63=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.69=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.70=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.71=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.76=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.77=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.78=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.79=pcbe.GenuineIntel.6.15
 s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.85=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.86=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.92=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.94=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.95=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.122=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.142=pcbe.GenuineIntel.6.15
+s platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.6.158=pcbe.GenuineIntel.6.15
 d platform/i86pc/kernel/sys 0755 root sys
 d platform/i86pc/kernel/sys/amd64 0755 root sys
 f platform/i86pc/kernel/sys/amd64/cpc 0755 root sys
@@ -12782,6 +12798,7 @@ s usr/share/man/man3c/_setjmp.3c=_longjmp.3c
 f usr/share/man/man3c/_stack_grow.3c 0444 root bin
 f usr/share/man/man3c/a64l.3c 0444 root bin
 f usr/share/man/man3c/abort.3c 0444 root bin
+s usr/share/man/man3c/abort_handler_s.3c=set_constraint_handler_s.3c
 f usr/share/man/man3c/abs.3c 0444 root bin
 s usr/share/man/man3c/addrtosymstr.3c=walkcontext.3c
 f usr/share/man/man3c/addsev.3c 0444 root bin
@@ -13276,6 +13293,7 @@ s usr/share/man/man3c/htons.3c=byteorder.3c
 f usr/share/man/man3c/iconv.3c 0444 root bin
 f usr/share/man/man3c/iconv_close.3c 0444 root bin
 f usr/share/man/man3c/iconv_open.3c 0444 root bin
+s usr/share/man/man3c/ignore_handler_s.3c=set_constraint_handler_s.3c
 f usr/share/man/man3c/imaxabs.3c 0444 root bin
 f usr/share/man/man3c/imaxdiv.3c 0444 root bin
 f usr/share/man/man3c/index.3c 0444 root bin
@@ -13415,8 +13433,8 @@ s usr/share/man/man3c/mbsnrtowcs.3c=mbsrtowcs.3c
 s usr/share/man/man3c/mbsnrtowcs_l.3c=mbsrtowcs.3c
 f usr/share/man/man3c/mbsrtowcs.3c 0444 root bin
 s usr/share/man/man3c/mbsrtowcs_l.3c=mbsrtowcs.3c
-s usr/share/man/man3c/mbstowcs.3c=mbsrtowcs.3c
-s usr/share/man/man3c/mbstowcs_l.3c=mbsrtowcs.3c
+f usr/share/man/man3c/mbstowcs.3c 0444 root bin
+s usr/share/man/man3c/mbstowcs_l.3c=mbstowcs.3c
 f usr/share/man/man3c/mbtowc.3c 0444 root bin
 s usr/share/man/man3c/mbtowc_l.3c=mbtowc.3c
 s usr/share/man/man3c/memalign.3c=malloc.3c
@@ -13433,6 +13451,7 @@ s usr/share/man/man3c/memmem.3c=memory.3c
 s usr/share/man/man3c/memmove.3c=memory.3c
 f usr/share/man/man3c/memory.3c 0444 root bin
 s usr/share/man/man3c/memset.3c=memory.3c
+f usr/share/man/man3c/memset_s.3c 0444 root bin
 s usr/share/man/man3c/minor.3c=makedev.3c
 s usr/share/man/man3c/mkdtemp.3c=mkstemp.3c
 f usr/share/man/man3c/mkfifo.3c 0444 root bin
@@ -13784,6 +13803,7 @@ s usr/share/man/man3c/setattrat.3c=fgetattr.3c
 f usr/share/man/man3c/setbuf.3c 0444 root bin
 f usr/share/man/man3c/setbuffer.3c 0444 root bin
 f usr/share/man/man3c/setcat.3c 0444 root bin
+f usr/share/man/man3c/set_constraint_handler_s.3c 0444 root bin
 f usr/share/man/man3c/setenv.3c 0444 root bin
 s usr/share/man/man3c/setgrent.3c=getgrnam.3c
 s usr/share/man/man3c/sethostname.3c=gethostname.3c
@@ -14340,6 +14360,10 @@ s usr/share/man/man3contract/ct_tmpl_set_cookie.3contract=ct_tmpl_activate.3cont
 s usr/share/man/man3contract/ct_tmpl_set_critical.3contract=ct_tmpl_activate.3contract
 s usr/share/man/man3contract/ct_tmpl_set_informative.3contract=ct_tmpl_activate.3contract
 d usr/share/man/man3cpc 0755 root bin
+f usr/share/man/man3cpc/bdw_de_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/bdw_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/bdx_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/bnl_events.3cpc 0444 root bin
 f usr/share/man/man3cpc/cpc.3cpc 0444 root bin
 f usr/share/man/man3cpc/cpc_access.3cpc 0444 root bin
 s usr/share/man/man3cpc/cpc_bind_cpu.3cpc=cpc_bind_curlwp.3cpc
@@ -14405,11 +14429,27 @@ s usr/share/man/man3cpc/cpc_walk_generic_events_pic.3cpc=cpc_npic.3cpc
 s usr/share/man/man3cpc/cpc_walk_names.3cpc=cpc_getcpuver.3cpc
 s usr/share/man/man3cpc/cpc_walk_requests.3cpc=cpc_set_create.3cpc
 f usr/share/man/man3cpc/generic_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/glm_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/glp_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/hsw_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/hsx_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/ivb_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/ivt_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/jkt_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/nhm_ep_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/nhm_ex_events.3cpc 0444 root bin
 f usr/share/man/man3cpc/pctx_capture.3cpc 0444 root bin
 s usr/share/man/man3cpc/pctx_create.3cpc=pctx_capture.3cpc
 s usr/share/man/man3cpc/pctx_release.3cpc=pctx_capture.3cpc
 s usr/share/man/man3cpc/pctx_run.3cpc=pctx_capture.3cpc
 f usr/share/man/man3cpc/pctx_set_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/skl_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/skx_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/slm_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/snb_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/wsm_ep_dp_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/wsm_ep_sp_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/wsm_ex_events.3cpc 0444 root bin
 d usr/share/man/man3curses 0755 root bin
 s usr/share/man/man3curses/addch.3curses=curs_addch.3curses
 s usr/share/man/man3curses/addchnstr.3curses=curs_addchstr.3curses

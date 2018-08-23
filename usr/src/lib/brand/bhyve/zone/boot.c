@@ -424,7 +424,7 @@ add_lpc(int *argc, char **argv)
 				val = DEFAULT_BOOTROM_CSM;
 			} else if (strcmp(val, "uefi") == 0) {
 				val = DEFAULT_BOOTROM;
-                        }
+			}
 		}
 		if (snprintf(conf, sizeof (conf), "%s,%s", lpcdevs[i], val) >=
 		    sizeof (conf)) {
@@ -585,8 +585,7 @@ setup_reboot(void)
 		return (-1);
 	}
 
-	if (zone_setattr(zoneid, ZONE_ATTR_INITREBOOT, NULL, 0) < 0 ||
-	    zone_setattr(zoneid, ZONE_ATTR_INITRESTART0, NULL, 0) < 0) {
+	if (zone_setattr(zoneid, ZONE_ATTR_INITRESTART0, NULL, 0) < 0) {
 		(void) printf("Error: bhyve zoneid %ld setattr failed: %s\n",
 		    zoneid, strerror(errno));
 		return (-1);
