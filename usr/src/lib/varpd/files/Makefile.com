@@ -22,7 +22,8 @@ include ../../../Makefile.lib
 include ../../Makefile.plugin
 
 LIBS =		$(DYNLIB)
-LDLIBS +=	-lc -lumem -lnvpair -lsocket -lnsl -lcustr -lavl -lbunyan
+LDLIBS +=	-lc -lumem -lnvpair -lsocket -lnsl -lcustr
+LDLIBS +=	-lcmdutils -lavl -lbunyan
 CPPFLAGS +=	-I../common
 
 LINTFLAGS +=	-erroff=E_BAD_PTR_CAST_ALIGN
