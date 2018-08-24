@@ -26,7 +26,7 @@ void
 arm_text_flush(caddr_t start, size_t len)
 {
 	// aarch64_text_flush_range(start, len);
-	///XXX we should implement this. However, I think the i-cache
-	// is disabled by default anyways...
-
+	///XXX we should implement this. however the assembly arm gave us
+	//hangs, and the i-cache is disabled when this is called during
+	// krtld anyways...
 }
