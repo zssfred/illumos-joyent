@@ -1,0 +1,27 @@
+As one can probably see, there is still a good amount of work to be done in
+porting illumos to armv8/aarch64
+
+Some known issues:
+	1. ctfconvert/merge are having issues, so $(CTFMERGE_UNIQUIFY_AGAINST_GENUNIX)
+		is commented out in the qv/unix/Makefile
+	2. On a likely related note, genassym does not work properly, so it is
+	also commented out to /bin/true. For now only glocore.s relies on this,
+	for updating the struct regs passed to mlsetup. I just defined macros 
+	needed manually value for now...
+	3. The linker likely has bugs
+
+Next steps:
+	- Implement what is currently panicing (mutex_enter in main)
+	- Keep building unix/genunix objects until they can all be built
+	- Properly set up illumos-extra strap to simplify development process
+	- Updating linker as needed
+	- Updating the dissassembler to support aliases and floating point
+	      instructions
+
+In addition to all the arm documentation out there, and the code already in
+usr/src/uts, I found:
+ https://github.com/illumos/illumos-gate/compare/master...rmustacc:arm-gate
+helpful, as it shows per commit progress towards building genunix/unix. This
+repo is currently around the commit "Let's crash and burn in main()!"
+
+Good luck :)

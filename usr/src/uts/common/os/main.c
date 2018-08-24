@@ -407,6 +407,8 @@ main(void)
 	 */
 	mutex_enter(&ualock);
 
+	bop_printf(NULL, "Maybe we're here too\n\n");
+
 	/*
 	 * Setup root lgroup and leaf lgroup for CPU 0
 	 */
