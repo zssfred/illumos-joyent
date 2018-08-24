@@ -10,10 +10,11 @@ Some known issues:
 	needed manually value for now...
 	3. The linker likely has bugs
 
-Next steps:
+Some next steps:
 	- Implement what is currently panicing (mutex_enter in main)
 	- Keep building unix/genunix objects until they can all be built
 	- Properly set up illumos-extra strap to simplify development process
+	- Patch qemu to avoid objcopy hack and/or create a new loader
 	- Updating linker as needed
 	- Updating the dissassembler to support aliases and floating point
 	      instructions
