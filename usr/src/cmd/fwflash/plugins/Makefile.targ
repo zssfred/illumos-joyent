@@ -21,6 +21,8 @@
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
+# Copyright 2018 Joyent, Inc.
+#
 # cmd/fwflash/plugins
 #
 include $(SRC)/lib/Makefile.lib
@@ -28,8 +30,10 @@ include $(SRC)/lib/Makefile.lib
 HERMON-MELLANOX_LIB=	hermon-MELLANOX.so
 TAVOR-MELLANOX_LIB=	tavor-MELLANOX.so
 SD-GENERIC_LIB=		sd-GENERIC.so
+SES-HGST_LIB=		ses-HGST.so
 
-PLUGINS= $(HERMON-MELLANOX_LIB) $(TAVOR-MELLANOX_LIB) $(SD-GENERIC_LIB)
+PLUGINS= $(HERMON-MELLANOX_LIB) $(TAVOR-MELLANOX_LIB) $(SD-GENERIC_LIB) \
+	$(SES-HGST_LIB)
 
 OBJECTS= $(PLUGINS:%.so=%.o)
 DYNLIB=	$(PLUGINS:%=%)
@@ -53,10 +57,12 @@ FILEMODE = 0755
 $(HERMON-MELLANOX_LIB):= PICS= pics/$(HERMON-MELLANOX_LIB:%.so=%.o)
 $(TAVOR-MELLANOX_LIB):=	PICS = pics/$(TAVOR-MELLANOX_LIB:%.so=%.o)
 $(SD-GENERIC_LIB):= PICS= pics/$(SD-GENERIC_LIB:%.so=%.o)
+$(SES-HGST_LIB):= PICS= pics/$(SES-HGST_LIB:%.so=%.o)
 
 $(HERMON-MELLANOX_LIB):= SONAME = $(HERMON-MELLANOX_LIB)
 $(TAVOR-MELLANOX_LIB):=	SONAME = $(TAVOR-MELLANOX_LIB)
 $(SD-GENERIC_LIB):= SONAME = $(SD-GENERIC_LIB)
+$(SES-HGST_LIB):= SONAME = $(SES-HGST_LIB)
 
 $(HERMON-MELLANOX_LIB):= DYNFLAGS += -R/usr/lib/fwflash/identify 
 $(HERMON-MELLANOX_LIB):= LDLIBS += -L. $(ROOT)/usr/lib/fwflash/identify/hermon.so

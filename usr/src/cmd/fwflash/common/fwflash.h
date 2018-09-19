@@ -22,6 +22,9 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+/*
+ * Copyright 2018 Joyent, Inc.
+ */
 
 #ifndef	_FWFLASH_H
 #define	_FWFLASH_H
@@ -314,6 +317,14 @@ struct vrfyplugin {
 	 * specific bufferid that is needed by that firmware image.
 	 */
 	char *imgfile;
+
+	/*
+	 * A verify plugin can optionally set this value to override the
+	 * maximun size of data that will be sent to the device in a single
+	 * command.  The firmware plugin will interpret a value of zero
+	 * as being not-set.
+	 */
+	unsigned int chunksz;
 
 	/*
 	 * The verification function entry point. The code

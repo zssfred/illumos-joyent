@@ -282,8 +282,7 @@ send_control_page(ses_snap_t *sp, ses_snap_page_t *pp)
 
 	tp = sp->ss_target;
 
-	flags = LIBSCSI_AF_WRITE | LIBSCSI_AF_SILENT | LIBSCSI_AF_DIAGNOSE |
-	    LIBSCSI_AF_RQSENSE;
+	flags = LIBSCSI_AF_WRITE | LIBSCSI_AF_RQSENSE | LIBSCSI_AF_ISOLATE;
 
 	ap = libscsi_action_alloc(tp->st_scsi_hdl, SPC3_CMD_SEND_DIAGNOSTIC,
 	    flags, pp->ssp_page, pp->ssp_len);

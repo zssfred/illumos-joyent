@@ -5799,6 +5799,7 @@ f usr/lib/fwflash/identify/tavor.so 0755 root bin
 d usr/lib/fwflash/verify 0755 root bin
 f usr/lib/fwflash/verify/hermon-MELLANOX.so 0755 root bin
 f usr/lib/fwflash/verify/sd-GENERIC.so 0755 root bin
+f usr/lib/fwflash/verify/ses-HGST.so 0755 root bin
 s usr/lib/fwflash/verify/ses-LSILOGIC.so=ses-SUN.so
 f usr/lib/fwflash/verify/ses-SUN.so 0755 root bin
 s usr/lib/fwflash/verify/sgen-LSILOGIC.so=ses-SUN.so

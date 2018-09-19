@@ -22,6 +22,9 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+/*
+ * Copyright 2018 Joyent, Inc.
+ */
 
 /*
  * ses (SCSI Generic Device) specific functions.
@@ -231,6 +234,13 @@ fw_writefw(struct devicelist *flashdev)
 		logmsg(MSG_ERROR,
 		    "%s: Out of memory for property addition\n",
 		    flashdev->drvname);
+		goto cancel;
+	}
+	if (verifier->chunksz != 0 && nvlist_add_uint64(nvl,
+	    SES_CTL_PROP_UCODE_DATA_LEN, verifier->chunksz) != 0) {
+		logmsg(MSG_ERROR,
+		    gettext("%s: unable to add chunksz property, hence unable "
+			    "to flash device\n"), flashdev->drvname);
 		goto cancel;
 	}
 
@@ -663,7 +673,7 @@ sendimg(ses_node_t *np, void *data)
 	char *vendor, *product, *revision, *csn;
 	char buf[128];
 	ses_snap_t *newsnap;
-	int ret;
+	int ret, resp;
 	ucode_status_t statdesc;
 	ucode_wait_t wait;
 	uint8_t *imagedata;
@@ -699,21 +709,18 @@ sendimg(ses_node_t *np, void *data)
 	(void) snprintf(buf, sizeof (buf), "downloading %u bytes", len);
 	(void) printf("\n%30s: ", buf);
 
-	/*
-	 * If the bufferid isn't 2, then the verifier has already
-	 * OK'd the image that the user has provided.
-	 *
-	 * At present the non-"standard" images need to be flashed
-	 * using the scsi WRITE BUFFER command
-	 */
-	if (verifier->flashbuf != 2)
-		return (scsi_writebuf());
-
-
 	if (ses_node_ctl(np, SES_CTL_OP_DL_UCODE, arg) != FWFLASH_SUCCESS) {
 		(void) printf("failed!\n");
 		(void) printf("%s\n", ses_errmsg());
-		return (FWFLASH_FAILURE);
+		(void) printf("Failed to upgrade using SES commands.  This "
+		    "may be because the device is not fully SES-compliant.\n");
+		(void) printf("Retry upgrade using SCSI commands? (Y/N): ");
+		resp = getchar();
+		if (resp == 'Y' || resp == 'y') {
+			return (scsi_writebuf());
+		} else {
+			return(FWFLASH_FAILURE);
+		}
 	} else {
 		(void) printf("ok\n");
 	}
