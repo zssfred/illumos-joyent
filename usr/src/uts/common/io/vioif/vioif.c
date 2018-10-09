@@ -13,6 +13,7 @@
  * Copyright 2013 Nexenta Inc.  All rights reserved.
  * Copyright 2015 Joyent, Inc.
  * Copyright (c) 2014, 2016 by Delphix. All rights reserved.
+ * Copyright 2015 Joyent, Inc.
  */
 
 /* Based on the NetBSD virtio driver by Minoura Makoto. */
@@ -737,7 +738,7 @@ vioif_add_rx(struct vioif_softc *sc, int kmflag)
 	while ((ve = vq_alloc_entry(sc->sc_rx_vq)) != NULL) {
 		struct vioif_rx_buf *buf = sc->sc_rxbufs[ve->qe_index];
 
-		if (!buf) {
+		if (buf == NULL) {
 			/* First run, allocate the buffer. */
 			buf = kmem_cache_alloc(sc->sc_rxbuf_cache, kmflag);
 			sc->sc_rxbufs[ve->qe_index] = buf;
