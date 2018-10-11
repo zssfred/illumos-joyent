@@ -14,6 +14,8 @@ syntax: glob
 
 usr/src/data/ucode/amd/*
 usr/src/data/ucode/intel/*
+usr/src/lib/libresolv2/common/*
+usr/src/lib/libresolv2_joy/common/*
 
 # bhyve sources
 usr/src/cmd/bhyve/acpi.[ch]
@@ -94,3 +96,4 @@ usr/src/uts/i86pc/io/vmm/x86.[ch]
 usr/src/uts/i86pc/sys/vmm.h
 usr/src/uts/i86pc/sys/vmm_dev.h
 usr/src/uts/i86pc/sys/vmm_instruction_emul.h
+usr/src/uts/common/io/qede/*
