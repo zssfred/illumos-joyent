@@ -5027,6 +5027,8 @@ s usr/lib/amd64/libcurses.so.1=../../../lib/amd64/libcurses.so.1
 s usr/lib/amd64/libcurses.so=../../../lib/amd64/libcurses.so.1
 f usr/lib/amd64/libdat.so.1 0755 root bin
 s usr/lib/amd64/libdat.so=libdat.so.1
+f usr/lib/amd64/libdemangle-sys.so.1 0755 root bin
+s usr/lib/amd64/libdemangle-sys.so=libdemangle-sys.so.1
 s usr/lib/amd64/libdevice.so.1=../../../lib/amd64/libdevice.so.1
 s usr/lib/amd64/libdevice.so=../../../lib/amd64/libdevice.so.1
 s usr/lib/amd64/libdevid.so.1=../../../lib/amd64/libdevid.so.1
@@ -6436,6 +6438,8 @@ s usr/lib/libcurses.so.1=../../lib/libcurses.so.1
 s usr/lib/libcurses.so=../../lib/libcurses.so.1
 f usr/lib/libdat.so.1 0755 root bin
 s usr/lib/libdat.so=libdat.so.1
+f usr/lib/libdemangle-sys.so.1 0755 root bin
+s usr/lib/libdemangle-sys.so=libdemangle-sys.so.1
 s usr/lib/libdevice.so.1=../../lib/libdevice.so.1
 s usr/lib/libdevice.so=../../lib/libdevice.so.1
 s usr/lib/libdevid.so.1=../../lib/libdevid.so.1
