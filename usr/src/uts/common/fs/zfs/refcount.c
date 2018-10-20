@@ -234,6 +234,7 @@ zfs_refcount_transfer(zfs_refcount_t *dst, zfs_refcount_t *src)
 	list_destroy(&removed);
 }
 
+/* ARGSUSED */
 void
 <<<<<<< HEAD
 zfs_refcount_transfer_ownership(zfs_refcount_t *rc, void *current_holder,
@@ -269,8 +270,8 @@ void
 refcount_transfer_ownership(refcount_t *rc, void *current_holder,
     void *new_holder)
 {
-	return (refcount_transfer_ownership_many(rc, 1, current_holder,
-	    new_holder));
+	refcount_transfer_ownership_many(rc, 1, current_holder,
+	    new_holder);
 }
 
 /*

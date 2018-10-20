@@ -3226,6 +3226,7 @@ arc_hdr_free_on_write(arc_buf_hdr_t *hdr, boolean_t free_rdata)
 static void
 arc_share_buf(arc_buf_hdr_t *hdr, arc_buf_t *buf)
 {
+	/* LINTED */
 	arc_state_t *state = hdr->b_l1hdr.b_state;
 
 	ASSERT(arc_can_share(hdr, buf));
@@ -3259,6 +3260,7 @@ arc_share_buf(arc_buf_hdr_t *hdr, arc_buf_t *buf)
 static void
 arc_unshare_buf(arc_buf_hdr_t *hdr, arc_buf_t *buf)
 {
+	/* LINTED */
 	arc_state_t *state = hdr->b_l1hdr.b_state;
 
 	ASSERT(arc_buf_is_shared(buf));
