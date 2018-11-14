@@ -10,34 +10,26 @@
  */
 
 /*
- * Copyright 2017 Toomas Soome <tsoome@me.com>
+ * Copyright 2018, Joyent, Inc.
  */
 
-#ifndef _SYS_STDDEF_H
-#define	_SYS_STDDEF_H
-
-/*
- * Commonly used macros and definitions.
- */
+#ifndef _REFHASH_H
+#define	_REFHASH_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#if !defined(offsetof)
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
-#define	offsetof(s, m)	__builtin_offsetof(s, m)
-#else
-#if __cplusplus >= 199711L
-#define	offsetof(s, m)	(std::size_t)(&(((s *)NULL)->m))
-#else
-#define	offsetof(s, m)	((size_t)(&(((s *)NULL)->m)))
-#endif
-#endif
-#endif /* !offsetof */
+#define	REFHASH_WALK_NAME "refhash"
+#define	REFHASH_WALK_DESC "walk a refhash"
+
+struct mdb_walk_state;
+
+extern int refhash_walk_init(struct mdb_walk_state *);
+extern int refhash_walk_step(struct mdb_walk_state *);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _SYS_STDDEF_H */
+#endif /* _REFHASH_H */
