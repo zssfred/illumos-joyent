@@ -83,6 +83,7 @@ SUBDIRS +=				\
 	gss_mechs/mech_spnego	\
 	hal		\
 	hbaapi		\
+	iconv_modules	\
 	krb5		\
 	libadm		\
 	libads		\
@@ -280,6 +281,7 @@ SUBDIRS +=				\
 i386_SUBDIRS=		\
 	libfdisk	\
 	libsaveargs	\
+	libvmm		\
 	libvmmapi
 
 sparc_SUBDIRS=		\
@@ -511,6 +513,7 @@ HDRSUBDIRS=				\
 i386_HDRSUBDIRS=	\
 	libfdisk	\
 	libsaveargs	\
+	libvmm		\
 	libvmmapi
 
 sparc_HDRSUBDIRS=	\
@@ -616,7 +619,7 @@ libdiskmgt:	libdevid libdevinfo libadm libefi libkstat libsysevent
 $(INTEL_BLD)libdiskmgt: libfdisk
 libdladm:	libdevinfo libinetutil libscf librcm libexacct libkstat \
 		libpool varpd
-libdll: 	libast
+libdll:		libast
 libdlpi:	libinetutil libdladm
 libds:		libsysevent
 libdtrace:	libproc libgen libctf libmapmalloc
@@ -687,6 +690,7 @@ libtsnet:	libtsol libsecdb
 libtsol:	libsecdb
 libuuid:	libdlpi
 libv12n:	libds libuuid
+libvmm:		libvmmapi
 libvolmgt:	libadm
 libvrrpadm:	libdladm libscf
 libvscan:	libscf libsecdb
