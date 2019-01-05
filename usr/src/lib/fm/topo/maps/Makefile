@@ -22,7 +22,7 @@
 #
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-# Copyright (c) 2018, Joyent, Inc.
+# Copyright (c) 2019, Joyent, Inc.
 #
 
 sparc_SUBDIRS =	sun4u \
@@ -55,6 +55,7 @@ i386_SUBDIRS = i86pc \
 		Joyent,Joyent-Storage-Platform-7001 \
 		SMCI,SSG-2028R-ACR24L \
 		SMCI,SSG-6049P-E1CR36L \
+		SMCI,SSG-6049P-E1CR60L-JI006 \
 		SMCI,SSG-2029P-ACR24L \
 		WDC,H4060-S
 
