@@ -21,6 +21,7 @@
 
 /*
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, Joyent, Inc. All rights reserved.
  */
 
 /*
@@ -104,11 +105,37 @@ di_devtype_get(topo_mod_t *mp, di_node_t src, char **devtype)
 
 typedef struct smbios_slot_cb {
 	int		cb_slotnum;
+	int		cb_bdf;
 	const char	*cb_label;
 } smbios_slot_cb_t;
 
 static int
-di_smbios_find_slot(smbios_hdl_t *shp, const smbios_struct_t *strp, void *data)
+di_smbios_find_slot_by_bdf(smbios_hdl_t *shp, const smbios_struct_t *strp,
+    void *data)
+{
+	smbios_slot_cb_t *cbp = data;
+	smbios_slot_t slot;
+	int bus, df;
+
+	bus = (cbp->cb_bdf & 0xFF00) >> 8;
+	df = cbp->cb_bdf & 0xFF;
+
+	if (strp->smbstr_type != SMB_TYPE_SLOT ||
+	    smbios_info_slot(shp, strp->smbstr_id, &slot) != 0)
+		return (0);
+
+	if (slot.smbl_bus == bus && slot.smbl_df == df) {
+		cbp->cb_label = slot.smbl_name;
+		cbp->cb_slotnum = slot.smbl_id;
+		return (1);
+	}
+
+	return (0);
+}
+
+static int
+di_smbios_find_slot_by_id(smbios_hdl_t *shp, const smbios_struct_t *strp,
+    void *data)
 {
 	smbios_slot_cb_t *cbp = data;
 	smbios_slot_t slot;
@@ -126,7 +153,8 @@ di_smbios_find_slot(smbios_hdl_t *shp, const smbios_struct_t *strp, void *data)
 }
 
 static int
-di_physlotinfo_get(topo_mod_t *mp, di_node_t src, int *slotnum, char **slotname)
+di_physlotinfo_get(topo_mod_t *mp, di_node_t src, int bdf, int *slotnum,
+    char **slotname)
 {
 	char *slotbuf;
 	int sz;
@@ -154,14 +182,12 @@ di_physlotinfo_get(topo_mod_t *mp, di_node_t src, int *slotnum, char **slotname)
 		(void) sscanf((char *)&buf[4], "Slot%d", slotnum);
 	}
 
-	if (*slotnum == -1)
-		return (0);
-
 	/*
 	 * Order of preference
-	 * 1) take slotnum and look up in SMBIOS table
-	 * 2) use slot-names
-	 * 3) fabricate name based on slotnum
+	 * 1) cross-reference BDF w\ slot records in SMBIOS
+	 * 2) cross-reference slot-id w\ slot records in SMBIOS
+	 * 3) use slot-names
+	 * 4) fabricate name based on slot-id
 	 */
 	if ((shp = topo_mod_smbios(mp)) != NULL) {
 		/*
@@ -170,22 +196,55 @@ di_physlotinfo_get(topo_mod_t *mp, di_node_t src, int *slotnum, char **slotname)
 		 * this, so we have to treat slot 0 as a valid device.
 		 * But other platforms use 0 to identify an internal
 		 * device.  We deal with this by letting SMBIOS be the
-		 * final decision maker.  If SMBIOS is supported, but
-		 * the given slot number is not represented in the
-		 * SMBIOS tables, then ignore the slot entirely.
+		 * final decision maker.
+		 *
+		 * If SMBIOS is supported and is at least version 2.6 then
+		 * we try to find a matching slot record based on the BDF.
+		 *
+		 * On systems with older SMBIOS implementations, we attempt
+		 * to instead match the slot record using the slot number.
+		 *
+		 * If neither of the above mechanisms find a match, then
+		 * ignore the slot entirely.
 		 */
 		smbios_slot_cb_t cbdata;
+		smbios_version_t smbv;
+		boolean_t bdf_supp = B_TRUE;
 
 		cbdata.cb_slotnum = *slotnum;
+		cbdata.cb_bdf = bdf;
 		cbdata.cb_label = NULL;
-		if (smbios_iter(shp, di_smbios_find_slot, &cbdata) <= 0)
+
+		/*
+		 * The bus and device/fn payload members of the SMBIOS slot
+		 * record were added in SMBIOS 2.6.
+		 */
+		smbios_info_smbios_version(shp, &smbv);
+		if (smbv.smbv_major < 2 && smbv.smbv_minor < 6)
+			bdf_supp = B_FALSE;
+
+		/*
+		 * If the SMBIOS implementation is too old to look up the slot
+		 * records by BDF and we weren't able to derive a slotnum then
+		 * there's not much we can do here.
+		 */
+		if (!bdf_supp && *slotnum == -1)
 			return (0);
+
+		if (bdf_supp &&
+		    smbios_iter(shp, di_smbios_find_slot_by_bdf, &cbdata) <= 0)
+			return (0);
+
+		if (!bdf_supp &&
+		    smbios_iter(shp, di_smbios_find_slot_by_id, &cbdata) <= 0)
+			return (0);
+
 		slotbuf = (char *)cbdata.cb_label;
-		topo_mod_dprintf(mp, "%s: node=%p: using smbios name\n",
+		topo_mod_dprintf(mp, "%s: di_node=%p: using smbios name\n",
 		    __func__, src);
 	} else if (got_slotprop == B_TRUE) {
 		slotbuf = (char *)&buf[4];
-		topo_mod_dprintf(mp, "%s: node=%p: found %s property\n",
+		topo_mod_dprintf(mp, "%s: di_node=%p: found %s property\n",
 		    __func__, src, DI_SLOTPROP);
 	} else {
 		/*
@@ -194,13 +253,13 @@ di_physlotinfo_get(topo_mod_t *mp, di_node_t src, int *slotnum, char **slotname)
 		 */
 		slotbuf = alloca(16);
 		(void) snprintf(slotbuf, 16, "SLOT %d", *slotnum);
-		topo_mod_dprintf(mp, "%s: node=%p: using generic slot name\n",
-		    __func__, src);
+		topo_mod_dprintf(mp, "%s: di_node=%p: using generic slot "
+		    "name\n", __func__, src);
 	}
 	if ((*slotname = topo_mod_strdup(mp, slotbuf)) == NULL)
 		return (-1);
 
-	topo_mod_dprintf(mp, "%s: node=%p: slotname=%s\n",
+	topo_mod_dprintf(mp, "%s: di_node=%p: slotname=%s\n",
 	    __func__, src, *slotname);
 
 	return (0);
@@ -325,7 +384,7 @@ did_create(topo_mod_t *mp, di_node_t src,
 		/*
 		 * This is a pciex node.
 		 */
-		if (di_physlotinfo_get(mp, src, &np->dp_physlot,
+		if (di_physlotinfo_get(mp, src, np->dp_bdf, &np->dp_physlot,
 		    &np->dp_physlot_name) < 0) {
 			if (np->dp_devtype != NULL)
 				topo_mod_strfree(mp, np->dp_devtype);

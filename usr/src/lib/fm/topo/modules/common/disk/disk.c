@@ -22,7 +22,7 @@
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 /*
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 
 #include <strings.h>
@@ -102,7 +102,8 @@ disk_enum(topo_mod_t *mod, tnode_t *baynode,
 			    topo_strerror(err));
 			return (-1);
 		}
-		if (topo_node_fru_set(baynode, fmri, 0, &err) != 0) {
+		if (topo_node_fru_set(baynode, fmri, 0, &err) != 0 &&
+		    err != ETOPO_PROP_DEFD) {
 			topo_mod_dprintf(mod, "disk_enum: "
 			    "topo_node_fru error %s\n", topo_strerror(err));
 			nvlist_free(fmri);

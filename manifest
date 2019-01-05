@@ -19,7 +19,7 @@
 # CDDL HEADER END
 #
 #
-# Copyright 2018 Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 # Copyright 2017 ASS-Einrichtungssysteme GmbH
 #
 # This lists all the files that illumos-joyent delivers as part of a build.
@@ -10427,6 +10427,9 @@ f usr/platform/i86pc/lib/fm/topo/maps/SSG-2029P-ACR24L-chassis-hc-topology.xml 0
 f usr/platform/i86pc/lib/fm/topo/maps/SSG-2029P-ACR24L-disk-hc-topology.xml 0444 root sys
 f usr/platform/i86pc/lib/fm/topo/maps/SSG-2029P-ACR24L-slot-hc-topology.xml 0444 root sys
 f usr/platform/i86pc/lib/fm/topo/maps/SSG-2029P-ACR24L-usb.usbtopo 0444 root sys
+f usr/platform/i86pc/lib/fm/topo/maps/H4060-S-hc-topology.xml 0444 root sys
+f usr/platform/i86pc/lib/fm/topo/maps/H4060-S-chassis-hc-topology.xml 0444 root sys
+f usr/platform/i86pc/lib/fm/topo/maps/H4060-S-disk-hc-topology.xml 0444 root sys
 f usr/platform/i86pc/lib/fm/topo/maps/chassis-hc-topology.xml 0444 root sys
 f usr/platform/i86pc/lib/fm/topo/maps/chip-hc-topology.xml 0444 root sys
 f usr/platform/i86pc/lib/fm/topo/maps/fan-hc-topology.xml 0444 root sys
