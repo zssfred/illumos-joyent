@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <string.h>
 #include <strings.h>
+#include <err.h>
 
 #define	MAX_NAMELEN (512)
 
@@ -123,17 +124,6 @@ ctfdump_printf(ctfdump_arg_t arg, const char *fmt, ...)
 }
 
 static void
-ctfdump_warn(const char *fmt, ...)
-{
-	va_list ap;
-
-	(void) fprintf(stderr, "%s: ", g_progname);
-	va_start(ap, fmt);
-	(void) vfprintf(stderr, fmt, ap);
-	va_end(ap);
-}
-
-static void
 ctfdump_fatal(const char *fmt, ...)
 {
 	va_list ap;
@@ -201,7 +191,7 @@ ctfdump_objects(void)
 {
 	ctfdump_title(CTFDUMP_OBJECTS, "Data Objects");
 	if (ctf_object_iter(g_fp, ctfdump_objects_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump objects: %s\n",
+		warnx("failed to dump objects: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -257,7 +247,7 @@ ctfdump_functions(void)
 	ctfdump_title(CTFDUMP_FUNCTIONS, "Functions");
 
 	if (ctf_function_iter(g_fp, ctfdump_functions_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump functions: %s\n",
+		warnx("failed to dump functions: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -310,7 +300,7 @@ ctfdump_labels(void)
 {
 	ctfdump_title(CTFDUMP_LABELS, "Label Table");
 	if (ctf_label_iter(g_fp, ctfdump_labels_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump labels: %s\n",
+		warnx("failed to dump labels: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -337,7 +327,7 @@ ctfdump_strings(void)
 
 	ctfdump_title(CTFDUMP_STRINGS, "String Table");
 	if (ctf_string_iter(g_fp, ctfdump_strings_cb, &stroff) == CTF_ERR) {
-		ctfdump_warn("failed to dump strings: %s\n",
+		warnx("failed to dump strings: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -680,7 +670,7 @@ ctfdump_types(void)
 	ctfdump_title(CTFDUMP_TYPES, "Types");
 
 	if (ctf_type_iter(g_fp, B_TRUE, ctfdump_types_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump types: %s\n",
+		warnx("failed to dump types: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -996,7 +986,7 @@ ctfdump_source(void)
 
 	if (ctf_type_iter(g_fp, B_FALSE, ctfsrc_collect_types_cb,
 	    idnames) == CTF_ERR) {
-		ctfdump_warn("failed to collect types: %s\n",
+		warnx("failed to collect types: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -1019,7 +1009,7 @@ ctfdump_source(void)
 
 	if (ctf_object_iter(g_fp, ctfsrc_collect_objects_cb,
 	    &count) == CTF_ERR) {
-		ctfdump_warn("failed to collect objects: %s\n",
+		warnx("failed to collect objects: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -1042,7 +1032,7 @@ ctfdump_source(void)
 
 	if (ctf_function_iter(g_fp, ctfsrc_collect_functions_cb,
 	    &count) == CTF_ERR) {
-		ctfdump_warn("failed to collect functions: %s\n",
+		warnx("failed to collect functions: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -1167,12 +1157,44 @@ main(int argc, char *argv[])
 		ctfdump_fatal("failed to open file %s: %s\n", argv[0],
 		    ctf_errmsg(err));
 
-	if (parent != NULL) {
+	/*
+	 * Check to see if this file needs a parent. If it does not and we were
+	 * given one, that should be an error. If it does need one and the
+	 * parent is not specified, that is fine, we just won't know how to
+	 * find child types. If we are given a parent, check at least that the
+	 * labels match.
+	 */
+	if (ctf_parent_name(g_fp) == NULL) {
+		if (parent != NULL)
+			ctfdump_fatal("cannot use %s as a parent file, %s is "
+			    "not a child\n", parent, argv[0]);
+	} else if (parent != NULL) {
+		const char *explabel, *label;
 		ctf_file_t *pfp = ctf_open(parent, &err);
 
 		if (pfp == NULL)
 			ctfdump_fatal("failed to open parent file %s: %s\n",
 			    parent, ctf_errmsg(err));
+
+		/*
+		 * Before we import the parent into the child, check that the
+		 * labels match. While there is also the notion of the parent
+		 * name, it's less straightforward to match that. Require that
+		 * labels match.
+		 */
+		explabel = ctf_parent_label(g_fp);
+		label = ctf_label_topmost(pfp);
+		if (explabel == NULL || label == NULL ||
+		    strcmp(explabel, label) != 0) {
+			if (label == NULL)
+				label = "<missing>";
+			if (explabel == NULL)
+				explabel = "<missing>";
+			ctfdump_fatal("label mismatch between parent %s and "
+			    "child %s, parent has %s, child expects %s\n",
+			    parent, argv[0], label, explabel);
+		}
+
 		if (ctf_import(g_fp, pfp) != 0)
 			ctfdump_fatal("failed to import parent %s: %s\n",
 			    parent, ctf_errmsg(ctf_errno(g_fp)));
