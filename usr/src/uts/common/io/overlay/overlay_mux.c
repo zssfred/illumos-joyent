@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2015 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*
@@ -26,6 +26,7 @@
 #include <sys/ksocket.h>
 #include <sys/avl.h>
 #include <sys/list.h>
+#include <sys/pattr.h>
 #include <sys/sysmacros.h>
 #include <sys/strsubr.h>
 #include <sys/strsun.h>
@@ -123,8 +124,17 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 		 */
 		fmp = mp;
 		mp = fmp->b_cont;
-		fmp->b_cont = NULL;
-		freemsg(fmp);
+		freeb(fmp);
+
+		/*
+		 * Until we have VXLAN HW acceleration support (i.e.  we
+		 * support NICs that reach into VXLAN-encapsulated packets and
+		 * check the inside-VXLAN IP packets' checksums, or do LSO
+		 * with VXLAN), we should clear any HW-accelerated-performed
+		 * bits.  ESPECIALLY if we're LOCAL_MAC (e.g. two underlay
+		 * network IPs but on the same machine).
+		 */
+		DB_CKSUMFLAGS(mp) &= ~(HCK_FLAGS | HW_LSO_FLAGS);
 
 		/*
 		 * Decap and deliver.
