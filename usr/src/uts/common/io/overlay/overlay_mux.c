@@ -127,14 +127,18 @@ overlay_mux_recv(ksocket_t ks, mblk_t *mpchain, size_t msgsize, int oob,
 		freeb(fmp);
 
 		/*
-		 * Until we have VXLAN HW acceleration support (i.e.  we
-		 * support NICs that reach into VXLAN-encapsulated packets and
-		 * check the inside-VXLAN IP packets' checksums, or do LSO
-		 * with VXLAN), we should clear any HW-accelerated-performed
-		 * bits.  ESPECIALLY if we're LOCAL_MAC (e.g. two underlay
-		 * network IPs but on the same machine).
+		 * Until we have VXLAN-or-other-decap HW acceleration support
+		 * (e.g.  we support NICs that reach into VXLAN-encapsulated
+		 * packets and check the inside-VXLAN IP packets' checksums,
+		 * or do LSO with VXLAN), we should clear any HW-accelerated-
+		 * performed bits.
+		 *
+		 * We do this, even in cases of HW_LOCAL_MAC, because we
+		 * absolutely have NO context about the inner packet.
+		 * It could've arrived off an external NIC and been forwarded
+		 * to the overlay network, which means no context.
 		 */
-		DB_CKSUMFLAGS(mp) &= ~(HCK_FLAGS | HW_LSO_FLAGS);
+		DB_CKSUMFLAGS(mp) = 0;
 
 		/*
 		 * Decap and deliver.
