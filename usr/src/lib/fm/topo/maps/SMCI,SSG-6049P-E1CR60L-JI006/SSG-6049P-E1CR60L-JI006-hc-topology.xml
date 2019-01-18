@@ -105,8 +105,9 @@
 
   </range>
 
-  <range name='ses-enclosure' min='0' max='2'>
+  <range name='ses-enclosure' min='0' max='1'>
      <enum-method name='ses' version='1' />
+     <propmap name='SSG-6049P-E1CR60L-JI006-ses' />
   </range>
 
 </topology>

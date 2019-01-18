@@ -34,6 +34,7 @@ TOPOFILE = \
 	SSG-6049P-E1CR60L-JI006-hc-topology.xml \
 	SSG-6049P-E1CR60L-JI006-chassis-hc-topology.xml \
 	SSG-6049P-E1CR60L-JI006-disk-hc-topology.xml \
+	SSG-6049P-E1CR60L-JI006-ses-hc-topology.xml \
 	SSG-6049P-E1CR60L-JI006-slot-hc-topology.xml \
 	SSG-6049P-E1CR60L-JI006-usb.usbtopo
 
@@ -41,7 +42,8 @@ SRCDIR = ../SMCI,SSG-6049P-E1CR60L-JI006
 
 PLATFORM = SSG-6049P-E1CR60L-JI006
 
-#CLOBBERFILES +=	$(ROOTJOYENTMAPS)
+#CLOBBERFILES += $(ROOTJOYENTMAPS)
+CLOBBERFILES += SSG-6049P-E1CR60L-JI006-ses-hc-topology.xml
 
 include ../Makefile.map
 
