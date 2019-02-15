@@ -314,6 +314,17 @@ zpool_feature_init(void)
 	    "freed or remapped.",
 	    ZFEATURE_FLAG_READONLY_COMPAT, obsolete_counts_deps);
 
+	{
+		static const spa_feature_t bookmark_v2_deps[] = {
+		    SPA_FEATURE_EXTENSIBLE_DATASET,
+		    SPA_FEATURE_NONE
+		};
+		zfeature_register(SPA_FEATURE_BOOKMARK_V2,
+		    "com.datto:bookmark_v2", "bookmark_v2",
+		    "Support for larger bookmarks",
+		    0, bookmark_v2_deps);
+	}
+
 	static const spa_feature_t encryption_deps[] = {
 		SPA_FEATURE_EXTENSIBLE_DATASET,
 		SPA_FEATURE_NONE
