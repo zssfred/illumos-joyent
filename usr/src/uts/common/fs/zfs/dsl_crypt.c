@@ -2454,7 +2454,7 @@ dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, uint64_t from_ivset_guid,
 	 */
 	ret = zap_lookup(mos, dckobj, DSL_CRYPTO_KEY_VERSION, 8, 1, &version);
 	if (ret != 0 || version != ZIO_CRYPT_KEY_CURRENT_VERSION) {
-		/* dp->dp_spa->spa_errata = ZPOOL_ERRATA_ZOL_6845_ENCRYPTION; */
+		dp->dp_spa->spa_errata = ZPOOL_ERRATA_ZOL_6845_ENCRYPTION;
 		ret = SET_ERROR(ENOTSUP);
 		goto error;
 	}
@@ -2871,8 +2871,3 @@ error:
 	return (ret);
 }
 
-#if defined(_KERNEL)
-module_param(zfs_disable_ivset_guid_check, int, 0644);
-MODULE_PARM_DESC(zfs_disable_ivset_guid_check,
-	"Set to allow raw receives without IVset guids");
-#endif

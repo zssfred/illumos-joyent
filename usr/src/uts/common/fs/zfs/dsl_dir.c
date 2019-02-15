@@ -194,13 +194,11 @@ dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
 			    ddobj, DD_FIELD_CRYPTO_KEY_OBJ,
 			    sizeof (uint64_t), 1, &dd->dd_crypto_obj));
 
-#ifdef __linux__
 			/* check for on-disk format errata */
 			if (dsl_dir_incompatible_encryption_version(dd)) {
 				dp->dp_spa->spa_errata =
 				    ZPOOL_ERRATA_ZOL_6845_ENCRYPTION;
 			}
-#endif
 		}
 
 		mutex_init(&dd->dd_lock, NULL, MUTEX_DEFAULT, NULL);
