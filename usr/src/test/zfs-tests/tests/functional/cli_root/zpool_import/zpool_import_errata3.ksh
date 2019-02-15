@@ -95,5 +95,5 @@ log_must zfs destroy -r $POOL_NAME/testvol
 
 log_must zpool export $POOL_NAME
 log_must zpool import -d /$TESTPOOL/ $POOL_NAME
-log_mustnot eval "zpool status | grep -q Errata"
+log_mustnot eval "zpool status | grep -q 'Errata #3'"
 log_pass "Errata 3 is properly handled"

@@ -1744,7 +1744,19 @@ print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth)
 			(void) printf(gettext("all children offline"));
 			break;
 
-		default:
+		case ZPOOL_ERRATA_ZOL_8308_ENCRYPTION:
+			(void) printf(gettext(" action: Existing "
+			    "encrypted datasets contain an on-disk "
+			    "incompatibility which\n\tmay cause "
+			    "on-disk corruption with 'zfs recv' and "
+			    "which needs to be\n\tcorrected. Enable "
+			    "the bookmark_v2 feature and backup "
+			    "these datasets to new encrypted "
+			    "datasets\n\tand destroy the "
+			    "old ones.\n"));
+			break;
+
+	   default:
 			(void) printf(gettext("corrupted data"));
 			break;
 		}

@@ -1073,9 +1073,13 @@ dmu_send_impl(void *tag, dsl_pool_t *dp, dsl_dataset_t *to_ds,
 		}
 
 		if (featureflags & DMU_BACKUP_FEATURE_RAW) {
+			uint64_t ivset_guid = (ancestor_zb != NULL) ?
+			    ancestor_zb->zbm_ivset_guid : 0;
+
 			ASSERT(os->os_encrypted);
 
-			err = dsl_crypto_populate_key_nvlist(to_ds, &keynvl);
+			err = dsl_crypto_populate_key_nvlist(to_ds,
+			    ivset_guid, &keynvl);
 			if (err != 0) {
 				fnvlist_free(nvl);
 				goto out;
@@ -1189,7 +1193,7 @@ dmu_send_obj(const char *pool, uint64_t tosnap, uint64_t fromsnap,
 	}
 
 	if (fromsnap != 0) {
-		zfs_bookmark_phys_t zb;
+		zfs_bookmark_phys_t zb = { 0 };
 		boolean_t is_clone;
 
 		err = dsl_dataset_hold_obj(dp, fromsnap, FTAG, &fromds);
@@ -1198,12 +1202,25 @@ dmu_send_obj(const char *pool, uint64_t tosnap, uint64_t fromsnap,
 			dsl_pool_rele(dp, FTAG);
 			return (err);
 		}
-		if (!dsl_dataset_is_before(ds, fromds, 0))
+		if (!dsl_dataset_is_before(ds, fromds, 0)) {
 			err = SET_ERROR(EXDEV);
+			dsl_dataset_rele(fromds, FTAG);
+			dsl_dataset_rele_flags(ds, dsflags, FTAG);
+			dsl_pool_rele(dp, FTAG);
+			return (err);
+		}
+
 		zb.zbm_creation_time =
 		    dsl_dataset_phys(fromds)->ds_creation_time;
 		zb.zbm_creation_txg = dsl_dataset_phys(fromds)->ds_creation_txg;
 		zb.zbm_guid = dsl_dataset_phys(fromds)->ds_guid;
+
+		if (dsl_dataset_is_zapified(fromds)) {
+			(void) zap_lookup(dp->dp_meta_objset,
+			    fromds->ds_object, DS_FIELD_IVSET_GUID, 8, 1,
+			    &zb.zbm_ivset_guid);
+		}
+
 		is_clone = (fromds->ds_dir != ds->ds_dir);
 		dsl_dataset_rele(fromds, FTAG);
 		err = dmu_send_impl(FTAG, dp, ds, &zb, is_clone,
@@ -1253,7 +1270,7 @@ dmu_send(const char *tosnap, const char *fromsnap, boolean_t embedok,
 	}
 
 	if (fromsnap != NULL) {
-		zfs_bookmark_phys_t zb;
+		zfs_bookmark_phys_t zb = { 0 };
 		boolean_t is_clone = B_FALSE;
 		int fsnamelen = strchr(tosnap, '@') - tosnap;
 
@@ -1279,6 +1296,13 @@ dmu_send(const char *tosnap, const char *fromsnap, boolean_t embedok,
 				    dsl_dataset_phys(fromds)->ds_creation_txg;
 				zb.zbm_guid = dsl_dataset_phys(fromds)->ds_guid;
 				is_clone = (ds->ds_dir != fromds->ds_dir);
+
+				if (dsl_dataset_is_zapified(fromds)) {
+					(void) zap_lookup(dp->dp_meta_objset,
+					    fromds->ds_object,
+					    DS_FIELD_IVSET_GUID, 8, 1,
+					    &zb.zbm_ivset_guid);
+				}
 				dsl_dataset_rele(fromds, FTAG);
 			}
 		} else {
@@ -1476,7 +1500,6 @@ typedef struct dmu_recv_begin_arg {
 	dmu_recv_cookie_t *drba_cookie;
 	cred_t *drba_cred;
 	dsl_crypto_params_t *drba_dcp;
-	uint64_t drba_snapobj;
 } dmu_recv_begin_arg_t;
 
 static int
@@ -1524,7 +1547,7 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 		dsl_dataset_t *snap;
 		uint64_t obj = dsl_dataset_phys(ds)->ds_prev_snap_obj;
 
-		/* Can't perform a raw receive on top of a non-raw receive */
+		/* Can't raw receive on top of an unencrypted dataset */
 		if (!encrypted && raw)
 			return (SET_ERROR(EINVAL));
 
@@ -1551,7 +1574,7 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 			return (SET_ERROR(ENODEV));
 
 		if (drba->drba_cookie->drc_force) {
-			drba->drba_snapobj = obj;
+			drba->drba_cookie->drc_fromsnapobj = obj;
 		} else {
 			/*
 			 * If we are not forcing, there must be no
@@ -1561,7 +1584,8 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 				dsl_dataset_rele(snap, FTAG);
 				return (SET_ERROR(ETXTBSY));
 			}
-			drba->drba_snapobj = ds->ds_prev->ds_object;
+			drba->drba_cookie->drc_fromsnapobj =
+			    ds->ds_prev->ds_object;
 		}
 
 		dsl_dataset_rele(snap, FTAG);
@@ -1596,7 +1620,7 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 				return (SET_ERROR(EINVAL));
 		}
 
-		drba->drba_snapobj = 0;
+		drba->drba_cookie->drc_fromsnapobj = 0;
 	}
 
 	return (0);
@@ -1820,7 +1844,7 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 	 * the raw cmd set. Raw incremental recvs do not use a dcp
 	 * since the encryption parameters are already set in stone.
 	 */
-	if (dcp == NULL && drba->drba_snapobj == 0 &&
+	if (dcp == NULL && drba->drba_cookie->drc_fromsnapobj == 0 &&
 	    drba->drba_origin == NULL) {
 		ASSERT3P(dcp, ==, NULL);
 		dcp = &dummy_dcp;
@@ -1834,15 +1858,15 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 		/* create temporary clone */
 		dsl_dataset_t *snap = NULL;
 
-		if (drba->drba_snapobj != 0) {
+		if (drba->drba_cookie->drc_fromsnapobj != 0) {
 			VERIFY0(dsl_dataset_hold_obj(dp,
-			    drba->drba_snapobj, FTAG, &snap));
+			    drba->drba_cookie->drc_fromsnapobj, FTAG, &snap));
 			ASSERT3P(dcp, ==, NULL);
 		}
 
 		dsobj = dsl_dataset_create_sync(ds->ds_dir, recv_clone_name,
 		    snap, crflags, drba->drba_cred, dcp, tx);
-		if (drba->drba_snapobj != 0)
+		if (drba->drba_cookie->drc_fromsnapobj != 0)
 			dsl_dataset_rele(snap, FTAG);
 		dsl_dataset_rele_flags(ds, dsflags, FTAG);
 	} else {
@@ -3734,10 +3758,14 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		 * the keynvl away until then.
 		 */
 		err = dsl_crypto_recv_raw(spa_name(ra.os->os_spa),
-		    drc->drc_ds->ds_object, drc->drc_drrb->drr_type,
-		    keynvl, drc->drc_newfs);
+		    drc->drc_ds->ds_object, drc->drc_fromsnapobj,
+		    drc->drc_drrb->drr_type, keynvl, drc->drc_newfs);
 		if (err != 0)
 			goto out;
+
+		/* see comment in dmu_recv_end_sync() */
+		(void) nvlist_lookup_uint64(keynvl, "to_ivset_guid",
+		    &drc->drc_ivset_guid);
 
 		if (!drc->drc_newfs)
 			drc->drc_keynvl = fnvlist_dup(keynvl);
@@ -4051,6 +4079,23 @@ dmu_recv_end_sync(void *arg, dmu_tx_t *tx)
 		}
 		drc->drc_newsnapobj =
 		    dsl_dataset_phys(drc->drc_ds)->ds_prev_snap_obj;
+	}
+
+	/*
+	 * If this is a raw receive, the crypt_keydata nvlist will include
+	 * a to_ivset_guid for us to set on the new snapshot. This value
+	 * will override the value generated by the snapshot code. Older
+	 * implementations of the raw send code did not include this
+	 * value. By setting the zfs_disable_ivset_guid_check tunable, the
+	 * user can still receive these streams, using the generated value
+	 * if one hasn't been provided.
+	 */
+	if (drc->drc_raw && drc->drc_ivset_guid != 0) {
+		dmu_object_zapify(dp->dp_meta_objset, drc->drc_newsnapobj,
+		    DMU_OT_DSL_DATASET, tx);
+		VERIFY0(zap_update(dp->dp_meta_objset, drc->drc_newsnapobj,
+		    DS_FIELD_IVSET_GUID, sizeof (uint64_t), 1,
+		    &drc->drc_ivset_guid, tx));
 	}
 
 	/*
