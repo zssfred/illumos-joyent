@@ -2693,7 +2693,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		 * checksum.  They don't need to verify the MAC.
 		 */
 		dmu_buf_t *db = NULL;
-		uint64_t offset = rwa->or_firstobj * DNODE_SIZE;
+		uint64_t offset = rwa->or_firstobj * DNODE_MIN_SIZE;
 
 		err = dmu_buf_hold_by_dnode(DMU_META_DNODE(rwa->os),
 		    offset, FTAG, &db, DMU_READ_PREFETCH | DMU_READ_NO_DECRYPT);
