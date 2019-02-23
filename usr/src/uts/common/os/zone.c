@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2018, Joyent Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  * Copyright (c) 2016 by Delphix. All rights reserved.
  * Copyright 2018 OmniOS Community Edition (OmniOSce) Association.
  */
@@ -4477,9 +4477,9 @@ zsched(void *arg)
 	bcopy("zsched", PTOU(pp)->u_psargs, sizeof ("zsched"));
 	bcopy("zsched", PTOU(pp)->u_comm, sizeof ("zsched"));
 	PTOU(pp)->u_argc = 0;
-	PTOU(pp)->u_argv = NULL;
-	PTOU(pp)->u_envp = NULL;
-	PTOU(pp)->u_commpagep = NULL;
+	PTOU(pp)->u_argv = 0;
+	PTOU(pp)->u_envp = 0;
+	PTOU(pp)->u_commpagep = 0;
 	closeall(P_FINFO(pp));
 
 	/*
@@ -5200,8 +5200,6 @@ zone_create(const char *zone_name, const char *zone_root,
 	zone_pdata[zoneid].zpers_zfsp =
 	    kmem_zalloc(sizeof (zone_zfs_io_t), KM_SLEEP);
 	zone_pdata[zoneid].zpers_zfsp->zpers_zfs_io_pri = 1;
-
-	zone->zone_ustate = cpu_uarray_zalloc(ZONE_USTATE_MAX, KM_SLEEP);
 
 	zone->zone_ustate = cpu_uarray_zalloc(ZONE_USTATE_MAX, KM_SLEEP);
 

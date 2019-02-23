@@ -12,9 +12,12 @@
 #
 # Copyright 2016 Toomas Soome <tsoome@me.com>
 #
+# Copyright (c) 2019, Joyent, Inc.
+#
 
 include $(SRC)/Makefile.master
 include $(SRC)/boot/Makefile.version
+include $(SRC)/boot/sys/boot/Makefile.inc
 
 CC=		$(GNUC_ROOT)/bin/gcc
 LD=		$(GNU_ROOT)/bin/gld
@@ -23,35 +26,47 @@ OBJDUMP=	$(GNU_ROOT)/bin/gobjdump
 
 PROG=		loader.sym
 
+PNGLITE=	$(SRC)/common/pnglite
+
 # architecture-specific loader code
-SRCS=	acpi.c \
+SRCS=	\
+	acpi.c \
 	autoload.c \
 	bootinfo.c \
 	conf.c \
 	copy.c \
 	efi_main.c \
+	font.c \
+	$(FONT).c \
 	framebuffer.c \
+	list.c \
 	main.c \
 	memmap.c \
 	multiboot.S \
 	multiboot2.c \
 	self_reloc.c \
 	smbios.c \
+	tem.c \
 	vers.c
 
-OBJS=	acpi.o \
+OBJS=	\
+	acpi.o \
 	autoload.o \
 	bootinfo.o \
 	conf.o \
 	copy.o \
 	efi_main.o \
+	font.o \
+	$(FONT).o \
 	framebuffer.o \
+	list.o \
 	main.o \
 	memmap.o \
 	multiboot.o \
 	multiboot2.o \
 	self_reloc.o \
 	smbios.o \
+	tem.o \
 	vers.o
 
 CFLAGS=	-Os
@@ -71,8 +86,15 @@ CPPFLAGS +=	-I../../../i386/libi386
 CPPFLAGS +=	-I../../../zfs
 CPPFLAGS +=	-I../../../../cddl/boot/zfs
 CPPFLAGS +=	-I$(SRC)/uts/intel/sys/acpi
-CPPFLAGS +=	-DEFI_ZFS_BOOT
-CPPFLAGS +=	-DNO_PCI -DEFI -DTERM_EMU
+CPPFLAGS +=	-I$(PNGLITE)
+CPPFLAGS +=	-DNO_PCI -DEFI
+
+#
+# Using SNP from loader causes issues when chain-loading iPXE, as described in
+# TRITON-1191.  While the exact problem is not known, we have no use for SNP, so
+# we'll just disable it.
+#
+CPPFLAGS +=	-DLOADER_DISABLE_SNP
 
 # Export serial numbers, UUID, and asset tag from loader.
 smbios.o := CPPFLAGS += -DSMBIOS_SERIAL_NUMBERS
@@ -109,7 +131,8 @@ LDFLAGS =	-nostdlib --eh-frame-hdr
 LDFLAGS +=	-shared --hash-style=both --enable-new-dtags
 LDFLAGS +=	-T$(LDSCRIPT) -Bsymbolic
 
-CLEANFILES=	loader.sym loader.bin vers.c
+CLEANFILES=	loader.sym loader.bin
+CLEANFILES +=	$(FONT).c vers.c
 
 NEWVERSWHAT=	"EFI loader" $(MACHINE)
 
@@ -133,9 +156,11 @@ loader.bin: loader.sym
 		--output-target=$(EFI_TARGET) --subsystem efi-app loader.sym $@
 
 LIBEFI=		../../libefi/$(MACHINE)/libefi.a
+LIBCRYPTO=	../../../libcrypto/$(MACHINE)/libcrypto.a
 
-DPADD=		$(LIBFICL) $(LIBZFSBOOT) $(LIBEFI) $(LIBSTAND) $(LDSCRIPT)
-LDADD=		$(LIBFICL) $(LIBZFSBOOT) $(LIBEFI) $(LIBSTAND)
+DPADD=		$(LIBFICL) $(LIBZFSBOOT) $(LIBEFI) $(LIBCRYPTO) $(LIBSTAND) \
+		$(LDSCRIPT)
+LDADD=		$(LIBFICL) $(LIBZFSBOOT) $(LIBEFI) $(LIBCRYPTO) $(LIBSTAND)
 
 
 loader.sym:	$(OBJS) $(DPADD)
@@ -180,8 +205,11 @@ clean clobber:
 %.o: $(SRC)/common/list/%.c
 	$(COMPILE.c) -DNDEBUG $<
 
-%.o: $(SRC)/uts/common/io/font/%.c
+%.o: $(SRC)/common/font/%.c
 	$(COMPILE.c) $<
+
+$(FONT).c: $(FONT_DIR)/$(FONT_SRC)
+	$(VTFONTCVT) -f compressed-source -o $@ $(FONT_DIR)/$(FONT_SRC)
 
 $(ROOT_BOOT)/%: %
 	$(INS.file)

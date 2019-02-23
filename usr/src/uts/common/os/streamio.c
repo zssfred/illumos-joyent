@@ -2077,11 +2077,11 @@ strrput_nondata(queue_t *q, mblk_t *bp)
 					 * messages after it has done a
 					 * qprocsoff.
 					 */
-				if (_OTHERQ(q)->q_next == NULL)
-					freemsg(bp);
-				else
-					qreply(q, bp);
-				return (0);
+					if (_OTHERQ(q)->q_next == NULL)
+						freemsg(bp);
+					else
+						qreply(q, bp);
+					return (0);
 				}
 		}
 		freemsg(bp);
@@ -5507,7 +5507,7 @@ strioctl(struct vnode *vp, int cmd, intptr_t arg, int flag, int copyflag,
 		struct str_mlist *mlist;
 		STRUCT_DECL(str_list, strlist);
 
-		if (arg == NULL) { /* Return number of modules plus driver */
+		if (arg == 0) { /* Return number of modules plus driver */
 			if (stp->sd_vnode->v_type == VFIFO)
 				*rvalp = stp->sd_pushcnt;
 			else

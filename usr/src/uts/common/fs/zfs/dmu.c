@@ -254,7 +254,7 @@ dmu_buf_hold(objset_t *os, uint64_t object, uint64_t offset,
 int
 dmu_bonus_max(void)
 {
-	return (DN_MAX_BONUSLEN);
+	return (DN_OLD_MAX_BONUSLEN);
 }
 
 int
@@ -357,7 +357,7 @@ dmu_bonus_hold(objset_t *os, uint64_t object, void *tag, dmu_buf_t **dbp)
 	db = dn->dn_bonus;
 
 	/* as long as the bonus buf is held, the dnode will be held */
-	if (refcount_add(&db->db_holds, tag) == 1) {
+	if (zfs_refcount_add(&db->db_holds, tag) == 1) {
 		VERIFY(dnode_add_ref(dn, db));
 		atomic_inc_32(&dn->dn_dbufs_count);
 	}
@@ -2263,6 +2263,7 @@ dmu_object_info_from_dnode(dnode_t *dn, dmu_object_info_t *doi)
 	doi->doi_type = dn->dn_type;
 	doi->doi_bonus_type = dn->dn_bonustype;
 	doi->doi_bonus_size = dn->dn_bonuslen;
+	doi->doi_dnodesize = dn->dn_num_slots << DNODE_SHIFT;
 	doi->doi_indirection = dn->dn_nlevels;
 	doi->doi_checksum = dn->dn_checksum;
 	doi->doi_compress = dn->dn_compress;
@@ -2325,9 +2326,21 @@ dmu_object_size_from_db(dmu_buf_t *db_fake, uint32_t *blksize,
 	dn = DB_DNODE(db);
 
 	*blksize = dn->dn_datablksz;
-	/* add 1 for dnode space */
+	/* add in number of slots used for the dnode itself */
 	*nblk512 = ((DN_USED_BYTES(dn->dn_phys) + SPA_MINBLOCKSIZE/2) >>
-	    SPA_MINBLOCKSHIFT) + 1;
+	    SPA_MINBLOCKSHIFT) + dn->dn_num_slots;
+	DB_DNODE_EXIT(db);
+}
+
+void
+dmu_object_dnsize_from_db(dmu_buf_t *db_fake, int *dnsize)
+{
+	dmu_buf_impl_t *db = (dmu_buf_impl_t *)db_fake;
+	dnode_t *dn;
+
+	DB_DNODE_ENTER(db);
+	dn = DB_DNODE(db);
+	*dnsize = dn->dn_num_slots << DNODE_SHIFT;
 	DB_DNODE_EXIT(db);
 }
 

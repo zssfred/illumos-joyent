@@ -22,6 +22,7 @@
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
+# Copyright (c) 2018, Joyent, Inc.
 
 SRCS		=	tcvn%UCS-2.c \
             tcvn%UTF-8.c \
@@ -38,31 +39,34 @@ COMMON = ../common/
 LINK_TARGETS  = UCS-2BE%tcvn.so tcvn%UCS-2BE.so
 LINK_TARGETS += UCS-2BE%viscii.so viscii%UCS-2BE.so
 
+# needs work
+SMOFF += all_func_returns,deref_check
+
 dummy: all
 
 tcvn%UCS-2LE.o: $(COMMON)tcvn%UCS-2.c
-	$(CC) $(CFLAGS) -DUCS_2LE -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DUCS_2LE -c -o $@ $^
 
 tcvn%UCS-2BE.o: $(COMMON)tcvn%UCS-2.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $^
 
 viscii%UCS-2LE.o: $(COMMON)viscii%UCS-2.c
-	$(CC) $(CFLAGS) -DUCS_2LE -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DUCS_2LE -c -o $@ $^
 
 viscii%UCS-2BE.o: $(COMMON)viscii%UCS-2.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $^
 
 UCS-2LE%tcvn.o: $(COMMON)UCS-2%tcvn.c
-	$(CC) $(CFLAGS) -DUCS_2LE -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DUCS_2LE -c -o $@ $^
 
 UCS-2BE%tcvn.o: $(COMMON)UCS-2%tcvn.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $^
 
 UCS-2LE%viscii.o: $(COMMON)UCS-2%viscii.c
-	$(CC) $(CFLAGS) -DUCS_2LE -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DUCS_2LE -c -o $@ $^
 
 UCS-2BE%viscii.o: $(COMMON)UCS-2%viscii.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $^
 
 include $(SRC)/lib/iconv_modules/Makefile.iconv
 

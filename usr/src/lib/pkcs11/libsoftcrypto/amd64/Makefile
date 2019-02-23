@@ -24,13 +24,14 @@
 # Copyright 2017 Jason King
 # Copyright (c) 2018, Joyent, Inc.
 #
+# Copyright (c) 2018, Joyent, Inc.
 
 LIBRARY =	libsoftcrypto.a
 VERS =		.1
 
 include		../Makefile.com
 
-AES_PSM_OBJS = 	aes_amd64.o aes_intel.o aeskey.o
+AES_PSM_OBJS =	aes_amd64.o aes_intel.o aeskey.o
 ARCFOUR_PSM_OBJS = arcfour-x86_64.o
 BIGNUM_PSM_OBJS = bignum_amd64.o bignum_amd64_asm.o
 MODES_PSM_OBJS = gcm_intel.o
@@ -41,6 +42,9 @@ include		$(SRC)/lib/Makefile.lib.64
 CERRWARN +=	-_gcc=-Wno-type-limits
 CERRWARN +=	-_gcc=-Wno-parentheses
 CERRWARN +=	-_gcc=-Wno-uninitialized
+
+# not linted
+SMATCH=off
 
 AES_PSM_SRC =	$(AES_DIR)/$(MACH64)/aes_amd64.s \
 		$(AES_DIR)/$(MACH64)/aes_intel.s \

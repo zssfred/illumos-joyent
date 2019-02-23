@@ -10,13 +10,11 @@
  */
 
 /*
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 
 /*
- * Dump information about CTF containers. This was inspired by the original
- * ctfdump written in tools/ctf, but this has been reimplemented in terms of
- * libctf.
+ * Dump information about CTF containers.
  */
 
 #include <stdio.h>
@@ -34,6 +32,7 @@
 #include <errno.h>
 #include <string.h>
 #include <strings.h>
+#include <err.h>
 
 #define	MAX_NAMELEN (512)
 
@@ -123,17 +122,6 @@ ctfdump_printf(ctfdump_arg_t arg, const char *fmt, ...)
 }
 
 static void
-ctfdump_warn(const char *fmt, ...)
-{
-	va_list ap;
-
-	(void) fprintf(stderr, "%s: ", g_progname);
-	va_start(ap, fmt);
-	(void) vfprintf(stderr, fmt, ap);
-	va_end(ap);
-}
-
-static void
 ctfdump_fatal(const char *fmt, ...)
 {
 	va_list ap;
@@ -189,8 +177,8 @@ ctfdump_objects_cb(const char *name, ctf_id_t id, ulong_t symidx, void *arg)
 
 	int len;
 
-	len = snprintf(NULL, 0, "  [%u] %u", g_stats.cs_ndata, id);
-	ctfdump_printf(CTFDUMP_OBJECTS, "  [%u] %u %*s%s (%u)\n",
+	len = snprintf(NULL, 0, "  [%lu] %ld", g_stats.cs_ndata, id);
+	ctfdump_printf(CTFDUMP_OBJECTS, "  [%lu] %ld %*s%s (%lu)\n",
 	    g_stats.cs_ndata, id, MAX(15 - len, 0), "", name, symidx);
 	g_stats.cs_ndata++;
 	return (0);
@@ -201,7 +189,7 @@ ctfdump_objects(void)
 {
 	ctfdump_title(CTFDUMP_OBJECTS, "Data Objects");
 	if (ctf_object_iter(g_fp, ctfdump_objects_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump objects: %s\n",
+		warnx("failed to dump objects: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -234,10 +222,10 @@ ctfdump_functions_cb(const char *name, ulong_t symidx, ctf_funcinfo_t *ctc,
 	}
 
 	ctfdump_printf(CTFDUMP_FUNCTIONS,
-	    "  [%lu] %s (%lu) returns: %u args: (", g_stats.cs_nfuncs, name,
+	    "  [%lu] %s (%lu) returns: %ld args: (", g_stats.cs_nfuncs, name,
 	    symidx, ctc->ctc_return);
 	for (i = 0; i < ctc->ctc_argc; i++)
-		ctfdump_printf(CTFDUMP_FUNCTIONS, "%lu%s", g_fargc[i],
+		ctfdump_printf(CTFDUMP_FUNCTIONS, "%ld%s", g_fargc[i],
 		    i + 1 == ctc->ctc_argc ? "" : ", ");
 	if (ctc->ctc_flags & CTF_FUNC_VARARG)
 		ctfdump_printf(CTFDUMP_FUNCTIONS, "%s...",
@@ -257,7 +245,7 @@ ctfdump_functions(void)
 	ctfdump_title(CTFDUMP_FUNCTIONS, "Functions");
 
 	if (ctf_function_iter(g_fp, ctfdump_functions_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump functions: %s\n",
+		warnx("failed to dump functions: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -301,7 +289,7 @@ static int
 ctfdump_labels_cb(const char *name, const ctf_lblinfo_t *li, void *arg)
 {
 	_NOTE(ARGUNUSED(arg));
-	ctfdump_printf(CTFDUMP_LABELS, "  %5lu %s\n", li->ctb_typeidx, name);
+	ctfdump_printf(CTFDUMP_LABELS, "  %5ld %s\n", li->ctb_typeidx, name);
 	return (0);
 }
 
@@ -310,7 +298,7 @@ ctfdump_labels(void)
 {
 	ctfdump_title(CTFDUMP_LABELS, "Label Table");
 	if (ctf_label_iter(g_fp, ctfdump_labels_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump labels: %s\n",
+		warnx("failed to dump labels: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -337,7 +325,7 @@ ctfdump_strings(void)
 
 	ctfdump_title(CTFDUMP_STRINGS, "String Table");
 	if (ctf_string_iter(g_fp, ctfdump_strings_cb, &stroff) == CTF_ERR) {
-		ctfdump_warn("failed to dump strings: %s\n",
+		warnx("failed to dump strings: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -495,7 +483,7 @@ static int
 ctfdump_member_cb(const char *member, ctf_id_t type, ulong_t off, void *arg)
 {
 	int *count = arg;
-	ctfdump_printf(CTFDUMP_TYPES, "\t%s type=%lu off=%lu\n", member, type,
+	ctfdump_printf(CTFDUMP_TYPES, "\t%s type=%ld off=%lu\n", member, type,
 	    off);
 	*count = *count + 1;
 	return (0);
@@ -529,7 +517,7 @@ ctfdump_types_cb(ctf_id_t id, boolean_t root, void *arg)
 
 	if (ctf_type_name(g_fp, id, name, sizeof (name)) == NULL) {
 		if (ctf_errno(g_fp) != ECTF_NOPARENT)
-			ctfdump_fatal("type %lu missing name: %s\n", id,
+			ctfdump_fatal("type %ld missing name: %s\n", id,
 			    ctf_errmsg(ctf_errno(g_fp)));
 		(void) snprintf(name, sizeof (name), "(unknown %s)",
 		    ctf_kind_name(g_fp, kind));
@@ -537,9 +525,9 @@ ctfdump_types_cb(ctf_id_t id, boolean_t root, void *arg)
 
 	g_stats.cs_ntypes[kind]++;
 	if (root == B_TRUE)
-		ctfdump_printf(CTFDUMP_TYPES, "  <%lu> ", id);
+		ctfdump_printf(CTFDUMP_TYPES, "  <%ld> ", id);
 	else
-		ctfdump_printf(CTFDUMP_TYPES, "  [%lu] ", id);
+		ctfdump_printf(CTFDUMP_TYPES, "  [%ld] ", id);
 
 	switch (kind) {
 	case CTF_K_UNKNOWN:
@@ -568,14 +556,14 @@ ctfdump_types_cb(ctf_id_t id, boolean_t root, void *arg)
 		if ((ref = ctf_type_reference(g_fp, id)) == CTF_ERR)
 			ctfdump_fatal("failed to get reference type for %s: "
 			    "%s\n", name, ctf_errmsg(ctf_errno(g_fp)));
-		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %lu", name,
+		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %ld", name,
 		    ref);
 		break;
 	case CTF_K_ARRAY:
 		if (ctf_array_info(g_fp, id, &ar) == CTF_ERR)
 			ctfdump_fatal("failed to get array information for "
 			    "%s: %s\n", name, ctf_errmsg(ctf_errno(g_fp)));
-		ctfdump_printf(CTFDUMP_TYPES, "%s contents: %lu, index: %lu",
+		ctfdump_printf(CTFDUMP_TYPES, "%s contents: %ld, index: %ld",
 		    name, ar.ctr_contents, ar.ctr_index);
 		break;
 	case CTF_K_FUNCTION:
@@ -591,9 +579,9 @@ ctfdump_types_cb(ctf_id_t id, boolean_t root, void *arg)
 				    ctf_errmsg(ctf_errno(g_fp)));
 		}
 		ctfdump_printf(CTFDUMP_TYPES,
-		    "%s returns: %lu args: (", name, ctc.ctc_return);
+		    "%s returns: %ld args: (", name, ctc.ctc_return);
 		for (i = 0; i < ctc.ctc_argc; i++) {
-			ctfdump_printf(CTFDUMP_TYPES, "%lu%s", g_fargc[i],
+			ctfdump_printf(CTFDUMP_TYPES, "%ld%s", g_fargc[i],
 			    i + 1 == ctc.ctc_argc ? "" : ", ");
 		}
 		if (ctc.ctc_flags & CTF_FUNC_VARARG)
@@ -607,7 +595,7 @@ ctfdump_types_cb(ctf_id_t id, boolean_t root, void *arg)
 		if (size == CTF_ERR)
 			ctfdump_fatal("failed to get size of %s: %s\n", name,
 			    ctf_errmsg(ctf_errno(g_fp)));
-		ctfdump_printf(CTFDUMP_TYPES, "%s (%d bytes)\n", name, size);
+		ctfdump_printf(CTFDUMP_TYPES, "%s (%zd bytes)\n", name, size);
 		count = 0;
 		if (ctf_member_iter(g_fp, id, ctfdump_member_cb, &count) != 0)
 			ctfdump_fatal("failed to iterate members of %s: %s\n",
@@ -640,28 +628,28 @@ ctfdump_types_cb(ctf_id_t id, boolean_t root, void *arg)
 		if ((ref = ctf_type_reference(g_fp, id)) == CTF_ERR)
 			ctfdump_fatal("failed to get reference type for %s: "
 			    "%s\n", name, ctf_errmsg(ctf_errno(g_fp)));
-		ctfdump_printf(CTFDUMP_TYPES, "typedef %s refers to %lu", name,
+		ctfdump_printf(CTFDUMP_TYPES, "typedef %s refers to %ld", name,
 		    ref);
 		break;
 	case CTF_K_VOLATILE:
 		if ((ref = ctf_type_reference(g_fp, id)) == CTF_ERR)
 			ctfdump_fatal("failed to get reference type for %s: "
 			    "%s\n", name, ctf_errmsg(ctf_errno(g_fp)));
-		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %lu", name,
+		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %ld", name,
 		    ref);
 		break;
 	case CTF_K_CONST:
 		if ((ref = ctf_type_reference(g_fp, id)) == CTF_ERR)
 			ctfdump_fatal("failed to get reference type for %s: "
 			    "%s\n", name, ctf_errmsg(ctf_errno(g_fp)));
-		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %lu", name,
+		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %ld", name,
 		    ref);
 		break;
 	case CTF_K_RESTRICT:
 		if ((ref = ctf_type_reference(g_fp, id)) == CTF_ERR)
 			ctfdump_fatal("failed to get reference type for %s: "
 			    "%s\n", name, ctf_errmsg(ctf_errno(g_fp)));
-		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %lu", name,
+		ctfdump_printf(CTFDUMP_TYPES, "%s refers to %ld", name,
 		    ref);
 		break;
 	default:
@@ -680,7 +668,7 @@ ctfdump_types(void)
 	ctfdump_title(CTFDUMP_TYPES, "Types");
 
 	if (ctf_type_iter(g_fp, B_TRUE, ctfdump_types_cb, NULL) == CTF_ERR) {
-		ctfdump_warn("failed to dump types: %s\n",
+		warnx("failed to dump types: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -718,7 +706,7 @@ ctfsrc_member_cb(const char *member, ctf_id_t type, ulong_t off, void *arg)
 
 	if (ctf_type_cname(g_fp, type, name, sizeof (name), member) == NULL) {
 		if (ctf_errno(g_fp) != ECTF_NOPARENT) {
-			ctfdump_fatal("type %lu missing name: %s\n", type,
+			ctfdump_fatal("type %ld missing name: %s\n", type,
 			    ctf_errmsg(ctf_errno(g_fp)));
 		}
 
@@ -850,7 +838,7 @@ ctfsrc_type(ctf_id_t id, const char *name)
 				    refname, ctf_errmsg(ctf_errno(g_fp)));
 			}
 
-			(void) printf("typedef %s{ /* 0x%x bytes */\n",
+			(void) printf("typedef %s{ /* 0x%zx bytes */\n",
 			    refname, size);
 
 			if (ctf_member_iter(g_fp, ref,
@@ -994,9 +982,9 @@ ctfdump_source(void)
 		    strerror(errno));
 	}
 
-	if (ctf_type_iter(g_fp, B_FALSE, ctfsrc_collect_types_cb,
+	if (ctf_type_iter(g_fp, B_TRUE, ctfsrc_collect_types_cb,
 	    idnames) == CTF_ERR) {
-		ctfdump_warn("failed to collect types: %s\n",
+		warnx("failed to collect types: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -1019,7 +1007,7 @@ ctfdump_source(void)
 
 	if (ctf_object_iter(g_fp, ctfsrc_collect_objects_cb,
 	    &count) == CTF_ERR) {
-		ctfdump_warn("failed to collect objects: %s\n",
+		warnx("failed to collect objects: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -1042,7 +1030,7 @@ ctfdump_source(void)
 
 	if (ctf_function_iter(g_fp, ctfsrc_collect_functions_cb,
 	    &count) == CTF_ERR) {
-		ctfdump_warn("failed to collect functions: %s\n",
+		warnx("failed to collect functions: %s",
 		    ctf_errmsg(ctf_errno(g_fp)));
 		g_exit = 1;
 	}
@@ -1167,12 +1155,44 @@ main(int argc, char *argv[])
 		ctfdump_fatal("failed to open file %s: %s\n", argv[0],
 		    ctf_errmsg(err));
 
-	if (parent != NULL) {
+	/*
+	 * Check to see if this file needs a parent. If it does not and we were
+	 * given one, that should be an error. If it does need one and the
+	 * parent is not specified, that is fine, we just won't know how to
+	 * find child types. If we are given a parent, check at least that the
+	 * labels match.
+	 */
+	if (ctf_parent_name(g_fp) == NULL) {
+		if (parent != NULL)
+			ctfdump_fatal("cannot use %s as a parent file, %s is "
+			    "not a child\n", parent, argv[0]);
+	} else if (parent != NULL) {
+		const char *explabel, *label;
 		ctf_file_t *pfp = ctf_open(parent, &err);
 
 		if (pfp == NULL)
 			ctfdump_fatal("failed to open parent file %s: %s\n",
 			    parent, ctf_errmsg(err));
+
+		/*
+		 * Before we import the parent into the child, check that the
+		 * labels match. While there is also the notion of the parent
+		 * name, it's less straightforward to match that. Require that
+		 * labels match.
+		 */
+		explabel = ctf_parent_label(g_fp);
+		label = ctf_label_topmost(pfp);
+		if (explabel == NULL || label == NULL ||
+		    strcmp(explabel, label) != 0) {
+			if (label == NULL)
+				label = "<missing>";
+			if (explabel == NULL)
+				explabel = "<missing>";
+			ctfdump_fatal("label mismatch between parent %s and "
+			    "child %s, parent has %s, child expects %s\n",
+			    parent, argv[0], label, explabel);
+		}
+
 		if (ctf_import(g_fp, pfp) != 0)
 			ctfdump_fatal("failed to import parent %s: %s\n",
 			    parent, ctf_errmsg(ctf_errno(g_fp)));

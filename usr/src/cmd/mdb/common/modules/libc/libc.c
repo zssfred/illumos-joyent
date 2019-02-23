@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2001, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
- * Copyright 2017, Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
  */
 
 #include <sys/mdb_modapi.h>
@@ -326,7 +326,7 @@ uc_walk_step(mdb_walk_state_t *wsp)
 	uintptr_t addr = wsp->walk_addr;
 	ucontext_t uc;
 
-	if (addr == NULL)
+	if (addr == 0)
 		return (WALK_DONE);
 
 	if (mdb_vread(&uc, sizeof (uc), addr) != sizeof (uc)) {
@@ -348,7 +348,7 @@ oldc_walk_init(mdb_walk_state_t *wsp)
 		return (WALK_ERR);
 	}
 
-	if (wsp->walk_addr != NULL) {
+	if (wsp->walk_addr != 0) {
 		mdb_warn("walker only supports global walk\n");
 		return (WALK_ERR);
 	}
@@ -380,7 +380,7 @@ oldc_walk_step(mdb_walk_state_t *wsp)
 		uintptr_t addr = lsp->pr_oldcontext;
 		ucontext_t uc;
 
-		if (addr == NULL)
+		if (addr == 0)
 			return (WALK_NEXT);
 
 		if (mdb_vread(&uc, sizeof (uc), addr) != sizeof (uc)) {
@@ -720,17 +720,17 @@ uberdata_addr(void)
 
 	if (mdb_lookup_by_obj("libc.so.1", "_tdb_bootstrap", &sym) != 0) {
 		mdb_warn("cannot find libc.so.1`_tdb_bootstrap");
-		return (NULL);
+		return (0);
 	}
 	if (mdb_vread(&addr, sizeof (addr), sym.st_value) == sizeof (addr) &&
-	    addr != NULL &&
+	    addr != 0 &&
 	    mdb_vread(&uaddr, sizeof (uaddr), addr) == sizeof (uaddr) &&
-	    uaddr != NULL) {
+	    uaddr != 0) {
 		return (uaddr);
 	}
 	if (mdb_lookup_by_obj("libc.so.1", "_uberdata", &sym) != 0) {
 		mdb_warn("cannot find libc.so.1`_uberdata");
-		return (NULL);
+		return (0);
 	}
 	return ((uintptr_t)sym.st_value);
 }
@@ -747,7 +747,7 @@ d_uberdata(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 
 	if (argc != 0)
 		return (DCMD_USAGE);
-	if (!(flags & DCMD_ADDRSPEC) && (addr = uberdata_addr()) == NULL)
+	if (!(flags & DCMD_ADDRSPEC) && (addr = uberdata_addr()) == 0)
 		return (DCMD_ERR);
 
 	if (mdb_vread(&uberdata, sizeof (uberdata), addr) !=
@@ -934,14 +934,14 @@ ulwp_walk_init(mdb_walk_state_t *wsp)
 		    "platform's offset for uberdata.all_lwps");
 	}
 
-	if (addr == NULL &&
-	    ((uber_addr = uberdata_addr()) == NULL ||
+	if (addr == 0 &&
+	    ((uber_addr = uberdata_addr()) == 0 ||
 	    mdb_vread(&addr, sizeof (addr), uber_addr + offset)
 	    != sizeof (addr))) {
 		mdb_warn("cannot find 'uberdata.all_lwps'");
 		return (WALK_ERR);
 	}
-	if (addr == NULL)
+	if (addr == 0)
 		return (WALK_DONE);
 	wsp->walk_addr = addr;
 	wsp->walk_data = (void *)addr;
@@ -954,7 +954,7 @@ ulwp_walk_step(mdb_walk_state_t *wsp)
 	uintptr_t addr = wsp->walk_addr;
 	ulwp_t ulwp;
 
-	if (addr == NULL)
+	if (addr == 0)
 		return (WALK_DONE);
 	if (mdb_vread(&ulwp, sizeof (ulwp), addr) != sizeof (ulwp) &&
 	    (bzero(&ulwp, sizeof (ulwp)),
@@ -968,7 +968,7 @@ ulwp_walk_step(mdb_walk_state_t *wsp)
 	 */
 	if ((wsp->walk_addr = (uintptr_t)ulwp.ul_forw)
 	    == (uintptr_t)wsp->walk_data)
-		wsp->walk_addr = NULL;
+		wsp->walk_addr = 0;
 	return (wsp->walk_callback(addr, &ulwp, wsp->walk_cbdata));
 }
 
@@ -1106,9 +1106,14 @@ tid2ulwp(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 	return (error);
 }
 
+/*
+ * This is used by both d_tsd and d_errno, and contains the sum of all
+ * members used by both commands.
+ */
 typedef struct mdb_libc_ulwp {
 	void *ul_ftsd[TSD_NFAST];
 	tsd_t *ul_stsd;
+	int *ul_errnop;
 } mdb_libc_ulwp_t;
 
 /*
@@ -1119,13 +1124,13 @@ d_tsd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	mdb_libc_ulwp_t u;
 	uintptr_t ulwp_addr;
-	uintptr_t key = NULL;
+	uintptr_t key = 0;
 	void *element = NULL;
 
 	if (mdb_getopts(argc, argv, 'k', MDB_OPT_UINTPTR, &key, NULL) != argc)
 		return (DCMD_USAGE);
 
-	if (!(flags & DCMD_ADDRSPEC) || key == NULL)
+	if (!(flags & DCMD_ADDRSPEC) || key == 0)
 		return (DCMD_USAGE);
 
 	if (tid2ulwp_impl(addr, &ulwp_addr) != DCMD_OK)
@@ -1161,7 +1166,45 @@ d_tsd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 	return (DCMD_OK);
 }
 
+static int
+d_errno(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
+{
+	mdb_libc_ulwp_t u;
+	uintptr_t ulwp_addr;
+	int error, errval;
+
+	if (argc != 0 || (flags & DCMD_ADDRSPEC) == 0)
+		return (DCMD_USAGE);
+
+	error = tid2ulwp_impl(addr, &ulwp_addr);
+	if (error != DCMD_OK)
+		return (error);
+
+	/*
+	 * For historical compatibility, thread 1's errno value is stored in
+	 * a libc global variable 'errno', while each additional thread's
+	 * errno value is stored in ulwp_t->ul_errno.  In addition,
+	 * ulwp_t->ul_errnop is set to the address of the thread's errno value,
+	 * (i.e. for tid 1, curthead->ul_errnop = &errno, for tid > 1,
+	 * curthread->ul_errnop = &curthread->ul_errno).
+	 *
+	 * Since errno itself uses *curthread->ul_errnop (see ___errno()) to
+	 * return the thread's current errno value, we do the same.
+	 */
+	if (mdb_ctf_vread(&u, "ulwp_t", "mdb_libc_ulwp_t", ulwp_addr, 0) == -1)
+		return (DCMD_ERR);
+
+	if (mdb_vread(&errval, sizeof (errval), (uintptr_t)u.ul_errnop) == -1) {
+		mdb_warn("cannot read error value at 0x%p", u.ul_errnop);
+		return (DCMD_ERR);
+	}
+
+	mdb_printf("%d\n", errval);
+	return (DCMD_OK);
+}
+
 static const mdb_dcmd_t dcmds[] = {
+	{ "errno", "?", "print errno of a given TID", d_errno, NULL },
 	{ "jmp_buf", ":", "print jmp_buf contents", d_jmp_buf, NULL },
 	{ "sigjmp_buf", ":", "print sigjmp_buf contents", d_sigjmp_buf, NULL },
 	{ "siginfo", ":", "print siginfo_t structure", d_siginfo, NULL },

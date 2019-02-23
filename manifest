@@ -1303,8 +1303,8 @@ f lib/amd64/libuuid.so.1 0755 root bin
 s lib/amd64/libuuid.so=libuuid.so.1
 f lib/amd64/libuutil.so.1 0755 root bin
 s lib/amd64/libuutil.so=libuutil.so.1
+f lib/amd64/libvmm.so.1 0755 root bin
 f lib/amd64/libvmmapi.so.1 0755 root bin
-s lib/amd64/libvmmapi.so=libvmmapi.so.1
 f lib/amd64/libw.so.1 0755 root bin
 s lib/amd64/libw.so=libw.so.1
 f lib/amd64/libxnet.so.1 0755 root bin
@@ -1665,8 +1665,6 @@ f lib/svc/manifest/system/name-service-cache.xml 0444 root sys
 f lib/svc/manifest/system/ndmp.xml 0444 root sys
 f lib/svc/manifest/system/pfexecd.xml 0444 root sys
 f lib/svc/manifest/system/picl.xml 0444 root sys
-f lib/svc/manifest/system/poold.xml 0444 root sys
-f lib/svc/manifest/system/pools.xml 0444 root sys
 f lib/svc/manifest/system/power.xml 0444 root sys
 f lib/svc/manifest/system/process-security.xml 0444 root sys
 f lib/svc/manifest/system/rbac.xml 0444 root sys
@@ -1749,8 +1747,6 @@ f lib/svc/method/svc-legacy-routing 0555 root bin
 f lib/svc/method/svc-ndmp 0555 root sys
 f lib/svc/method/svc-ndp 0555 root bin
 f lib/svc/method/svc-nscd 0555 root bin
-f lib/svc/method/svc-poold 0555 root sys
-f lib/svc/method/svc-pools 0555 root sys
 f lib/svc/method/svc-power 0555 root sys
 f lib/svc/method/svc-rbac 0555 root bin
 f lib/svc/method/svc-rdisc 0555 root bin
@@ -1843,6 +1839,7 @@ d platform/i86pc/kernel/misc/amd64 0755 root sys
 f platform/i86pc/kernel/misc/amd64/acpidev 0755 root sys
 f platform/i86pc/kernel/misc/amd64/cpr 0755 root sys
 f platform/i86pc/kernel/misc/amd64/drmach_acpi 0755 root sys
+f platform/i86pc/kernel/misc/amd64/gfx_private 0755 root sys
 d platform/i86pc/kernel/pcbe 0755 root sys
 d platform/i86pc/kernel/pcbe/amd64 0755 root sys
 f platform/i86pc/kernel/pcbe/amd64/pcbe.GenuineIntel.15 0755 root sys
@@ -2422,6 +2419,7 @@ h usr/bin/encrypt=usr/lib/isaexec
 f usr/bin/enhance 0555 root bin
 f usr/bin/env 0555 root bin
 f usr/bin/eqn 0555 root bin
+f usr/bin/etdump 0555 root bin
 f usr/bin/expand 0555 root bin
 f usr/bin/expr 0555 root bin
 f usr/bin/exstr 0555 root bin
@@ -2598,7 +2596,6 @@ h usr/bin/plgrp=usr/lib/isaexec
 h usr/bin/plimit=usr/lib/isaexec
 h usr/bin/pmadvise=usr/lib/isaexec
 h usr/bin/pmap=usr/lib/isaexec
-f usr/bin/poolstat 0555 root bin
 h usr/bin/ppgsz=usr/lib/isaexec
 h usr/bin/ppriv=usr/lib/isaexec
 f usr/bin/pr 0555 root bin
@@ -2817,8 +2814,6 @@ d usr/include/amd64/sys 0755 root bin
 f usr/include/amd64/sys/kdi_regs.h 0644 root bin
 f usr/include/amd64/sys/privmregs.h 0644 root bin
 f usr/include/amd64/sys/privregs.h 0644 root bin
-f usr/include/apptrace.h 0644 root bin
-f usr/include/apptrace_impl.h 0644 root bin
 f usr/include/ar.h 0644 root bin
 f usr/include/archives.h 0644 root bin
 d usr/include/arpa 0755 root bin
@@ -4889,23 +4884,6 @@ d usr/lib 0755 root bin
 f usr/lib/0@0.so.1 0755 root bin
 s usr/lib/32=.
 s usr/lib/64=amd64
-d usr/lib/abi 0755 root bin
-d usr/lib/abi/amd64 0755 root bin
-f usr/lib/abi/amd64/apptrace.so.1 0755 root bin
-d usr/lib/abi/appcert 0755 root bin
-f usr/lib/abi/appcert/AppcertUtil.pm 0555 root bin
-f usr/lib/abi/appcert/abi_index 0555 root bin
-f usr/lib/abi/appcert/etc.alt 0444 root bin
-f usr/lib/abi/appcert/etc.scoped 0444 root bin
-f usr/lib/abi/appcert/etc.tweaks 0444 root bin
-f usr/lib/abi/appcert/etc.warn 0444 root bin
-f usr/lib/abi/appcert/static_prof 0555 root bin
-f usr/lib/abi/appcert/symcheck 0555 root bin
-f usr/lib/abi/appcert/symprof 0555 root bin
-f usr/lib/abi/appcert/symreport 0555 root bin
-f usr/lib/abi/apptrace.so.1 0755 root bin
-f usr/lib/abi/spec2map 0755 root bin
-f usr/lib/abi/spec2trace 0755 root bin
 d usr/lib/acct 0755 root bin
 f usr/lib/acct/acctcms 0555 root bin
 f usr/lib/acct/acctcon 0555 root bin
@@ -5106,8 +5084,7 @@ f usr/lib/amd64/libipsecutil.so.1 0755 root bin
 s usr/lib/amd64/libipsecutil.so=libipsecutil.so.1
 f usr/lib/amd64/libiscsit.so.1 0755 root bin
 s usr/lib/amd64/libiscsit.so=libiscsit.so.1
-f usr/lib/amd64/libjdns_sd.so.1 0755 root bin
-s usr/lib/amd64/libjdns_sd.so=libjdns_sd.so.1
+f usr/lib/amd64/libjedec.so.1 0755 root bin
 s usr/lib/amd64/libkmfberder.so.1=../../../lib/amd64/libkmfberder.so.1
 s usr/lib/amd64/libkmfberder.so=../../../lib/amd64/libkmfberder.so.1
 f usr/lib/amd64/libkrb5.so.1 0755 root bin
@@ -5540,8 +5517,6 @@ f usr/lib/fm/amd64/libseslog.so.1 0755 root bin
 s usr/lib/fm/amd64/libseslog.so=libseslog.so.1
 f usr/lib/fm/amd64/libtopo.so.1 0755 root bin
 s usr/lib/fm/amd64/libtopo.so=libtopo.so.1
-f usr/lib/fm/buildcode 0555 root bin
-f usr/lib/fm/bustcode 0555 root bin
 d usr/lib/fm/dict 0755 root bin
 f usr/lib/fm/dict/AMD.dict 0444 root bin
 f usr/lib/fm/dict/DISK.dict 0444 root bin
@@ -5560,7 +5535,6 @@ f usr/lib/fm/dict/STORAGE.dict 0444 root bin
 f usr/lib/fm/dict/SUNOS.dict 0444 root bin
 f usr/lib/fm/dict/TEST.dict 0444 root bin
 f usr/lib/fm/dict/ZFS.dict 0444 root bin
-f usr/lib/fm/dictck 0555 root bin
 d usr/lib/fm/eft 0755 root bin
 f usr/lib/fm/eft/disk.eft 0444 root bin
 f usr/lib/fm/eft/neptune_xaui.eft 0444 root bin
@@ -5768,7 +5742,6 @@ f usr/lib/fs/ufs/fstyp.so.1 0555 root bin
 h usr/lib/fs/ufs/fstyp=usr/sbin/fstyp
 f usr/lib/fs/ufs/labelit 0555 root bin
 f usr/lib/fs/ufs/lockfs 0555 root bin
-f usr/lib/fs/ufs/mboot 0444 root sys
 f usr/lib/fs/ufs/mkfs 0555 root bin
 s usr/lib/fs/ufs/mount=../../../../etc/fs/ufs/mount
 f usr/lib/fs/ufs/ncheck 0555 root bin
@@ -6552,8 +6525,7 @@ f usr/lib/libipsecutil.so.1 0755 root bin
 s usr/lib/libipsecutil.so=libipsecutil.so.1
 f usr/lib/libiscsit.so.1 0755 root bin
 s usr/lib/libiscsit.so=libiscsit.so.1
-f usr/lib/libjdns_sd.so.1 0755 root bin
-s usr/lib/libjdns_sd.so=libjdns_sd.so.1
+f usr/lib/libjedec.so.1 0755 root bin
 s usr/lib/libkcfd.so.1=../../lib/libkcfd.so.1
 s usr/lib/libkcfd.so=../../lib/libkcfd.so.1
 s usr/lib/libkmf.so.1=../../lib/libkmf.so.1
@@ -9979,17 +9951,6 @@ f usr/lib/picl/plugins/libpiclmemcfg.so.1 0755 root sys
 s usr/lib/picl/plugins/libpiclmemcfg.so=libpiclmemcfg.so.1
 d usr/lib/pkgconfig 0755 root bin
 f usr/lib/platexec 0555 root bin
-d usr/lib/pool 0755 root bin
-f usr/lib/pool/libjkstat.so.1 0755 root bin
-s usr/lib/pool/libjkstat.so=libjkstat.so.1
-f usr/lib/pool/libjlgrp.so.1 0755 root bin
-s usr/lib/pool/libjlgrp.so=libjlgrp.so.1
-f usr/lib/pool/libjpool.so.1 0755 root bin
-s usr/lib/pool/libjpool.so=libjpool.so.1
-f usr/lib/pool/libjsyslog.so.1 0755 root bin
-s usr/lib/pool/libjsyslog.so=libjsyslog.so.1
-f usr/lib/pool/poold 0555 root bin
-f usr/lib/pool/poold.properties 0444 root bin
 d usr/lib/power 0755 root bin
 f usr/lib/power/powerd 0555 root bin
 d usr/lib/raidcfg 0755 root bin
@@ -10543,6 +10504,7 @@ f usr/sbin/amd64/ippool 0555 root bin
 f usr/sbin/amd64/lockstat 0555 root bin
 f usr/sbin/amd64/plockstat 0555 root bin
 f usr/sbin/amd64/zdb 0555 root bin
+f usr/sbin/amd64/zinject 0555 root bin
 f usr/sbin/arp 0555 root bin
 f usr/sbin/audit 0555 root bin
 f usr/sbin/auditconfig 0555 root bin
@@ -10711,9 +10673,6 @@ f usr/sbin/ping 4555 root bin
 h usr/sbin/plockstat=usr/lib/isaexec
 f usr/sbin/pmadm 0555 root sys
 f usr/sbin/pmconfig 4555 root bin
-f usr/sbin/pooladm 0555 root bin
-f usr/sbin/poolbind 0555 root bin
-f usr/sbin/poolcfg 0555 root bin
 h usr/sbin/ports=usr/sbin/devfsadm
 h usr/sbin/poweroff=usr/sbin/halt
 f usr/sbin/pptadm 0555 root bin
@@ -10821,6 +10780,7 @@ h usr/sbin/zdb=usr/lib/isaexec
 f usr/sbin/zdump 0555 root bin
 s usr/sbin/zfs=../../sbin/zfs
 f usr/sbin/zic 0555 root bin
+h usr/sbin/zinject=usr/lib/isaexec
 f usr/sbin/zlogin 0555 root bin
 f usr/sbin/zoneadm 0555 root bin
 f usr/sbin/zonecfg 0555 root bin
@@ -11792,6 +11752,7 @@ s usr/share/man/man1/errstr.1=ckstr.1
 s usr/share/man/man1/errtime.1=cktime.1
 s usr/share/man/man1/erruid.1=ckuid.1
 s usr/share/man/man1/erryorn.1=ckyorn.1
+f usr/share/man/man1/etdump.1 0444 root bin
 f usr/share/man/man1/expand.1 0444 root bin
 f usr/share/man/man1/expr.1 0444 root bin
 f usr/share/man/man1/exstr.1 0444 root bin
@@ -12353,11 +12314,6 @@ f usr/share/man/man1m/ping.1m 0444 root bin
 f usr/share/man/man1m/plockstat.1m 0444 root bin
 f usr/share/man/man1m/pmadm.1m 0444 root bin
 f usr/share/man/man1m/pmconfig.1m 0444 root bin
-f usr/share/man/man1m/pooladm.1m 0444 root bin
-f usr/share/man/man1m/poolbind.1m 0444 root bin
-f usr/share/man/man1m/poolcfg.1m 0444 root bin
-f usr/share/man/man1m/poold.1m 0444 root bin
-f usr/share/man/man1m/poolstat.1m 0444 root bin
 f usr/share/man/man1m/ports.1m 0444 root bin
 s usr/share/man/man1m/poweroff.1m=halt.1m
 f usr/share/man/man1m/pptadm.1m 0444 root bin
@@ -12590,6 +12546,7 @@ s usr/share/man/man2/getpmsg.2=getmsg.2
 s usr/share/man/man2/getppid.2=getpid.2
 f usr/share/man/man2/getppriv.2 0444 root bin
 s usr/share/man/man2/getprojid.2=settaskid.2
+f usr/share/man/man2/getrandom.2 0444 root bin
 s usr/share/man/man2/getrctl.2=setrctl.2
 f usr/share/man/man2/getrlimit.2 0444 root bin
 f usr/share/man/man2/getsid.2 0444 root bin
@@ -14411,6 +14368,7 @@ f usr/share/man/man3cpc/bdw_de_events.3cpc 0444 root bin
 f usr/share/man/man3cpc/bdw_events.3cpc 0444 root bin
 f usr/share/man/man3cpc/bdx_events.3cpc 0444 root bin
 f usr/share/man/man3cpc/bnl_events.3cpc 0444 root bin
+f usr/share/man/man3cpc/clx_events.3cpc 0444 root bin
 f usr/share/man/man3cpc/cpc.3cpc 0444 root bin
 f usr/share/man/man3cpc/cpc_access.3cpc 0444 root bin
 s usr/share/man/man3cpc/cpc_bind_cpu.3cpc=cpc_bind_curlwp.3cpc
@@ -18945,6 +18903,7 @@ f usr/share/man/man5/audit_binfile.5 0444 root bin
 f usr/share/man/man5/audit_remote.5 0444 root bin
 f usr/share/man/man5/audit_syslog.5 0444 root bin
 s usr/share/man/man5/availability.5=attributes.5
+f usr/share/man/man5/beastie.4th.5 0444 root bin
 f usr/share/man/man5/brand.4th.5 0444 root bin
 f usr/share/man/man5/brands.5 0444 root bin
 f usr/share/man/man5/byteorder.5 0444 root bin
@@ -18985,6 +18944,7 @@ f usr/share/man/man5/inotify.5 0444 root bin
 s usr/share/man/man5/intro.5=Intro.5
 f usr/share/man/man5/ipfilter.5 0444 root bin
 f usr/share/man/man5/isalist.5 0444 root bin
+f usr/share/man/man5/isoboot.5 0444 root bin
 f usr/share/man/man5/kerberos.5 0444 root bin
 f usr/share/man/man5/krb5_auth_rules.5 0444 root bin
 f usr/share/man/man5/krb5envvar.5 0444 root bin
@@ -20530,6 +20490,7 @@ f usr/share/man/man9f/scsi_hba_pkt_comp.9f 0444 root bin
 s usr/share/man/man9f/scsi_hba_pkt_free.9f=scsi_hba_pkt_alloc.9f
 f usr/share/man/man9f/scsi_hba_probe.9f 0444 root bin
 f usr/share/man/man9f/scsi_hba_tgtmap_create.9f 0444 root bin
+s usr/share/man/man9f/scsi_hba_tgtmap_destroy.9f=scsi_hba_tgtmap_create.9f
 s usr/share/man/man9f/scsi_hba_tgtmap_set_add.9f=scsi_hba_tgtmap_create.9f
 s usr/share/man/man9f/scsi_hba_tgtmap_set_begin.9f=scsi_hba_tgtmap_create.9f
 s usr/share/man/man9f/scsi_hba_tgtmap_set_end.9f=scsi_hba_tgtmap_create.9f

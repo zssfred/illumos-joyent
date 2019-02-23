@@ -22,7 +22,7 @@
  * Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
  *
- * Copyright 2018 Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 
 #include <kmdb/kmdb_kvm.h>
@@ -49,6 +49,7 @@
 #include <sys/kobj.h>
 #include <sys/kobj_impl.h>
 #include <sys/bitmap.h>
+#include <sys/uuid.h>
 #include <vm/as.h>
 
 static const char KMT_RTLD_NAME[] = "krtld";
@@ -285,6 +286,8 @@ kmt_vtop(mdb_tgt_t *t, mdb_tgt_as_t as, uintptr_t va, physaddr_t *pap)
 	case (uintptr_t)MDB_TGT_AS_IO:
 		return (set_errno(EINVAL));
 	case (uintptr_t)MDB_TGT_AS_VIRT:
+	case (uintptr_t)MDB_TGT_AS_VIRT_I:
+	case (uintptr_t)MDB_TGT_AS_VIRT_S:
 		if ((asp = (struct as *)kmt_read_kas(t)) == NULL)
 			return (-1); /* errno is set for us */
 		break;
@@ -552,7 +555,7 @@ static int
 kmt_status_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 {
 	struct utsname uts;
-	char uuid[37];
+	char uuid[UUID_PRINTABLE_STRING_LENGTH];
 	kreg_t tt;
 
 	if (mdb_tgt_readsym(mdb.m_target, MDB_TGT_AS_VIRT, &uts, sizeof (uts),
@@ -568,16 +571,14 @@ kmt_status_dcmd(uintptr_t addr, uint_t flags, int argc, const mdb_arg_t *argv)
 	mdb_printf("operating system: %s %s (%s)\n",
 	    uts.release, uts.version, uts.machine);
 
-	if (mdb_tgt_readsym(mdb.m_target, MDB_TGT_AS_VIRT, uuid, sizeof (uuid),
-	    "genunix", "dump_osimage_uuid") != sizeof (uuid)) {
-		warn("failed to read 'dump_osimage_uuid' string from kernel\n");
-		(void) strcpy(uuid, "(error)");
-	} else if (*uuid == '\0') {
-		(void) strcpy(uuid, "(not set)");
-	} else if (uuid[36] != '\0') {
-		(void) strcpy(uuid, "(invalid)");
+	mdb_print_gitstatus();
+
+	if (mdb_readsym(uuid, sizeof (uuid),
+	    "dump_osimage_uuid") == sizeof (uuid) &&
+	    uuid[sizeof (uuid) - 1] == '\0') {
+		mdb_printf("image uuid: %s\n", uuid[0] != '\0' ?
+		    uuid : "(not set)");
 	}
-	mdb_printf("image uuid: %s\n", uuid);
 
 	mdb_printf("DTrace state: %s\n", (kmdb_kdi_dtrace_get_state() ==
 	    KDI_DTSTATE_DTRACE_ACTIVE ? "active (debugger breakpoints cannot "
@@ -1155,7 +1156,7 @@ kmt_mapping_iter(mdb_tgt_t *t, mdb_tgt_map_f *func, void *private)
 	m.map_cb = func;
 	m.map_data = private;
 
-	if ((kas = kmt_read_kas(t)) == NULL)
+	if ((kas = kmt_read_kas(t)) == 0)
 		return (-1); /* errno is set for us */
 
 	return (mdb_pwalk("seg", (mdb_walk_cb_t)kmt_mapping_walk, &m, kas));
@@ -1696,7 +1697,7 @@ static char *
 kmt_brkpt_info(mdb_tgt_t *t, mdb_sespec_t *sep, mdb_vespec_t *vep,
     mdb_tgt_spec_desc_t *sp, char *buf, size_t nbytes)
 {
-	uintptr_t addr = NULL;
+	uintptr_t addr = 0;
 
 	if (vep != NULL) {
 		kmt_bparg_t *ka = vep->ve_args;
@@ -2227,7 +2228,7 @@ kmt_add_sbrkpt(mdb_tgt_t *t, const char *fullname,
 
 	ka = mdb_alloc(sizeof (kmt_bparg_t), UM_SLEEP);
 	ka->ka_symbol = strdup(fullname);
-	ka->ka_addr = NULL;
+	ka->ka_addr = 0;
 	ka->ka_defbp = dbp;
 
 	return (mdb_tgt_vespec_insert(t, &kmt_brkpt_ops, spec_flags,
@@ -2388,8 +2389,7 @@ kmt_destroy(mdb_tgt_t *t)
 	if (kmt->kmt_trapmap != NULL)
 		mdb_free(kmt->kmt_trapmap, BT_SIZEOFMAP(kmt->kmt_trapmax));
 
-	if (kmt != NULL)
-		mdb_free(kmt, sizeof (kmt_data_t));
+	mdb_free(kmt, sizeof (kmt_data_t));
 }
 
 static const mdb_tgt_ops_t kmt_ops = {

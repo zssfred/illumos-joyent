@@ -25,6 +25,7 @@
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  * Copyright 2013 Saso Kiselkov. All rights reserved.
  * Copyright (c) 2017 Datto Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef _SYS_SPA_IMPL_H
@@ -136,7 +137,7 @@ typedef struct spa_config_lock {
 	kthread_t	*scl_writer;
 	int		scl_write_wanted;
 	kcondvar_t	scl_cv;
-	refcount_t	scl_count;
+	zfs_refcount_t	scl_count;
 } spa_config_lock_t;
 
 typedef struct spa_config_dirent {
@@ -249,6 +250,7 @@ struct spa {
 
 	spa_aux_vdev_t	spa_spares;		/* hot spares */
 	spa_aux_vdev_t	spa_l2cache;		/* L2ARC cache devices */
+	hrtime_t	spa_spares_last_polled;	/* time spares last polled */
 	nvlist_t	*spa_label_features;	/* Features for reading MOS */
 	uint64_t	spa_config_object;	/* MOS object for pool config */
 	uint64_t	spa_config_generation;	/* config generation number */
@@ -382,11 +384,12 @@ struct spa {
 	/*
 	 * spa_refcount & spa_config_lock must be the last elements
 	 * because refcount_t changes size based on compilation options.
+	 * because zfs_refcount_t changes size based on compilation options.
 	 * In order for the MDB module to function correctly, the other
 	 * fields must remain in the same location.
 	 */
 	spa_config_lock_t spa_config_lock[SCL_LOCKS]; /* config changes */
-	refcount_t	spa_refcount;		/* number of opens */
+	zfs_refcount_t	spa_refcount;		/* number of opens */
 };
 
 extern const char *spa_config_path;

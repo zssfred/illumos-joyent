@@ -26,6 +26,7 @@
 # Copyright (c) 2013 Andrew Stormont.  All rights reserved.
 # Copyright 2018 Joyent, Inc.
 # Copyright 2016 Hans Rosenfeld <rosenfeld@grumpf.hope-2000.org>
+# Copyright (c) 2019, Joyent, Inc.
 #
 
 #
@@ -227,6 +228,15 @@ CERRWARN += -_gcc=-Wno-missing-field-initializers
 $(RELEASE_BUILD)CERRWARN += -_gcc=-Wno-unused
 $(RELEASE_BUILD)CERRWARN += -_gcc=-Wno-empty-body
 
+CERRWARN += -_smatch=-p=illumos_kernel
+include $(SRC)/Makefile.smatch
+
+#
+# Unfortunately, _IOWR() is regularly used with a third argument of 0,
+# so we have to disable all these smatch checks.
+#
+SMOFF += sizeof
+
 CSTD = $(CSTD_GNU99)
 
 CFLAGS_uts		=
@@ -238,6 +248,7 @@ CFLAGS_uts		+= $(CTF_FLAGS_$(CLASS))
 CFLAGS_uts		+= $(CERRWARN)
 CFLAGS_uts		+= $(CCNOAUTOINLINE)
 CFLAGS_uts		+= $(CCNOREORDER)
+CFLAGS_uts		+= $(CCNOAGGRESSIVELOOPS)
 CFLAGS_uts		+= $(CGLOBALSTATIC)
 CFLAGS_uts		+= $(EXTRA_CFLAGS)
 CFLAGS_uts		+= $(CSOURCEDEBUGFLAGS)
@@ -645,4 +656,4 @@ USBDEVS_DATA =	$(SRC)/uts/common/io/usb/usbdevs
 # are building with the private -X option to ctfconvert which allows us
 # to fixup the struct cpu to account for machcpu.
 #
-$(ENABLE_NEW_CTF)$(__GNUC)CTFCVTFLAGS += -X
+$(BUILD_NEW_CTF_TOOLS)CTFCVTFLAGS += -X
