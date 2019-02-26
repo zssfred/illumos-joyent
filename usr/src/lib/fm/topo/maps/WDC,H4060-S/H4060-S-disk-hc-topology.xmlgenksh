@@ -11,7 +11,7 @@
 #
 
 #
-# Copyright (c) 2018, Joyent, Inc.
+# Copyright (c) 2019, Joyent, Inc.
 #
 
 #
@@ -82,7 +82,7 @@ done
 enclosure=1
 bay=60
 slot=0
-devctl='/devices/pci@cd,0/pci8086,2032@2/pci1000,30e0@0:devctl'
+devctl='/devices/pci@7b,0/pci8086,2030@0/pci1000,30e0@0:devctl'
 while (( slot <= 7 )); do
 	do_ssd_bay $bay "SSD $bay" "$devctl" $enclosure $slot
 	(( bay = bay + 1 ))
