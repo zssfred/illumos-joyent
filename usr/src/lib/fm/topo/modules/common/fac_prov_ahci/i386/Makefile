@@ -12,21 +12,7 @@
 #
 # Copyright (c) 2019, Joyent, Inc.
 #
-include $(SRC)/Makefile.master
+include ../Makefile.com
+include $(SRC)/lib/fm/topo/modules/Makefile.plugin.32
 
-SUBDIRS = $(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
-
-all := TARGET = all
-clean := TARGET = clean
-clobber := TARGET = clobber
-install := TARGET = install
-
-.KEEP_STATE:
-
-all clean clobber install: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+CPPFLAGS += -I$(SRC)/uts/common
