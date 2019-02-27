@@ -22,7 +22,9 @@
 # Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-#ident	"%Z%%M%	%I%	%E% SMI"
+#
+# Copyright (c) 2019, Joyent, Inc.
+#
 
 #
 # Define the transitive set of rules to create a common module's install dir
@@ -37,6 +39,9 @@ $(ROOT)/usr/lib/fm/topo: $(ROOT)/usr/lib/fm
 $(ROOT)/usr/lib/fm/topo/$(MODCLASS): $(ROOT)/usr/lib/fm/topo
 	$(INS.dir)
 
+$(ROOT)/usr/lib/fm/topo/$(MODCLASS)/$(MACH64): $(ROOT)/usr/lib/fm/topo/$(MODCLASS)
+	$(INS.dir)
+
 #
 # Define the transitive set of rules to create a platform module's install dir
 # within the proto area.  This is used by all Makefile.<class> files.
@@ -48,4 +53,7 @@ $(ROOT)/usr/platform/%/lib/fm/topo: $(ROOT)/usr/platform/%/lib/fm
 	$(INS.dir)
 
 $(ROOT)/usr/platform/%/lib/fm/topo/$(MODCLASS): $(ROOT)/usr/platform/%/lib/fm/topo
+	$(INS.dir)
+
+$(ROOT)/usr/platform/%/lib/fm/topo/$(MODCLASS)/$(MACH64): $(ROOT)/usr/platform/%/lib/fm/topo/$(MODCLASS)
 	$(INS.dir)

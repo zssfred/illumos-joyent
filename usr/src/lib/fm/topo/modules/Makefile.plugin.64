@@ -1,0 +1,50 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+#
+# Copyright (c) 2019, Joyent, Inc.
+#
+include $(SRC)/lib/Makefile.lib.64
+include $(SRC)/lib/Makefile.lib
+include $(SRC)/lib/fm/topo/modules/Makefile.plugin
+
+#
+# Set ROOTPROG and ROOTCONF based on the values of MODULE, CLASS, and PLATFORMS
+# We expect these macros to be defined by the Makefile that is including us.
+#
+common_ROOTPROG = $(ROOT)/usr/lib/fm/topo/plugins/$(MACH64)/$(PROG)
+arch_ROOTPROG = $(ROOT)/usr/platform/$(ARCH)/lib/fm/topo/plugins/$(MACH64)/$(PROG)
+plat_ROOTPROG = $(PLATFORMS:%=$(ROOT)/usr/platform/%/lib/fm/topo/plugins/$(MACH64)/$(PROG))
+ROOTPROG = $($(CLASS)_ROOTPROG)
+
+LDLIBS += -L$(ROOTLIBDIR)/$(MACH64) -ltopo -lnvpair -lc
+DYNFLAGS64 += -R/usr/lib/fm/$(MACH64)
+
+$(PROG): $(OBJS) $(APIMAP)
+	$(LINK64.c) $(DYNFLAGS64) $(OBJS) -o $@ $(LDLIBS)
+	$(CTFMERGE) -L VERSION -o $@ $(OBJS)
+	$(POST_PROCESS_SO)
+
+%.o: ../common/%.c
+	$(COMPILE64.c) $<
+	$(CTFCONVERT_O)
+
+%.o: ../common/$(SHAREDMODULE)/%.c
+	$(COMPILE64.c) $<
+	$(CTFCONVERT_O)
+
+%.o: %.c
+	$(COMPILE64.c) $<
+	$(CTFCONVERT_O)
+
+$(ROOTPROG): $$(@D) $(PROG)
+	$(RM) $@; $(INS) -s -m 0555 -f $(@D) $(PROG)
+	
+install: $(ROOTPROG)
