@@ -12,7 +12,10 @@
 #
 # Copyright (c) 2019, Joyent, Inc.
 #
-include ../Makefile.com
-include $(SRC)/lib/fm/topo/modules/Makefile.plugin.64
 
-LDLIBS64 += -lipmi -lnsl
+MODULE		= nic
+CLASS		= common
+SHAREDMODULE	= shared
+
+MODULESRCS	= topo_nic.c
+SHAREDSRCS	= topo_port.c topo_transceiver.c

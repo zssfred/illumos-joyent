@@ -15,4 +15,5 @@
 include ../Makefile.com
 include $(SRC)/lib/fm/topo/modules/Makefile.plugin.64
 
-LDLIBS64 += -lipmi -lnsl
+CPPFLAGS += -I../../shared
+LDLIBS64 += -ldevinfo -ldladm -lsff

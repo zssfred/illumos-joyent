@@ -10,17 +10,23 @@
 #
 
 #
-# Copyright (c) 2017, Joyent, Inc.
+# Copyright (c) 2019, Joyent, Inc.
 #
+include $(SRC)/Makefile.master
 
-MODULE		= nic
-CLASS		= common
-SHAREDMODULE	= shared
+SUBDIRS = $(MACH)
+$(BUILD64)SUBDIRS += $(MACH64)
 
-MODULESRCS	= topo_nic.c
-SHAREDSRCS	= topo_port.c topo_transceiver.c
+all := TARGET = all
+clean := TARGET = clean
+clobber := TARGET = clobber
+install := TARGET = install
 
-include ../../Makefile.plugin
+.KEEP_STATE:
 
-CPPFLAGS	+= -I../shared
-LDLIBS		+= -ldevinfo -ldladm -lsff
+all clean clobber install: $(SUBDIRS)
+
+$(SUBDIRS): FRC
+	@cd $@; pwd; $(MAKE) $(TARGET)
+
+FRC:

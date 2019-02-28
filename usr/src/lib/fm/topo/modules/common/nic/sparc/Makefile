@@ -13,6 +13,7 @@
 # Copyright (c) 2019, Joyent, Inc.
 #
 include ../Makefile.com
-include $(SRC)/lib/fm/topo/modules/Makefile.plugin.64
+include $(SRC)/lib/fm/topo/modules/Makefile.plugin.32
 
-LDLIBS64 += -lipmi -lnsl
+CPPFLAGS        += -I../../shared
+LDLIBS          += -ldevinfo -ldladm -lsff

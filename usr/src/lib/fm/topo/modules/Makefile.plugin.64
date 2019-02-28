@@ -36,7 +36,11 @@ $(PROG): $(OBJS) $(APIMAP)
 	$(COMPILE64.c) $<
 	$(CTFCONVERT_O)
 
-%.o: ../common/$(SHAREDMODULE)/%.c
+%.o: ../../$(SHAREDMODULE)/%.c
+	$(COMPILE64.c) $<
+	$(CTFCONVERT_O)
+
+%.o: ../../$(SHAREDMODULE)/common/%.c
 	$(COMPILE64.c) $<
 	$(CTFCONVERT_O)
 
