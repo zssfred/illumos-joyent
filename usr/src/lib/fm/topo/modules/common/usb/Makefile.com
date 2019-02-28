@@ -12,21 +12,10 @@
 #
 # Copyright (c) 2019, Joyent, Inc.
 #
-include $(SRC)/Makefile.master
 
-SUBDIRS = $(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
+MODULE		= usb
+CLASS		= common
+SHAREDMODULE	= shared
 
-all := TARGET = all
-clean := TARGET = clean
-clobber := TARGET = clobber
-install := TARGET = install
-
-.KEEP_STATE:
-
-all clean clobber install: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+MODULESRCS	= topo_usb.c topo_usb_acpi.o topo_usb_metadata.o
+SHAREDSRCS	= topo_port.c

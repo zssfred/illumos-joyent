@@ -10,19 +10,23 @@
 #
 
 #
-# Copyright (c) 2018, Joyent, Inc.
+# Copyright (c) 2019, Joyent, Inc.
 #
+include $(SRC)/Makefile.master
 
-MODULE		= usb
-CLASS		= common
-SHAREDMODULE	= shared
+SUBDIRS = $(MACH)
+$(BUILD64)SUBDIRS += $(MACH64)
 
+all := TARGET = all
+clean := TARGET = clean
+clobber := TARGET = clobber
+install := TARGET = install
 
-MODULESRCS	= topo_usb.c topo_usb_acpi.o topo_usb_metadata.o
-SHAREDSRCS	= topo_port.c
+.KEEP_STATE:
 
-include ../../Makefile.plugin
+all clean clobber install: $(SUBDIRS)
 
-CPPFLAGS	+= -I../shared  -I$(SRC)/uts/intel/sys/acpi -DACPI_APPLICATION
-CPPFLAGS	+= -D_POSIX_PTHREAD_SEMANTICS
-LDLIBS		+= -ldevinfo
+$(SUBDIRS): FRC
+	@cd $@; pwd; $(MAKE) $(TARGET)
+
+FRC:
