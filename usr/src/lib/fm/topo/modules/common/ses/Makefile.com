@@ -12,21 +12,9 @@
 #
 # Copyright (c) 2019, Joyent, Inc.
 #
-include $(SRC)/Makefile.master
+MODULE = ses
+CLASS = common
+SHAREDMODULE = disk
 
-SUBDIRS = $(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
-
-all := TARGET = all
-clean := TARGET = clean
-clobber := TARGET = clobber
-install := TARGET = install
-
-.KEEP_STATE:
-
-all clean clobber install: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+MODULESRCS = ses.c ses_facility.c
+SHAREDSRCS = disk_common.c

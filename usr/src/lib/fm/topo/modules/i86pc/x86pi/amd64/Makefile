@@ -12,21 +12,13 @@
 #
 # Copyright (c) 2019, Joyent, Inc.
 #
-include $(SRC)/Makefile.master
+include ../Makefile.com
+include $(SRC)/lib/fm/topo/modules/Makefile.plugin.64
 
-SUBDIRS = $(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
+LDLIBS64 += -lsmbios -ldevinfo -luutil -lpcidb
+CPPFLAGS += -I../common -I$(ROOT)/usr/platform/i86pc/include -I$(TOPODIR)
+CPPFLAGS += -I$(UTILDIR) -I$(BRDIR) -I$(USBDIR)
 
-all := TARGET = all
-clean := TARGET = clean
-clobber := TARGET = clobber
-install := TARGET = install
-
-.KEEP_STATE:
-
-all clean clobber install: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+%.o: $(UTILDIR)/%.c
+	$(COMPILE64.c) -o $@ $<
+	$(CTFCONVERT_O)

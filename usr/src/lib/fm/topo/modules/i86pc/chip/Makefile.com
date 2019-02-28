@@ -12,21 +12,12 @@
 #
 # Copyright (c) 2019, Joyent, Inc.
 #
-include $(SRC)/Makefile.master
+MODULE = chip
+ARCH = i86pc
+CLASS = arch
+MODULESRCS = chip.c chip_label.c chip_subr.c chip_amd.c chip_intel.c \
+chip_serial.c chip_smbios.c
 
-SUBDIRS = $(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
+# not linted
+SMATCH=off
 
-all := TARGET = all
-clean := TARGET = clean
-clobber := TARGET = clobber
-install := TARGET = install
-
-.KEEP_STATE:
-
-all clean clobber install: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:

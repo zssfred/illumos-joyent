@@ -12,21 +12,14 @@
 #
 # Copyright (c) 2019, Joyent, Inc.
 #
-include $(SRC)/Makefile.master
+MODULE = pcibus
+ARCH = i86pc
+CLASS = arch
+UTILDIR = ../../../common/pcibus
+HBDIR = ../../../common/hostbridge
+NICDIR = ../../../common/nic/common
+USBDIR = ../../../common/usb/common
+UTILSRCS = did.c did_hash.c did_props.c util.c
+PCISRCS = pcibus.c pcibus_labels.c pcibus_hba.c
 
-SUBDIRS = $(MACH)
-$(BUILD64)SUBDIRS += $(MACH64)
-
-all := TARGET = all
-clean := TARGET = clean
-clobber := TARGET = clobber
-install := TARGET = install
-
-.KEEP_STATE:
-
-all clean clobber install: $(SUBDIRS)
-
-$(SUBDIRS): FRC
-	@cd $@; pwd; $(MAKE) $(TARGET)
-
-FRC:
+MODULESRCS = $(UTILSRCS) $(PCISRCS) pci_i86pc.c
