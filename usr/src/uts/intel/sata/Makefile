@@ -68,7 +68,7 @@ DEBUG_DEFS	+= $(DEBUG_FLGS)
 
 #
 # lint pass one enforcement
-#  
+#
 CFLAGS += $(CCVERBOSE)
 
 #

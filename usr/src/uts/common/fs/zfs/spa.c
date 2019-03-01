@@ -27,7 +27,7 @@
  * Copyright 2013 Saso Kiselkov. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2016 Toomas Soome <tsoome@me.com>
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  * Copyright (c) 2017 Datto Inc.
  * Copyright 2018 OmniOS Community Edition (OmniOSce) Association.
  */
@@ -225,6 +225,13 @@ uint64_t	zfs_max_missing_tvds_cachefile = SPA_DVAS_PER_BP - 1;
 uint64_t	zfs_max_missing_tvds_scan = 0;
 
 /*
+ * Interval in seconds at which to poll spare vdevs for health.
+ * Setting this to zero disables spare polling.
+ * Set to three hours by default.
+ */
+uint_t		spa_spare_poll_interval_seconds = 60 * 60 * 3;
+
+/*
  * Debugging aid that pauses spa_sync() towards the end.
  */
 boolean_t	zfs_pause_spa_sync = B_FALSE;
@@ -348,6 +355,14 @@ spa_prop_get_config(spa_t *spa, nvlist_t **nvp)
 	} else {
 		spa_prop_add_list(*nvp, ZPOOL_PROP_MAXBLOCKSIZE, NULL,
 		    SPA_OLD_MAXBLOCKSIZE, ZPROP_SRC_NONE);
+	}
+
+	if (spa_feature_is_enabled(spa, SPA_FEATURE_LARGE_DNODE)) {
+		spa_prop_add_list(*nvp, ZPOOL_PROP_MAXDNODESIZE, NULL,
+		    DNODE_MAX_SIZE, ZPROP_SRC_NONE);
+	} else {
+		spa_prop_add_list(*nvp, ZPOOL_PROP_MAXDNODESIZE, NULL,
+		    DNODE_MIN_SIZE, ZPROP_SRC_NONE);
 	}
 
 	if ((dp = list_head(&spa->spa_config_list)) != NULL) {
@@ -577,8 +592,7 @@ spa_prop_validate(spa_t *spa, nvlist_t *props)
 
 				/*
 				 * Must be ZPL, and its property settings
-				 * must be supported by GRUB (compression
-				 * is not gzip, and large blocks are not used).
+				 * must be supported.
 				 */
 
 				if (dmu_objset_type(os) != DMU_OST_ZFS) {
@@ -2271,7 +2285,7 @@ spa_load(spa_t *spa, spa_load_state_t state, spa_import_type_t type)
 	 * and are making their way through the eviction process.
 	 */
 	spa_evicting_os_wait(spa);
-	spa->spa_minref = refcount_count(&spa->spa_refcount);
+	spa->spa_minref = zfs_refcount_count(&spa->spa_refcount);
 	if (error) {
 		if (error != EEXIST) {
 			spa->spa_loaded_ts.tv_sec = 0;
@@ -4846,7 +4860,7 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	 * and are making their way through the eviction process.
 	 */
 	spa_evicting_os_wait(spa);
-	spa->spa_minref = refcount_count(&spa->spa_refcount);
+	spa->spa_minref = zfs_refcount_count(&spa->spa_refcount);
 	spa->spa_load_state = SPA_LOAD_NONE;
 
 	mutex_exit(&spa_namespace_lock);
@@ -6888,6 +6902,8 @@ spa_async_thread(void *arg)
 	if (tasks & SPA_ASYNC_PROBE) {
 		spa_vdev_state_enter(spa, SCL_NONE);
 		spa_async_probe(spa, spa->spa_root_vdev);
+		for (int i = 0; i < spa->spa_spares.sav_count; i++)
+			spa_async_probe(spa, spa->spa_spares.sav_vdevs[i]);
 		(void) spa_vdev_state_exit(spa, NULL, 0);
 	}
 
@@ -7646,7 +7662,8 @@ spa_sync(spa_t *spa, uint64_t txg)
 		 * allocations all happen from spa_sync().
 		 */
 		for (int i = 0; i < spa->spa_alloc_count; i++)
-			ASSERT0(refcount_count(&(mg->mg_alloc_queue_depth[i])));
+			ASSERT0(zfs_refcount_count(
+			    &(mg->mg_alloc_queue_depth[i])));
 		mg->mg_max_alloc_queue_depth = max_queue_depth;
 
 		for (int i = 0; i < spa->spa_alloc_count; i++) {
@@ -7657,7 +7674,7 @@ spa_sync(spa_t *spa, uint64_t txg)
 	}
 	metaslab_class_t *mc = spa_normal_class(spa);
 	for (int i = 0; i < spa->spa_alloc_count; i++) {
-		ASSERT0(refcount_count(&mc->mc_alloc_slots[i]));
+		ASSERT0(zfs_refcount_count(&mc->mc_alloc_slots[i]));
 		mc->mc_alloc_max_slots[i] = slots_per_allocator;
 	}
 	mc->mc_alloc_throttle_enabled = zio_dva_throttle_enabled;
@@ -7876,6 +7893,14 @@ spa_sync(spa_t *spa, uint64_t txg)
 	spa_config_exit(spa, SCL_CONFIG, FTAG);
 
 	spa_handle_ignored_writes(spa);
+
+	/* Mark unused spares as needing a health check. */
+	if (spa_spare_poll_interval_seconds != 0 &&
+	    NSEC2SEC(gethrtime() - spa->spa_spares_last_polled) >
+	    spa_spare_poll_interval_seconds) {
+		spa_spare_poll(spa);
+		spa->spa_spares_last_polled = gethrtime();
+	}
 
 	/*
 	 * If any async tasks have been requested, kick them off.

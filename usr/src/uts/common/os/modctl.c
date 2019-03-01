@@ -1235,7 +1235,7 @@ modctl_get_devid(dev_t dev, uint_t len, ddi_devid_t udevid)
 /*ARGSUSED*/
 static int
 modctl_devid2paths(ddi_devid_t udevid, char *uminor_name, uint_t flag,
-	size_t *ulensp, char *upaths)
+    size_t *ulensp, char *upaths)
 {
 	ddi_devid_t	devid = NULL;
 	int		devid_len;
@@ -2301,17 +2301,17 @@ modctl_hp(int subcmd, const char *path, char *cn_name, uintptr_t arg,
 	switch (subcmd) {
 	case MODHPOPS_CHANGE_STATE:
 		error = ddihp_modctl(DDI_HPOP_CN_CHANGE_STATE, devpath,
-		    cn_name_str, arg, NULL);
+		    cn_name_str, arg, 0);
 		break;
 	case MODHPOPS_CREATE_PORT:
 		/* Create an empty PORT */
 		error = ddihp_modctl(DDI_HPOP_CN_CREATE_PORT, devpath,
-		    cn_name_str, NULL, NULL);
+		    cn_name_str, 0, 0);
 		break;
 	case MODHPOPS_REMOVE_PORT:
 		/* Remove an empty PORT */
 		error = ddihp_modctl(DDI_HPOP_CN_REMOVE_PORT, devpath,
-		    cn_name_str, NULL, NULL);
+		    cn_name_str, 0, 0);
 		break;
 	case MODHPOPS_BUS_GET:
 		error = ddihp_modctl(DDI_HPOP_CN_GET_PROPERTY, devpath,
@@ -3352,7 +3352,7 @@ mod_askparams()
 	if ((fd = kobj_open(systemfile)) != -1L)
 		kobj_close(fd);
 	else
-		systemfile = NULL;
+		systemfile = self_assembly = NULL;
 
 	/*CONSTANTCONDITION*/
 	while (1) {
@@ -3364,12 +3364,13 @@ mod_askparams()
 		if (s0[0] == '\0')
 			break;
 		else if (strcmp(s0, "/dev/null") == 0) {
-			systemfile = NULL;
+			systemfile = self_assembly = NULL;
 			break;
 		} else {
 			if ((fd = kobj_open(s0)) != -1L) {
 				kobj_close(fd);
 				systemfile = s0;
+				self_assembly = NULL;
 				break;
 			}
 		}

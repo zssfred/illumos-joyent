@@ -20,8 +20,8 @@
 # Copyright 2014 Garrett D'Amore <garrett@damore.org>
 # Copyright (c) 2015, 2016 by Delphix. All rights reserved.
 # Copyright 2016 Nexenta Systems, Inc.
-# Copyright 2018 Joyent, Inc.
-# Copyright 2018 OmniOS Community Edition (OmniOSce) Association.
+# Copyright (c) 2019, Joyent, Inc.
+# Copyright 2019 OmniOS Community Edition (OmniOSce) Association.
 #
 
 from __future__ import print_function
@@ -125,7 +125,7 @@ def git_parent_branch(branch):
 
     if not p:
         sys.stderr.write("Failed finding git parent branch\n")
-        sys.exit(err)
+        sys.exit(1)
 
     for line in p:
         # Git 1.7 will leave a ' ' trailing any non-tracking branch
@@ -141,8 +141,8 @@ def git_comments(parent):
     p = git('log --pretty=tformat:%%B:SEP: %s..' % parent)
 
     if not p:
-        sys.stderr.write("Failed getting git comments\n")
-        sys.exit(err)
+        sys.stderr.write("No outgoing changesets found - missing -p option?\n");
+        sys.exit(1)
 
     return [x.strip() for x in p if x != ':SEP:\n']
 
@@ -157,7 +157,7 @@ def git_file_list(parent, paths=None):
 
     if not p:
         sys.stderr.write("Failed building file-list from git\n")
-        sys.exit(err)
+        sys.exit(1)
 
     ret = set()
     for fname in p:
@@ -260,7 +260,7 @@ def cstyle(root, parent, flist, output):
     ret = 0
     output.write("C style:\n")
     for f in flist(lambda x: x.endswith('.c') or x.endswith('.h')):
-        with io.open(f, encoding='utf-8', errors='replace') as fh:
+        with io.open(f, mode='rb') as fh:
             ret |= CStyle.cstyle(fh, output=output, picky=True,
                              check_posix_types=True,
                              check_continuation=True)
@@ -279,7 +279,7 @@ def manlint(root, parent, flist, output):
     output.write("Man page format/spelling:\n")
     ManfileRE = re.compile(r'.*\.[0-9][a-z]*$', re.IGNORECASE)
     for f in flist(lambda x: ManfileRE.match(x)):
-        with io.open(f, encoding='utf-8', errors='replace') as fh:
+        with io.open(f, mode='rb') as fh:
             ret |= ManLint.manlint(fh, output=output, picky=True)
             ret |= SpellCheck.spellcheck(fh, output=output)
     return ret

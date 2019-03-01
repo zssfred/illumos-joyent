@@ -1306,9 +1306,7 @@ s lib/amd64/libuuid.so=libuuid.so.1
 f lib/amd64/libuutil.so.1 0755 root bin
 s lib/amd64/libuutil.so=libuutil.so.1
 f lib/amd64/libvmm.so.1 0755 root bin
-s lib/amd64/libvmm.so=libvmm.so.1
 f lib/amd64/libvmmapi.so.1 0755 root bin
-s lib/amd64/libvmmapi.so=libvmmapi.so.1
 f lib/amd64/libw.so.1 0755 root bin
 s lib/amd64/libw.so=libw.so.1
 f lib/amd64/libxnet.so.1 0755 root bin
@@ -1669,8 +1667,6 @@ f lib/svc/manifest/system/name-service-cache.xml 0444 root sys
 f lib/svc/manifest/system/ndmp.xml 0444 root sys
 f lib/svc/manifest/system/pfexecd.xml 0444 root sys
 f lib/svc/manifest/system/picl.xml 0444 root sys
-f lib/svc/manifest/system/poold.xml 0444 root sys
-f lib/svc/manifest/system/pools.xml 0444 root sys
 f lib/svc/manifest/system/power.xml 0444 root sys
 f lib/svc/manifest/system/process-security.xml 0444 root sys
 f lib/svc/manifest/system/rbac.xml 0444 root sys
@@ -1753,8 +1749,6 @@ f lib/svc/method/svc-legacy-routing 0555 root bin
 f lib/svc/method/svc-ndmp 0555 root sys
 f lib/svc/method/svc-ndp 0555 root bin
 f lib/svc/method/svc-nscd 0555 root bin
-f lib/svc/method/svc-poold 0555 root sys
-f lib/svc/method/svc-pools 0555 root sys
 f lib/svc/method/svc-power 0555 root sys
 f lib/svc/method/svc-rbac 0555 root bin
 f lib/svc/method/svc-rdisc 0555 root bin
@@ -2321,6 +2315,7 @@ f usr/bin/amd64/strings 0555 root bin
 f usr/bin/amd64/truss 0555 root bin
 h usr/bin/amd64/uptime=usr/bin/amd64/w
 f usr/bin/amd64/w 4555 root bin
+f usr/bin/amd64/ztest 4555 root bin
 f usr/bin/amt 0555 root bin
 h usr/bin/apropos=usr/bin/man
 f usr/bin/ar 0555 root bin
@@ -2604,7 +2599,6 @@ h usr/bin/plgrp=usr/lib/isaexec
 h usr/bin/plimit=usr/lib/isaexec
 h usr/bin/pmadvise=usr/lib/isaexec
 h usr/bin/pmap=usr/lib/isaexec
-f usr/bin/poolstat 0555 root bin
 h usr/bin/ppgsz=usr/lib/isaexec
 h usr/bin/ppriv=usr/lib/isaexec
 f usr/bin/pr 0555 root bin
@@ -2765,6 +2759,7 @@ f usr/bin/ypwhich 0555 root other
 f usr/bin/zcat 0555 root bin
 f usr/bin/ziostat 0555 root bin
 s usr/bin/zonename=../../sbin/zonename
+h usr/bin/ztest=usr/lib/isaexec
 d usr/ccs 0755 root bin
 d usr/ccs/bin 0755 root bin
 d usr/ccs/bin/amd64 0755 root bin
@@ -9960,17 +9955,6 @@ f usr/lib/picl/plugins/libpiclmemcfg.so.1 0755 root sys
 s usr/lib/picl/plugins/libpiclmemcfg.so=libpiclmemcfg.so.1
 d usr/lib/pkgconfig 0755 root bin
 f usr/lib/platexec 0555 root bin
-d usr/lib/pool 0755 root bin
-f usr/lib/pool/libjkstat.so.1 0755 root bin
-s usr/lib/pool/libjkstat.so=libjkstat.so.1
-f usr/lib/pool/libjlgrp.so.1 0755 root bin
-s usr/lib/pool/libjlgrp.so=libjlgrp.so.1
-f usr/lib/pool/libjpool.so.1 0755 root bin
-s usr/lib/pool/libjpool.so=libjpool.so.1
-f usr/lib/pool/libjsyslog.so.1 0755 root bin
-s usr/lib/pool/libjsyslog.so=libjsyslog.so.1
-f usr/lib/pool/poold 0555 root bin
-f usr/lib/pool/poold.properties 0444 root bin
 d usr/lib/power 0755 root bin
 f usr/lib/power/powerd 0555 root bin
 d usr/lib/raidcfg 0755 root bin
@@ -10515,6 +10499,7 @@ f usr/sbin/amd64/ippool 0555 root bin
 f usr/sbin/amd64/lockstat 0555 root bin
 f usr/sbin/amd64/plockstat 0555 root bin
 f usr/sbin/amd64/zdb 0555 root bin
+f usr/sbin/amd64/zinject 0555 root bin
 f usr/sbin/arp 0555 root bin
 f usr/sbin/audit 0555 root bin
 f usr/sbin/auditconfig 0555 root bin
@@ -10683,9 +10668,6 @@ f usr/sbin/ping 4555 root bin
 h usr/sbin/plockstat=usr/lib/isaexec
 f usr/sbin/pmadm 0555 root sys
 f usr/sbin/pmconfig 4555 root bin
-f usr/sbin/pooladm 0555 root bin
-f usr/sbin/poolbind 0555 root bin
-f usr/sbin/poolcfg 0555 root bin
 h usr/sbin/ports=usr/sbin/devfsadm
 h usr/sbin/poweroff=usr/sbin/halt
 f usr/sbin/pptadm 0555 root bin
@@ -10793,6 +10775,7 @@ h usr/sbin/zdb=usr/lib/isaexec
 f usr/sbin/zdump 0555 root bin
 s usr/sbin/zfs=../../sbin/zfs
 f usr/sbin/zic 0555 root bin
+h usr/sbin/zinject=usr/lib/isaexec
 f usr/sbin/zlogin 0555 root bin
 f usr/sbin/zoneadm 0555 root bin
 f usr/sbin/zonecfg 0555 root bin
@@ -12326,11 +12309,6 @@ f usr/share/man/man1m/ping.1m 0444 root bin
 f usr/share/man/man1m/plockstat.1m 0444 root bin
 f usr/share/man/man1m/pmadm.1m 0444 root bin
 f usr/share/man/man1m/pmconfig.1m 0444 root bin
-f usr/share/man/man1m/pooladm.1m 0444 root bin
-f usr/share/man/man1m/poolbind.1m 0444 root bin
-f usr/share/man/man1m/poolcfg.1m 0444 root bin
-f usr/share/man/man1m/poold.1m 0444 root bin
-f usr/share/man/man1m/poolstat.1m 0444 root bin
 f usr/share/man/man1m/ports.1m 0444 root bin
 s usr/share/man/man1m/poweroff.1m=halt.1m
 f usr/share/man/man1m/pptadm.1m 0444 root bin

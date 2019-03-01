@@ -629,19 +629,19 @@ bcons_init_fb(void)
 	fb_info.inverse = B_FALSE;
 	fb_info.inverse_screen = B_FALSE;
 
-	/* color values are 0 - 7 */
+	/* color values are 0 - 255 */
 	propval = find_boot_prop("tem.fg_color");
 	if (propval != NULL) {
 		intval = atoi(propval);
-		if (intval >= 0 && intval <= 7)
+		if (intval >= 0 && intval <= 255)
 			fb_info.fg_color = intval;
 	}
 
-	/* color values are 0 - 7 */
+	/* color values are 0 - 255 */
 	propval = find_boot_prop("tem.bg_color");
 	if (propval != NULL && ISDIGIT(*propval)) {
 		intval = atoi(propval);
-		if (intval >= 0 && intval <= 7)
+		if (intval >= 0 && intval <= 255)
 			fb_info.bg_color = intval;
 	}
 
@@ -658,14 +658,10 @@ bcons_init_fb(void)
 			fb_info.inverse_screen = B_TRUE;
 	}
 
-#if defined(_BOOT) && defined(_NEWFONT)
+#if defined(_BOOT)
 	/*
 	 * Load cursor position from bootloader only in dboot,
 	 * dboot will pass cursor position to kernel via xboot info.
-	 */
-	/*
-	 * To keep consistent console, we reset boot screen till new fonts
-	 * are available.
 	 */
 	propval = find_boot_prop("tem.cursor.row");
 	if (propval != NULL) {

@@ -23,7 +23,7 @@
 # Copyright (c) 1992, 2010, Oracle and/or its affiliates. All rights reserved.
 #
 # Copyright (c) 2010, Intel Corporation.
-# Copyright 2018 Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 #	This Makefile defines file modules in the directory uts/i86pc
 #	and its children. These are the source files which are i86pc
@@ -194,7 +194,7 @@ DBOOT_OBJS +=			\
 #
 GFX_PRIVATE_OBJS	+= gfx_private.o gfxp_pci.o gfxp_segmap.o \
 			   gfxp_devmap.o gfxp_vgatext.o gfxp_vm.o vgasubr.o \
-			   gfxp_fb.o
+			   gfxp_fb.o gfxp_bitmap.o
 FIPE_OBJS += fipe_drv.o fipe_pm.o
 IOAT_OBJS += ioat.o ioat_rs.o ioat_ioctl.o ioat_chan.o
 ISANEXUS_OBJS += isa.o dma_engine.o i8237A.o
@@ -275,8 +275,10 @@ VMM_OBJS += vmm.o \
 	vmcb.o \
 	svm_support.o \
 	amdv.o \
+	gipt.o \
 	vmm_sol_vm.o \
 	vmm_sol_glue.o \
+	vmm_sol_ept.o \
 	vmm_zsd.o
 
 VIONA_OBJS += viona.o

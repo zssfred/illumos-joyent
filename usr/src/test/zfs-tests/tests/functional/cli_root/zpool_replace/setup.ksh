@@ -25,10 +25,14 @@
 # Use is subject to license terms.
 #
 
+#
+# Copyright 2019 Joyent, Inc.
+#
+
 . $STF_SUITE/include/libtest.shlib
 
 verify_runnable "global"
-verify_disk_count "$DISKS" 2
+verify_disk_count "$DISKS" 3
 
 DISK=${DISKS%% *}
 

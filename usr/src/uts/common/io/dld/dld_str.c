@@ -394,7 +394,7 @@ dld_close(queue_t *rq, int flags __unused, cred_t *credp __unused)
 /*
  * qi_qputp: put(9e)
  */
-void
+int
 dld_wput(queue_t *wq, mblk_t *mp)
 {
 	dld_str_t *dsp = (dld_str_t *)wq->q_ptr;
@@ -463,17 +463,19 @@ dld_wput(queue_t *wq, mblk_t *mp)
 		freemsg(mp);
 		break;
 	}
+	return (0);
 }
 
 /*
  * qi_srvp: srv(9e)
  */
-void
+int
 dld_wsrv(queue_t *wq)
 {
 	dld_str_t	*dsp = wq->q_ptr;
 
 	DLD_CLRQFULL(dsp);
+	return (0);
 }
 
 void
@@ -953,7 +955,7 @@ str_mdata_fastpath_put(dld_str_t *dsp, mblk_t *mp, uintptr_t f_hint,
 		}
 	}
 
-	if ((cookie = DLD_TX(dsp, mp, f_hint, flag)) != NULL) {
+	if ((cookie = DLD_TX(dsp, mp, f_hint, flag)) != 0) {
 		DLD_SETQFULL(dsp);
 	}
 	return (cookie);
@@ -961,7 +963,7 @@ str_mdata_fastpath_put(dld_str_t *dsp, mblk_t *mp, uintptr_t f_hint,
 discard:
 	/* TODO: bump kstat? */
 	freemsg(mp);
-	return (NULL);
+	return (0);
 }
 
 /*
@@ -1023,7 +1025,7 @@ str_mdata_raw_put(dld_str_t *dsp, mblk_t *mp)
 			goto discard;
 	}
 
-	if (DLD_TX(dsp, mp, 0, 0) != NULL) {
+	if (DLD_TX(dsp, mp, 0, 0) != 0) {
 		/* Turn on flow-control for dld */
 		DLD_SETQFULL(dsp);
 	}
