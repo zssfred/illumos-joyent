@@ -93,6 +93,7 @@
 #include <ctype.h>
 #include <pcidb.h>
 #include <sys/param.h>
+#include <sys/systeminfo.h>
 #include <sys/utsname.h>
 #include <sys/smbios.h>
 #include <sys/fm/protocol.h>
@@ -117,7 +118,7 @@ topo_mod_t *
 topo_mod_load(topo_mod_t *pmod, const char *name,
     topo_version_t version)
 {
-	char *path;
+	char *path, isa[257];
 	char file[PLUGIN_PATH_LEN];
 	topo_mod_t *mod = NULL;
 	topo_hdl_t *thp;
@@ -135,9 +136,14 @@ topo_mod_load(topo_mod_t *pmod, const char *name,
 		}
 		return (mod);
 	}
-
-	(void) snprintf(file, PLUGIN_PATH_LEN, "%s/%s.so",
-	    PLUGIN_PATH, name);
+#if __x86_64__
+	if (sysinfo(SI_ARCHITECTURE_64, isa, sizeof (isa)) < 0)
+		isa[0] = '\0';
+#else
+		isa[0] = '\0';
+#endif
+	(void) snprintf(file, PLUGIN_PATH_LEN, "%s/%s/%s.so",
+	    PLUGIN_PATH, isa, name);
 	path = topo_search_path(pmod, thp->th_rootdir, (const char *)file);
 	if (path == NULL ||
 	    (mod = topo_modhash_load(thp, name, path, &topo_rtld_ops, version))
