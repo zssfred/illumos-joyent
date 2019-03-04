@@ -780,9 +780,6 @@ file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_013_pos \
     mode=0555
 file \
-    path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_014_pos \
-    mode=0555
-file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_common.kshlib \
     mode=0444
 file \

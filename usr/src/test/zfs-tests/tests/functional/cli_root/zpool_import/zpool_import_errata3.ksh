@@ -72,8 +72,8 @@ log_must zfs mount -o ro $POOL_NAME/testfs
 
 old_mntpnt=$(get_prop mountpoint $POOL_NAME/testfs)
 log_must eval "ls $old_mntpnt | grep -q testfile"
-log_mustnot dd if=/dev/zero of=/dev/zvol/$POOL_NAME/testvol bs=512 count=1
-log_must dd if=/dev/zvol/$POOL_NAME/testvol of=/dev/null bs=512 count=1
+log_mustnot dd if=/dev/zero of=/dev/zvol/rdsk/$POOL_NAME/testvol bs=512 count=1
+log_must dd if=/dev/zvol/rdsk/$POOL_NAME/testvol of=/dev/null bs=512 count=1
 log_must eval "echo 'password' | zfs create \
 	-o encryption=on -o keyformat=passphrase -o keylocation=prompt \
 	cryptv0/encroot"
@@ -87,7 +87,7 @@ log_must eval "zfs send $POOL_NAME/testfs@snap1 | \
 log_must eval "zfs send $POOL_NAME/testvol@snap1 | \
 	zfs recv $POOL_NAME/encroot/testvol"
 block_device_wait
-log_must dd if=/dev/zero of=/dev/zvol/$POOL_NAME/encroot/testvol bs=512 count=1
+log_must dd if=/dev/zero of=/dev/zvol/rdsk/$POOL_NAME/encroot/testvol bs=512 count=1
 new_mntpnt=$(get_prop mountpoint $POOL_NAME/encroot/testfs)
 log_must eval "ls $new_mntpnt | grep -q testfile"
 log_must zfs destroy -r $POOL_NAME/testfs

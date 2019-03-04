@@ -1024,14 +1024,6 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 {
 	int error;
 
-	/*
-	 * Check for a bad on-disk format version now since we
-	 * lied about owning the dataset readonly before.
-	 */
-	if (!(zfsvfs->z_vfs->vfs_flag & VFS_RDONLY) &&
-	    dmu_objset_incompatible_encryption_version(zfsvfs->z_os))
-		return (SET_ERROR(EROFS));
-
 	error = zfs_register_callbacks(zfsvfs->z_vfs);
 	if (error)
 		return (error);
