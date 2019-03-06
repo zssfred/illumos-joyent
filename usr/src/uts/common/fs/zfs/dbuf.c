@@ -3182,8 +3182,8 @@ dmu_buf_user_refcount(dmu_buf_t *db_fake)
 	dmu_buf_impl_t *db = (dmu_buf_impl_t *)db_fake;
 
 	mutex_enter(&db->db_mtx);
-	ASSERT3U(refcount_count(&db->db_holds), >=, db->db_dirtycnt);
-	holds = refcount_count(&db->db_holds) - db->db_dirtycnt;
+	ASSERT3U(zfs_refcount_count(&db->db_holds), >=, db->db_dirtycnt);
+	holds = zfs_refcount_count(&db->db_holds) - db->db_dirtycnt;
 	mutex_exit(&db->db_mtx);
 
 	return (holds);

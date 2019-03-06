@@ -76,7 +76,7 @@ int64_t zfs_refcount_add_many(zfs_refcount_t *, uint64_t, void *);
 int64_t zfs_refcount_remove_many(zfs_refcount_t *, uint64_t, void *);
 void zfs_refcount_transfer(zfs_refcount_t *, zfs_refcount_t *);
 void zfs_refcount_transfer_ownership(zfs_refcount_t *, void *, void *);
-void zfs_refcount_transfer_ownership_many(refcount_t *, uint64_t,
+void zfs_refcount_transfer_ownership_many(zfs_refcount_t *, uint64_t,
     void *, void *);
 boolean_t zfs_refcount_held(zfs_refcount_t *, void *);
 boolean_t zfs_refcount_not_held(zfs_refcount_t *, void *);

@@ -2558,7 +2558,7 @@ arc_evictable_space_increment(arc_buf_hdr_t *hdr, arc_state_t *state)
 		    arc_hdr_size(hdr), hdr);
 	}
 	if (HDR_HAS_RABD(hdr)) {
-		(void) refcount_add_many(&state->arcs_esize[type],
+		(void) zfs_refcount_add_many(&state->arcs_esize[type],
 		    HDR_GET_PSIZE(hdr), hdr);
 	}
 	for (arc_buf_t *buf = hdr->b_l1hdr.b_buf; buf != NULL;
@@ -2598,7 +2598,7 @@ arc_evictable_space_decrement(arc_buf_hdr_t *hdr, arc_state_t *state)
 		    arc_hdr_size(hdr), hdr);
 	}
 	if (HDR_HAS_RABD(hdr)) {
-		(void) refcount_remove_many(&state->arcs_esize[type],
+		(void) zfs_refcount_remove_many(&state->arcs_esize[type],
 		    HDR_GET_PSIZE(hdr), hdr);
 	}
 	for (arc_buf_t *buf = hdr->b_l1hdr.b_buf; buf != NULL;
@@ -2804,7 +2804,8 @@ arc_change_state(arc_state_t *new_state, arc_buf_hdr_t *hdr,
 			}
 
 			if (HDR_HAS_RABD(hdr)) {
-				(void) refcount_add_many(&new_state->arcs_size,
+				(void) zfs_refcount_add_many(
+				    &new_state->arcs_size,
 				    HDR_GET_PSIZE(hdr), hdr);
 			}
 		}
@@ -3729,16 +3730,16 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t need_crypt)
 	 * arc buffers always point to a header that is referenced, avoiding
 	 * a small race condition that could trigger ASSERTs.
 	 */
-	(void) refcount_add(&nhdr->b_l1hdr.b_refcnt, FTAG);
+	(void) zfs_refcount_add(&nhdr->b_l1hdr.b_refcnt, FTAG);
 	nhdr->b_l1hdr.b_buf = hdr->b_l1hdr.b_buf;
 	for (buf = nhdr->b_l1hdr.b_buf; buf != NULL; buf = buf->b_next) {
 		mutex_enter(&buf->b_evict_lock);
 		buf->b_hdr = nhdr;
 		mutex_exit(&buf->b_evict_lock);
 	}
-	refcount_transfer(&nhdr->b_l1hdr.b_refcnt, &hdr->b_l1hdr.b_refcnt);
-	(void) refcount_remove(&nhdr->b_l1hdr.b_refcnt, FTAG);
-	ASSERT0(refcount_count(&hdr->b_l1hdr.b_refcnt));
+	zfs_refcount_transfer(&nhdr->b_l1hdr.b_refcnt, &hdr->b_l1hdr.b_refcnt);
+	(void) zfs_refcount_remove(&nhdr->b_l1hdr.b_refcnt, FTAG);
+	ASSERT0(zfs_refcount_count(&hdr->b_l1hdr.b_refcnt));
 
 	if (need_crypt) {
 		arc_hdr_set_flags(nhdr, ARC_FLAG_PROTECTED);
@@ -6138,7 +6139,7 @@ top:
 		}
 
 		if (*arc_flags & ARC_FLAG_PREFETCH &&
-		    refcount_is_zero(&hdr->b_l1hdr.b_refcnt))
+		    zfs_refcount_is_zero(&hdr->b_l1hdr.b_refcnt))
 			arc_hdr_set_flags(hdr, ARC_FLAG_PREFETCH);
 		if (*arc_flags & ARC_FLAG_L2CACHE)
 			arc_hdr_set_flags(hdr, ARC_FLAG_L2CACHE);
