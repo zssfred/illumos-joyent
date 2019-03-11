@@ -312,7 +312,7 @@ static const ses_enc_blacklist_t enc_blacklist[] = {
 static boolean_t
 ses_is_blacklisted(ses_enc_blacklist_t *seb)
 {
-	for (int i = 0; i < N_ENC_BLACKLIST; i++) {
+	for (uint_t i = 0; i < N_ENC_BLACKLIST; i++) {
 		if (strcmp(seb->seb_manuf, enc_blacklist[i].seb_manuf) == 0 &&
 		    (strcmp(enc_blacklist[i].seb_model, "*") == 0 ||
 		    strcmp(seb->seb_model, enc_blacklist[i].seb_model) == 0))
