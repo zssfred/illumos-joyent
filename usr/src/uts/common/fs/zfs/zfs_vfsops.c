@@ -125,6 +125,12 @@ static mntopts_t zfs_mntopts = {
 	mntopts
 };
 
+boolean_t
+zfs_is_readonly(zfsvfs_t *zfsvfs)
+{
+	return (!!(zfsvfs->z_vfs->vfs_flag & VFS_RDONLY));
+}
+
 /*ARGSUSED*/
 int
 zfs_sync(vfs_t *vfsp, short flag, cred_t *cr)
@@ -1023,6 +1029,7 @@ static int
 zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 {
 	int error;
+	boolean_t readonly = zfs_is_readonly(zfsvfs);
 
 	error = zfs_register_callbacks(zfsvfs->z_vfs);
 	if (error)
@@ -1036,13 +1043,10 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 	 * operations out since we closed the ZIL.
 	 */
 	if (mounting) {
-		boolean_t readonly;
-
 		/*
 		 * During replay we remove the read only flag to
 		 * allow replays to succeed.
 		 */
-		readonly = zfsvfs->z_vfs->vfs_flag & VFS_RDONLY;
 		if (readonly != 0)
 			zfsvfs->z_vfs->vfs_flag &= ~VFS_RDONLY;
 		else

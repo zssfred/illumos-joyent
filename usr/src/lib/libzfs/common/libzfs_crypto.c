@@ -1158,10 +1158,14 @@ try_again:
 
 error:
 	(void) zfs_error(zhp->zfs_hdl, EZFS_CRYPTOFAILED, errbuf);
-	if (key_material != NULL)
+	if (key_material != NULL) {
 		free(key_material);
-	if (key_data != NULL)
+		key_material = NULL;
+	}
+	if (key_data != NULL) {
 		free(key_data);
+		key_data  = NULL;
+	}
 
 	/*
 	 * Here we decide if it is ok to allow the user to retry entering their
@@ -1170,7 +1174,7 @@ error:
 	 * set if an error that occured could be corrected by retrying. Both
 	 * flags are needed to allow the user to attempt key entry again
 	 */
-	if (can_retry && correctible && attempts <= MAX_KEY_PROMPT_ATTEMPTS) {
+	if (can_retry && correctible && attempts < MAX_KEY_PROMPT_ATTEMPTS) {
 		attempts++;
 		goto try_again;
 	}
