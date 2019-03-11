@@ -921,7 +921,6 @@ zio_crypt_copy_dnode_bonus(abd_t *src_abd, uint8_t *dst, uint_t datalen)
 static void
 zio_crypt_bp_zero_nonportable_blkprop(blkptr_t *bp, uint64_t version)
 {
-	int avoidlint = SPA_MINBLOCKSIZE;
 	/*
 	 * Version 0 did not properly zero out all non-portable fields
 	 * as it should have done. We maintain this code so that we can
@@ -930,7 +929,7 @@ zio_crypt_bp_zero_nonportable_blkprop(blkptr_t *bp, uint64_t version)
 	if (version == 0) {
 		BP_SET_DEDUP(bp, 0);
 		BP_SET_CHECKSUM(bp, 0);
-		BP_SET_PSIZE(bp, avoidlint);
+		BP_SET_PSIZE(bp, SPA_MINBLOCKSIZE);
 		return;
 	}
 
@@ -966,7 +965,7 @@ zio_crypt_bp_zero_nonportable_blkprop(blkptr_t *bp, uint64_t version)
 		 * asserts, but the value doesn't really matter as
 		 * long as it is constant.
 		 */
-		BP_SET_PSIZE(bp, avoidlint);
+		BP_SET_PSIZE(bp, SPA_MINBLOCKSIZE);
 	}
 
 	BP_SET_DEDUP(bp, 0);
@@ -1862,9 +1861,6 @@ zio_crypt_init_uios(boolean_t encrypt, uint64_t version, dmu_object_type_t ot,
 error:
 	return (ret);
 }
-
-void *failed_decrypt_buf;
-int faile_decrypt_size;
 
 /*
  * Primary encryption / decryption entrypoint for zio data.
