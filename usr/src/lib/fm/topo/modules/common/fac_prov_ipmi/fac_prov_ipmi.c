@@ -23,7 +23,7 @@
  * Use is subject to license terms.
  */
 /*
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 #include <unistd.h>
 #include <stdio.h>
@@ -432,9 +432,9 @@ ipmi_sensor_state(topo_mod_t *mod, tnode_t *node, topo_version_t vers,
 
 	if (topo_prop_get_string(node, TOPO_PGROUP_FACILITY, TOPO_SENSOR_CLASS,
 	    &sensor_class, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to lookup prop %s/%s on node %s",
-		    TOPO_PGROUP_FACILITY, TOPO_SENSOR_CLASS,
-		    topo_node_name(node));
+		topo_mod_dprintf(mod, "Failed to lookup prop %s/%s on node %s ",
+		    "(%s)", TOPO_PGROUP_FACILITY, TOPO_SENSOR_CLASS,
+		    topo_node_name(node), topo_strerror(err));
 		return (topo_mod_seterrno(mod, EMOD_UKNOWN_ENUM));
 	}
 	/*
@@ -447,6 +447,8 @@ ipmi_sensor_state(topo_mod_t *mod, tnode_t *node, topo_version_t vers,
 		state = state & 0x3F;
 	else
 		state = state & 0x7FFF;
+
+	topo_mod_strfree(mod, sensor_class);
 
 	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0 ||
 	    nvlist_add_string(nvl, TOPO_PROP_VAL_NAME,

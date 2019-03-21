@@ -544,11 +544,11 @@ topo_sensor_state_name(uint32_t sensor_type, uint8_t state, char *buf,
 			if (buf[0] != '\0')
 				(void) strlcat(buf, "|", len);
 			(void) strlcat(buf, ntp->int_name, len);
-			return;
 		}
 	}
 
-	(void) snprintf(buf, len, "0x%02x", state);
+	if (buf[0] == '\0')
+		(void) snprintf(buf, len, "0x%02x", state);
 }
 
 static const topo_pgroup_info_t sys_pgroup = {
