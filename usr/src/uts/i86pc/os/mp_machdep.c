@@ -1212,6 +1212,8 @@ mach_calchz(uint32_t pit_counter, uint64_t *processor_clks)
 
 	cpu_hz = ((uint64_t)PIT_HZ * *processor_clks) / pit_counter;
 
+	prom_printf("mach_calchz -> %llu\n", (unsigned long long)cpu_hz);
+
 	return (cpu_hz);
 }
 
@@ -1265,11 +1267,16 @@ mach_getcpufreq(void)
 
 	if (is_x86_feature(x86_featureset, X86FSET_TSC)) {
 		/*
+		 * XXX
+		 */
+		extern uint64_t microfind_freq_tsc(uint32_t *pit_counter);
+
+		/*
 		 * We have a TSC. freq_tsc() knows how to measure the number
 		 * of clock cycles sampled against the PIT.
 		 */
 		ulong_t flags = clear_int_flag();
-		processor_clks = freq_tsc(&pit_counter);
+		processor_clks = microfind_freq_tsc(&pit_counter); /* XXX */
 		restore_int_flag(flags);
 		return (mach_calchz(pit_counter, &processor_clks));
 	} else if (x86_vendor == X86_VENDOR_Cyrix || x86_type == X86_TYPE_P5) {

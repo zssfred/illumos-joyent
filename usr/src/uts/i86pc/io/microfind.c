@@ -331,3 +331,114 @@ again:
 	 */
 	restore_int_flag(s);
 }
+
+static int
+microfind_pit_delta_tsc(boolean_t readback, uint64_t *tscs)
+{
+	int d;
+	hrtime_t start, end;
+
+	start = tsc_read();
+	if ((d = microfind_pit_delta(readback)) < 0) {
+		/*
+		 * If the counter wrapped, we cannot use this
+		 * data point in the average.
+		 * and try again.
+		 */
+		return (-1);
+	}
+	end = tsc_read();
+
+	*tscs = end - start;
+	return (d);
+}
+
+
+uint64_t
+microfind_freq_tsc(uint32_t *pit_counter)
+{
+	int ticks;
+	ulong_t s;
+	uint64_t tscs = 0;
+	unsigned int save_microdata = microdata; /* XXX */
+
+	prom_printf("microfind_freq_tsc: starting\n");
+
+	/*
+	 * Start at the smallest loop count, i.e. 1, and keep doubling
+	 * until a delay of ~10ms can be measured.
+	 */
+again:
+	ticks = -1;
+	microdata = 1;
+	for (;;) {
+		int ticksprev = ticks;
+
+		prom_printf("microfind_freq_tsc: loop microdata %d ticks %d\n",
+		    microdata, ticks);
+
+		/*
+		 * We use a trial count of 7 to attempt to smooth out jitter
+		 * caused by the scheduling of virtual machines.  We only allow
+		 * three failures, as each failure represents a wrapped counter
+		 * and an expired wall time of at least ~55ms.
+		 */
+		if ((ticks = microfind_pit_delta_tsc(B_FALSE, &tscs)) < 0) {
+			/*
+			 * The counter wrapped.  Halve the counter, restore the
+			 * previous ticks count and break out of the loop.
+			 */
+			if (microdata <= 1) {
+				/*
+				 * If the counter wrapped on the first try,
+				 * then we have some serious problems.
+				 */
+				panic("microfind_freq_tsc: pit counter always wrapped");
+			}
+			microdata = microdata >> 1;
+			ticks = ticksprev;
+			break;
+		}
+
+		if (ticks > 0x3000) {
+			/*
+			 * The loop ran for at least ~10ms worth of 0.8381us
+			 * PIT ticks.
+			 */
+			break;
+		} else if (microdata > (UINT_MAX >> 1)) {
+			/*
+			 * Doubling the loop count again would cause an
+			 * overflow.  Use what we have.
+			 */
+			break;
+		} else {
+			/*
+			 * Double and try again.
+			 */
+			microdata = microdata << 1;
+		}
+	}
+
+	prom_printf("microfind_freq_tsc: after loop microdata %d ticks %d tscs %llu\n",
+	    microdata, ticks, (long long unsigned)tscs);
+
+	if (ticks < 1) {
+		/*
+		 * If we were unable to measure a positive PIT tick count, then
+		 * we will be unable to scale the value of "microdata"
+		 * correctly.
+		 */
+		panic("microfind_freq_tsc: could not calibrate delay loop");
+	}
+
+	microdata = save_microdata;
+
+	/*
+	 * Try and leave things as we found them.
+	 */
+	microfind_pit_reprogram_for_bios();
+
+	*pit_counter = ticks;
+	return (tscs);
+}
