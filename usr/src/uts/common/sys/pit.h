@@ -59,6 +59,9 @@ extern "C" {
 #define	PIT_READBACK	0xc0		/* read-back command */
 #define	PIT_READBACKC0	0x02		/* enable read-back for counter 0 */
 
+#define	PIT_LATCH	0x00		/* counter latch command */
+#define	PIT_LATCHC0	0x00		/* enable latch for counter 0 */
+
 /* Following are used for Timer 0 */
 #define	PIT_C0		0x00		/* select counter 0 */
 #define	PIT_LOADMODE	0x30		/* load least significant byte */

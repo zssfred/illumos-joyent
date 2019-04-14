@@ -40,6 +40,7 @@
 #include <sys/archsystm.h>
 #include <sys/systm.h>
 #include <sys/machsystm.h>
+#include <sys/promif.h>
 
 /*
  * Loop count for 10 microsecond wait.  MUST be initialized for those who
@@ -79,10 +80,10 @@ microfind_pit_reprogram_for_bios(void)
  * -1 if the delay was too long to measure with the PIT.
  */
 static int
-microfind_pit_delta(void)
+microfind_pit_delta(boolean_t use_readback)
 {
 	unsigned char status;
-	int count;
+	unsigned int count;
 
 	/*
 	 * Configure PIT counter 0 in mode 0 -- "Interrupt On Terminal Count".
@@ -104,20 +105,43 @@ microfind_pit_delta(void)
 	 */
 	tenmicrosec();
 
-	/*
-	 * Latch the counter value and status for counter 0 with the read
-	 * back command.
-	 */
-	outb(PITCTL_PORT, PIT_READBACK | PIT_READBACKC0);
+	if (use_readback) {
+		/*
+		 * Latch the counter value and status for counter 0 with the
+		 * read back command.
+		 */
+		outb(PITCTL_PORT, PIT_READBACK | PIT_READBACKC0);
+	} else {
+		/*
+		 * Use the less reliable method of latching the counter
+		 * value without reading the status byte.
+		 */
+		outb(PITCTL_PORT, PIT_LATCH | PIT_LATCHC0);
+	}
 
 	/*
-	 * In read back mode, three values are read from the counter port
-	 * in order: the status byte, followed by the low byte and high
-	 * byte of the counter value.
+	 * In read back mode, three values are read from the counter port in
+	 * order: the status byte, followed by the low byte and high byte of
+	 * the counter value.  In latch mode, the status byte is not available.
 	 */
-	status = inb(PITCTR0_PORT);
+	if (use_readback) {
+		status = inb(PITCTR0_PORT);
+	}
 	count = inb(PITCTR0_PORT);
 	count |= inb(PITCTR0_PORT) << 8;
+
+	if (!use_readback) {
+		/*
+		 * When not using the read back command, the status byte is not
+		 * available to us; we have to assume the counter value is
+		 * useful.
+		 */
+		if (count >= 0xffff || count == 0) {
+			prom_printf("microfind: latch: invalid count %x\n", count);
+			return (-1);
+		}
+		goto out;
+	}
 
 	/*
 	 * Verify that the counter started counting down.  The null count
@@ -131,6 +155,7 @@ microfind_pit_delta(void)
 		 * a zero count to represent that the delay was too small
 		 * to measure.
 		 */
+		prom_printf("microfind: did not begin (status %x count %x)\n", (int)status, count);
 		return (0);
 	}
 
@@ -145,6 +170,7 @@ microfind_pit_delta(void)
 		 * value.  This means the loop count used by tenmicrosec is too
 		 * large for this CPU.
 		 */
+		prom_printf("microfind: zero too fast (status %x count %x)\n", (int)status, count);
 		return (-1);
 	}
 
@@ -153,12 +179,13 @@ microfind_pit_delta(void)
 	 * Return the number of timer ticks that passed while tenmicrosec was
 	 * running.
 	 */
-	VERIFY(count <= 0xffff);
+out:
+	VERIFY3U(count, <=, 0xffff);
 	return (0xffff - count);
 }
 
 static int
-microfind_pit_delta_avg(int trials, int allowed_failures)
+microfind_pit_delta_avg(boolean_t readback, int trials, int allowed_failures)
 {
 	int tc = 0;
 	int failures = 0;
@@ -167,7 +194,7 @@ microfind_pit_delta_avg(int trials, int allowed_failures)
 	while (tc < trials) {
 		int d;
 
-		if ((d = microfind_pit_delta()) < 0) {
+		if ((d = microfind_pit_delta(readback)) < 0) {
 			/*
 			 * If the counter wrapped, we cannot use this
 			 * data point in the average.  Record the failure
@@ -192,8 +219,11 @@ microfind_pit_delta_avg(int trials, int allowed_failures)
 void
 microfind(void)
 {
-	int ticks = -1;
+	boolean_t use_readback = B_TRUE;
+	int ticks;
 	ulong_t s;
+
+	prom_printf("microfind: starting\n");
 
 	/*
 	 * Disable interrupts while we measure the speed of the CPU.
@@ -204,9 +234,14 @@ microfind(void)
 	 * Start at the smallest loop count, i.e. 1, and keep doubling
 	 * until a delay of ~10ms can be measured.
 	 */
+again:
+	ticks = -1;
 	microdata = 1;
 	for (;;) {
 		int ticksprev = ticks;
+
+		prom_printf("microfind: loop microdata %d ticks %d\n",
+		    microdata, ticks);
 
 		/*
 		 * We use a trial count of 7 to attempt to smooth out jitter
@@ -214,8 +249,20 @@ microfind(void)
 		 * three failures, as each failure represents a wrapped counter
 		 * and an expired wall time of at least ~55ms.
 		 */
-		if ((ticks = microfind_pit_delta_avg(microdata_trial_count,
-		    microdata_allowed_failures)) < 0) {
+		if ((ticks = microfind_pit_delta_avg(use_readback,
+		    microdata_trial_count, microdata_allowed_failures)) < 0) {
+			if (use_readback) {
+				/*
+				 * In case this is a system with a PIT that
+				 * does not correctly implement the read back
+				 * command, try again with the more pedestrian
+				 * counter latch command.
+				 */
+				prom_printf("microfind: try again w/ latch\n");
+				use_readback = B_FALSE;
+				goto again;
+			}
+
 			/*
 			 * The counter wrapped.  Halve the counter, restore the
 			 * previous ticks count and break out of the loop.
@@ -252,6 +299,9 @@ microfind(void)
 		}
 	}
 
+	prom_printf("microfind: after loop microdata %d ticks %d\n",
+	    microdata, ticks);
+
 	if (ticks < 1) {
 		/*
 		 * If we were unable to measure a positive PIT tick count, then
@@ -268,6 +318,8 @@ microfind(void)
 	 * ~10us.
 	 */
 	microdata = (long long)microdata * 12LL / (long long)ticks;
+
+	prom_printf("microfind: final microdata value %d\n", microdata);
 
 	/*
 	 * Try and leave things as we found them.
