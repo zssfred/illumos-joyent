@@ -235,6 +235,7 @@ struct vioif_buf_mapping {
 	ddi_acc_handle_t	vbm_acch;
 	ddi_dma_cookie_t	vbm_dmac;
 	unsigned int		vbm_ncookies;
+	ddi_dma_cookie_t	*vbm_cookies;
 };
 
 /*
@@ -275,6 +276,8 @@ struct vioif_softc {
 
 	mac_handle_t sc_mac_handle;
 	mac_register_t *sc_macp;
+
+	boolean_t		sc_indirect;
 
 	struct virtqueue	*sc_rx_vq;
 	struct virtqueue	*sc_tx_vq;
@@ -353,6 +356,8 @@ struct vioif_softc {
 	uint64_t		sc_txfail_dma_handle;
 	uint64_t		sc_txfail_dma_bind;
 	uint64_t		sc_txfail_indirect_limit;
+
+	uint64_t		sc_stat_tx_reclaim;
 };
 
 #define	ETHER_HEADER_LEN		sizeof (struct ether_header)
@@ -401,10 +406,8 @@ static uchar_t vioif_broadcast[ETHERADDRL] = {
 
 #define	CACHE_NAME_SIZE	32
 
-static char vioif_txcopy_thresh[] =
-	"vioif_txcopy_thresh";
-static char vioif_rxcopy_thresh[] =
-	"vioif_rxcopy_thresh";
+static char vioif_txcopy_thresh[] = "vioif_txcopy_thresh";
+static char vioif_rxcopy_thresh[] = "vioif_rxcopy_thresh";
 
 static char *vioif_priv_props[] = {
 	vioif_txcopy_thresh,
@@ -412,6 +415,7 @@ static char *vioif_priv_props[] = {
 	NULL
 };
 
+static boolean_t vioif_has_feature(struct vioif_softc *, uint32_t);
 static void vioif_reclaim_restart(struct vioif_softc *);
 
 /* Add up to ddi? */
@@ -433,7 +437,7 @@ vioif_dma_reset_cookie(ddi_dma_handle_t dmah, ddi_dma_cookie_t *dmac)
 static link_state_t
 vioif_link_state(struct vioif_softc *sc)
 {
-	if (sc->sc_virtio.sc_features & VIRTIO_NET_F_STATUS) {
+	if (vioif_has_feature(sc, VIRTIO_NET_F_STATUS)) {
 		if (virtio_read_device_config_2(&sc->sc_virtio,
 		    VIRTIO_NET_CONFIG_STATUS) & VIRTIO_NET_S_LINK_UP) {
 			return (LINK_STATE_UP);
@@ -527,6 +531,25 @@ vioif_rx_construct(void *buffer, void *user_arg, int kmflags)
 
 	ASSERT(buf->rb_mapping.vbm_ncookies <= VIOIF_INDIRECT_MAX);
 
+	/*
+	 * Fetch any additional DMA cookies if any.
+	 */
+	if (buf->rb_mapping.vbm_ncookies > 1) {
+		size_t sz = (buf->rb_mapping.vbm_ncookies - 1) *
+		    sizeof (ddi_dma_cookie_t);
+
+		buf->rb_mapping.vbm_cookies = kmem_zalloc(sz, KM_SLEEP);
+
+		for (uint_t c = 1; c < buf->rb_mapping.vbm_ncookies; c++) {
+			ddi_dma_nextcookie(buf->rb_mapping.vbm_dmah,
+			    &buf->rb_mapping.vbm_cookies[c - 1]);
+		}
+
+	} else {
+		buf->rb_mapping.vbm_cookies = NULL;
+	}
+
+
 	buf->rb_sc = sc;
 	buf->rb_frtn.free_arg = (void *) buf;
 	buf->rb_frtn.free_func = vioif_rx_free;
@@ -549,6 +572,13 @@ vioif_rx_destruct(void *buffer, void *user_arg)
 
 	ASSERT(buf->rb_mapping.vbm_acch);
 	ASSERT(buf->rb_mapping.vbm_acch);
+
+	if (buf->rb_mapping.vbm_ncookies > 1) {
+		size_t sz = (buf->rb_mapping.vbm_ncookies - 1) *
+		    sizeof (ddi_dma_cookie_t);                                   
+                                                                                 
+		kmem_free(buf->rb_mapping.vbm_cookies, sz);
+	}
 
 	(void) ddi_dma_unbind_handle(buf->rb_mapping.vbm_dmah);
 	ddi_dma_mem_free(&buf->rb_mapping.vbm_acch);
@@ -576,7 +606,7 @@ vioif_free_mems(struct vioif_softc *sc)
 		/* We should not see any in-flight buffers at this point. */
 		ASSERT(!buf->tb_mp);
 
-		/* Free all the dma hdnales we allocated lazily. */
+		/* Free all the dma handles we allocated lazily. */
 		for (j = 0; buf->tb_external_mapping[j].vbm_dmah; j++)
 			ddi_dma_free_handle(
 			    &buf->tb_external_mapping[j].vbm_dmah);
@@ -603,7 +633,6 @@ vioif_alloc_mems(struct vioif_softc *sc)
 {
 	int i, txqsize, rxqsize;
 	size_t len;
-	unsigned int nsegments;
 
 	txqsize = sc->sc_tx_vq->vq_num;
 	rxqsize = sc->sc_rx_vq->vq_num;
@@ -637,7 +666,6 @@ vioif_alloc_mems(struct vioif_softc *sc)
 		if (ddi_dma_alloc_handle(sc->sc_dev,
 		    &vioif_inline_buf_dma_attr,
 		    DDI_DMA_SLEEP, NULL, &buf->tb_inline_mapping.vbm_dmah)) {
-
 			dev_err(sc->sc_dev, CE_WARN,
 			    "Can't allocate dma handle for tx buffer %d", i);
 			goto exit_tx;
@@ -647,7 +675,6 @@ vioif_alloc_mems(struct vioif_softc *sc)
 		    VIOIF_TX_INLINE_SIZE, &vioif_bufattr, DDI_DMA_STREAMING,
 		    DDI_DMA_SLEEP, NULL, &buf->tb_inline_mapping.vbm_buf,
 		    &len, &buf->tb_inline_mapping.vbm_acch)) {
-
 			dev_err(sc->sc_dev, CE_WARN,
 			    "Can't allocate tx buffer %d", i);
 			goto exit_tx;
@@ -657,15 +684,18 @@ vioif_alloc_mems(struct vioif_softc *sc)
 		if (ddi_dma_addr_bind_handle(buf->tb_inline_mapping.vbm_dmah,
 		    NULL, buf->tb_inline_mapping.vbm_buf, len,
 		    DDI_DMA_WRITE | DDI_DMA_STREAMING, DDI_DMA_SLEEP, NULL,
-		    &buf->tb_inline_mapping.vbm_dmac, &nsegments)) {
-
+		    &buf->tb_inline_mapping.vbm_dmac,
+		    &buf->tb_inline_mapping.vbm_ncookies)) {
 			dev_err(sc->sc_dev, CE_WARN,
 			    "Can't bind tx buffer %d", i);
 			goto exit_tx;
 		}
 
-		/* We asked for a single segment */
-		ASSERT(nsegments == 1);
+		/*
+		 * Make sure the entire allocation resides in a single DMA
+		 * cookie for now.
+		 */
+		VERIFY3U(buf->tb_inline_mapping.vbm_ncookies, ==, 1);
 
 		/*
 		 * We allow up to VIOIF_INDIRECT_MAX - 1 external mappings.
@@ -736,6 +766,36 @@ vioif_unicst(void *arg, const uint8_t *macaddr)
 }
 
 static uint_t
+vioif_rx_buf_ncookies(struct vioif_rx_buf *buf)
+{
+	return (buf->rb_mapping.vbm_ncookies);
+}
+
+static const ddi_dma_cookie_t *
+vioif_rx_buf_cookie(struct vioif_rx_buf *buf, uint_t cookie)
+{
+	if (cookie == 0) {
+		return (&buf->rb_mapping.vbm_dmac);
+	}
+
+	VERIFY3U(cookie, <=, buf->rb_mapping.vbm_ncookies);
+
+	return (&buf->rb_mapping.vbm_cookies[cookie - 1]);
+}
+
+static uint64_t
+vioif_rx_buf_paddr(struct vioif_rx_buf *buf, uint_t cookie)
+{
+	return (vioif_rx_buf_cookie(buf, cookie)->dmac_laddress);
+}
+
+static uint32_t
+vioif_rx_buf_size(struct vioif_rx_buf *buf, uint_t cookie)
+{
+	return (vioif_rx_buf_cookie(buf, cookie)->dmac_size);
+}
+
+static uint_t
 vioif_add_rx(struct vioif_softc *sc, int kmflag)
 {
 	uint_t num_added = 0;
@@ -757,11 +817,58 @@ vioif_add_rx(struct vioif_softc *sc, int kmflag)
 			break;
 		}
 
-		ASSERT(buf->rb_mapping.vbm_ncookies >= 1);
+		VERIFY(buf->rb_mapping.vbm_ncookies >= 1);
+
+		if (!sc->sc_indirect) {
+			struct vq_entry *veprev;
+			boolean_t done = B_FALSE;
+
+			/*
+			 * Place each cookie in a new (direct) descriptor.  In the
+			 * absence of the mergeable RX buffer feature, we must
+			 * put the virtio net header in a separate descriptor
+			 * from the rest of the buffers.
+			 */
+			virtio_ve_set(ve, vioif_rx_buf_paddr(buf, 0),
+			    sizeof (struct virtio_net_hdr), B_FALSE);
+
+			veprev = ve;
+			for (uint_t n = 0; n < vioif_rx_buf_ncookies(buf);
+			    n++) {
+				struct vq_entry *venew;
+				size_t sz;
+
+				if ((venew = vq_alloc_entry(sc->sc_rx_vq)) ==
+				    NULL) {
+					done = B_TRUE;
+					virtio_free_chain(ve);
+					break;
+				}
+				virtio_ventry_stick(veprev, venew);
+
+				sz = vioif_rx_buf_size(buf, n);
+				if (n == 0) {
+					sz -= sizeof (struct virtio_net_hdr);
+				}
+				virtio_ve_set(venew, vioif_rx_buf_paddr(buf, n),
+				    vioif_rx_buf_size(buf, n), B_FALSE);
+
+				veprev = venew;
+			}
+
+			if (done) {
+				break;
+			}
+
+			virtio_push_chain(ve, B_FALSE);
+			num_added++;
+			continue;
+		}
 
 		/*
 		 * For an unknown reason, the virtio_net_hdr must be placed
 		 * as a separate virtio queue entry.
+		 * XXX Is that actually true?
 		 */
 		virtio_ve_add_indirect_buf(ve,
 		    buf->rb_mapping.vbm_dmac.dmac_laddress,
@@ -814,15 +921,14 @@ static uint_t
 vioif_process_rx(struct vioif_softc *sc)
 {
 	struct vq_entry *ve;
-	struct vioif_rx_buf *buf;
 	mblk_t *mphead = NULL, *lastmp = NULL, *mp;
 	uint32_t len;
 	uint_t num_processed = 0;
 
 	while ((ve = virtio_pull_chain(sc->sc_rx_vq, &len))) {
+		struct vioif_rx_buf *buf = sc->sc_rxbufs[ve->qe_index];
 
-		buf = sc->sc_rxbufs[ve->qe_index];
-		ASSERT(buf);
+		VERIFY(buf != NULL);
 
 		if (len < sizeof (struct virtio_net_hdr)) {
 			sc->sc_rxfail_chain_undersize++;
@@ -837,7 +943,7 @@ vioif_process_rx(struct vioif_softc *sc)
 		 * cookie and reuse the buffers. For bigger ones, we loan
 		 * the buffers upstream.
 		 */
-		if (len < sc->sc_rxcopy_thresh) {
+		if (1 || len < sc->sc_rxcopy_thresh) {
 			mp = allocb(len, 0);
 			if (mp == NULL) {
 				sc->sc_norecvbuf++;
@@ -898,6 +1004,9 @@ vioif_process_rx(struct vioif_softc *sc)
 		num_processed++;
 	}
 
+	dev_err(sc->sc_dev, CE_WARN, "vioif_process_rx: %u processed",
+	    num_processed);
+
 	if (mphead != NULL) {
 		mac_rx(sc->sc_mac_handle, NULL, mphead);
 	}
@@ -915,9 +1024,6 @@ vioif_reclaim_used_tx(struct vioif_softc *sc)
 	while ((ve = virtio_pull_chain(sc->sc_tx_vq, &len))) {
 		struct vioif_tx_buf *buf;
 		mblk_t *mp;
-
-		/* We don't chain descriptors for tx, so don't expect any. */
-		ASSERT(ve->qe_next == NULL);
 
 		buf = &sc->sc_txbufs[ve->qe_index];
 		mp = buf->tb_mp;
@@ -943,6 +1049,7 @@ vioif_reclaim_used_tx(struct vioif_softc *sc)
 		boolean_t do_update = B_FALSE;
 
 		mutex_enter(&sc->sc_tx_lock);
+		sc->sc_stat_tx_reclaim += num_reclaimed;
 		if (sc->sc_tx_corked) {
 			/*
 			 * TX was corked on a lack of available descriptors.
@@ -960,6 +1067,11 @@ vioif_reclaim_used_tx(struct vioif_softc *sc)
 		if (do_update) {
 			mac_tx_update(sc->sc_mac_handle);
 		}
+	}
+
+	if (num_reclaimed > 0) {
+		dev_err(sc->sc_dev, CE_WARN,
+		    "vioif_reclaim_used_tx: reclaimed %u", num_reclaimed);
 	}
 
 	return (num_reclaimed);
@@ -1041,7 +1153,7 @@ vioif_tx_drain(struct vioif_softc *sc)
 
 /* sc will be used to update stat counters. */
 /* ARGSUSED */
-static inline void
+static inline int
 vioif_tx_inline(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
     size_t msg_size)
 {
@@ -1054,9 +1166,38 @@ vioif_tx_inline(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
 	mcopymsg(mp, buf->tb_inline_mapping.vbm_buf +
 	    sizeof (struct virtio_net_hdr));
 
-	virtio_ve_add_indirect_buf(ve,
-	    buf->tb_inline_mapping.vbm_dmac.dmac_laddress +
-	    sizeof (struct virtio_net_hdr), msg_size, B_TRUE);
+	if (sc->sc_indirect) {
+		virtio_ve_add_indirect_buf(ve,
+		    buf->tb_inline_mapping.vbm_dmac.dmac_laddress +
+		    sizeof (struct virtio_net_hdr), msg_size, B_TRUE);
+	} else {
+		struct vq_entry *venew = vq_alloc_entry(sc->sc_tx_vq);
+		if (venew == NULL) {
+			return (DDI_FAILURE);
+		}
+		virtio_ventry_stick(ve, venew);
+
+		virtio_ve_set(venew,
+		    buf->tb_inline_mapping.vbm_dmac.dmac_laddress +
+		    sizeof (struct virtio_net_hdr), msg_size, B_TRUE);
+
+#if 0
+		/*
+		 * Put the header and the inline packet contents in the same
+		 * (direct) descriptor.
+		 */
+		size_t sz = sizeof (struct virtio_net_hdr) + msg_size;
+
+		dev_err(sc->sc_dev, CE_WARN, "vioif_tx_inline: sz %llu",
+		    (long long unsigned)sz);
+		virtio_ve_set(ve, buf->tb_inline_mapping.vbm_dmac.dmac_laddress,
+		    sz, B_TRUE);
+#endif
+		dev_err(sc->sc_dev, CE_WARN, "vioif_tx_inline: sz %llu",
+		    (long long unsigned)sz);
+	}
+
+	return (DDI_SUCCESS);
 }
 
 static inline int
@@ -1096,7 +1237,7 @@ vioif_tx_external(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
 	i = 0;
 	nmp = mp;
 
-	while (nmp) {
+	while (nmp != NULL) {
 		size_t len;
 		ddi_dma_cookie_t dmac;
 		unsigned int ncookies;
@@ -1129,18 +1270,71 @@ vioif_tx_external(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
 			goto exit_bind;
 		}
 
-		/* Check if we still fit into the indirect table. */
-		if (virtio_ve_indirect_available(ve) < ncookies) {
-			sc->sc_txfail_indirect_limit++;
-			sc->sc_notxbuf++;
-			sc->sc_oerrors++;
+		if (!sc->sc_indirect) {
+			/*
+			 * We are using direct descriptors.  Allocate a new
+			 * one for each cookie in the external mapping and
+			 * attach it to the end of the chain.
+			 */
+			struct vq_entry *veprev = vq_alloc_entry(sc->sc_tx_vq);
+			if (veprev == NULL) {
+				sc->sc_txfail_indirect_limit++; /* XXX */
+				sc->sc_notxbuf++;
+				sc->sc_oerrors++;
 
-			ret = DDI_FAILURE;
-			goto exit_limit;
+				ret = DDI_FAILURE;
+				goto exit_limit;
+			}
+
+			virtio_ve_set(veprev, dmac.dmac_laddress,
+			    dmac.dmac_size, B_TRUE);
+			virtio_ventry_stick(ve, veprev);
+
+			/*
+			 * Process any additional cookies:
+			 */
+			for (uint_t n = 1; n < ncookies; n++) {
+				struct vq_entry *venew;
+				ddi_dma_cookie_t xdmac;
+
+				ddi_dma_nextcookie(
+				    buf->tb_external_mapping[i].vbm_dmah,
+				    &xdmac);
+
+				if ((venew = vq_alloc_entry(sc->sc_tx_vq)) ==
+				    NULL) {
+					sc->sc_txfail_indirect_limit++; /* XXX */
+					sc->sc_notxbuf++;
+					sc->sc_oerrors++;
+
+					ret = DDI_FAILURE;
+					goto exit_limit;
+				}
+				virtio_ventry_stick(veprev, venew);
+
+				virtio_ve_set(venew, xdmac.dmac_laddress,
+				    xdmac.dmac_size, B_TRUE);
+
+				veprev = venew;
+			}
+
+			dev_err(sc->sc_dev, CE_WARN, "vioif_tx_external: %u "
+			    "cookies", ncookies);
+
+		} else {
+			/* Check if we still fit into the indirect table. */
+			if (virtio_ve_indirect_available(ve) < ncookies) {
+				sc->sc_txfail_indirect_limit++;
+				sc->sc_notxbuf++;
+				sc->sc_oerrors++;
+
+				ret = DDI_FAILURE;
+				goto exit_limit;
+			}
+
+			virtio_ve_add_cookie(ve, buf->tb_external_mapping[i].vbm_dmah,
+			    dmac, ncookies, B_TRUE);
 		}
-
-		virtio_ve_add_cookie(ve, buf->tb_external_mapping[i].vbm_dmah,
-		    dmac, ncookies, B_TRUE);
 
 		nmp = nmp->b_cont;
 		i++;
@@ -1153,6 +1347,7 @@ vioif_tx_external(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
 	return (DDI_SUCCESS);
 
 exit_limit:
+	dev_err(sc->sc_dev, CE_WARN, "vioif_tx_external: no more descs");
 exit_bind:
 exit_lazy_alloc:
 
@@ -1193,6 +1388,7 @@ vioif_send(struct vioif_softc *sc, mblk_t *mp)
 	if (ve == NULL) {
 		sc->sc_notxbuf++;
 		/* Out of free descriptors - try later. */
+		dev_err(sc->sc_dev, CE_WARN, "vioif_send: out of desc");
 		return (B_FALSE);
 	}
 	buf = &sc->sc_txbufs[ve->qe_index];
@@ -1235,9 +1431,21 @@ vioif_send(struct vioif_softc *sc, mblk_t *mp)
 		net_header->gso_size = (uint16_t)lso_mss;
 	}
 
-	virtio_ve_add_indirect_buf(ve,
-	    buf->tb_inline_mapping.vbm_dmac.dmac_laddress,
-	    sizeof (struct virtio_net_hdr), B_TRUE);
+	if (sc->sc_indirect) {
+		virtio_ve_add_indirect_buf(ve,
+		    buf->tb_inline_mapping.vbm_dmac.dmac_laddress,
+		    sizeof (struct virtio_net_hdr), B_TRUE);
+	} else {
+		/*
+		 * For now, set up our first direct descriptor so that it just
+		 * references the header.  If we use the inline buffer later,
+		 * we'll reset this value.  If we add external buffers later,
+		 * they'll be linked to this one.
+		 */
+		virtio_ve_set(ve,
+		    buf->tb_inline_mapping.vbm_dmac.dmac_laddress,
+		    sizeof (struct virtio_net_hdr), B_TRUE);
+	}
 
 	/* meanwhile update the statistic */
 	if (mp->b_rptr[0] & 0x1) {
@@ -1252,13 +1460,14 @@ vioif_send(struct vioif_softc *sc, mblk_t *mp)
 	 * get mapped using the mapped buffer.
 	 */
 	if (msg_size < sc->sc_txcopy_thresh) {
-		vioif_tx_inline(sc, ve, mp, msg_size);
+		ret = vioif_tx_inline(sc, ve, mp, msg_size);
 	} else {
 		/* statistic gets updated by vioif_tx_external when fail */
 		ret = vioif_tx_external(sc, ve, mp, msg_size);
-		if (ret != DDI_SUCCESS)
-			goto exit_tx_external;
 	}
+
+	if (ret != DDI_SUCCESS)
+		goto exit_tx_external;
 
 	virtio_push_chain(ve, B_TRUE);
 
@@ -1268,8 +1477,12 @@ vioif_send(struct vioif_softc *sc, mblk_t *mp)
 	return (B_TRUE);
 
 exit_tx_external:
+	/*
+	 * Free the whole chain, including any subsequent descriptors that
+	 * might have been allocated by vioif_tx_external().
+	 */
+	virtio_free_chain(ve);
 
-	vq_free_entry(sc->sc_tx_vq, ve);
 	/*
 	 * vioif_tx_external can fail when the buffer does not fit into the
 	 * indirect descriptor table. Free the mp. I don't expect this ever
@@ -1662,11 +1875,12 @@ vioif_dev_features(struct vioif_softc *sc)
 	vioif_show_features(sc, "Negotiated features: ",
 	    sc->sc_virtio.sc_features);
 
-	if (!(sc->sc_virtio.sc_features & VIRTIO_F_RING_INDIRECT_DESC)) {
-		dev_err(sc->sc_dev, CE_WARN,
-		    "Host does not support RING_INDIRECT_DESC. Cannot attach.");
-		return (DDI_FAILURE);
-	}
+#if 0
+	sc->sc_indirect = vioif_has_feature(sc, VIRTIO_F_RING_INDIRECT_DESC) ?
+	    B_TRUE : B_FALSE;
+#else
+	sc->sc_indirect = B_FALSE;
+#endif
 
 	return (DDI_SUCCESS);
 }
@@ -1694,7 +1908,7 @@ static void
 vioif_get_mac(struct vioif_softc *sc)
 {
 	int i;
-	if (sc->sc_virtio.sc_features & VIRTIO_NET_F_MAC) {
+	if (vioif_has_feature(sc, VIRTIO_NET_F_MAC)) {
 		for (i = 0; i < ETHERADDRL; i++) {
 			sc->sc_mac[i] = virtio_read_device_config_1(
 			    &sc->sc_virtio,
@@ -1816,6 +2030,7 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 	struct virtio_softc *vsc;
 	mac_register_t *macp;
 	char cache_name[CACHE_NAME_SIZE];
+	unsigned int indirect_count;
 
 	instance = ddi_get_instance(devinfo);
 
@@ -1865,9 +2080,10 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_ACK);
 	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_DRIVER);
 
-	ret = vioif_dev_features(sc);
-	if (ret)
+	if (vioif_dev_features(sc) != DDI_SUCCESS) {
+		dev_err(sc->sc_dev, CE_WARN, "Feature failure");
 		goto exit_features;
+	}
 
 	vsc->sc_nvqs = vioif_has_feature(sc, VIRTIO_NET_F_CTRL_VQ) ? 3 : 2;
 
@@ -1893,14 +2109,20 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 	 */
 	vioif_get_mac(sc);
 
+	/*
+	 * If the host supports indirect descriptors, allocate the virtqueues
+	 * with them.
+	 */
+	indirect_count = sc->sc_indirect ? VIOIF_INDIRECT_MAX : 0;
+
 	sc->sc_rx_vq = virtio_alloc_vq(&sc->sc_virtio, 0,
-	    VIOIF_RX_QLEN, VIOIF_INDIRECT_MAX, "rx");
+	    VIOIF_RX_QLEN, indirect_count, "rx");
 	if (!sc->sc_rx_vq)
 		goto exit_alloc1;
 	virtio_stop_vq_intr(sc->sc_rx_vq);
 
 	sc->sc_tx_vq = virtio_alloc_vq(&sc->sc_virtio, 1,
-	    VIOIF_TX_QLEN, VIOIF_INDIRECT_MAX, "tx");
+	    VIOIF_TX_QLEN, indirect_count, "tx");
 	if (!sc->sc_tx_vq)
 		goto exit_alloc2;
 	virtio_stop_vq_intr(sc->sc_tx_vq);
@@ -1929,8 +2151,10 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 
 	vioif_check_features(sc);
 
-	if (vioif_alloc_mems(sc) != 0)
+	if (vioif_alloc_mems(sc) != 0) {
+		dev_err(devinfo, CE_WARN, "Failed to allocate memory");
 		goto exit_alloc_mems;
+	}
 
 	if ((macp = mac_alloc(MAC_VERSION)) == NULL) {
 		dev_err(devinfo, CE_WARN, "Failed to allocate a mac_register");
@@ -1966,6 +2190,7 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 	}
 
 	mac_link_update(sc->sc_mac_handle, LINK_STATE_UP);
+	dev_err(devinfo, CE_WARN, "vioif_attach: success");
 	return (DDI_SUCCESS);
 
 exit_enable_ints:

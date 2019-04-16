@@ -197,6 +197,7 @@ void virtio_ve_add_indirect_buf(struct vq_entry *qe, uint64_t paddr,
 void virtio_ve_set(struct vq_entry *qe, uint64_t paddr, uint32_t len,
 		boolean_t write);
 
+void virtio_ventry_stick(struct vq_entry *, struct vq_entry *);
 void virtio_push_chain(struct vq_entry *qe, boolean_t sync);
 struct vq_entry *virtio_pull_chain(struct virtqueue *vq, uint32_t *len);
 void virtio_free_chain(struct vq_entry *ve);
