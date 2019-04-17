@@ -864,7 +864,11 @@ conskbd_ioctl(queue_t *q, mblk_t *mp)
 			return;
 		}
 
+#if 0
 		abort_enable = *(int *)mp->b_cont->b_rptr;
+#else
+		abort_enable = KIOCABORTALTERNATE;
+#endif
 		miocack(q, mp, 0, 0);
 		break;
 

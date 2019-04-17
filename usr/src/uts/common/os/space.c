@@ -256,7 +256,7 @@ dev_t	rwsconsdev;
  * Platforms may override the default software policy, if such hardware
  * (e.g. keyswitches with a secure position) exists.
  */
-int abort_enable = KIOCABORTENABLE;
+int abort_enable = KIOCABORTALTERNATE;
 
 /* from cpc.c */
 uint_t kcpc_key;	/* TSD key for CPU performance counter context */
