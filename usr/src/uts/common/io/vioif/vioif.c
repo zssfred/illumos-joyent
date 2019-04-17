@@ -1006,8 +1006,10 @@ vioif_process_rx(struct vioif_softc *sc)
 		num_processed++;
 	}
 
+#if 0
 	dev_err(sc->sc_dev, CE_WARN, "vioif_process_rx: %u processed",
 	    num_processed);
+#endif
 
 	if (mphead != NULL) {
 		mac_rx(sc->sc_mac_handle, NULL, mphead);
@@ -1071,10 +1073,12 @@ vioif_reclaim_used_tx(struct vioif_softc *sc)
 		}
 	}
 
+#if 0
 	if (num_reclaimed > 0) {
 		dev_err(sc->sc_dev, CE_WARN,
 		    "vioif_reclaim_used_tx: reclaimed %u", num_reclaimed);
 	}
+#endif
 
 	return (num_reclaimed);
 }
@@ -1184,19 +1188,9 @@ vioif_tx_inline(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
 		    sizeof (struct virtio_net_hdr), msg_size, B_TRUE);
 
 #if 0
-		/*
-		 * Put the header and the inline packet contents in the same
-		 * (direct) descriptor.
-		 */
-		size_t sz = sizeof (struct virtio_net_hdr) + msg_size;
-
-		dev_err(sc->sc_dev, CE_WARN, "vioif_tx_inline: sz %llu",
-		    (long long unsigned)sz);
-		virtio_ve_set(ve, buf->tb_inline_mapping.vbm_dmac.dmac_laddress,
-		    sz, B_TRUE);
-#endif
 		dev_err(sc->sc_dev, CE_WARN, "vioif_tx_inline: sz %llu",
 		    (long long unsigned)msg_size);
+#endif
 	}
 
 	return (DDI_SUCCESS);
@@ -1320,8 +1314,10 @@ vioif_tx_external(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
 				veprev = venew;
 			}
 
+#if 0
 			dev_err(sc->sc_dev, CE_WARN, "vioif_tx_external: %u "
 			    "cookies", ncookies);
+#endif
 
 		} else {
 			/* Check if we still fit into the indirect table. */

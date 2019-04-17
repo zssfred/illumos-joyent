@@ -834,8 +834,13 @@ virtio_register_msi(struct virtio_softc *sc,
 
 	/* If both MSI and MSI-x are reported, prefer MSI-x. */
 	int_type = DDI_INTR_TYPE_MSI;
+#if 0
+	/*
+	 * XXX Do not use MSI-X for now, because it doesn't seem to work...
+	 */
 	if (intr_types & DDI_INTR_TYPE_MSIX)
 		int_type = DDI_INTR_TYPE_MSIX;
+#endif
 
 	/* Walk the handler table to get the number of handlers. */
 	for (handler_count = 0;
@@ -847,10 +852,13 @@ virtio_register_msi(struct virtio_softc *sc,
 	if (config_handler != NULL)
 		handler_count++;
 
+	dev_err(sc->sc_dev, CE_WARN, "found %d handlers", handler_count);
+
 	/* Number of MSIs supported by the device. */
 	ret = ddi_intr_get_nintrs(sc->sc_dev, int_type, &count);
 	if (ret != DDI_SUCCESS) {
-		dev_err(sc->sc_dev, CE_WARN, "ddi_intr_get_nintrs failed");
+		dev_err(sc->sc_dev, CE_WARN, "ddi_intr_get_nintrs failed "
+		    "(%d)", ret);
 		return (ret);
 	}
 
@@ -1071,6 +1079,8 @@ virtio_register_ints(struct virtio_softc *sc,
 		dev_err(sc->sc_dev, CE_WARN, "Can't get supported int types");
 		goto out_inttype;
 	}
+
+	dev_err(sc->sc_dev, CE_WARN, "supported interrupt types %x", intr_types);
 
 	/* If we have msi, let's use them. */
 	if (intr_types & (DDI_INTR_TYPE_MSIX | DDI_INTR_TYPE_MSI)) {
