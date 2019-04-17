@@ -837,6 +837,7 @@ vioif_add_rx(struct vioif_softc *sc, int kmflag)
 			    n++) {
 				struct vq_entry *venew;
 				size_t sz;
+				uint64_t pa;
 
 				if ((venew = vq_alloc_entry(sc->sc_rx_vq)) ==
 				    NULL) {
@@ -847,11 +848,12 @@ vioif_add_rx(struct vioif_softc *sc, int kmflag)
 				virtio_ventry_stick(veprev, venew);
 
 				sz = vioif_rx_buf_size(buf, n);
+				pa = vioif_rx_buf_paddr(buf, n);
 				if (n == 0) {
+					pa += sizeof (struct virtio_net_hdr);
 					sz -= sizeof (struct virtio_net_hdr);
 				}
-				virtio_ve_set(venew, vioif_rx_buf_paddr(buf, n),
-				    vioif_rx_buf_size(buf, n), B_FALSE);
+				virtio_ve_set(venew, pa, sz, B_FALSE);
 
 				veprev = venew;
 			}
@@ -1194,7 +1196,7 @@ vioif_tx_inline(struct vioif_softc *sc, struct vq_entry *ve, mblk_t *mp,
 		    sz, B_TRUE);
 #endif
 		dev_err(sc->sc_dev, CE_WARN, "vioif_tx_inline: sz %llu",
-		    (long long unsigned)sz);
+		    (long long unsigned)msg_size);
 	}
 
 	return (DDI_SUCCESS);
