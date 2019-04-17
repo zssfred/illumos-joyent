@@ -1267,16 +1267,11 @@ mach_getcpufreq(void)
 
 	if (is_x86_feature(x86_featureset, X86FSET_TSC)) {
 		/*
-		 * XXX
-		 */
-		extern uint64_t microfind_freq_tsc(uint32_t *pit_counter);
-
-		/*
 		 * We have a TSC. freq_tsc() knows how to measure the number
 		 * of clock cycles sampled against the PIT.
 		 */
 		ulong_t flags = clear_int_flag();
-		processor_clks = microfind_freq_tsc(&pit_counter); /* XXX */
+		processor_clks = freq_tsc(&pit_counter);
 		restore_int_flag(flags);
 		return (mach_calchz(pit_counter, &processor_clks));
 	} else if (x86_vendor == X86_VENDOR_Cyrix || x86_type == X86_TYPE_P5) {
