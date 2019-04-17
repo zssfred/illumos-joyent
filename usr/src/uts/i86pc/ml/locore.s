@@ -1737,9 +1737,7 @@ freq_tsc_perf_loop:
 	movl	%eax, %ecx
 
 	/ latch the PIT counter and status
-	movb	$_CONST(PIT_READBACK|PIT_READBACKC0|PIT_RB_NOCOUNT), %al
-	outb	$PITCTL_PORT
-	movb	$_CONST(PIT_READBACK|PIT_READBACKC0|PIT_RB_NOSTATUS), %al
+	movb	$_CONST(PIT_READBACK|PIT_READBACKC0), %al
 	outb	$PITCTL_PORT
 
 	/ remember if the icache has been warmed
@@ -1942,9 +1940,7 @@ freq_tsc_perf_loop:
 	movl	%eax, %ecx
 
 	/ latch the PIT counter and status
-	movb	$_CONST(PIT_READBACK|PIT_READBACKC0|PIT_RB_NOCOUNT), %al
-	outb	$PITCTL_PORT
-	movb	$_CONST(PIT_READBACK|PIT_READBACKC0|PIT_RB_NOSTATUS), %al
+	movb	$_CONST(PIT_READBACK|PIT_READBACKC0), %al
 	outb	$PITCTL_PORT
 
 	/ remember if the icache has been warmed
@@ -2135,9 +2131,7 @@ freq_notsc_perf_loop:
 	loop	freq_notsc_perf_loop
 
 	/ latch the PIT counter and status
-	movb	$_CONST(PIT_READBACK|PIT_READBACKC0|PIT_RB_NOCOUNT), %al
-	outb	$PITCTL_PORT
-	movb	$_CONST(PIT_READBACK|PIT_READBACKC0|PIT_RB_NOSTATUS), %al
+	movb	$_CONST(PIT_READBACK|PIT_READBACKC0), %al
 	outb	$PITCTL_PORT
 
 	/ read the PIT status
