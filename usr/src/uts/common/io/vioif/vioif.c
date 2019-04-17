@@ -55,6 +55,7 @@
 #include <sys/modctl.h>
 #include <sys/debug.h>
 #include <sys/pci.h>
+#include <sys/pci_cap.h>
 #include <sys/ethernet.h>
 #include <sys/vlan.h>
 
@@ -575,8 +576,8 @@ vioif_rx_destruct(void *buffer, void *user_arg)
 
 	if (buf->rb_mapping.vbm_ncookies > 1) {
 		size_t sz = (buf->rb_mapping.vbm_ncookies - 1) *
-		    sizeof (ddi_dma_cookie_t);                                   
-                                                                                 
+		    sizeof (ddi_dma_cookie_t);
+                                                                               
 		kmem_free(buf->rb_mapping.vbm_cookies, sz);
 	}
 
@@ -1877,6 +1878,42 @@ vioif_device_init(struct vioif_softc *sc)
 	uint16_t subvenid = pci_config_get16(pci_hdl, PCI_CONF_SUBVENID);
 	uint16_t subsysid = pci_config_get16(pci_hdl, PCI_CONF_SUBSYSID);
 
+	/*
+	 * XXX Let's look at the capabilities...
+	 */
+	uint16_t status = pci_config_get16(pci_hdl, PCI_CONF_STAT);
+	if (status == PCI_CAP_EINVAL16 || !(status & PCI_STAT_CAP)) {
+		dev_err(sc->sc_dev, CE_WARN, "%s: no caps!",
+		    "vioif_device_init");
+		goto skip_caps;
+	}
+
+	uint16_t base = PCI_CONF_CAP_PTR;
+
+	dev_err(sc->sc_dev, CE_WARN, "locating caps...");
+	uint_t n = 0;
+	for (base = pci_config_get8(pci_hdl, base);
+	    base != 0 && base != PCI_CAP_EINVAL8;
+	    base = pci_config_get8(pci_hdl, base + PCI_CAP_NEXT_PTR)) {
+		uint8_t id = pci_config_get8(pci_hdl, base + PCI_CAP_ID);
+		uint8_t next = pci_config_get8(pci_hdl, base + PCI_CAP_NEXT_PTR);
+		dev_err(sc->sc_dev, CE_WARN, "cap[%u] id 0x%x next 0x%x", n, (uint_t)id, (uint_t)next);
+		if (id == PCI_CAP_ID_VS) {
+			uint8_t len = pci_config_get8(pci_hdl, base + 2);
+			uint8_t typ = pci_config_get8(pci_hdl, base + 3);
+			uint8_t bar = pci_config_get8(pci_hdl, base + 4);
+			uint32_t offs = pci_config_get32(pci_hdl, base + 8);
+			uint32_t slen = pci_config_get32(pci_hdl, base + 12);
+
+			dev_err(sc->sc_dev, CE_WARN, "vendor cap[%u]: len %u typ 0x%x bar %u "
+			    "offs 0x%x len %u", n, (uint_t)len, (uint_t)typ, (uint_t)bar,
+			    offs, slen);
+		}
+		n++;
+	}
+	dev_err(sc->sc_dev, CE_WARN, "caps all done");
+
+skip_caps:
 	pci_config_teardown(&pci_hdl);
 
 	dev_err(sc->sc_dev, CE_WARN, "%s: venid %x devid %x revid %x "
