@@ -58,6 +58,8 @@ extern "C" {
 
 #define	PIT_READBACK	0xc0		/* read-back command */
 #define	PIT_READBACKC0	0x02		/* enable read-back for counter 0 */
+#define	PIT_RB_NOCOUNT	0x20		/* do not latch status in read-back */
+#define	PIT_RB_NOSTATUS	0x10		/* do not latch count in read-back */
 
 #define	PIT_LATCH	0x00		/* counter latch command */
 #define	PIT_LATCHC0	0x00		/* enable latch for counter 0 */

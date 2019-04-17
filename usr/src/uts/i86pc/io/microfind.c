@@ -110,7 +110,8 @@ microfind_pit_delta(boolean_t use_readback)
 		 * Latch the counter value and status for counter 0 with the
 		 * read back command.
 		 */
-		outb(PITCTL_PORT, PIT_READBACK | PIT_READBACKC0);
+		outb(PITCTL_PORT, PIT_READBACK | PIT_READBACKC0 | PIT_RB_NOCOUNT);
+		outb(PITCTL_PORT, PIT_READBACK | PIT_READBACKC0 | PIT_RB_NOSTATUS);
 	} else {
 		/*
 		 * Use the less reliable method of latching the counter
