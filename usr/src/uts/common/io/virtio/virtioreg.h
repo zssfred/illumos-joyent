@@ -85,23 +85,9 @@
 #define	VIRTIO_CONFIG_DEVICE_FEATURES		0 /* 32bit */
 #define	VIRTIO_CONFIG_GUEST_FEATURES		4 /* 32bit */
 
-/*
- * Virtio feature bits are split into bit ranges for different sets of
- * features.
- *
- *	0 to 23		device type-specific features (e.g., for vioif)
- *	24 to 37	extensions to queue and feature negotiation
- *	38 to 63	reserved
- */
-#define	VIRTIO_F_RING_INDIRECT_DESC		(1ULL << 28)
-#define	VIRTIO_F_RING_EVENT_IDX			(1ULL << 29)
-#define	VIRTIO_F_VERSION_1			(1ULL << 32)
-#define	VIRTIO_F_ACCESS_PLATFORM		(1ULL << 33)
-#define	VIRTIO_F_RING_PACKED			(1ULL << 34)
-#define	VIRTIO_F_IN_ORDER			(1ULL << 35)
-#define	VIRTIO_F_ORDER_PLATFORM			(1ULL << 36)
-#define	VIRTIO_F_SR_IOV				(1ULL << 37)
-#define	VIRTIO_F_NOTIFICATION_DATA		(1ULL << 38)
+#define	VIRTIO_F_NOTIFY_ON_EMPTY		(1<<24)
+#define	VIRTIO_F_RING_INDIRECT_DESC		(1<<28)
+#define	VIRTIO_F_BAD_FEATURE			(1<<30)
 
 #define	VIRTIO_CONFIG_QUEUE_ADDRESS		8 /* 32bit */
 #define	VIRTIO_CONFIG_QUEUE_SIZE		12 /* 16bit */
@@ -113,8 +99,6 @@
 #define	VIRTIO_CONFIG_DEVICE_STATUS_ACK		1
 #define	VIRTIO_CONFIG_DEVICE_STATUS_DRIVER	2
 #define	VIRTIO_CONFIG_DEVICE_STATUS_DRIVER_OK	4
-#define	VIRTIO_CONFIG_DEVICE_STATUS_FEATURES_OK	8
-#define	VIRTIO_CONFIG_DEVICE_STATUS_NEEDS_RESET	64
 #define	VIRTIO_CONFIG_DEVICE_STATUS_FAILED	128
 
 #define	VIRTIO_CONFIG_ISR_STATUS		19 /* 8bit */

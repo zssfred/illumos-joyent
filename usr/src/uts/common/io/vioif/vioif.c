@@ -55,7 +55,6 @@
 #include <sys/modctl.h>
 #include <sys/debug.h>
 #include <sys/pci.h>
-#include <sys/pci_cap.h>
 #include <sys/ethernet.h>
 #include <sys/vlan.h>
 
@@ -576,8 +575,8 @@ vioif_rx_destruct(void *buffer, void *user_arg)
 
 	if (buf->rb_mapping.vbm_ncookies > 1) {
 		size_t sz = (buf->rb_mapping.vbm_ncookies - 1) *
-		    sizeof (ddi_dma_cookie_t);
-                                                                               
+		    sizeof (ddi_dma_cookie_t);                                   
+                                                                                 
 		kmem_free(buf->rb_mapping.vbm_cookies, sz);
 	}
 
@@ -1857,94 +1856,19 @@ vioif_show_features(struct vioif_softc *sc, const char *prefix,
 	    VIRTIO_NET_FEATURE_BITS);
 }
 
-
-
+/*
+ * Find out which features are supported by the device and
+ * choose which ones we wish to use.
+ */
 static int
-vioif_device_init(struct vioif_softc *sc)
+vioif_dev_features(struct vioif_softc *sc)
 {
 	uint32_t host_features;
-	ddi_acc_handle_t pci_hdl;
 
-	if (pci_config_setup(sc->sc_dev, &pci_hdl) != DDI_SUCCESS) {
-		return (DDI_FAILURE);
-	}
-
-	/*
-	 * XXX Let's take a look at the device...
-	 */
-	uint16_t venid = pci_config_get16(pci_hdl, PCI_CONF_VENID);
-	uint16_t devid = pci_config_get16(pci_hdl, PCI_CONF_DEVID);
-	uint8_t revid = pci_config_get8(pci_hdl, PCI_CONF_REVID);
-	uint16_t subvenid = pci_config_get16(pci_hdl, PCI_CONF_SUBVENID);
-	uint16_t subsysid = pci_config_get16(pci_hdl, PCI_CONF_SUBSYSID);
-
-	/*
-	 * XXX Let's look at the capabilities...
-	 */
-	uint16_t status = pci_config_get16(pci_hdl, PCI_CONF_STAT);
-	if (status == PCI_CAP_EINVAL16 || !(status & PCI_STAT_CAP)) {
-		dev_err(sc->sc_dev, CE_WARN, "%s: no caps!",
-		    "vioif_device_init");
-		goto skip_caps;
-	}
-
-	uint16_t base = PCI_CONF_CAP_PTR;
-
-	dev_err(sc->sc_dev, CE_WARN, "locating caps...");
-	uint_t n = 0;
-	for (base = pci_config_get8(pci_hdl, base);
-	    base != 0 && base != PCI_CAP_EINVAL8;
-	    base = pci_config_get8(pci_hdl, base + PCI_CAP_NEXT_PTR)) {
-		uint8_t id = pci_config_get8(pci_hdl, base + PCI_CAP_ID);
-		uint8_t next = pci_config_get8(pci_hdl, base + PCI_CAP_NEXT_PTR);
-		dev_err(sc->sc_dev, CE_WARN, "cap[%u] id 0x%x next 0x%x", n, (uint_t)id, (uint_t)next);
-		if (id == PCI_CAP_ID_VS) {
-			uint8_t len = pci_config_get8(pci_hdl, base + 2);
-			uint8_t typ = pci_config_get8(pci_hdl, base + 3);
-			uint8_t bar = pci_config_get8(pci_hdl, base + 4);
-			uint32_t offs = pci_config_get32(pci_hdl, base + 8);
-			uint32_t slen = pci_config_get32(pci_hdl, base + 12);
-
-			dev_err(sc->sc_dev, CE_WARN, "vendor cap[%u]: len %u typ 0x%x bar %u "
-			    "offs 0x%x len %u", n, (uint_t)len, (uint_t)typ, (uint_t)bar,
-			    offs, slen);
-		}
-		n++;
-	}
-	dev_err(sc->sc_dev, CE_WARN, "caps all done");
-
-skip_caps:
-	pci_config_teardown(&pci_hdl);
-
-	dev_err(sc->sc_dev, CE_WARN, "%s: venid %x devid %x revid %x "
-	    "subvenid %x subsysid %x",
-	    "vioif_device_init",
-	    (uint_t)venid,
-	    (uint_t)devid,
-	    (uint_t)revid,
-	    (uint_t)subvenid,
-	    (uint_t)subsysid);
-
-	/*
-	 * Initialise the device as described in the "General Initialization
-	 * And Device Operation" section of the specification.  First, we
-	 * must perform three steps:
-	 *
-	 *	1. Reset the device
-	 *	2. Set the ACKNOWLEDGE status bit to signal we have detected
-	 *	   the device.
-	 *	3. Set the DRIVER status bit to signal we know how to use
-	 *	   the device.
-	 */
-	virtio_reset_status(&sc->sc_virtio);
-	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_ACK);
-	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_DRIVER);
-
-	/*
-	 * Next, we must negotiate the set of supported feature bits with the
-	 * host.
-	 */
 	host_features = virtio_negotiate_features(&sc->sc_virtio,
+	    VIRTIO_NET_F_CSUM |
+	    VIRTIO_NET_F_HOST_TSO4 |
+	    VIRTIO_NET_F_HOST_ECN |
 	    VIRTIO_NET_F_MAC |
 	    VIRTIO_NET_F_STATUS |
 	    VIRTIO_F_RING_INDIRECT_DESC);
@@ -2110,12 +2034,22 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 	char cache_name[CACHE_NAME_SIZE];
 	unsigned int indirect_count;
 
-	if (cmd != DDI_ATTACH) {
-		return (DDI_FAILURE);
+	instance = ddi_get_instance(devinfo);
+
+	switch (cmd) {
+	case DDI_ATTACH:
+		break;
+
+	case DDI_RESUME:
+	case DDI_PM_RESUME:
+		/* We do not support suspend/resume for vioif. */
+		goto exit;
+
+	default:
+		goto exit;
 	}
 
-	instance = ddi_get_instance(devinfo);
-	sc = kmem_zalloc(sizeof (*sc), KM_SLEEP);
+	sc = kmem_zalloc(sizeof (struct vioif_softc), KM_SLEEP);
 	ddi_set_driver_private(devinfo, sc);
 
 	vsc = &sc->sc_virtio;
@@ -2144,8 +2078,12 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 		goto exit_map;
 	}
 
-	if (vioif_device_init(sc) != DDI_SUCCESS) {
-		dev_err(sc->sc_dev, CE_WARN, "device init failure");
+	virtio_device_reset(&sc->sc_virtio);
+	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_ACK);
+	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_DRIVER);
+
+	if (vioif_dev_features(sc) != DDI_SUCCESS) {
+		dev_err(sc->sc_dev, CE_WARN, "Feature failure");
 		goto exit_features;
 	}
 
@@ -2282,6 +2220,7 @@ exit_intrstat:
 exit_map:
 	kstat_delete(sc->sc_intrstat);
 	kmem_free(sc, sizeof (struct vioif_softc));
+exit:
 	return (DDI_FAILURE);
 }
 
@@ -2326,7 +2265,7 @@ vioif_detach(dev_info_t *devinfo, ddi_detach_cmd_t cmd)
 	virtio_free_vq(sc->sc_rx_vq);
 	virtio_free_vq(sc->sc_tx_vq);
 
-	virtio_reset_status(&sc->sc_virtio);
+	virtio_device_reset(&sc->sc_virtio);
 
 	ddi_regs_map_free(&sc->sc_virtio.sc_ioh);
 
@@ -2347,7 +2286,7 @@ vioif_quiesce(dev_info_t *devinfo)
 
 	virtio_stop_vq_intr(sc->sc_rx_vq);
 	virtio_stop_vq_intr(sc->sc_tx_vq);
-	virtio_reset_status(&sc->sc_virtio);
+	virtio_device_reset(&sc->sc_virtio);
 
 	return (DDI_SUCCESS);
 }

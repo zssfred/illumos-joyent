@@ -895,7 +895,7 @@ vioblk_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 		goto exit_map;
 	}
 
-	virtio_reset_status(&sc->sc_virtio);
+	virtio_device_reset(&sc->sc_virtio);
 	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_ACK);
 	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_DRIVER);
 
@@ -1054,7 +1054,7 @@ vioblk_detach(dev_info_t *devinfo, ddi_detach_cmd_t cmd)
 	virtio_release_ints(&sc->sc_virtio);
 	vioblk_free_reqs(sc);
 	virtio_free_vq(sc->sc_vq);
-	virtio_reset_status(&sc->sc_virtio);
+	virtio_device_reset(&sc->sc_virtio);
 	ddi_regs_map_free(&sc->sc_virtio.sc_ioh);
 	kstat_delete(sc->sc_intrstat);
 	kmem_free(sc, sizeof (struct vioblk_softc));
@@ -1068,7 +1068,7 @@ vioblk_quiesce(dev_info_t *devinfo)
 	struct vioblk_softc *sc = ddi_get_driver_private(devinfo);
 
 	virtio_stop_vq_intr(sc->sc_vq);
-	virtio_reset_status(&sc->sc_virtio);
+	virtio_device_reset(&sc->sc_virtio);
 
 	return (DDI_SUCCESS);
 }

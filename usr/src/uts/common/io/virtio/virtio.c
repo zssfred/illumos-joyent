@@ -79,60 +79,18 @@
 #define	VIRTQUEUE_ALIGN(n) (((n)+(VIRTIO_PAGE_SIZE-1)) & \
 	    ~(VIRTIO_PAGE_SIZE-1))
 
-uint8_t
-virtio_get8(struct virtio_softc *sc, offset_t off)
-{
-	uint8_t *addr = (uint8_t *)(sc->sc_io_addr + off);
-
-	return (ddi_get8(sc->sc_ioh, addr));
-}
-
-uint32_t
-virtio_get32(struct virtio_softc *sc, offset_t off)
-{
-	uint32_t *addr = (uint32_t *)(sc->sc_io_addr + off);
-
-	return (ddi_get32(sc->sc_ioh, addr));
-}
-
 void
-virtio_put8(struct virtio_softc *sc, offset_t off, uint8_t val)
+virtio_set_status(struct virtio_softc *sc, unsigned int status)
 {
-	uint8_t *addr = (uint8_t *)(sc->sc_io_addr + off);
+	int old = 0;
 
-	ddi_put8(sc->sc_ioh, addr, val);
-}
+	if (status != 0) {
+		old = ddi_get8(sc->sc_ioh, (uint8_t *)(sc->sc_io_addr +
+		    VIRTIO_CONFIG_DEVICE_STATUS));
+	}
 
-void
-virtio_put32(struct virtio_softc *sc, offset_t off, uint32_t val)
-{
-	uint32_t *addr = (uint32_t *)(sc->sc_io_addr + off);
-
-	ddi_put32(sc->sc_ioh, addr, val);
-}
-
-/*
- * Read the Device Status field, enable a particular bit, and write the value
- * back to the device.
- */
-void
-virtio_set_status(struct virtio_softc *sc, uint8_t status)
-{
-	VERIFY3U(status, !=, 0);
-
-	uint8_t old = virtio_get8(sc, VIRTIO_CONFIG_DEVICE_STATUS);
-
-	virtio_put8(sc, VIRTIO_CONFIG_DEVICE_STATUS, status | old);
-}
-
-/*
- * Upon device reset, the Device Status field must be initialised to zero.
- */
-void
-virtio_reset_status(struct virtio_softc *sc)
-{
-	virtio_put8(sc, VIRTIO_CONFIG_DEVICE_STATUS,
-	    VIRTIO_CONFIG_DEVICE_STATUS_RESET);
+	ddi_put8(sc->sc_ioh, (uint8_t *)(sc->sc_io_addr +
+	    VIRTIO_CONFIG_DEVICE_STATUS), status | old);
 }
 
 /*
@@ -144,14 +102,18 @@ virtio_negotiate_features(struct virtio_softc *sc, uint32_t guest_features)
 	uint32_t host_features;
 	uint32_t features;
 
-	host_features = virtio_get32(sc, VIRTIO_CONFIG_DEVICE_FEATURES);
+	host_features = ddi_get32(sc->sc_ioh,
+	    /* LINTED E_BAD_PTR_CAST_ALIGN */
+	    (uint32_t *)(sc->sc_io_addr + VIRTIO_CONFIG_DEVICE_FEATURES));
 
 	dev_debug(sc->sc_dev, CE_NOTE, "host features: %x, guest features: %x",
 	    host_features, guest_features);
 
 	features = host_features & guest_features;
-
-	virtio_put32(sc, VIRTIO_CONFIG_GUEST_FEATURES, features);
+	ddi_put32(sc->sc_ioh,
+	    /* LINTED E_BAD_PTR_CAST_ALIGN */
+	    (uint32_t *)(sc->sc_io_addr + VIRTIO_CONFIG_GUEST_FEATURES),
+	    features);
 
 	sc->sc_features = features;
 
