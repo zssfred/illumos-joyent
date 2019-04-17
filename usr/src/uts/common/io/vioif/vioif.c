@@ -1856,19 +1856,58 @@ vioif_show_features(struct vioif_softc *sc, const char *prefix,
 	    VIRTIO_NET_FEATURE_BITS);
 }
 
-/*
- * Find out which features are supported by the device and
- * choose which ones we wish to use.
- */
+
+
 static int
-vioif_dev_features(struct vioif_softc *sc)
+vioif_device_init(struct vioif_softc *sc)
 {
 	uint32_t host_features;
+	ddi_acc_handle_t pci_hdl;
 
+	if (pci_config_setup(sc->sc_dev, &pci_hdl) != DDI_SUCCESS) {
+		return (DDI_FAILURE);
+	}
+
+	/*
+	 * XXX Let's take a look at the device...
+	 */
+	uint16_t venid = pci_config_get16(pci_hdl, PCI_CONF_VENID);
+	uint16_t devid = pci_config_get16(pci_hdl, PCI_CONF_DEVID);
+	uint8_t revid = pci_config_get8(pci_hdl, PCI_CONF_REVID);
+	uint16_t subvenid = pci_config_get16(pci_hdl, PCI_CONF_SUBVENID);
+	uint16_t subsysid = pci_config_get16(pci_hdl, PCI_CONF_SUBSYSID);
+
+	pci_config_teardown(&pci_hdl);
+
+	dev_err(sc->sc_dev, CE_WARN, "%s: venid %x devid %x revid %x "
+	    "subvenid %x subsysid %x",
+	    "vioif_device_init",
+	    (uint_t)venid,
+	    (uint_t)devid,
+	    (uint_t)revid,
+	    (uint_t)subvenid,
+	    (uint_t)subsysid);
+
+	/*
+	 * Initialise the device as described in the "General Initialization
+	 * And Device Operation" section of the specification.  First, we
+	 * must perform three steps:
+	 *
+	 *	1. Reset the device
+	 *	2. Set the ACKNOWLEDGE status bit to signal we have detected
+	 *	   the device.
+	 *	3. Set the DRIVER status bit to signal we know how to use
+	 *	   the device.
+	 */
+	virtio_reset_status(&sc->sc_virtio);
+	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_ACK);
+	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_DRIVER);
+
+	/*
+	 * Next, we must negotiate the set of supported feature bits with the
+	 * host.
+	 */
 	host_features = virtio_negotiate_features(&sc->sc_virtio,
-	    VIRTIO_NET_F_CSUM |
-	    VIRTIO_NET_F_HOST_TSO4 |
-	    VIRTIO_NET_F_HOST_ECN |
 	    VIRTIO_NET_F_MAC |
 	    VIRTIO_NET_F_STATUS |
 	    VIRTIO_F_RING_INDIRECT_DESC);
@@ -2034,22 +2073,12 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 	char cache_name[CACHE_NAME_SIZE];
 	unsigned int indirect_count;
 
-	instance = ddi_get_instance(devinfo);
-
-	switch (cmd) {
-	case DDI_ATTACH:
-		break;
-
-	case DDI_RESUME:
-	case DDI_PM_RESUME:
-		/* We do not support suspend/resume for vioif. */
-		goto exit;
-
-	default:
-		goto exit;
+	if (cmd != DDI_ATTACH) {
+		return (DDI_FAILURE);
 	}
 
-	sc = kmem_zalloc(sizeof (struct vioif_softc), KM_SLEEP);
+	instance = ddi_get_instance(devinfo);
+	sc = kmem_zalloc(sizeof (*sc), KM_SLEEP);
 	ddi_set_driver_private(devinfo, sc);
 
 	vsc = &sc->sc_virtio;
@@ -2078,12 +2107,8 @@ vioif_attach(dev_info_t *devinfo, ddi_attach_cmd_t cmd)
 		goto exit_map;
 	}
 
-	virtio_device_reset(&sc->sc_virtio);
-	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_ACK);
-	virtio_set_status(&sc->sc_virtio, VIRTIO_CONFIG_DEVICE_STATUS_DRIVER);
-
-	if (vioif_dev_features(sc) != DDI_SUCCESS) {
-		dev_err(sc->sc_dev, CE_WARN, "Feature failure");
+	if (vioif_device_init(sc) != DDI_SUCCESS) {
+		dev_err(sc->sc_dev, CE_WARN, "device init failure");
 		goto exit_features;
 	}
 
@@ -2220,7 +2245,6 @@ exit_intrstat:
 exit_map:
 	kstat_delete(sc->sc_intrstat);
 	kmem_free(sc, sizeof (struct vioif_softc));
-exit:
 	return (DDI_FAILURE);
 }
 
@@ -2265,7 +2289,7 @@ vioif_detach(dev_info_t *devinfo, ddi_detach_cmd_t cmd)
 	virtio_free_vq(sc->sc_rx_vq);
 	virtio_free_vq(sc->sc_tx_vq);
 
-	virtio_device_reset(&sc->sc_virtio);
+	virtio_reset_status(&sc->sc_virtio);
 
 	ddi_regs_map_free(&sc->sc_virtio.sc_ioh);
 
@@ -2286,7 +2310,7 @@ vioif_quiesce(dev_info_t *devinfo)
 
 	virtio_stop_vq_intr(sc->sc_rx_vq);
 	virtio_stop_vq_intr(sc->sc_tx_vq);
-	virtio_device_reset(&sc->sc_virtio);
+	virtio_reset_status(&sc->sc_virtio);
 
 	return (DDI_SUCCESS);
 }
