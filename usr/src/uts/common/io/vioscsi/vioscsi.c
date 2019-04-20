@@ -20,6 +20,7 @@
 #include <sys/sunddi.h>
 #include <sys/containerof.h>
 #include <sys/debug.h>
+#include <sys/sysmacros.h>
 #include "virtiovar.h"
 #include "virtioreg.h"
 
@@ -45,7 +46,7 @@
 #define	VIRTIO_SCSI_F_CHANGE		(1ULL << 2)
 /*
  * The host will report changes to LUN parameters via a
- * VIRTIO_SCSI_T_PARAM_CHANGE event; the guest SHOULD handle them. 
+ * VIRTIO_SCSI_T_PARAM_CHANGE event; the guest SHOULD handle them.
  */
 
 #define	VIRTIO_SCSI_F_T10_PI		(1ULL << 3)
@@ -75,10 +76,10 @@
 #define	VIRTIO_SCSI_VIRTQ_EVENT		1
 #define	VIRTIO_SCSI_VIRTQ_REQUEST	2
 
-#define	VIRTIO_SCSI_S_OK			0 
+#define	VIRTIO_SCSI_S_OK			0
 #define	VIRTIO_SCSI_S_OVERRUN			1
 #define	VIRTIO_SCSI_S_ABORTED			2
-#define	VIRTIO_SCSI_S_BAD_TARGET		3 
+#define	VIRTIO_SCSI_S_BAD_TARGET		3
 #define	VIRTIO_SCSI_S_RESET			4
 #define	VIRTIO_SCSI_S_BUSY			5
 #define	VIRTIO_SCSI_S_TRANSPORT_FAILURE		6
@@ -108,6 +109,7 @@ typedef struct vioscsi {
 	struct virtqueue	*vis_q_request;
 
 	vioscsi_cmd_t		**vis_q_control_cmds;
+	vioscsi_cmd_t		**vis_q_event_cmds;
 
 	uint32_t		vis_cdb_size;
 	uint32_t		vis_sense_size;
@@ -325,6 +327,15 @@ struct virtio_scsi_ctrl_tmf {
 	struct virtio_scsi_ctrl_tmf_read vstmf_read;
 	struct virtio_scsi_ctrl_tmf_write vstmf_write;
 };
+
+struct virtio_scsi_event {
+	/*
+	 * Entirely device-writeable.
+	 */
+	uint32_t vsev_event;
+	uint8_t vsev_lun[8];
+	uint32_t vsev_reason;
+};
 #pragma pack()
 
 typedef enum vioscsi_dma_level {
@@ -431,6 +442,46 @@ fail:
 	return (DDI_FAILURE);
 }
 
+static int
+vioscsi_fill_events(vioscsi_t *vis)
+{
+	int kmflags = KM_SLEEP;
+	size_t sz = MAX(sizeof (struct virtio_scsi_event),
+	    vis->vis_event_info_size);
+
+	/*
+	 * Put 64 buffers in the event queue, just in case.
+	 */
+	for (uint_t n = 0; n < 64; n++) {
+		struct vq_entry *ve;
+		if ((ve = vq_alloc_entry(vis->vis_q_event)) == NULL) {
+			break;
+		}
+
+		vioscsi_cmd_t *vsc;
+		if ((vsc = kmem_zalloc(sizeof (*vsc), kmflags)) == NULL) {
+			break;
+		}
+		vsc->vsc_vioscsi = vis;
+
+		if (vioscsi_dma_alloc(vis, &vsc->vsc_dma, sz, kmflags,
+		    &vsc->vsc_va, &vsc->vsc_pa) != DDI_SUCCESS) {
+			kmem_free(vsc, sizeof (*vsc));
+			break;
+		}
+
+		bzero(vsc->vsc_va, sz);
+
+		VERIFY3P(vis->vis_q_event_cmds[ve->qe_index], ==, NULL);
+		vis->vis_q_event_cmds[ve->qe_index] = vsc;
+
+		virtio_ve_set(ve, vsc->vsc_pa, sz, B_FALSE);
+		virtio_push_chain(ve, B_TRUE);
+	}
+
+	return (DDI_SUCCESS);
+}
+
 /*
  * XXX Control queue request?
  */
@@ -528,11 +579,7 @@ vioscsi_handle_control(caddr_t arg0, caddr_t arg1)
 			virtio_free_chain(qe);
 			continue;
 		}
-
-		struct virtio_scsi_ctrl_tmf *vstmf = cmd->vsc_va;
-		dev_err(vis->vis_dip, CE_WARN, "response: %u",
-		    (uint_t)vstmf->vstmf_write.vstmf_response);
-		virtio_free_chain(qe);                                   
+		vis->vis_q_control_cmds[qe->qe_index] = NULL;
 
 		if (ddi_dma_sync(cmd->vsc_dma.vsdma_dma_handle, 0, 0,
 		    DDI_DMA_SYNC_FORCPU) != DDI_SUCCESS) {
@@ -541,6 +588,12 @@ vioscsi_handle_control(caddr_t arg0, caddr_t arg1)
 			 */
 			dev_err(vis->vis_dip, CE_WARN, "DMA sync failure");
 		}
+
+		volatile struct virtio_scsi_ctrl_tmf *vstmf = cmd->vsc_va;
+		dev_err(vis->vis_dip, CE_WARN, "response: %u",
+		    (uint_t)vstmf->vstmf_write.vstmf_response);
+
+		virtio_free_chain(qe);
 
 		vioscsi_dma_free(&cmd->vsc_dma);
 		kmem_free(cmd, sizeof (*cmd));
@@ -556,6 +609,48 @@ vioscsi_handle_event(caddr_t arg0, caddr_t arg1)
 	vioscsi_t *vis = __containerof(sc, vioscsi_t, vis_virtio);
 
 	dev_err(vis->vis_dip, CE_WARN, "vioscsi_handle_event");
+
+	struct vq_entry *qe;
+	uint32_t len;
+	while ((qe = virtio_pull_chain(vis->vis_q_event, &len)) != NULL) {
+		dev_err(vis->vis_dip, CE_WARN, "pull idx %x",
+		    (uint_t)qe->qe_index);
+
+		vioscsi_cmd_t *cmd = vis->vis_q_event_cmds[qe->qe_index];
+		if (cmd == NULL) {
+			dev_err(vis->vis_dip, CE_WARN, "no command?!");
+			virtio_free_chain(qe);
+			continue;
+		}
+		vis->vis_q_event_cmds[qe->qe_index] = NULL;
+
+		if (ddi_dma_sync(cmd->vsc_dma.vsdma_dma_handle, 0, 0,
+		    DDI_DMA_SYNC_FORCPU) != DDI_SUCCESS) {
+			/*
+			 * XXX
+			 */
+			dev_err(vis->vis_dip, CE_WARN, "DMA sync failure");
+		}
+
+		volatile struct virtio_scsi_event *vsev = cmd->vsc_va;
+		dev_err(vis->vis_dip, CE_WARN,
+		    "lun %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
+		    "event: %x, reason: %x",
+		    (uint_t)vsev->vsev_lun[0],
+		    (uint_t)vsev->vsev_lun[1],
+		    (uint_t)vsev->vsev_lun[2],
+		    (uint_t)vsev->vsev_lun[3],
+		    (uint_t)vsev->vsev_lun[4],
+		    (uint_t)vsev->vsev_lun[5],
+		    (uint_t)vsev->vsev_lun[6],
+		    (uint_t)vsev->vsev_lun[7],
+		    vsev->vsev_event, vsev->vsev_reason);
+
+		virtio_free_chain(qe);
+
+		vioscsi_dma_free(&cmd->vsc_dma);
+		kmem_free(cmd, sizeof (*cmd));
+	}
 
 	return (DDI_INTR_CLAIMED);
 }
@@ -609,7 +704,8 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	leg = 1;
 
 	uint32_t feat;
-	feat = virtio_negotiate_features(&vis->vis_virtio, 0);
+	feat = virtio_negotiate_features(&vis->vis_virtio,
+	    VIRTIO_SCSI_F_HOTPLUG);
 
 	/*
 	 * The SCSI device has several virtqueues:
@@ -648,6 +744,10 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	 */
 	vis->vis_q_control_cmds = kmem_zalloc(sizeof (vioscsi_cmd_t *) *
 	    vis->vis_q_control->vq_num, KM_SLEEP);
+	vis->vis_q_event_cmds = kmem_zalloc(sizeof (vioscsi_cmd_t *) *
+	    vis->vis_q_event->vq_num, KM_SLEEP);
+
+	(void) vioscsi_fill_events(vis); /* XXX */
 
 	if (virtio_enable_ints(vio) != DDI_SUCCESS) {
 		dev_err(dip, CE_WARN, "could not enable interrupts");
