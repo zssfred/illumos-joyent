@@ -724,7 +724,7 @@ vioblk_register_ints(struct vioblk_softc *sc)
 	};
 
 	ret = virtio_register_ints(&sc->sc_virtio,
-	    &vioblk_conf_h, vioblk_vq_h);
+	    &vioblk_conf_h, vioblk_vq_h, B_TRUE);
 
 	return (ret);
 }

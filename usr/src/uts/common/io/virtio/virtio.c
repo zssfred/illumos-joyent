@@ -79,6 +79,8 @@
 #define	VIRTQUEUE_ALIGN(n) (((n)+(VIRTIO_PAGE_SIZE-1)) & \
 	    ~(VIRTIO_PAGE_SIZE-1))
 
+
+
 void
 virtio_set_status(struct virtio_softc *sc, unsigned int status)
 {
@@ -834,13 +836,8 @@ virtio_register_msi(struct virtio_softc *sc,
 
 	/* If both MSI and MSI-x are reported, prefer MSI-x. */
 	int_type = DDI_INTR_TYPE_MSI;
-#if 0
-	/*
-	 * XXX Do not use MSI-X for now, because it doesn't seem to work...
-	 */
 	if (intr_types & DDI_INTR_TYPE_MSIX)
 		int_type = DDI_INTR_TYPE_MSIX;
-#endif
 
 	/* Walk the handler table to get the number of handlers. */
 	for (handler_count = 0;
@@ -1065,7 +1062,8 @@ out_int_alloc:
 int
 virtio_register_ints(struct virtio_softc *sc,
     struct virtio_int_handler *config_handler,
-    struct virtio_int_handler vq_handlers[])
+    struct virtio_int_handler vq_handlers[],
+    boolean_t allow_msi)
 {
 	int ret;
 	int intr_types;
@@ -1083,11 +1081,13 @@ virtio_register_ints(struct virtio_softc *sc,
 	dev_err(sc->sc_dev, CE_WARN, "supported interrupt types %x", intr_types);
 
 	/* If we have msi, let's use them. */
-	if (intr_types & (DDI_INTR_TYPE_MSIX | DDI_INTR_TYPE_MSI)) {
-		ret = virtio_register_msi(sc, config_handler,
-		    vq_handlers, intr_types);
-		if (!ret)
-			return (0);
+	if (allow_msi) {
+		if (intr_types & (DDI_INTR_TYPE_MSIX | DDI_INTR_TYPE_MSI)) {
+			ret = virtio_register_msi(sc, config_handler,
+			    vq_handlers, intr_types);
+			if (!ret)
+				return (0);
+		}
 	}
 
 	/* Fall back to old-fashioned interrupts. */

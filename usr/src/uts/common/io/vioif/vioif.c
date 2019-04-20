@@ -1979,7 +1979,8 @@ vioif_register_ints(struct vioif_softc *sc)
 		{ NULL }
 	};
 
-	ret = virtio_register_ints(&sc->sc_virtio, NULL, vioif_vq_h);
+	ret = virtio_register_ints(&sc->sc_virtio, NULL, vioif_vq_h,
+	    B_FALSE);
 
 	return (ret);
 }

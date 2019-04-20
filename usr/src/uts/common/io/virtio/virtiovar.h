@@ -154,6 +154,7 @@ struct virtio_int_handler {
 };
 
 /* public interface */
+int virtio_legacy_init(struct virtio_softc *, uint16_t);
 uint32_t virtio_negotiate_features(struct virtio_softc *, uint32_t);
 size_t virtio_show_features(uint32_t features, char *buffer, size_t len);
 boolean_t virtio_has_feature(struct virtio_softc *sc, uint32_t feature);
@@ -205,7 +206,8 @@ void virtio_sync_vq(struct virtqueue *vq);
 
 int virtio_register_ints(struct virtio_softc *sc,
 		struct virtio_int_handler *config_handler,
-		struct virtio_int_handler vq_handlers[]);
+		struct virtio_int_handler vq_handlers[],
+		boolean_t);
 void virtio_release_ints(struct virtio_softc *sc);
 int virtio_enable_ints(struct virtio_softc *sc);
 
