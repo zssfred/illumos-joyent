@@ -21,6 +21,8 @@
 #include <sys/containerof.h>
 #include <sys/debug.h>
 #include <sys/sysmacros.h>
+#include <sys/scsi/scsi.h>
+#include <sys/scsi/impl/spc3_types.h>
 #include "virtiovar.h"
 #include "virtioreg.h"
 
@@ -110,6 +112,7 @@ typedef struct vioscsi {
 
 	vioscsi_cmd_t		**vis_q_control_cmds;
 	vioscsi_cmd_t		**vis_q_event_cmds;
+	vioscsi_cmd_t		**vis_q_request_cmds;
 
 	uint32_t		vis_cdb_size;
 	uint32_t		vis_sense_size;
@@ -336,7 +339,40 @@ struct virtio_scsi_event {
 	uint8_t vsev_lun[8];
 	uint32_t vsev_reason;
 };
+
+struct virtio_scsi_req_cmd_read {
+	uint8_t vsrq_lun[8];
+	uint64_t vsrq_id;
+	uint8_t vsrq_task_attr;
+	uint8_t vsrq_prio;
+	uint8_t vsrq_crn;
+	char vsrq_cdb[];
+};
+/*
+ *	char vsrq_dataout[];
+ */
+struct virtio_scsi_req_cmd_write {
+	uint32_t vsrq_sense_len;
+	uint32_t vsrq_residual;
+	uint16_t vsrq_status_qualifier;
+	uint8_t vsrq_status;
+	uint8_t vsrq_response;
+	uint8_t vsrq_sense[];
+};
+/*
+ * 	char vsrq_datain[];
+ */
 #pragma pack()
+
+/*
+ * Ensure that the compiler is not adding any padding, or treating the flexible
+ * array member as anything but empty.  If this is not true, the
+ * device-writeable half of the request structure may be at the wrong offset.
+ */
+CTASSERT(offsetof(struct virtio_scsi_req_cmd_write, vsrq_sense) ==
+    sizeof (struct virtio_scsi_req_cmd_write));
+CTASSERT(offsetof(struct virtio_scsi_req_cmd_read, vsrq_cdb) ==
+    sizeof (struct virtio_scsi_req_cmd_read));
 
 typedef enum vioscsi_dma_level {
 	VIOSCSI_DMALEVEL_HANDLE_ALLOC =		(1ULL << 0),
@@ -360,6 +396,10 @@ struct vioscsi_cmd {
 
 	void *vsc_va;
 	uint32_t vsc_pa;
+
+	offset_t vsc_response_offset;
+
+	char vsc_info[256];
 };
 
 static void
@@ -482,6 +522,129 @@ vioscsi_fill_events(vioscsi_t *vis)
 	return (DDI_SUCCESS);
 }
 
+static int
+vioscsi_scsi_request(vioscsi_t *vis, uint8_t target)
+{
+	vioscsi_cmd_t *vsc;
+	int kmflags = KM_SLEEP;
+
+	if ((vsc = kmem_zalloc(sizeof (*vsc), kmflags)) == NULL) {
+		return (DDI_FAILURE);
+	}
+	vsc->vsc_vioscsi = vis;
+
+	/*
+	 * Allocate an object into which we will write the command header and
+	 * the CDB.
+	 */
+	struct virtio_scsi_req_cmd_read *vsrq;
+	size_t vsrq_sz = sizeof (*vsrq) + vis->vis_cdb_size;
+	if ((vsrq = kmem_zalloc(vsrq_sz, kmflags)) == NULL) {
+		kmem_free(vsc, sizeof (*vsc));
+	}
+
+	size_t dataout_sz = 0;
+	size_t datain_sz = 2048;
+
+	/*
+	 * The specification suggests a REPORT LUNS command can be sent to the
+	 * well-known logical unit with address [C1, 01, 00...].  This does not
+	 * appear to be supported in GCE.
+	 *
+	 * Instead, we must construct a LUN address based on the (target,LUN)
+	 * tuple, which I suspect is fixed at (target,0) when max_lun is 1.
+	 */
+	vsrq->vsrq_lun[0] = 0x01; /* fixed at 0x01 */
+	vsrq->vsrq_lun[1] = target; /* target */
+	vsrq->vsrq_lun[2] = 0x00; /* LUN... */
+	vsrq->vsrq_lun[3] = 0x00; /* LUN... */
+
+	vsrq->vsrq_id = 1; /* command tag */
+
+#if 0
+	/*
+	 * XXX Maybe use "spc3_report_luns_cdb_t" here?
+	 */
+	vsrq->vsrq_cdb[0] = SCMD_REPORT_LUNS;
+	vsrq->vsrq_cdb[2] = SPC3_RL_SR_ADDRESSING;
+	/* XXX? vsrq->vsrq_cdb[2] = SPC3_RL_SR_ALL; */
+	vsrq->vsrq_cdb[6] = (datain_sz >> (3 * 8)) & 0xFF; /* MSB */
+	vsrq->vsrq_cdb[7] = (datain_sz >> (2 * 8)) & 0xFF;
+	vsrq->vsrq_cdb[8] = (datain_sz >> (1 * 8)) & 0xFF;
+	vsrq->vsrq_cdb[9] = (datain_sz >> (0 * 8)) & 0xFF; /* LSB */
+	vsrq->vsrq_cdb[11] = 0; /* XXX CONTROL byte? */
+#else
+	vsrq->vsrq_cdb[0] = SCMD_INQUIRY;
+	vsrq->vsrq_cdb[2] = 0; /* PAGE CODE (see also EVPD bit in [1]) */
+	vsrq->vsrq_cdb[3] = (datain_sz >> (1 * 8)) & 0xFF; /* MSB */
+	vsrq->vsrq_cdb[4] = (datain_sz >> (0 * 8)) & 0xFF; /* LSB */
+	vsrq->vsrq_cdb[5] = 0; /* XXX CONTROL byte? */
+#endif
+
+	size_t sz = vsrq_sz + dataout_sz +
+	    sizeof (struct virtio_scsi_req_cmd_write) +
+	    vis->vis_sense_size + datain_sz;
+	if (vioscsi_dma_alloc(vis, &vsc->vsc_dma, sz, kmflags, &vsc->vsc_va,
+	    &vsc->vsc_pa) != DDI_SUCCESS) {
+		goto fail;
+	}
+
+	snprintf(vsc->vsc_info, sizeof (vsc->vsc_info), "INQUIRY (%u,0)",
+	    target);
+
+	bcopy(vsrq, vsc->vsc_va, vsrq_sz);
+
+	/*
+	 * Allocate a descriptor for the driver-write portion of the command
+	 * and for the device-write portion of the command:
+	 */
+	struct vq_entry *ve_driver, *ve_device;
+	if ((ve_driver = vq_alloc_entry(vis->vis_q_request)) == NULL ||
+	    (ve_device = vq_alloc_entry(vis->vis_q_request)) == NULL) {
+		dev_err(vis->vis_dip, CE_WARN, "vq_alloc_entry failed");
+		goto fail;
+	}
+	virtio_ventry_stick(ve_driver, ve_device);
+
+	/*
+	 * Store the offset at which the response begins within the DMA memory.
+	 */
+	vsc->vsc_response_offset = vsrq_sz + dataout_sz;
+
+	virtio_ve_set(ve_driver,
+	    vsc->vsc_pa + 0,
+	    vsrq_sz + dataout_sz,
+	    B_TRUE);
+	virtio_ve_set(ve_device,
+	    vsc->vsc_pa + vsc->vsc_response_offset,
+	    sizeof (struct virtio_scsi_req_cmd_write) + vis->vis_sense_size +
+	        datain_sz,
+	    B_FALSE);
+
+	VERIFY3P(vis->vis_q_request_cmds[ve_driver->qe_index], ==, NULL);
+	vis->vis_q_request_cmds[ve_driver->qe_index] = vsc;
+
+	if (ddi_dma_sync(vsc->vsc_dma.vsdma_dma_handle, 0, 0,
+	    DDI_DMA_SYNC_FORDEV) != DDI_SUCCESS) {
+		/*
+		 * XXX PANIC
+		 */
+		dev_err(vis->vis_dip, CE_WARN, "DMA sync failure");
+		goto fail;
+	}
+
+	dev_err(vis->vis_dip, CE_WARN, "push chain idx %x",
+	    (uint_t)ve_driver->qe_index);
+	virtio_push_chain(ve_driver, B_TRUE);
+
+	return (DDI_SUCCESS);
+
+fail:
+	vioscsi_dma_free(&vsc->vsc_dma);
+	kmem_free(vsc, sizeof (*vsc));
+	return (DDI_FAILURE);
+}
+
 /*
  * XXX Control queue request?
  */
@@ -570,7 +733,7 @@ vioscsi_handle_control(caddr_t arg0, caddr_t arg1)
 	struct vq_entry *qe;
 	uint32_t len;
 	while ((qe = virtio_pull_chain(vis->vis_q_control, &len)) != NULL) {
-		dev_err(vis->vis_dip, CE_WARN, "pull idx %x",
+		dev_err(vis->vis_dip, CE_WARN, "control pull idx %x",
 		    (uint_t)qe->qe_index);
 
 		vioscsi_cmd_t *cmd = vis->vis_q_control_cmds[qe->qe_index];
@@ -613,7 +776,7 @@ vioscsi_handle_event(caddr_t arg0, caddr_t arg1)
 	struct vq_entry *qe;
 	uint32_t len;
 	while ((qe = virtio_pull_chain(vis->vis_q_event, &len)) != NULL) {
-		dev_err(vis->vis_dip, CE_WARN, "pull idx %x",
+		dev_err(vis->vis_dip, CE_WARN, "event pull idx %x",
 		    (uint_t)qe->qe_index);
 
 		vioscsi_cmd_t *cmd = vis->vis_q_event_cmds[qe->qe_index];
@@ -662,6 +825,73 @@ vioscsi_handle_request(caddr_t arg0, caddr_t arg1)
 	vioscsi_t *vis = __containerof(sc, vioscsi_t, vis_virtio);
 
 	dev_err(vis->vis_dip, CE_WARN, "vioscsi_handle_request");
+
+	struct vq_entry *qe;
+	uint32_t len;
+	while ((qe = virtio_pull_chain(vis->vis_q_request, &len)) != NULL) {
+		dev_err(vis->vis_dip, CE_WARN, "request pull idx %x",
+		    (uint_t)qe->qe_index);
+
+		vioscsi_cmd_t *cmd = vis->vis_q_request_cmds[qe->qe_index];
+		if (cmd == NULL) {
+			dev_err(vis->vis_dip, CE_WARN, "no command?!");
+			virtio_free_chain(qe);
+			continue;
+		}
+		vis->vis_q_request_cmds[qe->qe_index] = NULL;
+
+		if (ddi_dma_sync(cmd->vsc_dma.vsdma_dma_handle, 0, 0,
+		    DDI_DMA_SYNC_FORCPU) != DDI_SUCCESS) {
+			/*
+			 * XXX
+			 */
+			dev_err(vis->vis_dip, CE_WARN, "DMA sync failure");
+		}
+
+		dev_err(vis->vis_dip, CE_WARN, "reponse offset %x",
+		    (uint_t)cmd->vsc_response_offset);
+		volatile struct virtio_scsi_req_cmd_write *vsrq = cmd->vsc_va +
+		    cmd->vsc_response_offset;
+		dev_err(vis->vis_dip, CE_WARN, "info \"%s\" sense_len %u "
+		    "residual %u "
+		    "status_qualifier 0x%x status 0x%x response 0x%x",
+		    cmd->vsc_info,
+		    vsrq->vsrq_sense_len,
+		    vsrq->vsrq_residual,
+		    (uint_t)vsrq->vsrq_status_qualifier,
+		    (uint_t)vsrq->vsrq_status,
+		    (uint_t)vsrq->vsrq_response);
+
+		if (vsrq->vsrq_status == 0 && vsrq->vsrq_response == 0 &&
+		    (2048 - vsrq->vsrq_residual) > 36) {
+			/*
+			 * Attempt to decode inquiry?
+			 */
+			char s[32];
+
+			void *dp = cmd->vsc_va +
+			    cmd->vsc_response_offset +
+			    sizeof (struct virtio_scsi_req_cmd_write) +
+			    vis->vis_sense_size;
+
+			bzero(s, sizeof (s));
+			bcopy(dp + 8, s, 8);
+			dev_err(vis->vis_dip, CE_WARN, "VENDOR \"%s\"", s);
+
+			bzero(s, sizeof (s));
+			bcopy(dp + 16, s, 8);
+			dev_err(vis->vis_dip, CE_WARN, "PRODUCT \"%s\"", s);
+
+			bzero(s, sizeof (s));
+			bcopy(dp + 32, s, 4);
+			dev_err(vis->vis_dip, CE_WARN, "REVISION \"%s\"", s);
+		}
+
+		virtio_free_chain(qe);
+
+		vioscsi_dma_free(&cmd->vsc_dma);
+		kmem_free(cmd, sizeof (*cmd));
+	}
 
 	return (DDI_INTR_CLAIMED);
 }
@@ -746,6 +976,8 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	    vis->vis_q_control->vq_num, KM_SLEEP);
 	vis->vis_q_event_cmds = kmem_zalloc(sizeof (vioscsi_cmd_t *) *
 	    vis->vis_q_event->vq_num, KM_SLEEP);
+	vis->vis_q_request_cmds = kmem_zalloc(sizeof (vioscsi_cmd_t *) *
+	    vis->vis_q_request->vq_num, KM_SLEEP);
 
 	(void) vioscsi_fill_events(vis); /* XXX */
 
@@ -795,6 +1027,10 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	dev_err(dip, CE_WARN, "attach ok");
 
 	vioscsi_make_request(vis);
+	vioscsi_scsi_request(vis, 0);
+	vioscsi_scsi_request(vis, 1);
+	vioscsi_scsi_request(vis, 2);
+	vioscsi_scsi_request(vis, 3);
 
 	return (DDI_SUCCESS);
 
