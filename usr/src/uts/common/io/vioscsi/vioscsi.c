@@ -29,30 +29,37 @@
 
 #include <sys/pci.h> /* XXX remove after splitting into common code? */
 
+#define	VIOSCSI_IPORT				"v0"
+
+/*
+ * The maintenance routine ... XXX.  The time is expressed in seconds.
+ */
+#define	VIOSCSI_PERIODIC_RATE			5
+
 /*
  * VIRTIO SCSI FEATURE BITS
  */
 
-#define	VIRTIO_SCSI_F_INOUT		(1ULL << 0)
+#define	VIRTIO_SCSI_F_INOUT			(1ULL << 0)
 /*
  * A single request can include both device-readable and device-writable data
  * buffers.
  */
 
-#define	VIRTIO_SCSI_F_HOTPLUG		(1ULL << 1)
+#define	VIRTIO_SCSI_F_HOTPLUG			(1ULL << 1)
 /*
  * The host SHOULD enable reporting of hot-plug and hot-unplug events for LUNs
  * and targets on the SCSI bus. The guest SHOULD handle hot-plug and hot-unplug
  * events.
  */
 
-#define	VIRTIO_SCSI_F_CHANGE		(1ULL << 2)
+#define	VIRTIO_SCSI_F_CHANGE			(1ULL << 2)
 /*
  * The host will report changes to LUN parameters via a
  * VIRTIO_SCSI_T_PARAM_CHANGE event; the guest SHOULD handle them.
  */
 
-#define	VIRTIO_SCSI_F_T10_PI		(1ULL << 3)
+#define	VIRTIO_SCSI_F_T10_PI			(1ULL << 3)
 /*
  * The extended fields for T10 protection information (DIF/DIX) are included in
  * the SCSI request header.
@@ -61,23 +68,23 @@
 /*
  * VIRTIO SCSI CONFIGURATION REGISTERS
  */
-#define	VIRTIO_SCSI_CFG_NUM_QUEUES	0x00	/* 32 */
-#define	VIRTIO_SCSI_CFG_SEG_MAX		0x04	/* 32 */
-#define	VIRTIO_SCSI_CFG_MAX_SECTORS	0x08	/* 32 */
-#define	VIRTIO_SCSI_CFG_CMD_PER_LUN	0x0c	/* 32 */
-#define	VIRTIO_SCSI_CFG_EVENT_INFO_SIZE	0x10	/* 32 */
-#define	VIRTIO_SCSI_CFG_SENSE_SIZE	0x14	/* 32 */
-#define	VIRTIO_SCSI_CFG_CDB_SIZE	0x18	/* 32 */
-#define	VIRTIO_SCSI_CFG_MAX_CHANNEL	0x1c	/* 16 */
-#define	VIRTIO_SCSI_CFG_MAX_TARGET	0x1e	/* 16 */
-#define	VIRTIO_SCSI_CFG_MAX_LUN		0x20	/* 32 */
+#define	VIRTIO_SCSI_CFG_NUM_QUEUES		0x00	/* 32 */
+#define	VIRTIO_SCSI_CFG_SEG_MAX			0x04	/* 32 */
+#define	VIRTIO_SCSI_CFG_MAX_SECTORS		0x08	/* 32 */
+#define	VIRTIO_SCSI_CFG_CMD_PER_LUN		0x0c	/* 32 */
+#define	VIRTIO_SCSI_CFG_EVENT_INFO_SIZE		0x10	/* 32 */
+#define	VIRTIO_SCSI_CFG_SENSE_SIZE		0x14	/* 32 */
+#define	VIRTIO_SCSI_CFG_CDB_SIZE		0x18	/* 32 */
+#define	VIRTIO_SCSI_CFG_MAX_CHANNEL		0x1c	/* 16 */
+#define	VIRTIO_SCSI_CFG_MAX_TARGET		0x1e	/* 16 */
+#define	VIRTIO_SCSI_CFG_MAX_LUN			0x20	/* 32 */
 
 /*
  * VIRTIO SCSI VIRTQUEUES
  */
-#define	VIRTIO_SCSI_VIRTQ_CONTROL	0
-#define	VIRTIO_SCSI_VIRTQ_EVENT		1
-#define	VIRTIO_SCSI_VIRTQ_REQUEST	2
+#define	VIRTIO_SCSI_VIRTQ_CONTROL		0
+#define	VIRTIO_SCSI_VIRTQ_EVENT			1
+#define	VIRTIO_SCSI_VIRTQ_REQUEST		2
 
 /*
  * VIRTIO SCSI ... XXX
@@ -99,23 +106,22 @@
 /*
  * VIRTIO SCSI CONTROL COMMAND TYPES? XXX
  */
-#define	VIRTIO_SCSI_T_TMF				0
+#define	VIRTIO_SCSI_T_TMF			0
 
-#define	VIRTIO_SCSI_T_TMF_I_T_NEXUS_RESET		4
-#define	VIRTIO_SCSI_T_TMF_LOGICAL_UNIT_RESET		5
+#define	VIRTIO_SCSI_T_TMF_I_T_NEXUS_RESET	4
+#define	VIRTIO_SCSI_T_TMF_LOGICAL_UNIT_RESET	5
 
-
-static int vioscsi_attach(dev_info_t *, ddi_attach_cmd_t);
-static int vioscsi_detach(dev_info_t *, ddi_detach_cmd_t);
-static int vioscsi_ioctl(dev_t, int, intptr_t, int, cred_t *, int *);
-static int vioscsi_cmd_comparator(const void *, const void *);
-static void vioscsi_cleanup(vioscsi_t *);
 
 void *vioscsi_state;
 
-typedef enum vioscsi_init_level = {
-	VIOSCSI_INITLEVEL_BASIC =			(0x1 << 0),
-	VIOSCSI_INITLEVEL_VIRTIO =			(0x1 << 1),
+typedef enum vioscsi_init_level {
+	VIOSCSI_INITLEVEL_BASIC =		(0x1 << 0),
+	VIOSCSI_INITLEVEL_VIRTIO =		(0x1 << 1),
+	VIOSCSI_INITLEVEL_MUTEX =		(0x1 << 2),
+	VIOSCSI_INITLEVEL_TASKQ =		(0x1 << 3),
+	VIOSCSI_INITLEVEL_PERIODIC =		(0x1 << 4),
+	VIOSCSI_INITLEVEL_INTERRUPTS =		(0x1 << 5),
+	VIOSCSI_INITLEVEL_SCSA =		(0x1 << 6),
 } vioscsi_init_level_t;
 
 #define	INITLEVEL_SET(_vis, name)					\
@@ -136,6 +142,12 @@ typedef struct vioscsi_cmd vioscsi_cmd_t;
 typedef struct vioscsi_cmd_scsa vioscsi_cmd_scsa_t;
 typedef struct vioscsi vioscsi_t;
 
+static int vioscsi_attach(dev_info_t *, ddi_attach_cmd_t);
+static int vioscsi_detach(dev_info_t *, ddi_detach_cmd_t);
+static int vioscsi_ioctl(dev_t, int, intptr_t, int, cred_t *, int *);
+static int vioscsi_cmd_comparator(const void *, const void *);
+static void vioscsi_cleanup(vioscsi_t *);
+
 typedef enum {
 	VIOSCSI_CMDQ_CONTROL = 1000,
 	VIOSCSI_CMDQ_EVENT,
@@ -151,12 +163,32 @@ typedef struct vioscsi_q {
 	vioscsi_t		*visq_vioscsi;
 } vioscsi_q_t;
 
+typedef enum vioscsi_status {
+	VIOSCSI_STATUS_DETACHING =		(0x1 << 0),
+
+	VIOSCSI_STATUS_DISCOVERY_RUNNING =	(0x1 << 1),
+	VIOSCSI_STATUS_DISCOVERY_REQUESTED =	(0x1 << 2),
+	VIOSCSI_STATUS_DISCOVERY_PERIODIC =	(0x1 << 3),
+} vioscsi_status_t;
+
+#define	VIOSCSI_STATUS_DISCOVERY_MASK					\
+	(VIOSCSI_STATUS_DISCOVERY_RUNNING |				\
+	VIOSCSI_STATUS_DISCOVERY_REQUESTED |				\
+	VIOSCSI_STATUS_DISCOVERY_PERIODIC)
+
 struct vioscsi {
 	dev_info_t		*vis_dip;
 	uint32_t		vis_instance;
 
+	kmutex_t		vis_mutex;
+	kcondvar_t		vis_cv_finish;
+	vioscsi_status_t	vis_status;
+	vioscsi_init_level_t	vis_init_level;
+
 	dev_info_t		*vis_iport;
 	scsi_hba_tgtmap_t	*vis_tgtmap;
+
+	uint64_t		vis_next_tag;
 
 	struct virtio_softc	vis_virtio;
 
@@ -164,14 +196,19 @@ struct vioscsi {
 	vioscsi_q_t		vis_q_event;
 	vioscsi_q_t		vis_q_request;
 
+	uint32_t		vis_seg_max;
 	uint32_t		vis_cdb_size;
 	uint32_t		vis_sense_size;
 	uint32_t		vis_event_info_size;
 	uint32_t		vis_max_channel;
+	uint32_t		vis_max_target_raw;
 	uint32_t		vis_max_target;
-	uint32_t		vis_max_lun;
+	uint32_t		vis_max_lun_raw;
 };
 
+/*
+ * SCSA target tracking structure.
+ */
 struct vioscsi_target {
 	vioscsi_t		*vist_vioscsi;
 	struct scsi_device	*vist_scsi_dev;
@@ -473,9 +510,21 @@ struct vioscsi_cmd_scsa {
 	vioscsi_cmd_t *vscs_cmd;
 };
 
+typedef enum vioscsi_cmd_status {
+	VIOSCSI_CMD_STATUS_INFLIGHT =		(0x1 << 0),
+	VIOSCSI_CMD_STATUS_COMPLETE =		(0x1 << 1),
+	VIOSCSI_CMD_STATUS_POLLED =		(0x1 << 2),
+	VIOSCSI_CMD_STATUS_POLL_COMPLETE =	(0x1 << 3),
+	VIOSCSI_CMD_STATUS_TRAN_START =		(0x1 << 4),
+	VIOSCSI_CMD_STATUS_ERROR =		(0x1 << 5),
+} vioscsi_cmd_status_t;
+
 struct vioscsi_cmd {
 	vioscsi_t *vsc_vioscsi;
 	vioscsi_q_t *vsc_q;
+
+	vioscsi_cmd_status_t vsc_status;
+	hrtime_t vsc_time_push;
 
 	vioscsi_dma_t vsc_dma;
 
@@ -604,6 +653,33 @@ vioscsi_cmd_alloc(vioscsi_t *vis, vioscsi_q_t *visq, size_t sz)
 	return (vsc);
 }
 
+#if 0
+/*
+ * Change the reserved descriptor count for this command.
+ */
+static int
+vioscsi_cmd_reserve(vioscsi_cmd_t *vsc, uint_t count)
+{
+	if (count > 64) {
+		return (EINVAL);
+	}
+
+	/*
+	 * Count how many descriptors are currently reserved.
+	 */
+	uint_t actual = 0;
+	for (uint_t i = 0; i < 64; i++) {
+		if (vsc->vsc_reserved[i] != NULL) {
+			actual++;
+		}
+	}
+
+	if (actual > count) {
+	} else if (actual < count) {
+	}
+}
+#endif
+
 static void
 vioscsi_cmd_free(vioscsi_cmd_t *vsc)
 {
@@ -614,6 +690,15 @@ vioscsi_cmd_free(vioscsi_cmd_t *vsc)
 	kmem_free(vsc, sizeof (*vsc));
 }
 
+static void
+vioscsi_cmd_clear(vioscsi_cmd_t *vsc)
+{
+	if (vsc->vsc_qe != NULL) {
+		virtio_free_chain(vsc->vsc_qe);
+		vsc->vsc_qe = NULL;
+	}
+}
+
 /*
  * Append a descriptor.
  */
@@ -622,7 +707,7 @@ vioscsi_cmd_append(vioscsi_cmd_t *vsc)
 {
 	struct vq_entry *qe;
 
-	if ((qe = vq_alloc_entry(vsc->vsc_q->vscq_vq)) == NULL) {
+	if ((qe = vq_alloc_entry(vsc->vsc_q->visq_vq)) == NULL) {
 		return (NULL);
 	}
 
@@ -648,7 +733,6 @@ vioscsi_cmd_append(vioscsi_cmd_t *vsc)
 	return (qe);
 }
 
-
 static int
 vioscsi_fill_events(vioscsi_t *vis)
 {
@@ -663,7 +747,7 @@ vioscsi_fill_events(vioscsi_t *vis)
 		vioscsi_cmd_t *vsc;
 		struct vq_entry *ve;
 
-		if ((vsc = vioscsi_cmd_alloc(vis, vis->vis_q_event, sz)) ==
+		if ((vsc = vioscsi_cmd_alloc(vis, &vis->vis_q_event, sz)) ==
 		    NULL) {
 			break;
 		}
@@ -910,7 +994,7 @@ vioscsi_handle_event(caddr_t arg0, caddr_t arg1)
 	dev_err(vis->vis_dip, CE_WARN, "vioscsi_handle_event");
 
 	vioscsi_cmd_t *vsc;
-	while ((vsc = vioscsi_q_pull(&vis->vis_q_event)) != NULL) {
+	while ((vsc = vioscsi_q_pull(&vis.vis_q_event)) != NULL) {
 		volatile struct virtio_scsi_event *vsev = vsc->vsc_va;
 		dev_err(vis->vis_dip, CE_WARN,
 		    "lun %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
@@ -1039,18 +1123,22 @@ vioscsi_q_push(vioscsi_cmd_t *vsc)
 	VERIFY0(vsc->vsc_vqidx); /* XXX 0 is valid surely */
 	vsc->vsc_vqidx = vsc->vsc_qe->qe_index;
 
-	avl_add(&visq->visq_inflight, vsc);
-
 	if (ddi_dma_sync(vsc->vsc_dma.vsdma_dma_handle, 0, 0,
 	    DDI_DMA_SYNC_FORDEV) != DDI_SUCCESS) {
 		/*
-		 * XXX PANIC
+		 * XXX PANIC?
 		 */
 		dev_err(vis->vis_dip, CE_WARN, "DMA sync failure");
 	}
 
+	VERIFY(!(vsc->vsc_status & VIOSCSI_STATUS_INFLIGHT));
+	avl_add(&visq->visq_inflight, vsc);
+	vsc->vsc_status |= VIOSCSI_STATUS_INFLIGHT;
+
 	dev_err(vis->vis_dip, CE_WARN, "q %d push idx %x", visq->visq_name,
 	    (uint_t)vsc->vsc_qe->qe_index);
+
+	vsc->vsc_time_push = gethrtime();
 
 	virtio_push_chain(vsc->vsc_qe, B_TRUE);
 }
@@ -1071,6 +1159,7 @@ top:
 	    (uint_t)qe->qe_index);
 
 	vioscsi_cmd_t search;
+	search.vsc_q = visq->visq_vq;
 	search.vsc_vqidx = qe->qe_index;
 
 	vioscsi_cmd_t *vsc = avl_find(&visq->visq_inflight, &search, NULL);
@@ -1120,6 +1209,170 @@ vioscsi_q_init(vioscsi_t *vis, vioscsi_q_t *visq, const char *strname,
 	return (DDI_SUCCESS);
 }
 
+static void
+vioscsi_discover(void *arg)
+{
+	vioscsi_t *vis = arg;
+	uint64_t gen;
+	uint32_t max_target, max_lun;
+	int r;
+
+	mutex_enter(&vis->vis_mutex);
+	vis->vis_status |= VIOSCSI_STATUS_DISCOVERY_RUNNING;
+	vis->vis_status &= ~VIOSCSI_STATUS_DISCOVERY_REQUESTED;
+
+	max_target = vis->vis_max_target;
+	mutex_exit(&vis->vis_mutex);
+
+	/*
+	 * Begin updating the target map.
+	 */
+	if (scsi_hba_tgtmap_set_begin(vis->vis_tgtmap) != DDI_SUCCESS) {
+		dev_err(vis->vis_dip, CE_WARN, "failed to begin target map "
+		    "observation on %s", VIOSCSI_IPORT);
+		r = EIO;
+		goto done;
+	}
+
+	/*
+	 * XXX Primitive discovery loop.  We'll walk the full range of target
+	 * addresses that we believe is possible, submitting REPORT LUNS to LUN
+	 * zero at each target.  If that succeeds, we'll mark the target as
+	 * active.
+	 */
+	for (uint32_t target = 0; target <= max_target; target++) {
+		vioscsi_cmd_t *vsc;
+		int res;
+
+		if ((vsc = vioscsi_report_luns_alloc(vis, target)) == NULL) {
+			r = ENOMEM;
+			goto done;
+		}
+
+		vioscsi_q_push(vsc);
+
+		if ((res = vioscsi_poll_for(vsc)) != 0) {
+			dev_err(vis->vis_dip, CE_WARN,
+			    "disco REPORT LUNS poll failure (%u) = %u",
+			    target, res);
+			r = EIO;
+			goto done;
+		}
+
+		if (!(vsc->vsc_status & VIOSCSI_CMD_STATUS_ERROR)) {
+			/*
+			 * Successful REPORT LUNS!  Mark this target and LUN as
+			 * available.
+			 * XXX Technically we should look _inside_ the REPORT
+			 * LUNS response, rather than assume it's a disk on
+			 * LUN 0?
+			 */
+
+			/*
+			 * We use the same format for our address as is
+			 * expected by devfsadm; see disk_callback_chan().
+			 */
+			char addr[128];
+			(void) snprintf(addr, sizeof (addr), "%x,%x",
+			    target, 0);
+
+			if (scsi_hba_tgtmap_set_add(vis->vis_tgtmap,
+			    SCSI_TGT_SCSI_DEVICE, addr, NULL) != DDI_SUCCESS) {
+				r = EIO;
+				goto done;
+			}
+		}
+
+		vioscsi_cmd_free(vsc);
+	}
+
+	r = 0;
+
+done:
+	if (r == 0) {
+		if (scsi_hba_tgtmap_set_end(vis->vis_tgtmap) != DDI_SUCCESS) {
+			dev_err(vis->vis_dip, CE_WARN, "target map update "
+			    "failed");
+			r = EIO;
+		}
+	} else {
+		/*
+		 * We were unable to complete a full scan, so abandon this
+		 * target map update.
+		 */
+		if (scsi_hba_tgtmap_set_flush(vis->vis_tgtmap) != DDI_SUCCESS) {
+			dev_err(vis->vis_dip, CE_WARN, "target map update "
+			    "cancel failed");
+		}
+	}
+
+	mutex_enter(&vis->vis_mutex);
+	vis->vis_status &= ~VIOSCSI_STATUS_DISCOVERY_RUNNING;
+	if (r == 0) {
+		/*
+		 * Update the time of the last successful discovery:
+		 */
+		vis->vis_time_last_discovery = gethrtime();
+	}
+
+	/*
+	 * If this discovery scan failed or if discovery was requested while we
+	 * were already running, request a new discovery scan at the next
+	 * periodic maintenance interval.
+	 */
+	if (r != 0 || (vis->vis_status & VIOSCSI_STATUS_DISCOVERY_REQUESTED)) {
+		vis->vis_status |= VIOSCSI_STATUS_DISCOVERY_PERIODIC;
+	}
+	mutex_exit(&vis->vis_mutex);
+
+	return (r);
+}
+
+static void
+vioscsi_discover_request(vioscsi_t *vis)
+{
+	boolean_t run;
+	VERIFY(MUTEX_HELD(&vis->vis_mutex));
+
+	if (ddi_in_panic()) {
+		return;
+	}
+
+	/*
+	 * We only need to activate the discovery task queue if discovery is
+	 * not in progress, and has not been scheduled for the periodic
+	 * routine.
+	 */
+	run = (vis->vis_status & VIOSCSI_STATUS_DISCOVERY_MASK) == 0;
+	vis->vis_status |= VIOSCSI_STATUS_DISCOVERY_REQUESTED;
+	if (!run) {
+		return;
+	}
+
+	if (ddi_taskq_dispatch(vis->vis_discover_taskq, vioscsi_discover,
+	    vis, DDI_NOSLEEP) != DDI_SUCCESS) {
+		/*
+		 * We couldn't kick off the discovery task queue, so fall
+		 * back to requesting discovery from the periodic routine.
+		 */
+		vis->vis_status |= VIOSCSI_STATUS_DISCOVERY_PERIODIC;
+	}
+}
+
+void
+vioscsi_periodic(void *arg)
+{
+	vioscsi_t *vis = arg;
+
+	mutex_enter(&vis->vis_mutex);
+
+	/*
+	 * XXX Maintain!
+	 */
+
+	mutex_exit(&vis->vis_mutex);
+}
+
 static int
 vioscsi_tran_setup_pkt(struct scsi_pkt *pkt, int (*callback)(caddr_t),
     caddr_t arg)
@@ -1155,10 +1408,10 @@ vioscsi_tran_setup_pkt(struct scsi_pkt *pkt, int (*callback)(caddr_t),
 		return (-1);
 	}
 	vsc->vsc_scsa = vscs;
-	vsc->vsc_response_offset = sizeof (struct virtio_scsi_req_cmd_read) +                   
+	vsc->vsc_response_offset = sizeof (struct virtio_scsi_req_cmd_read) +
 	    vis->vis_cdb_size;
-	vscs->vsc_cmd = vsc;
-	vscs->vsc_pkt = pkt;
+	vscs->vscs_cmd = vsc;
+	vscs->vscs_pkt = pkt;
 
 	struct virtio_scsi_req_cmd_read *vsrq = vsc->vsc_va;
 	pkt->pkt_cdbp = &vsrq->vsrq_cdb[0];
@@ -1176,6 +1429,145 @@ vioscsi_tran_teardown_pkt(struct scsi_pkt *pkt)
 
 	pkt->pkt_cdbp = NULL;
 }
+
+static int
+vioscsi_tran_reset(struct scsi_address *ap, int level)
+{
+	/*
+	 * XXX Pretend we did a reset.
+	 */
+	return (1);
+}
+
+static int
+vioscsi_tran_abort(struct scsi_address *sa, struct scsi_pkt *pkt)
+{
+	/*
+	 * XXX Fail to abort anything right now.
+	 */
+	return (0);
+}
+
+static int
+vioscsi_tran_start(struct scsi_address *sa, struct scsi_pkt *pkt)
+{
+	struct scsi_device *sd;
+	vioscsi_target_t *vist;
+	vioscsi_t *vis;
+	vioscsi_cmd_t *vsc;
+	vioscsi_cmd_scsa_t *vscs;
+
+	VERIFY((sd = scsi_address_device(&pkt->pkt_address)) != NULL);
+	VERIFY((vist = scsi_device_hba_private_get(sd)) != NULL);
+	VERIFY((vis = vist->vist_vioscsi) != NULL);
+	VERIFY((vscs = (vioscsi_cmd_scsa_t *)pkt->pkt_ha_private) != NULL);
+	VERIFY((vsc = vscs->vscs_cmd) != NULL);
+
+	if (vsc->vsc_status & VIOSCSI_CMD_STATUS_TRAN_START) {
+		/*
+		 * We have already used this command structure once.  We'll
+		 * need to clear it out so that we can set up the descriptors
+		 * again from scratch.
+		 */
+		vioscsi_cmd_clear(vsc);
+	}
+	vsc->vsc_status |= VIOSCSI_CMD_STATUS_TRAN_START;
+
+	dev_err(vis->vis_dip, CE_WARN, "device %s tran_start opcode 0x%x",
+	    scsi_device_unit_address(sd), (uint_t)pkt->pkt_cdbp[0]);
+
+	if (pkt->pkt_flags & FLAG_NOINTR) {
+		/*
+		 * We must sleep and wait for the completion of this command.
+		 */
+		vsc->vsc_status |= VIOSCSI_CMD_STATUS_POLLED;
+	}
+
+	volatile struct virtio_scsi_req_cmd_read *vsrq = vsc->vsc_va;
+	bcopy(vist->vist_lun, vsrq->vsrq_lun, 8);
+	vsrq->vsrq_id = vis->vis_next_tag++;
+
+	/*
+	 * Add the device-readable request header in the first descriptor.
+	 */
+	struct vq_entry *qe;
+	if ((qe = vioscsi_cmd_append(vsc)) == NULL) {
+		return (TRAN_BADPKT);
+	}
+
+	virtio_ve_set(qe, vsc->vsc_pa, vsc->vsc_response_offset, B_TRUE);
+
+	/*
+	 * Append any outbound cookies between the request and response
+	 * descriptors.
+	 */
+	if (pkt->pkt_numcookies > 0 && (pkt->pkt_dma_flags & DDI_DMA_WRITE)) {
+		for (uint_t n = 0; n < pkt->pkt_numcookies; n++) {
+			if ((qe = vioscsi_cmd_append(vsc)) == NULL) {
+				return (TRAN_BADPKT);
+			}
+
+			virtio_ve_set(qe, pkt->pkt_cookies[n].dmac_laddress,
+			    pkt->pkt_cookies[n].dmac_size, B_TRUE);
+		}
+	}
+
+	/*
+	 * Add the device-writeable response header.
+	 */
+	if ((qe = vioscsi_cmd_append(vsc)) == NULL) {
+		return (TRAN_BADPKT);
+	}
+
+	virtio_ve_set(qe, vsc->vsc_pa + vsc->vsc_response_offset,
+	    vsc->vsc_sz - vsc->vsc_response_offset, B_FALSE);
+
+	/*
+	 * Append any inbound cookies after the response header.
+	 */
+	if (pkt->pkt_numcookies > 0 && (pkt->pkt_dma_flags & DDI_DMA_READ)) {
+		for (uint_t n = 0; n < pkt->pkt_numcookies; n++) {
+			if ((qe = vioscsi_cmd_append(vsc)) == NULL) {
+				return (TRAN_BADPKT);
+			}
+
+			virtio_ve_set(qe, pkt->pkt_cookies[n].dmac_laddress,
+			    pkt->pkt_cookies[n].dmac_size, B_FALSE);
+		}
+	}
+
+	/*
+	 * Initialise the SCSI packet as described in tran_start(9E).  We will
+	 * progressively update these fields as the command moves through the
+	 * submission and completion states.
+	 */
+	pkt->pkt_resid = 0;
+	pkt->pkt_reason = CMD_CMPLT;
+	pkt->pkt_statistics = 0;
+	pkt->pkt_state = 0;
+
+	/*
+	 * XXX pkt->pkt_time
+	 */
+
+	vioscsi_q_push(vsc);
+
+	/*
+	 * Update the SCSI packet to reflect submission of the command.
+	 */
+	pkt->pkt_state |= STATE_GOT_BUS | STATE_GOT_TARGET | STATE_SENT_CMD;
+
+	if (pkt->pkt_flags & FLAG_NOINTR) {
+		/*
+		 * XXX poll
+		 */
+		vioscsi_poll_for(vsc);
+	}
+
+	mutex_exit(&vis->vis_mutex);
+	return (TRAN_ACCEPT);
+}
+
 
 static int
 vioscsi_setcap(struct scsi_address *sa, char *cap, int value, int whom)
@@ -1251,7 +1643,7 @@ vioscsi_getcap(struct scsi_address *sa, char *cap, int whom)
 		 * pair.  So that devfsadm does not expect a full SAS WWN,
 		 * identify as a simple SCSI bus for this device.
 		 */
-		return (INTERCONNECT_PARALLLEL);
+		return (INTERCONNECT_PARALLEL);
 
 	case SCSI_CAP_DISCONNECT:
 	case SCSI_CAP_SYNCHRONOUS:
@@ -1342,6 +1734,36 @@ vioscsi_hba_teardown(vioscsi_t *vis)
 	INITLEVEL_CLEAR(vis, VIOSCSI_INITLEVEL_SCSA);
 }
 
+static boolean_t
+vioscsi_addr_parse(const char *ua, uint_t *targetp, uint_t *lunp)
+{
+	long target, lun;
+	const char *comma;
+	char *eptr;
+
+	if ((comma = strchr(ua, ',')) == NULL) {
+		return (B_FALSE);
+	}
+
+	if (ddi_strtol(ua, &eptr, 16, &target) != 0 || eptr != comma ||
+	    target < 0 || target > UINT8_MAX) {
+		return (B_FALSE);
+	}
+
+	if (ddi_strtol(comma + 1, &eptr, 16, &lun) != 0 || *eptr != '\0' ||
+	    lun < 0 || lun > UINT16_MAX) {
+		return (B_FALSE);
+	}
+
+	if (targetp != NULL) {
+		*targetp = (uint_t)target;
+	}
+	if (lunp != NULL) {
+		*lunp = (uint_t)lun;
+	}
+	return (B_TRUE);
+}
+
 static void
 vioscsi_tgtmap_activate(void *arg, char *addr, scsi_tgtmap_tgt_type_t type,
     void **privpp)
@@ -1349,6 +1771,7 @@ vioscsi_tgtmap_activate(void *arg, char *addr, scsi_tgtmap_tgt_type_t type,
 	vioscsi_t *vis = arg;
 
 	VERIFY3S(type, ==, SCSI_TGT_SCSI_DEVICE);
+	VERIFY(vioscsi_addr_parse(addr, NULL, NULL));
 
 	/*
 	 * XXX more validation?
@@ -1360,6 +1783,7 @@ vioscsi_tgtmap_deactivate(void *arg, char *addr,
     scsi_tgtmap_tgt_type_t type, void *priv, scsi_tgtmap_deact_rsn_t reason)
 {
 	VERIFY3S(type, ==, SCSI_TGT_SCSI_DEVICE);
+	VERIFY(vioscsi_addr_parse(addr, NULL, NULL));
 
 	/*
 	 * XXX more validation?
@@ -1372,18 +1796,78 @@ static int
 vioscsi_tran_tgt_init(dev_info_t *hba_dip, dev_info_t *tgt_dip,
     scsi_hba_tran_t *hba_tran, struct scsi_device *sd)
 {
+	vioscsi_t *vis = (vioscsi_t *)hba_tran->tran_hba_private;
+	const char *ua;
+	uint_t target, lun;
+
 	/*
-	 * XXX see smrt_logvol_tran_tgt_init()
+	 * Convert the unit address string back into a target and LUN number.
 	 */
+	if ((ua = scsi_device_unit_address(sd)) == NULL ||
+	    !vioscsi_addr_parse(ua, &target, &lun)) {
+		return (DDI_FAILURE);
+	}
+
+	vioscsi_target_t *vist;
+	if ((vist = kmem_zalloc(sizeof (*vist), KM_NOSLEEP)) == NULL) {
+		dev_err(dip, CE_WARN, "could not allocate target object "
+		    "due to memory exhaustion");
+		return (DDI_FAILURE);
+	}
+
+	mutex_enter(&vis->vis_mutex);
+	if (vis->vis_status & VIOSCSI_STATUS_DETACHING) {
+		/*
+		 * We are detaching.  Do not accept any more requests to
+		 * attach targets from the framework.
+		 */
+		mutex_exit(&vis->vis_mutex);
+		kmem_free(vist, sizeof (*vist));
+		return (DDI_FAILURE);
+	}
+
+	vist->vist_vioscsi = vis;
+	vist->vist_scsi_dev = sd;
+	VERIFY3P(sd->sd_dev, ==, tgt_dip);
+
+	/*
+	 * As per the specification, the first LUN address byte is 1, followed
+	 * by the target, then a 2-byte logical unit.
+	 * XXX It's really not clear if they mean the LUN to be LE16...
+	 */
+	vist->vist_lun[0] = 0x01;
+	vist->vist_lun[1] = target & 0xFF;
+	vist->vist_lun[2] = lun & 0xFF;
+	vist->vist_lun[3] = (lun >> 8) && 0xFF;
+
+	/*
+	 * XXX Link this target object to the controller.
+	 */
+
+	scsi_device_hba_private_set(sd, vist);
+
+	mutex_exit(&vis->vis_mutex);
+	return (DDI_SUCCESS);
 }
 
 static void
 vioscsi_tran_tgt_free(dev_info_t *hba_dip, dev_info_t *tgt_dip,
     scsi_hba_tran_t *hba_tran, struct scsi_device *sd)
 {
+	vioscsi_t *vis = (vioscsi_t *)hba_tran->tran_hba_private;
+	vioscsi_target_t *vist = scsi_device_hba_private_get(sd);
+
+	VERIFY3P(vist->vist_scsi_dev, ==, sd);
+
+	mutex_enter(&smrt->smrt_mutex);
 	/*
-	 * XXX see smrt_logvol_tran_tgt_free()
+	 * XXX remove from controller target list.
 	 */
+	mutex_exit(&smrt->smrt_mutex);
+
+	scsi_device_hba_private_set(sd, NULL);
+
+	kmem_free(vist, sizeof (*vist));
 }
 
 static int
@@ -1406,7 +1890,7 @@ vioscsi_iport_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	VERIFY((vis = ddi_get_soft_state(vioscsi_state,
 	    ddi_get_instance(ddi_get_parent(dip)))) != NULL);
 
-	if (strcmp(addr, "v0") != 0) {
+	if (strcmp(addr, VIOSCSI_IPORT) != 0) {
 		/*
 		 * We only support the one hard-coded iport for now.
 		 */
@@ -1427,9 +1911,8 @@ vioscsi_iport_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 
 	tran->tran_hba_private = vioscsi;
 
-	/*
-	 * XXX TAKE LOCK
-	 */
+	mutex_enter(&vis->vis_mutex);
+
 	if (scsi_hba_tgtmap_create(dip, SCSI_TM_FULLSET, MICROSEC, 2 * MICROSEC,
 	    vis, vioscsi_tgtmap_activate, vioscsi_tgtmap_deactivate,
 	    &vis->vis_tgtmap) != DDI_SUCCESS) {
@@ -1439,11 +1922,11 @@ vioscsi_iport_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	/*
 	 * XXX SCHEDULE A DISCOVERY REQUEST NOW...
 	 */
+	vioscsi_discover_request(vis);
 
 	vis->vis_iport = dip;
-	/*
-	 * XXX DROP LOCK
-	 */
+
+	mutex_exit(&vis->vis_mutex);
 	return (DDI_SUCCESS);
 }
 
@@ -1463,7 +1946,7 @@ vioscsi_iport_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 
 	VERIFY((addr = scsi_hba_iport_unit_address(dip)) != NULL);
 
-	if (strcmp(addr, "v0") != 0) {
+	if (strcmp(addr, VIOSCSI_IPORT) != 0) {
 		/*
 		 * We only support one hard-coded iport for now.
 		 */
@@ -1538,8 +2021,6 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 
 	INITLEVEL_SET(vis, VIOSCSI_INITLEVEL_BASIC);
 
-	// ddi_set_driver_private(dip, vis);
-
 	/*
 	 * Perform common virtio initialisation and feature negotiation.
 	 */
@@ -1591,6 +2072,7 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	 */
 	mutex_init(&vis->vis_mutex, NULL, MUTEX_DRIVER,
 	    DDI_INTR_PRI(vio->sc_intr_prio));
+	cv_init(&vis->vis_cv_finish, NULL, CV_DRIVER, NULL);
 	INITLEVEL_SET(vis, VIOSCSI_INITLEVEL_MUTEX);
 
 	if (virtio_enable_ints(vio) != DDI_SUCCESS) {
@@ -1618,17 +2100,81 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	    VIRTIO_SCSI_CFG_CDB_SIZE);
 	dev_err(dip, CE_WARN, "config: cdb_size = %u", vis->vis_cdb_size);
 
+	/*
+	 * XXX I believe this should be used to constrain the number of chained
+	 * descriptors to use for a command.
+	 */
+	vis->vis_seg_max = virtio_read_device_config_4(&vis->vis_virtio,
+	    VIRTIO_SCSI_CFG_SEG_MAX);
+	dev_err(dip, CE_WARN, "config: seg_max = %u", vis->vis_seg_max);
+
+	/*
+	 * The specification suggests the maximum channel value SHOULD be zero.
+	 * At least one implementation in the wild returns a value of one.
+	 * It's not clear from the specification how one would actually include
+	 * a channel number in the described LUN address format, so for now
+	 * just report if the value is outside the range we've seen.
+	 */
 	vis->vis_max_channel = virtio_read_device_config_2(&vis->vis_virtio,
 	    VIRTIO_SCSI_CFG_MAX_CHANNEL);
-	dev_err(dip, CE_WARN, "config: max_channel = %u", vis->vis_max_channel);
+	if (vis->vis_max_channel > 1) {
+		/*
+		 * We don't need to clamp because we don't actually use this
+		 * value for anything.
+		 */
+		dev_err(dip, CE_WARN, "max_channel value of %u is higher "
+		    "than expected", vis->vis_max_channel);
+	}
 
-	vis->vis_max_target = virtio_read_device_config_2(&vis->vis_virtio,
+	/*
+	 * The specification suggests that the maximum target number should be
+	 * capped at 255.  We'll clamp at that value in order to avoid an even
+	 * more expensive scan than usual.
+	 */
+	vis->vis_max_target_raw = virtio_read_device_config_2(&vis->vis_virtio,
 	    VIRTIO_SCSI_CFG_MAX_TARGET);
-	dev_err(dip, CE_WARN, "config: max_target = %u", vis->vis_max_target);
+	if (vis->vis_max_target_raw > 255) {
+		vis->vis_max_target = 255;
+		dev_err(dip, CE_WARN, "max_target value was %u, clamping at "
+		    "%u", vis->vis_max_target_raw, vis->vis_max_target);
+	} else {
+		vis->vis_max_target = vis->vis_max_target_raw;
+	}
 
-	vis->vis_max_lun = virtio_read_device_config_4(&vis->vis_virtio,
+	/*
+	 * The maximum LUN number should be capped at 16383 according to the
+	 * specification.  In practice, it seems that most implementations will
+	 * just use LUN 0 on each target.
+	 */
+	vis->vis_max_lun_raw = virtio_read_device_config_4(&vis->vis_virtio,
 	    VIRTIO_SCSI_CFG_MAX_LUN);
-	dev_err(dip, CE_WARN, "config: max_lun = %u", vis->vis_max_lun);
+	if (vis->vis_max_lun_raw > 1) {
+		vis->vis_max_lun = 1;
+		dev_err(dip, CE_WARN, "max_lun value was %u, clamping at "
+		    "%u", vis->vis_max_lun_raw, vis->vis_max_lun);
+	} else {
+		vis->vis_max_lun = vis->vis_max_lun_raw;
+	}
+
+	/*
+	 * Register the maintenance routine for periodic execution:
+	 */
+	vis->vis_periodic = ddi_periodic_add(vioscsi_periodic, vis,
+	    VIOSCSI_PERIODIC_RATE * NANOSEC, DDI_IPL_0);
+	INITLEVEL_SET(vis, VIOSCSI_INITLEVEL_PERIODIC);
+
+	/*
+	 * Create a task queue to manage the discovery of targets and LUNs.
+	 */
+	char taskq_name[64];
+	(void) snprintf(taskq_name, sizeof (taskq_name), "vioscsi_discover_%u",
+	    instance);
+	if ((vis->vis_discover_taskq = ddi_taskq_create(dip, taskq_name, 1,
+	    TASKQ_DEFAULTPRI, 0)) == NULL) {
+		dev_err(dip, CE_WARN, "failed to create discovery task queue");
+		goto fail;
+	}
+	INITLEVEL_SET(vis, VIOSCSI_INITLEVEL_TASKQ);
 
 	/*
 	 * Populate the event virtqueue with some buffers so that the host can
@@ -1642,7 +2188,7 @@ vioscsi_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 		goto fail;
 	}
 
-	if (scsi_hba_iport_register(dip, "v0") != DDI_SUCCESS) {
+	if (scsi_hba_iport_register(dip, VIOSCSI_IPORT) != DDI_SUCCESS) {
 		goto fail;
 	}
 
@@ -1668,27 +2214,45 @@ fail:
 static void
 vioscsi_cleanup(vioscsi_t *vis)
 {
-	if (vis->vis_q_control != NULL) {
-		virtio_free_vq(vis->vis_q_control);
+	vioscsi_q_fini(&vis->vis_q_control);
+	vioscsi_q_fini(&vis->vis_q_event);
+	vioscsi_q_fini(&vis->vis_q_release);
+
+	if (INITLEVEL_ACTIVE(vis, VIOSCSI_INITLEVEL_TASKQ)) {
+		ddi_taskq_destroy(vis->vis_taskq);
+		vis->vis_taskq = NULL;
+
+		INITLEVEL_CLEAR(vis, VIOSCSI_INITLEVEL_TASKQ);
 	}
-	if (vis->vis_q_event != NULL) {
-		virtio_free_vq(vis->vis_q_event);
+
+	if (INITLEVEL_ACTIVE(vis, VIOSCSI_INITLEVEL_PERIODIC)) {
+		ddi_periodic_delete(vis->vis_periodic);
+
+		INITLEVEL_CLEAR(vis, VIOSCSI_INITLEVEL_PERIODIC);
 	}
-	if (vis->vis_q_request != NULL) {
-		virtio_free_vq(vis->vis_q_request);
+
+	if (INITLEVEL_ACTIVE(vis, VIOSCSI_INITLEVEL_INTERRUPTS)) {
+		virtio_release_ints(&vis->vis_virtio);
+
+		INITLEVEL_CLEAR(vis, VIOSCSI_INITLEVEL_INTERRUPTS);
 	}
 
 	if (INITLEVEL_ACTIVE(vis, VIOSCSI_INITLEVEL_VIRTIO)) {
 		virtio_legacy_fini(&vis->vis_virtio);
+
+		INITLEVEL_CLEAR(vis, VIOSCSI_INITLEVEL_VIRTIO);
 	}
 
 	if (INITLEVEL_ACTIVE(vis, VIOSCSI_INITLEVEL_BASIC)) {
-		VERIFY(avl_is_empty(&vis->vis_inflight_control));
-		avl_destroy(&vis->vis_inflight_control);
-		VERIFY(avl_is_empty(&vis->vis_inflight_event));
-		avl_destroy(&vis->vis_inflight_event);
-		VERIFY(avl_is_empty(&vis->vis_inflight_request));
-		avl_destroy(&vis->vis_inflight_request);
+
+		INITLEVEL_CLEAR(vis, VIOSCSI_INITLEVEL_BASIC);
+	}
+
+	if (INITLEVEL_ACTIVE(vis, VIOSCSI_INITLEVEL_MUTEX)) {
+		mutex_destroy(&vis->vis_mutex);
+		cv_destroy(&vis->vis_cv_finish);
+
+		INITLEVEL_CLEAR(vis, VIOSCSI_INITLEVEL_MUTEX);
 	}
 
 	VERIFY0(vis->vis_init_level);
@@ -1699,27 +2263,29 @@ vioscsi_cleanup(vioscsi_t *vis)
 static int
 vioscsi_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 {
-	vioscsi_t *vis = ddi_get_driver_private(dip);
+	scsi_hba_tran_t *tran = ddi_get_driver_private(dip);
+	vioscsi_t *vis = (vioscsi_t *)tran->tran_hba_private;
+
+	if (scsi_hba_iport_unit_address(dip) != NULL) {
+		return (vioscsi_iport_detach(dip, cmd));
+	}
 
 	if (cmd != DDI_DETACH) {
 		return (DDI_FAILURE);
 	}
 
-	virtio_release_ints(&vis->vis_virtio);
-
-	if (vis->vis_q_control != NULL) {
-		virtio_free_vq(vis->vis_q_control);
-	}
-	if (vis->vis_q_event != NULL) {
-		virtio_free_vq(vis->vis_q_event);
-	}
-	if (vis->vis_q_request != NULL) {
-		virtio_free_vq(vis->vis_q_request);
+	mutex_enter(&vis->vis_mutex);
+	if (vis->vis_iport != NULL) {
+		mutex_exit(&vis->vis_mutex);
+		dev_err(vis->vis_dip, CE_WARN, "cannot detach: iports still "
+		    "attached");
+		return (DDI_FAILURE);
 	}
 
-	virtio_legacy_fini(&vis->vis_virtio);
+	vis->vis_status |= VIOSCSI_STATUS_DETACHING;
+	mutex_exit(&vis->vis_mutex);
 
-	ddi_soft_state_free(vioscsi_state, ddi_get_instance(vis->vis_dip));
+	vioscsi_cleanup(vis);
 
 	dev_err(dip, CE_WARN, "detach ok");
 	return (DDI_SUCCESS);
@@ -1755,21 +2321,16 @@ vioscsi_cmd_comparator(const void *lp, const void *rp)
 	const vioscsi_cmd_t *l = lp;
 	const vioscsi_cmd_t *r = rp;
 
-	if (l->vsc_vqname > r->vsc_vqname) {
-		return (1);
-	} else if (l->vsc_vqname < r->vsc_vqname) {
-		return (-1);
-	}
-
 	/*
-	 * If the commands are in the same queue, use the index to
-	 * disambiguate.
+	 * Make sure we're comparing descriptor indexes for the same virtqueue.
 	 */
+	VERIFY3P(l->vsc_q, ==, r->vsc_q);
+
 	if (l->vsc_vqidx > r->vsc_vqidx) {
 		return (1);
 	} else if (l->vsc_vqidx < r-<vsc_vqidx) {
 		return (-1);
+	} else {
+		return (0);
 	}
-
-	return (0);
 }
