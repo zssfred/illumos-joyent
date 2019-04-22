@@ -2088,7 +2088,7 @@ VIOBLK_OBJS = vioblk.o
 VIOIF_OBJS = vioif.o
 
 # Virtio SCSI driver
-VIOSCSI_OBJS = vioscsi.o
+VIOSCSI_OBJS = vioscsi.o vioscsi_cmd.o
 
 #
 #	kiconv modules
