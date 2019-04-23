@@ -22,6 +22,7 @@ static int vioscsi_detach(dev_info_t *, ddi_detach_cmd_t);
 static int vioscsi_ioctl(dev_t, int, intptr_t, int, cred_t *, int *);
 static void vioscsi_cleanup(vioscsi_t *);
 static void vioscsi_hba_complete(vioscsi_cmd_t *);
+static void vioscsi_discover_request(vioscsi_t *);
 
 static struct cb_ops vioscsi_cb_ops = {
 	.cb_rev =		CB_REV,
@@ -602,6 +603,17 @@ vioscsi_handle_event(caddr_t arg0, caddr_t arg1)
 		    (uint_t)vsev->vsev_lun[6],
 		    (uint_t)vsev->vsev_lun[7],
 		    vsev->vsev_event, vsev->vsev_reason);
+
+		if (vsev->vsev_event == VIRTIO_SCSI_T_TRANSPORT_RESET) {
+			uint32_t r = vsev->vsev_reason;
+
+			if (r == VIRTIO_SCSI_EVT_RESET_RESCAN ||
+			    r == VIRTIO_SCSI_EVT_RESET_REMOVED) {
+				dev_err(vis->vis_dip, CE_WARN,
+				    "rescan discovery requested");
+				vioscsi_discover_request(vis);
+			}
+		}
 
 		/*
 		 * We want to keep a standing pool of event buffers, so put
