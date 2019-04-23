@@ -185,6 +185,7 @@ struct vioscsi {
 	scsi_hba_tran_t		*vis_hba_tran;
 	dev_info_t		*vis_iport;
 	scsi_hba_tgtmap_t	*vis_tgtmap;
+	ddi_dma_attr_t		vis_hba_dma_attr;
 
 	uint64_t		vis_next_tag;
 
@@ -298,8 +299,17 @@ struct vioscsi_cmd_scsa {
 };
 
 typedef enum vioscsi_cmd_type {
+	/*
+	 * Request queue events:
+	 */
 	VIOSCSI_CMDTYPE_INTERNAL =		0x4000,
 	VIOSCSI_CMDTYPE_SCSA,
+
+	/*
+	 * Events for other queues:
+	 */
+	VIOSCSI_CMDTYPE_EVENT,
+	VIOSCSI_CMDTYPE_CONTROL,
 } vioscsi_cmd_type_t;
 
 typedef enum vioscsi_cmd_status {

@@ -159,6 +159,9 @@ vioscsi_cmd_free(vioscsi_cmd_t *vsc)
 void
 vioscsi_cmd_clear(vioscsi_cmd_t *vsc)
 {
+	VERIFY(!(vsc->vsc_status & VIOSCSI_CMD_STATUS_INFLIGHT));
+	vsc->vsc_status = 0; /* XXX */
+
 	if (vsc->vsc_qe != NULL) {
 		virtio_free_chain(vsc->vsc_qe);
 		vsc->vsc_qe = NULL;
@@ -240,8 +243,10 @@ vioscsi_q_push(vioscsi_cmd_t *vsc)
 	avl_add(&visq->visq_inflight, vsc);
 	vsc->vsc_status |= VIOSCSI_CMD_STATUS_INFLIGHT;
 
+#if 0
 	dev_err(vis->vis_dip, CE_WARN, "q %d push idx %x", visq->visq_name,
 	    (uint_t)vsc->vsc_qe->qe_index);
+#endif
 
 	vsc->vsc_time_push = gethrtime();
 
@@ -262,8 +267,10 @@ top:
 		return (NULL);
 	}
 
+#if 0
 	dev_err(vis->vis_dip, CE_WARN, "q %d pull idx %x", visq->visq_name,
 	    (uint_t)qe->qe_index);
+#endif
 
 	vioscsi_cmd_t search;
 	search.vsc_q = visq;
