@@ -659,6 +659,7 @@ vioscsi_handle_request(caddr_t arg0, caddr_t arg1)
 
 	vioscsi_cmd_t *vsc;
 	while ((vsc = vioscsi_q_pull(&vis->vis_q_request)) != NULL) {
+#if 0
 		struct virtio_scsi_req_cmd_write *vsrq = vsc->vsc_va +
 		    vsc->vsc_response_offset;
 
@@ -667,6 +668,7 @@ vioscsi_handle_request(caddr_t arg0, caddr_t arg1)
 		    vsrq->vsrq_status,
 		    vsrq->vsrq_response,
 		    vsrq->vsrq_residual);
+#endif
 
 		/*
 		 * XXX Determine how much to molest the SCSI packet before
@@ -976,17 +978,21 @@ vioscsi_discover(void *arg)
 			(void) snprintf(addr, sizeof (addr), "%x",
 			    target);
 
+#if 0
 			dev_err(vis->vis_dip, CE_WARN, "REPORT LUNS (%u) OK",
 			    target);
+#endif
 
 			if (scsi_hba_tgtmap_set_add(vis->vis_tgtmap,
 			    SCSI_TGT_SCSI_DEVICE, addr, NULL) != DDI_SUCCESS) {
 				r = EIO;
 				goto done;
 			}
+#if 0
 		} else {
 			dev_err(vis->vis_dip, CE_WARN, "REPORT LUNS (%u) FAIL",
 			    target);
+#endif
 		}
 
 		vioscsi_cmd_free(vsc);
@@ -1184,8 +1190,10 @@ vioscsi_tran_start(struct scsi_address *sa, struct scsi_pkt *pkt)
 	}
 	vsc->vsc_status |= VIOSCSI_CMD_STATUS_TRAN_START;
 
+#if 0
 	dev_err(vis->vis_dip, CE_WARN, "device %s tran_start opcode 0x%x",
 	    scsi_device_unit_address(sd), (uint_t)pkt->pkt_cdbp[0]);
+#endif
 
 	if (pkt->pkt_flags & FLAG_NOINTR) {
 		/*
@@ -1385,10 +1393,12 @@ static int
 vioscsi_no_tran_tgt_init(dev_info_t *hba_dip, dev_info_t *tgt_dip,
     scsi_hba_tran_t *hba_tran, struct scsi_device *sd)
 {
+#if 0
 	dev_err(hba_dip, CE_WARN, "vioscsi_no_tran_tgt_init called; "
 	    "hba %s%d, target %s%d",
 	    ddi_get_name(hba_dip), ddi_get_instance(hba_dip),
 	    ddi_get_name(tgt_dip), ddi_get_instance(tgt_dip));
+#endif
 	return (DDI_FAILURE);
 }
 
