@@ -27,6 +27,7 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/debug.h>
 #include <string.h>
 #include <netinet/in.h>
 #include <sys/sockio.h>
@@ -309,6 +310,136 @@ dhcp_bound(dhcp_smach_t *dsmp, PKT_LIST *ack)
 	return (B_TRUE);
 }
 
+static int
+dhcp_route_add(dhcp_smach_t *dsmp, struct in_addr *network, uint8_t prefix,
+    struct in_addr *nexthop, boolean_t interface)
+{
+	dhcp_route_t *dhr = NULL;
+	avl_index_t where;
+
+	if ((dhr = calloc(1, sizeof (*dhr))) == NULL) {
+		return (-1);
+	}
+
+	if (prefix != 0) {
+		dhr->dhr_network = *network;
+		dhr->dhr_prefix = prefix;
+	}
+	dhr->dhr_nexthop = *nexthop;
+	dhr->dhr_installed = B_FALSE;
+	dhr->dhr_interface = interface;
+
+	if (avl_find(&dsmp->dsm_routes, dhr, &where) != NULL) {
+		/*
+		 * The route is already in the list.
+		 */
+		free(dhr);
+		return (0);
+	}
+	avl_insert(&dsmp->dsm_routes, dhr, where);
+	return (0);
+}
+
+static int
+dhcp_classless_routes_add(dhcp_smach_t *dsmp, DHCP_OPT *routes, ipaddr_t ifip)
+{
+	uint_t pos = 0;
+	uint_t nsigocts = 0;
+	uint_t c = 0;
+	uint8_t network[4];
+	uint8_t nexthop[4];
+	uint_t pfx = 0;
+	enum {
+		RPST_REST = 1,
+		RPST_NETWORK,
+		RPST_NEXTHOP
+	} state = RPST_REST;
+
+	VERIFY3U(routes->code, ==, CD_CLASSLESS_ROUTES);
+
+	/* code, len, value[] */
+
+	for (;;) {
+		uint8_t b;
+
+		if (pos >= routes->len) {
+			break;
+		}
+
+		b = routes->value[pos];
+
+		switch (state) {
+		case RPST_REST:
+			if (b == 0) {
+				nsigocts = 0;
+			} else if (b >= 1 && b <= 8) {
+				nsigocts = 1;
+			} else if (b >= 9 && b <= 16) {
+				nsigocts = 2;
+			} else if (b >= 17 && b <= 24) {
+				nsigocts = 3;
+			} else if (b >= 25 && b <= 32) {
+				nsigocts = 4;
+			} else {
+				errno = EPROTO;
+				return (-1);
+			}
+			pfx = b;
+			(void) memset(network, 0, sizeof (network));
+			(void) memset(nexthop, 0, sizeof (nexthop));
+			c = 0;
+			pos++;
+			state = RPST_NETWORK;
+			break;
+
+		case RPST_NETWORK:
+			if (c < nsigocts) {
+				network[c++] = b;
+				pos++;
+				break;
+			}
+			c = 0;
+			state = RPST_NEXTHOP;
+			break;
+
+		case RPST_NEXTHOP:
+			nexthop[c++] = b;
+			pos++;
+			if (c >= 4) {
+				boolean_t iface;
+				struct in_addr ia_net, ia_hop;
+				(void) memcpy(&ia_net.s_addr, network,
+				    sizeof (ipaddr_t));
+				if (ia_hop.s_addr == 0) {
+					/*
+					 * XXX An interface route!
+					 */
+					iface = B_TRUE;
+					(void) memcpy(&ia_hop.s_addr, &ifip,
+					    sizeof (ipaddr_t));
+				} else {
+					iface = B_FALSE;
+					(void) memcpy(&ia_hop.s_addr, nexthop,
+					    sizeof (ipaddr_t));
+				}
+
+				(void) dhcp_route_add(dsmp, &ia_net, pfx,
+				    &ia_hop, iface);
+
+				state = RPST_REST;
+			}
+			break;
+		}
+	}
+
+	if (state != RPST_REST) {
+		errno = EPROTO;
+		return (-1);
+	}
+
+	return (0);
+}
+
 /*
  * dhcp_bound_complete(): complete interface configuration after DAD
  *
@@ -319,11 +450,13 @@ dhcp_bound(dhcp_smach_t *dsmp, PKT_LIST *ack)
 void
 dhcp_bound_complete(dhcp_smach_t *dsmp)
 {
-	PKT_LIST	*ack;
+	PKT_LIST	*ack = dsmp->dsm_ack;
+	DHCP_OPT	*routes;
 	DHCP_OPT	*router_list;
 	int		i;
 	DHCPSTATE	oldstate;
 	dhcp_lif_t	*lif;
+	boolean_t	ignore_routes = B_FALSE, ignore_router_list = B_FALSE;
 
 	/*
 	 * Do bound state entry processing only if running IPv4.  There's no
@@ -341,6 +474,55 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 		return;
 	}
 
+	VERIFY3U(avl_numnodes(&dsmp->dsm_routes), ==, 0);
+	lif = dsmp->dsm_lif;
+
+	/*
+	 * Check to see if the default route or classless routes options appear
+	 * in the ignore list.
+	 */
+	for (i = 0; i < dsmp->dsm_pillen; i++) {
+		if (dsmp->dsm_pil[i] == CD_ROUTER) {
+			ignore_router_list = B_TRUE;
+		} else if (dsmp->dsm_pil[i] == CD_CLASSLESS_ROUTES) {
+			ignore_routes = B_TRUE;
+		}
+	}
+
+
+	/*
+	 * XXX Set interface MTU...
+	 */
+
+	/*
+	 * XXX Get classless routes...
+	 */
+	if (!ignore_routes &&
+	    (routes = ack->opts[CD_CLASSLESS_ROUTES]) != NULL &&
+	    dhcp_classless_routes_add(dsmp, routes, lif->lif_addr) != 0) {
+		dhcpmsg(MSG_ERR, "dhcp_bound_complete: cannot read "
+		    "classless route list, ignoring classless routes");
+	}
+
+	/*
+	 * XXX Get default routes...
+	 */
+	if (!ignore_router_list &&
+	    (router_list = ack->opts[CD_ROUTER]) != NULL &&
+	    (router_list->len % sizeof (ipaddr_t)) == 0) {
+		for (i = 0; i < router_list->len / sizeof (ipaddr_t); i++) {
+			struct in_addr gateway;
+			(void) memcpy(&gateway,
+			    router_list->value + (i * sizeof (ipaddr_t)),
+			    sizeof (ipaddr_t));
+			if (dhcp_route_add(dsmp, NULL, 0, &gateway,
+			    B_FALSE) != 0) {
+				dhcpmsg(MSG_ERR, "dhcp_bound_complete: "
+				    "adding default router to list failed");
+			}
+		}
+	}
+
 	/*
 	 * Add each provided router; we'll clean them up when the
 	 * state machine goes away or when our lease expires.
@@ -349,43 +531,28 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 	 * see README for details.
 	 */
 
-	ack = dsmp->dsm_ack;
-	router_list = ack->opts[CD_ROUTER];
-	for (i = 0; i < dsmp->dsm_pillen; i++) {
-		if (dsmp->dsm_pil[i] == CD_ROUTER)
-			router_list = NULL;
-	}
-	lif = dsmp->dsm_lif;
-	if (router_list != NULL &&
-	    (router_list->len % sizeof (ipaddr_t)) == 0 &&
-	    strchr(lif->lif_name, ':') == NULL &&
+	if (strchr(lif->lif_name, ':') == NULL &&
 	    !lif->lif_pif->pif_under_ipmp) {
+		for (dhcp_route_t *dhr = avl_first(&dsmp->dsm_routes);
+		    dhr != NULL; dhr = AVL_NEXT(&dsmp->dsm_routes, dhr)) {
+			char rt[INET_ADDRSTRLEN];
 
-		dsmp->dsm_nrouters = router_list->len / sizeof (ipaddr_t);
-		dsmp->dsm_routers  = malloc(router_list->len);
-		if (dsmp->dsm_routers == NULL) {
-			dhcpmsg(MSG_ERR, "dhcp_bound_complete: cannot allocate "
-			    "default router list, ignoring default routers");
-			dsmp->dsm_nrouters = 0;
-		}
+			(void) strncpy(rt, inet_ntoa(dhr->dhr_network),
+			    sizeof (rt));
 
-		for (i = 0; i < dsmp->dsm_nrouters; i++) {
-
-			(void) memcpy(&dsmp->dsm_routers[i].s_addr,
-			    router_list->value + (i * sizeof (ipaddr_t)),
-			    sizeof (ipaddr_t));
-
-			if (!add_default_route(lif->lif_pif->pif_index,
-			    &dsmp->dsm_routers[i])) {
+			if (!add_default_route(lif->lif_pif->pif_index, dhr)) {
 				dhcpmsg(MSG_ERR, "dhcp_bound_complete: cannot "
-				    "add default router %s on %s", inet_ntoa(
-				    dsmp->dsm_routers[i]), dsmp->dsm_name);
-				dsmp->dsm_routers[i].s_addr = htonl(INADDR_ANY);
+				    "add route %s/%u -> %s on %s",
+				    rt, dhr->dhr_prefix,
+				    inet_ntoa(dhr->dhr_nexthop),
+				    dsmp->dsm_name);
 				continue;
 			}
 
-			dhcpmsg(MSG_INFO, "added default router %s on %s",
-			    inet_ntoa(dsmp->dsm_routers[i]), dsmp->dsm_name);
+			dhr->dhr_installed = B_TRUE;
+			dhcpmsg(MSG_INFO, "added route %s/%u -> %s on %s",
+			    rt, dhr->dhr_prefix, inet_ntoa(dhr->dhr_nexthop),
+			    dsmp->dsm_name);
 		}
 	}
 

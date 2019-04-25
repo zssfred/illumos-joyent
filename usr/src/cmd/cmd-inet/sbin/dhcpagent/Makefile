@@ -46,7 +46,10 @@ CERRWARN += -_gcc=-Wno-parentheses
 SMATCH=off
 CPPFLAGS  += -D_XOPEN_SOURCE=500 -D__EXTENSIONS__
 LDLIBS    += -lxnet -lnvpair -ldhcpagent -ldhcputil -linetutil -ldevinfo \
-	-ldlpi -lresolv -lsocket -lipadm
+	-ldlpi -lresolv -lsocket -lipadm -lavl
+
+CSTD = $(CSTD_GNU99)
+C99MODE = -xc99=%all
 
 # Disable warnings that affect all XPG applications.
 LINTFLAGS += -erroff=E_INCONS_ARG_DECL2 -erroff=E_INCONS_VAL_TYPE_DECL2
