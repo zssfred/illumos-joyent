@@ -44,7 +44,6 @@ extern "C" {
  */
 
 enum {
-
 	DF_RELEASE_ON_SIGTERM,	/* send RELEASE on each if upon SIGTERM */
 	_UNUSED_DF_IGNORE_FAILED_ARP,
 	DF_OFFER_WAIT,		/* how long to wait to collect offers */
@@ -59,7 +58,8 @@ enum {
 	DF_REQUEST_FQDN,	/* request FQDN associated with interface */
 	DF_V4_DEFAULT_IAID_DUID,	/* IAID/DUID if no DF_CLIENT_ID */
 	DF_DNS_DOMAINNAME,	/* static domain name if not in --reqhost */
-	DF_ADOPT_DOMAINNAME	/* adopt DHCP domain if not in --reqhost */
+	DF_ADOPT_DOMAINNAME,	/* adopt DHCP domain if not in --reqhost */
+	DF_CLASSLESS_ROUTES,	/* manage additional routes (option 121) */
 };
 
 #define	DHCP_AGENT_DEFAULTS	"/etc/default/dhcpagent"

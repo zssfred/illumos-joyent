@@ -47,6 +47,7 @@
 #include "agent.h"
 #include "interface.h"
 #include "script_handler.h"
+#include "defaults.h"
 
 /*
  * Possible outcomes for IPv6 binding attempt.
@@ -312,9 +313,9 @@ dhcp_bound(dhcp_smach_t *dsmp, PKT_LIST *ack)
 
 static int
 dhcp_route_add(dhcp_smach_t *dsmp, struct in_addr *network, uint8_t prefix,
-    struct in_addr *nexthop, boolean_t interface)
+    struct in_addr *nexthop, boolean_t interface, dhcp_route_source_t source)
 {
-	dhcp_route_t *dhr = NULL;
+	dhcp_route_t *dhr = NULL, *found;
 	avl_index_t where;
 
 	if ((dhr = calloc(1, sizeof (*dhr))) == NULL) {
@@ -328,11 +329,13 @@ dhcp_route_add(dhcp_smach_t *dsmp, struct in_addr *network, uint8_t prefix,
 	dhr->dhr_nexthop = *nexthop;
 	dhr->dhr_installed = B_FALSE;
 	dhr->dhr_interface = interface;
+	dhr->dhr_source = source;
 
-	if (avl_find(&dsmp->dsm_routes, dhr, &where) != NULL) {
+	if ((found = avl_find(&dsmp->dsm_routes, dhr, &where)) != NULL) {
 		/*
 		 * The route is already in the list.
 		 */
+		found->dhr_source |= source;
 		free(dhr);
 		return (0);
 	}
@@ -410,7 +413,8 @@ dhcp_classless_routes_add(dhcp_smach_t *dsmp, DHCP_OPT *routes, ipaddr_t ifip)
 				struct in_addr ia_net, ia_hop;
 				(void) memcpy(&ia_net.s_addr, network,
 				    sizeof (ipaddr_t));
-				if (ia_hop.s_addr == 0) {
+				if (nexthop[0] == 0 && nexthop[1] == 0 &&
+				    nexthop[2] == 0 && nexthop[3] == 0) {
 					/*
 					 * XXX An interface route!
 					 */
@@ -424,7 +428,7 @@ dhcp_classless_routes_add(dhcp_smach_t *dsmp, DHCP_OPT *routes, ipaddr_t ifip)
 				}
 
 				(void) dhcp_route_add(dsmp, &ia_net, pfx,
-				    &ia_hop, iface);
+				    &ia_hop, iface, DHR_SRC_CLASSLESS_ROUTES);
 
 				state = RPST_REST;
 			}
@@ -457,6 +461,7 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 	DHCPSTATE	oldstate;
 	dhcp_lif_t	*lif;
 	boolean_t	ignore_routes = B_FALSE, ignore_router_list = B_FALSE;
+	boolean_t	manage_classless_routes;
 
 	/*
 	 * Do bound state entry processing only if running IPv4.  There's no
@@ -477,18 +482,23 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 	VERIFY3U(avl_numnodes(&dsmp->dsm_routes), ==, 0);
 	lif = dsmp->dsm_lif;
 
+	manage_classless_routes = df_get_bool(dsmp->dsm_name, dsmp->dsm_isv6,
+	    DF_CLASSLESS_ROUTES);
+
 	/*
 	 * Check to see if the default route or classless routes options appear
 	 * in the ignore list.
 	 */
 	for (i = 0; i < dsmp->dsm_pillen; i++) {
-		if (dsmp->dsm_pil[i] == CD_ROUTER) {
+		switch (dsmp->dsm_pil[i]) {
+		case CD_ROUTER:
 			ignore_router_list = B_TRUE;
-		} else if (dsmp->dsm_pil[i] == CD_CLASSLESS_ROUTES) {
+			break;
+		case CD_CLASSLESS_ROUTES:
 			ignore_routes = B_TRUE;
+			break;
 		}
 	}
-
 
 	/*
 	 * XXX Set interface MTU...
@@ -516,7 +526,7 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 			    router_list->value + (i * sizeof (ipaddr_t)),
 			    sizeof (ipaddr_t));
 			if (dhcp_route_add(dsmp, NULL, 0, &gateway,
-			    B_FALSE) != 0) {
+			    B_FALSE, DHR_SRC_DEFAULT_GATEWAY) != 0) {
 				dhcpmsg(MSG_ERR, "dhcp_bound_complete: "
 				    "adding default router to list failed");
 			}
@@ -527,31 +537,59 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 	 * Add each provided router; we'll clean them up when the
 	 * state machine goes away or when our lease expires.
 	 *
-	 * Note that we do not handle default routers on IPv4 logicals;
-	 * see README for details.
+	 * Note that we do not handle routes on IPv4 logicals; see README for
+	 * details.
 	 */
-
 	if (strchr(lif->lif_name, ':') == NULL &&
 	    !lif->lif_pif->pif_under_ipmp) {
 		for (dhcp_route_t *dhr = avl_first(&dsmp->dsm_routes);
 		    dhr != NULL; dhr = AVL_NEXT(&dsmp->dsm_routes, dhr)) {
 			char rt[INET_ADDRSTRLEN];
+			const char *verb = "added";
+
+			if (!manage_classless_routes &&
+			    dhr->dhr_source == DHR_SRC_CLASSLESS_ROUTES) {
+				/*
+				 * This route only appears in the classless
+				 * routes option and we've been asked not to
+				 * manage classless routes.  Note that
+				 * "dhr_source" is a bitfield, so if this route
+				 * also appeared in the default gateway list,
+				 * we'll still add it.
+				 */
+				continue;
+			}
 
 			(void) strncpy(rt, inet_ntoa(dhr->dhr_network),
 			    sizeof (rt));
 
 			if (!add_default_route(lif->lif_pif->pif_index, dhr)) {
-				dhcpmsg(MSG_ERR, "dhcp_bound_complete: cannot "
-				    "add route %s/%u -> %s on %s",
-				    rt, dhr->dhr_prefix,
-				    inet_ntoa(dhr->dhr_nexthop),
-				    dsmp->dsm_name);
-				continue;
+				if (errno == EEXIST) {
+					/*
+					 * This route already exists in the
+					 * kernel.  Adopt this route as if we
+					 * were able to add it, just in case
+					 * the DHCP agent crashed and was
+					 * restarted.
+					 */
+					verb = "found";
+				} else {
+					dhcpmsg(MSG_ERR,
+					    "dhcp_bound_complete: cannot "
+					    "add route %s/%u -> %s (%s) on %s",
+					    rt, dhr->dhr_prefix,
+					    inet_ntoa(dhr->dhr_nexthop),
+					    dhr->dhr_interface ? "interface" :
+					    "gateway", dsmp->dsm_name);
+					continue;
+				}
 			}
 
 			dhr->dhr_installed = B_TRUE;
-			dhcpmsg(MSG_INFO, "added route %s/%u -> %s on %s",
-			    rt, dhr->dhr_prefix, inet_ntoa(dhr->dhr_nexthop),
+			dhcpmsg(MSG_INFO, "%s route %s/%u -> %s (%s) on %s",
+			    verb, rt, dhr->dhr_prefix,
+			    inet_ntoa(dhr->dhr_nexthop),
+			    dhr->dhr_interface ? "interface" : "gateway",
 			    dsmp->dsm_name);
 		}
 	}

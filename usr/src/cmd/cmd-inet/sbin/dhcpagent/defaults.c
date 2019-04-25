@@ -50,7 +50,6 @@ struct dhcp_default {
  */
 
 static struct dhcp_default defaults[] = {
-
 	{ "RELEASE_ON_SIGTERM",  "0",	 0,   0	  },
 	{ "IGNORE_FAILED_ARP",	 "1",	 0,   -1  },
 	{ "OFFER_WAIT",		 "3",	 1,   20  },
@@ -66,6 +65,7 @@ static struct dhcp_default defaults[] = {
 	{ "V4_DEFAULT_IAID_DUID",  "0",	 0,   0	  },
 	{ "DNS_DOMAINNAME",  NULL,	 0,   0	  },
 	{ "ADOPT_DOMAINNAME",	 "0",	 0,   0	  },
+	{ "CLASSLESS_ROUTES",	 "1",	 0,   0	  },
 };
 
 

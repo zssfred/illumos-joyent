@@ -51,13 +51,19 @@ struct dhcp_timer_s {
 	lease_t		dt_start;		/* Initial timer value */
 };
 
+typedef enum dhcp_route_source {
+	DHR_SRC_CLASSLESS_ROUTES =	(1ULL << 0),
+	DHR_SRC_DEFAULT_GATEWAY =	(1ULL << 1),
+} dhcp_route_source_t;
+
 typedef struct dhcp_route_s {
-	uint8_t		dhr_prefix;
-	struct in_addr	dhr_network;
-	struct in_addr	dhr_nexthop;
-	avl_node_t	dhr_node;
-	boolean_t	dhr_installed;
-	boolean_t	dhr_interface;
+	uint8_t			dhr_prefix;
+	struct in_addr		dhr_network;
+	struct in_addr		dhr_nexthop;
+	avl_node_t		dhr_node;
+	boolean_t		dhr_installed;
+	boolean_t		dhr_interface;
+	dhcp_route_source_t	dhr_source;
 } dhcp_route_t;
 
 /* conversion functions */

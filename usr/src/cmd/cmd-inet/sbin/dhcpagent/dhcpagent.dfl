@@ -161,6 +161,13 @@
 #
 # REQUEST_HOSTNAME=no
 
+# XXX By default, the DHCP agent will manage the lifecycle of additional
+# routes received from the server in the Classless Routes option (121).
+# To prevent this, uncomment the following line.
+#
+# CLASSLESS_ROUTES=no
+
+
 # By default, a parameter request list requesting a subnet mask (1), router
 # (3), DNS server (6), hostname (12), DNS domain (15), MTU (26), broadcast
 # address (28), encapsulated vendor options (43), and classless routes (121),
