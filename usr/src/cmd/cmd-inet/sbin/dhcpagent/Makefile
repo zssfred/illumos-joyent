@@ -34,6 +34,7 @@ OBJS =	adopt.o agent.o async.o bound.o class_id.o defaults.o inform.o \
 	request.o script_handler.o select.o states.o util.o
 
 include ../../../Makefile.cmd
+include ../../../Makefile.ctf
 
 SRCS    = $(OBJS:%.o=%.c)
 POFILES = $(OBJS:%.o=%.po)

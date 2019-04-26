@@ -23,6 +23,7 @@
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 # Copyright (c) 2016-2017, Chris Fraire <cfraire@me.com>.
+# Copyright 2019, Joyent, Inc.
 #
 
 #
@@ -167,6 +168,11 @@
 #
 # CLASSLESS_ROUTES=no
 
+# XXX By default, the DHCP agent will set the MTU of the link if the MTU option
+# (26) is provided by the server.  To prevent this, uncomment the following
+# line.
+#
+# SET_MTU=no
 
 # By default, a parameter request list requesting a subnet mask (1), router
 # (3), DNS server (6), hostname (12), DNS domain (15), MTU (26), broadcast

@@ -455,13 +455,15 @@ void
 dhcp_bound_complete(dhcp_smach_t *dsmp)
 {
 	PKT_LIST	*ack = dsmp->dsm_ack;
+	DHCP_OPT	*mtu;
 	DHCP_OPT	*routes;
 	DHCP_OPT	*router_list;
 	int		i;
 	DHCPSTATE	oldstate;
 	dhcp_lif_t	*lif;
 	boolean_t	ignore_routes = B_FALSE, ignore_router_list = B_FALSE;
-	boolean_t	manage_classless_routes;
+	boolean_t	ignore_mtu = B_FALSE;
+	boolean_t	manage_classless_routes, manage_mtu;
 
 	/*
 	 * Do bound state entry processing only if running IPv4.  There's no
@@ -484,6 +486,7 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 
 	manage_classless_routes = df_get_bool(dsmp->dsm_name, dsmp->dsm_isv6,
 	    DF_CLASSLESS_ROUTES);
+	manage_mtu = df_get_bool(dsmp->dsm_name, dsmp->dsm_isv6, DF_SET_MTU);
 
 	/*
 	 * Check to see if the default route or classless routes options appear
@@ -491,6 +494,9 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 	 */
 	for (i = 0; i < dsmp->dsm_pillen; i++) {
 		switch (dsmp->dsm_pil[i]) {
+		case CD_MTU:
+			ignore_mtu = B_TRUE;
+			break;
 		case CD_ROUTER:
 			ignore_router_list = B_TRUE;
 			break;
@@ -501,8 +507,23 @@ dhcp_bound_complete(dhcp_smach_t *dsmp)
 	}
 
 	/*
-	 * XXX Set interface MTU...
+	 * If the server provides a valid MTU option, and the operator has not
+	 * disabled MTU management, configure the MTU on the interface now.
+	 * The SIOCSLIFMTU ioctl does not work for IPv4 logicals.
 	 */
+	if (manage_mtu && !ignore_mtu && strchr(lif->lif_name, ':') == NULL &&
+	    (mtu = ack->opts[CD_MTU]) != NULL &&
+	    mtu->len == sizeof (uint16_t)) {
+		uint16_t mtuval;
+
+		(void) memcpy(&mtuval, mtu->value, sizeof (mtuval));
+		mtuval = ntohs(mtuval);
+
+		if (!set_lif_mtu(lif, mtuval)) {
+			dhcpmsg(MSG_ERR, "dhcp_bound_complete: could not set "
+			    "interface MTU to %u", (uint_t)mtuval);
+		}
+	}
 
 	/*
 	 * XXX Get classless routes...

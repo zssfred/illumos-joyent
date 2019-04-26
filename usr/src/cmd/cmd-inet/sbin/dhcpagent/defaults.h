@@ -40,9 +40,8 @@ extern "C" {
 #endif
 
 /*
- * tunable parameters -- keep in the same order as defaults[] in defaults.c
+ * Tunable parameters -- keep in the same order as defaults[] in defaults.c
  */
-
 enum {
 	DF_RELEASE_ON_SIGTERM,	/* send RELEASE on each if upon SIGTERM */
 	_UNUSED_DF_IGNORE_FAILED_ARP,
@@ -60,6 +59,7 @@ enum {
 	DF_DNS_DOMAINNAME,	/* static domain name if not in --reqhost */
 	DF_ADOPT_DOMAINNAME,	/* adopt DHCP domain if not in --reqhost */
 	DF_CLASSLESS_ROUTES,	/* manage additional routes (option 121) */
+	DF_SET_MTU		/* set interface MTU (option 26) */
 };
 
 #define	DHCP_AGENT_DEFAULTS	"/etc/default/dhcpagent"

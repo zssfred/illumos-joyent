@@ -46,9 +46,8 @@ struct dhcp_default {
 };
 
 /*
- * note: keep in the same order as tunable parameter constants in defaults.h
+ * NOTE: Keep in the same order as tunable parameter constants in defaults.h
  */
-
 static struct dhcp_default defaults[] = {
 	{ "RELEASE_ON_SIGTERM",  "0",	 0,   0	  },
 	{ "IGNORE_FAILED_ARP",	 "1",	 0,   -1  },
@@ -66,6 +65,7 @@ static struct dhcp_default defaults[] = {
 	{ "DNS_DOMAINNAME",  NULL,	 0,   0	  },
 	{ "ADOPT_DOMAINNAME",	 "0",	 0,   0	  },
 	{ "CLASSLESS_ROUTES",	 "1",	 0,   0	  },
+	{ "SET_MTU",	 	 "1",	 0,   0	  }
 };
 
 
