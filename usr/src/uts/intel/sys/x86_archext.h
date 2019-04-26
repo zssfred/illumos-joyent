@@ -27,7 +27,7 @@
  * All rights reserved.
  */
 /*
- * Copyright (c) 2019, Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
  * Copyright 2012 Jens Elkner <jel+illumos@cs.uni-magdeburg.de>
  * Copyright 2012 Hans Rosenfeld <rosenfeld@grumpf.hope-2000.org>
  * Copyright 2014 Josef 'Jeff' Sipek <jeffpc@josefsipek.net>
@@ -159,6 +159,10 @@ extern "C" {
 #define	CPUID_AMD_EDX_LM	0x20000000	/* AMD: long mode */
 #define	CPUID_AMD_EDX_3DNowx	0x40000000	/* AMD: extensions to 3DNow! */
 #define	CPUID_AMD_EDX_3DNow	0x80000000	/* AMD: 3DNow! instructions */
+
+/*
+ * AMD extended function 0x80000001 %ecx
+ */
 
 #define	CPUID_AMD_ECX_AHF64	0x00000001	/* LAHF and SAHF in long mode */
 #define	CPUID_AMD_ECX_CMP_LGCY	0x00000002	/* AMD: multicore chip */
@@ -460,9 +464,22 @@ extern "C" {
 #define	IA32_FEAT_CTRL_SMX_EN	0x2
 #define	IA32_FEAT_CTRL_VMX_EN	0x4
 
-#define	MSR_IA32_VMX_BASIC	0x480
-#define	IA32_VMX_BASIC_INS_OUTS	(1UL << 54)
+#define	MSR_IA32_VMX_BASIC		0x480
+#define	IA32_VMX_BASIC_INS_OUTS		(1UL << 54)
+#define	IA32_VMX_BASIC_TRUE_CTRLS	(1UL << 55)
 
+#define	MSR_IA32_VMX_PROCBASED_CTLS		0x482
+#define	MSR_IA32_VMX_TRUE_PROCBASED_CTLS	0x48e
+#define	IA32_VMX_PROCBASED_2ND_CTLS	(1UL << 31)
+
+#define	MSR_IA32_VMX_PROCBASED2_CTLS	0x48b
+#define	IA32_VMX_PROCBASED2_EPT		(1UL << 1)
+#define	IA32_VMX_PROCBASED2_VPID	(1UL << 5)
+
+#define	MSR_IA32_VMX_EPT_VPID_CAP	0x48c
+#define	IA32_VMX_EPT_VPID_INVEPT	(1UL << 20)
+#define	IA32_VMX_EPT_VPID_INVEPT_SINGLE	(1UL << 25)
+#define	IA32_VMX_EPT_VPID_INVEPT_ALL	(1UL << 26)
 
 #define	MCI_CTL_VALUE		0xffffffff
 
@@ -586,6 +603,8 @@ extern "C" {
 #define	X86FSET_XOP		88
 #define	X86FSET_FMA4		89
 #define	X86FSET_TBM		90
+#define	X86FSET_AVX512VNNI	91
+#define	X86FSET_AMD_PCEC	92
 
 /*
  * Intel Deep C-State invariant TSC in leaf 0x80000007.
@@ -955,7 +974,7 @@ extern "C" {
 
 #if defined(_KERNEL) || defined(_KMEMUSER)
 
-#define	NUM_X86_FEATURES	91
+#define	NUM_X86_FEATURES	93
 extern uchar_t x86_featureset[];
 
 extern void free_x86_featureset(void *featureset);
