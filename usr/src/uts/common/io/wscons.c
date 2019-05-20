@@ -22,6 +22,7 @@
 /*
  * Copyright (c) 1987, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2019 Toomas Soome <tsoome@me.com>
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*
@@ -345,7 +346,7 @@ wc_attach(dev_info_t *devi, ddi_attach_cmd_t cmd)
 {
 	/* create minor node for workstation hard console */
 	if (ddi_create_minor_node(devi, "wscons", S_IFCHR,
-	    0, DDI_PSEUDO, NULL) == DDI_FAILURE) {
+	    0, DDI_PSEUDO, 0) == DDI_FAILURE) {
 		ddi_remove_minor_node(devi, NULL);
 		return (DDI_FAILURE);
 	}
@@ -511,7 +512,7 @@ wcuwsrv(queue_t *q)
 		 * new.
 		 */
 		if (pvc->vc_flags & (WCS_DELAY|WCS_BUSY|WCS_STOPPED)) {
-			putbq(q, mp);
+			(void) putbq(q, mp);
 			return (0);
 		}
 

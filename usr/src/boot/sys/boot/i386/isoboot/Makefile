@@ -46,6 +46,10 @@ LDSCRIPT=	../boot.ldscript
 LD_FLAGS=	-static -N --gc-sections
 LIBSTAND=	../../libstand/$(MACH)/libstand.a
 
+gptldr.out := LD_FLAGS += -m elf_i386_sol2
+
+isoboot.o := SMOFF += unreachable
+
 include ../Makefile.inc
 
 all: $(PROG)

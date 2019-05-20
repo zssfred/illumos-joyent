@@ -19,7 +19,7 @@
 # CDDL HEADER END
 #
 #
-# Copyright 2019 Joyent, Inc.
+# Copyright 2019, Joyent, Inc.
 # Copyright 2017 ASS-Einrichtungssysteme GmbH
 #
 # This lists all the files that illumos-joyent delivers as part of a build.
@@ -563,6 +563,7 @@ f kernel/drv/amd64/afe 0755 root sys
 f kernel/drv/amd64/aggr 0755 root sys
 f kernel/drv/amd64/ahci 0755 root sys
 f kernel/drv/amd64/amd8111s 0755 root sys
+f kernel/drv/amd64/amdf17nbdf 0755 root sys
 f kernel/drv/amd64/amr 0755 root sys
 f kernel/drv/amd64/arcmsr 0755 root sys
 f kernel/drv/amd64/arp 0755 root sys
@@ -583,6 +584,7 @@ f kernel/drv/amd64/cmdk 0755 root sys
 f kernel/drv/amd64/cn 0755 root sys
 f kernel/drv/amd64/conskbd 0755 root sys
 f kernel/drv/amd64/consms 0755 root sys
+f kernel/drv/amd64/coretemp 0755 root sys
 f kernel/drv/amd64/cpqary3 0755 root sys
 f kernel/drv/amd64/cpuid 0755 root sys
 f kernel/drv/amd64/cpunex 0755 root sys
@@ -694,6 +696,7 @@ f kernel/drv/amd64/si3124 0755 root sys
 f kernel/drv/amd64/simnet 0755 root sys
 f kernel/drv/amd64/skd 0755 root sys
 f kernel/drv/amd64/smbios 0755 root sys
+f kernel/drv/amd64/smp 0755 root sys
 f kernel/drv/amd64/smrt 0755 root sys
 f kernel/drv/amd64/softmac 0755 root sys
 f kernel/drv/amd64/spdsock 0755 root sys
@@ -759,6 +762,7 @@ f kernel/drv/cmdk.conf 0644 root sys
 f kernel/drv/cn.conf 0644 root sys
 f kernel/drv/conskbd.conf 0644 root sys
 f kernel/drv/consms.conf 0644 root sys
+f kernel/drv/coretemp.conf 0644 root sys
 f kernel/drv/cpqary3.conf 0644 root sys
 f kernel/drv/cpuid.conf 0644 root sys
 f kernel/drv/crypto.conf 0644 root sys
@@ -1000,7 +1004,6 @@ d kernel/misc 0755 root sys
 d kernel/misc/amd64 0755 root sys
 f kernel/misc/amd64/ac97 0755 root sys
 f kernel/misc/amd64/acpica 0755 root sys
-f kernel/misc/amd64/agpmaster 0755 root sys
 f kernel/misc/amd64/bignum 0755 root sys
 f kernel/misc/amd64/bootdev 0755 root sys
 f kernel/misc/amd64/busra 0755 root sys
@@ -1011,7 +1014,6 @@ f kernel/misc/amd64/dadk 0755 root sys
 f kernel/misc/amd64/dcopy 0755 root sys
 s kernel/misc/amd64/des=../../../kernel/crypto/amd64/des
 f kernel/misc/amd64/dls 0755 root sys
-f kernel/misc/amd64/drm 0755 root sys
 f kernel/misc/amd64/edonr 0755 root sys
 f kernel/misc/amd64/fctl 0755 root sys
 f kernel/misc/amd64/fssnap_if 0755 root sys
@@ -2163,6 +2165,26 @@ f platform/i86pc/ucode/GenuineIntel/00050654-04 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/00050654-10 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/00050654-20 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/00050654-80 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050655-01 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050655-02 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050655-04 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050655-10 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050655-20 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050655-80 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050656-01 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050656-02 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050656-04 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050656-08 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050656-10 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050656-20 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050656-80 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050657-01 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050657-02 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050657-04 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050657-08 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050657-10 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050657-20 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/00050657-80 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/00050662-10 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/00050663-10 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/00050664-10 0444 root sys
@@ -2178,16 +2200,27 @@ f platform/i86pc/ucode/GenuineIntel/000506E3-10 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000506E3-20 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000506F1-01 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000706A1-01 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000806E9-10 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000806E9-40 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000806E9-80 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000806EA-40 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000806EA-80 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000806EB-10 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000806EB-40 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000806EB-80 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000806EC-04 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000806EC-10 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000806EC-80 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000906E9-02 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000906E9-08 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000906E9-20 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000906EA-02 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000906EA-20 0444 root sys
 f platform/i86pc/ucode/GenuineIntel/000906EB-02 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000906EC-02 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000906EC-20 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000906ED-02 0444 root sys
+f platform/i86pc/ucode/GenuineIntel/000906ED-20 0444 root sys
 d proc 0755 root root
 d sbin 0755 root sys
 f sbin/autopush 0555 root bin
@@ -3694,13 +3727,6 @@ f usr/include/sys/acl_impl.h 0644 root bin
 f usr/include/sys/acpi_drv.h 0644 root bin
 f usr/include/sys/aggr.h 0644 root bin
 f usr/include/sys/aggr_impl.h 0644 root bin
-d usr/include/sys/agp 0755 root bin
-f usr/include/sys/agp/agpamd64gart_io.h 0644 root bin
-f usr/include/sys/agp/agpdefs.h 0644 root bin
-f usr/include/sys/agp/agpgart_impl.h 0644 root bin
-f usr/include/sys/agp/agpmaster_io.h 0644 root bin
-f usr/include/sys/agp/agptarget_io.h 0644 root bin
-f usr/include/sys/agpgart.h 0644 root bin
 f usr/include/sys/aio.h 0644 root bin
 f usr/include/sys/aio_impl.h 0644 root bin
 f usr/include/sys/aio_req.h 0644 root bin
@@ -5422,7 +5448,6 @@ d usr/lib/devfsadm/linkmod 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_audio_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_cfg_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_dcam1394_link.so 0755 root sys
-f usr/lib/devfsadm/linkmod/SUNW_drm_link_i386.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_disk_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_dtrace_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_fssnap_link.so 0755 root sys
@@ -5433,6 +5458,7 @@ f usr/lib/devfsadm/linkmod/SUNW_misc_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_misc_link_i386.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_port_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_ramdisk_link.so 0755 root sys
+f usr/lib/devfsadm/linkmod/SUNW_sensor_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_sgen_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_smp_link.so 0755 root sys
 f usr/lib/devfsadm/linkmod/SUNW_tape_link.so 0755 root sys
@@ -19046,6 +19072,7 @@ f usr/share/man/man7d/afe.7d 0444 root bin
 f usr/share/man/man7d/ahci.7d 0444 root bin
 s usr/share/man/man7d/allkmem.7d=mem.7d
 f usr/share/man/man7d/amd8111s.7d 0444 root bin
+f usr/share/man/man7d/amdf17nbdf.7d 0444 root bin
 f usr/share/man/man7d/amr.7d 0444 root bin
 f usr/share/man/man7d/arcmsr.7d 0444 root bin
 f usr/share/man/man7d/asy.7d 0444 root bin
@@ -19059,6 +19086,7 @@ f usr/share/man/man7d/bnxe.7d 0444 root bin
 f usr/share/man/man7d/chxge.7d 0444 root bin
 f usr/share/man/man7d/cmdk.7d 0444 root bin
 f usr/share/man/man7d/cpqary3.7d 0444 root bin
+f usr/share/man/man7d/coretemp.7d 0444 root bin
 f usr/share/man/man7d/cpuid.7d 0444 root bin
 f usr/share/man/man7d/devinfo.7d 0444 root bin
 f usr/share/man/man7d/dmfe.7d 0444 root bin

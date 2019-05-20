@@ -471,8 +471,8 @@ metaslab_class_expandable_space(metaslab_class_t *mc)
 static int
 metaslab_compare(const void *x1, const void *x2)
 {
-	const metaslab_t *m1 = x1;
-	const metaslab_t *m2 = x2;
+	const metaslab_t *m1 = (const metaslab_t *)x1;
+	const metaslab_t *m2 = (const metaslab_t *)x2;
 
 	int sort1 = 0;
 	int sort2 = 0;
@@ -498,22 +498,13 @@ metaslab_compare(const void *x1, const void *x2)
 	if (sort1 > sort2)
 		return (1);
 
-	if (m1->ms_weight < m2->ms_weight)
-		return (1);
-	if (m1->ms_weight > m2->ms_weight)
-		return (-1);
+	int cmp = AVL_CMP(m2->ms_weight, m1->ms_weight);
+	if (likely(cmp))
+		return (cmp);
 
-	/*
-	 * If the weights are identical, use the offset to force uniqueness.
-	 */
-	if (m1->ms_start < m2->ms_start)
-		return (-1);
-	if (m1->ms_start > m2->ms_start)
-		return (1);
+	IMPLY(AVL_CMP(m1->ms_start, m2->ms_start) == 0, m1 == m2);
 
-	ASSERT3P(m1, ==, m2);
-
-	return (0);
+	return (AVL_CMP(m1->ms_start, m2->ms_start));
 }
 
 uint64_t
@@ -1184,98 +1175,12 @@ metaslab_rangesize_compare(const void *x1, const void *x2)
 	uint64_t rs_size1 = r1->rs_end - r1->rs_start;
 	uint64_t rs_size2 = r2->rs_end - r2->rs_start;
 
-	if (rs_size1 < rs_size2)
-		return (-1);
-	if (rs_size1 > rs_size2)
-		return (1);
+	int cmp = AVL_CMP(rs_size1, rs_size2);
+	if (likely(cmp))
+		return (cmp);
 
-	if (r1->rs_start < r2->rs_start)
-		return (-1);
-
-	if (r1->rs_start > r2->rs_start)
-		return (1);
-
-	return (0);
+	return (AVL_CMP(r1->rs_start, r2->rs_start));
 }
-
-/*
- * Create any block allocator specific components. The current allocators
- * rely on using both a size-ordered range_tree_t and an array of uint64_t's.
- */
-static void
-metaslab_rt_create(range_tree_t *rt, void *arg)
-{
-	metaslab_t *msp = arg;
-
-	ASSERT3P(rt->rt_arg, ==, msp);
-	ASSERT(msp->ms_allocatable == NULL);
-
-	avl_create(&msp->ms_allocatable_by_size, metaslab_rangesize_compare,
-	    sizeof (range_seg_t), offsetof(range_seg_t, rs_pp_node));
-}
-
-/*
- * Destroy the block allocator specific components.
- */
-static void
-metaslab_rt_destroy(range_tree_t *rt, void *arg)
-{
-	metaslab_t *msp = arg;
-
-	ASSERT3P(rt->rt_arg, ==, msp);
-	ASSERT3P(msp->ms_allocatable, ==, rt);
-	ASSERT0(avl_numnodes(&msp->ms_allocatable_by_size));
-
-	avl_destroy(&msp->ms_allocatable_by_size);
-}
-
-static void
-metaslab_rt_add(range_tree_t *rt, range_seg_t *rs, void *arg)
-{
-	metaslab_t *msp = arg;
-
-	ASSERT3P(rt->rt_arg, ==, msp);
-	ASSERT3P(msp->ms_allocatable, ==, rt);
-	VERIFY(!msp->ms_condensing);
-	avl_add(&msp->ms_allocatable_by_size, rs);
-}
-
-static void
-metaslab_rt_remove(range_tree_t *rt, range_seg_t *rs, void *arg)
-{
-	metaslab_t *msp = arg;
-
-	ASSERT3P(rt->rt_arg, ==, msp);
-	ASSERT3P(msp->ms_allocatable, ==, rt);
-	VERIFY(!msp->ms_condensing);
-	avl_remove(&msp->ms_allocatable_by_size, rs);
-}
-
-static void
-metaslab_rt_vacate(range_tree_t *rt, void *arg)
-{
-	metaslab_t *msp = arg;
-
-	ASSERT3P(rt->rt_arg, ==, msp);
-	ASSERT3P(msp->ms_allocatable, ==, rt);
-
-	/*
-	 * Normally one would walk the tree freeing nodes along the way.
-	 * Since the nodes are shared with the range trees we can avoid
-	 * walking all nodes and just reinitialize the avl tree. The nodes
-	 * will be freed by the range tree, so we don't want to free them here.
-	 */
-	avl_create(&msp->ms_allocatable_by_size, metaslab_rangesize_compare,
-	    sizeof (range_seg_t), offsetof(range_seg_t, rs_pp_node));
-}
-
-static range_tree_ops_t metaslab_rt_ops = {
-	metaslab_rt_create,
-	metaslab_rt_destroy,
-	metaslab_rt_add,
-	metaslab_rt_remove,
-	metaslab_rt_vacate
-};
 
 /*
  * ==========================================================================
@@ -1970,7 +1875,8 @@ metaslab_init(metaslab_group_t *mg, uint64_t id, uint64_t object, uint64_t txg,
 	 * we'd data fault on any attempt to use this metaslab before
 	 * it's ready.
 	 */
-	ms->ms_allocatable = range_tree_create(&metaslab_rt_ops, ms);
+	ms->ms_allocatable = range_tree_create_impl(&rt_avl_ops,
+	    &ms->ms_allocatable_by_size, metaslab_rangesize_compare, 0);
 	metaslab_group_add(mg, ms);
 
 	metaslab_set_fragmentation(ms);
@@ -2226,7 +2132,7 @@ metaslab_space_weight(metaslab_t *msp)
 	 * In effect, this means that we'll select the metaslab with the most
 	 * free bandwidth rather than simply the one with the most free space.
 	 */
-	if (metaslab_lba_weighting_enabled) {
+	if (!vd->vdev_nonrot && metaslab_lba_weighting_enabled) {
 		weight = 2 * weight - (msp->ms_id * weight) / vd->vdev_ms_count;
 		ASSERT(weight >= space && weight <= 2 * space);
 	}
