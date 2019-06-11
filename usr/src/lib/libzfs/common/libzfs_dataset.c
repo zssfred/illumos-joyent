@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, Joyent, Inc. All rights reserved.
+ * Copyright 2019 Joyent, Inc.
  * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
  * Copyright (c) 2012 DEY Storage Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2012 Pawel Jakub Dawidek. All rights reserved.
@@ -1518,6 +1518,7 @@ zfs_add_synthetic_resv(zfs_handle_t *zhp, nvlist_t *nvl)
 	uint64_t new_reservation;
 	zfs_prop_t resv_prop;
 	nvlist_t *props;
+	zpool_handle_t *zph = zpool_handle(zhp);
 
 	/*
 	 * If this is an existing volume, and someone is setting the volsize,
@@ -1532,7 +1533,7 @@ zfs_add_synthetic_resv(zfs_handle_t *zhp, nvlist_t *nvl)
 	fnvlist_add_uint64(props, zfs_prop_to_name(ZFS_PROP_VOLBLOCKSIZE),
 	    zfs_prop_get_int(zhp, ZFS_PROP_VOLBLOCKSIZE));
 
-	if ((zvol_volsize_to_reservation(old_volsize, props) !=
+	if ((zvol_volsize_to_reservation(zph, old_volsize, props) !=
 	    old_reservation) || nvlist_exists(nvl,
 	    zfs_prop_to_name(resv_prop))) {
 		fnvlist_free(props);
@@ -1543,7 +1544,7 @@ zfs_add_synthetic_resv(zfs_handle_t *zhp, nvlist_t *nvl)
 		fnvlist_free(props);
 		return (-1);
 	}
-	new_reservation = zvol_volsize_to_reservation(new_volsize, props);
+	new_reservation = zvol_volsize_to_reservation(zph, new_volsize, props);
 	fnvlist_free(props);
 
 	if (nvlist_add_uint64(nvl, zfs_prop_to_name(resv_prop),
@@ -1598,7 +1599,8 @@ zfs_fix_auto_resv(zfs_handle_t *zhp, nvlist_t *nvl)
 		volsize = zfs_prop_get_int(zhp, ZFS_PROP_VOLSIZE);
 	}
 
-	resvsize = zvol_volsize_to_reservation(volsize, props);
+	resvsize = zvol_volsize_to_reservation(zpool_handle(zhp), volsize,
+	    props);
 	fnvlist_free(props);
 
 	(void) nvlist_remove_all(nvl, zfs_prop_to_name(prop));
@@ -5131,12 +5133,85 @@ zfs_get_holds(zfs_handle_t *zhp, nvlist_t **nvl)
 }
 
 /*
+ * Derived from function of same name in uts/common/fs/zfs/vdev_raidz.c
+ */
+static uint64_t
+vdev_raidz_asize(uint64_t ndisks, uint64_t nparity, uint64_t ashift,
+    uint64_t blksize)
+{
+	uint64_t asize, ndata;
+
+	ASSERT3U(ndisks, >, nparity);
+	ndata = ndisks - nparity;
+	asize = ((blksize - 1) >> ashift) + 1;
+	asize += nparity * ((asize + ndata - 1) / ndata);
+	asize = roundup(asize, nparity + 1) << ashift;
+
+	return (asize);
+}
+
+/*
+ * Determine how much space will be allocated if it lands on the most space-
+ * inefficient top-level vdev.  Returns the size in bytes required to store one
+ * copy of the volume data.
+ */
+static uint64_t
+volsize_from_vdevs(zpool_handle_t *zhp, uint64_t nblocks, uint64_t blksize)
+{
+	nvlist_t *config, *tree, **vdevs;
+	uint_t nvdevs, v;
+	uint64_t ret = 0;
+
+	config = zpool_get_config(zhp, NULL);
+	if (nvlist_lookup_nvlist(config, ZPOOL_CONFIG_VDEV_TREE, &tree) != 0 ||
+	    nvlist_lookup_nvlist_array(tree, ZPOOL_CONFIG_CHILDREN,
+	    &vdevs, &nvdevs) != 0) {
+		return (nblocks * blksize);
+	}
+
+	for (v = 0; v < nvdevs; v++) {
+		char *type;
+		uint64_t nparity, ashift, asize, tsize;
+		nvlist_t **disks;
+		uint_t ndisks;
+		uint64_t volsize;
+
+		if (nvlist_lookup_string(vdevs[v], ZPOOL_CONFIG_TYPE,
+		    &type) != 0 || strcmp(type, VDEV_TYPE_RAIDZ) != 0 ||
+		    nvlist_lookup_uint64(vdevs[v], ZPOOL_CONFIG_NPARITY,
+		    &nparity) != 0 ||
+		    nvlist_lookup_uint64(vdevs[v], ZPOOL_CONFIG_ASHIFT,
+		    &ashift) != 0 ||
+		    nvlist_lookup_nvlist_array(vdevs[v], ZPOOL_CONFIG_CHILDREN,
+		    &disks, &ndisks) != 0) {
+			continue;
+		}
+
+		tsize = vdev_raidz_asize(ndisks, nparity, ashift,
+		    SPA_OLD_MAXBLOCKSIZE);
+		asize = vdev_raidz_asize(ndisks, nparity, ashift, blksize);
+
+		volsize = nblocks * asize * SPA_OLD_MAXBLOCKSIZE / tsize;
+		if (volsize > ret) {
+			ret = volsize;
+		}
+	}
+
+	if (ret == 0) {
+		ret = nblocks * blksize;
+	}
+
+	return (ret);
+}
+
+/*
  * Convert the zvol's volume size to an appropriate reservation.
  * Note: If this routine is updated, it is necessary to update the ZFS test
  * suite's shell version in reservation.kshlib.
  */
 uint64_t
-zvol_volsize_to_reservation(uint64_t volsize, nvlist_t *props)
+zvol_volsize_to_reservation(zpool_handle_t *zph, uint64_t volsize,
+    nvlist_t *props)
 {
 	uint64_t numdb;
 	uint64_t nblocks, volblocksize;
@@ -5152,7 +5227,10 @@ zvol_volsize_to_reservation(uint64_t volsize, nvlist_t *props)
 	    zfs_prop_to_name(ZFS_PROP_VOLBLOCKSIZE),
 	    &volblocksize) != 0)
 		volblocksize = ZVOL_DEFAULT_BLOCKSIZE;
-	nblocks = volsize/volblocksize;
+
+	nblocks = volsize / volblocksize;
+	volsize = volsize_from_vdevs(zph, nblocks, volblocksize);
+
 	/* start with metadnode L0-L6 */
 	numdb = 7;
 	/* calculate number of indirects */
