@@ -58,6 +58,7 @@
 #include <sys/vmm_drv.h>
 #include <sys/viona_io.h>
 
+
 struct viona_link;
 typedef struct viona_link viona_link_t;
 struct viona_desb;
@@ -99,23 +100,33 @@ typedef struct viona_vring {
 	/* Internal ring-related state */
 	kmutex_t	vr_a_mutex;	/* sync consumers of 'avail' */
 	kmutex_t	vr_u_mutex;	/* sync consumers of 'used' */
-	uint64_t	vr_pa;
+	uint64_t	vr_gpa;
 	uint16_t	vr_size;
 	uint16_t	vr_mask;	/* cached from vr_size */
 	uint16_t	vr_cur_aidx;	/* trails behind 'avail_idx' */
+	uint16_t	vr_cur_uidx;	/* internal 'used_idx' */
 
 	/* Host-context pointers to the queue */
-	volatile struct virtio_desc	*vr_descr;
+	volatile uint16_t	*vr_avail_flags;
+	volatile uint16_t	*vr_avail_idx;
+	volatile uint16_t	*vr_avail_used_event;
 
-	volatile uint16_t		*vr_avail_flags;
-	volatile uint16_t		*vr_avail_idx;
-	volatile uint16_t		*vr_avail_ring;
-	volatile uint16_t		*vr_avail_used_event;
+	volatile uint16_t	*vr_used_flags;
+	volatile uint16_t	*vr_used_idx;
+	volatile uint16_t	*vr_used_avail_event;
 
-	volatile uint16_t		*vr_used_flags;
-	volatile uint16_t		*vr_used_idx;
-	volatile struct virtio_used	*vr_used_ring;
-	volatile uint16_t		*vr_used_avail_event;
+	/* Cached offset addresses to ring elements */
+	uint64_t	vr_descr_gpa;
+	vmm_page_hold_t	*vr_descr_holds;
+	uint_t		vr_descr_pages;
+
+	uint64_t	vr_avail_gpa;
+	vmm_page_hold_t	*vr_avail_holds;
+	uint_t		vr_avail_pages;
+
+	uint64_t	vr_used_gpa;
+	vmm_page_hold_t	*vr_used_holds;
+	uint_t		vr_used_pages;
 
 	/* Per-ring error condition statistics */
 	struct viona_ring_stats {
@@ -205,6 +216,16 @@ typedef struct viona_soft_state {
 	list_node_t		ss_node;
 } viona_soft_state_t;
 
+
+typedef struct ring_iovec {
+	vmm_page_hold_t riov_hold;
+	uint32_t	riov_offset;
+	uint32_t	riov_len;
+} ring_iovec_t;
+
+#define	RIOV_BASE(iov)	((caddr_t)(iov).riov_hold.vph_kva + (iov).riov_offset)
+#define	RIOV_LEN(iov)	((iov).riov_len)
+
 #pragma pack(1)
 struct virtio_desc {
 	uint64_t	vd_addr;
@@ -269,6 +290,16 @@ struct virtio_net_hdr {
 
 #define	VIONA_MAX_HDRS_LEN	(sizeof (struct ether_vlan_header) + \
 	IP_MAX_HDR_LENGTH + TCP_MAX_HDR_LENGTH)
+
+
+#define	VRING_SZ_DESCR(qsz)	((qsz) * sizeof (struct virtio_desc))
+#define	VRING_SZ_AVAIL(qsz)	((qsz) * sizeof (uint16_t) + 6)
+#define	VRING_SZ_USED(qsz)	(((qsz) * sizeof (struct virtio_used)) + 6)
+#define	VRING_ALIGN_DESCR	(sizeof (struct virtio_desc))
+#define	VRING_ALIGN_AVAIL	(sizeof (uint16_t))
+#define	VRING_ALIGN_USED	(sizeof (struct virtio_used))
+
+#define	VRING_MAX_SIZE	32768
 
 #define	VRING_AVAIL_F_NO_INTERRUPT	1
 #define	VRING_USED_F_NO_NOTIFY		1

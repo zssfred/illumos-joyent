@@ -1561,6 +1561,31 @@ vmm_drv_gpa2kva(vmm_lease_t *lease, uintptr_t gpa, size_t sz)
 	return (vmspace_find_kva(vm_get_vmspace(lease->vml_vm), gpa, sz));
 }
 
+boolean_t
+vmm_drv_gpa_hold(vmm_lease_t *lease, vmm_page_hold_t *pgh, uintptr_t gpa,
+    int prot)
+{
+	ASSERT(lease != NULL);
+
+	/* demand single-page aligned accesses */
+	VERIFY0(gpa & PAGEOFFSET);
+
+	pgh->vph_kva = vm_gpa_hold(lease->vml_vm, -1, gpa, PAGESIZE, prot,
+	    &pgh->vph_cookie);
+	return (pgh->vph_kva != NULL);
+}
+
+void
+vmm_drv_gpa_rele(vmm_lease_t *lease, vmm_page_hold_t *pgh)
+{
+	ASSERT(lease != NULL);
+	ASSERT(pgh != NULL);
+
+	vm_gpa_release(pgh->vph_cookie);
+	pgh->vph_kva = NULL;
+	pgh->vph_cookie = NULL;
+}
+
 int
 vmm_drv_msi(vmm_lease_t *lease, uint64_t addr, uint64_t msg)
 {

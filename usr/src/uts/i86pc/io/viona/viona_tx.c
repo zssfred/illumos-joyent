@@ -51,6 +51,9 @@
 
 #define	BNXE_NIC_DRIVER		"bnxe"
 
+
+#define	VIONA_DESB_HOLDS	4
+
 /*
  * copy tx mbufs from virtio ring to avoid necessitating a wait for packet
  * transmission to free resources.
@@ -69,6 +72,7 @@ struct viona_desb {
 	uint32_t		d_len;
 	uint16_t		d_cookie;
 	uchar_t			*d_headers;
+	vmm_page_hold_t		d_holds[VIONA_DESB_HOLDS];
 };
 
 static void viona_tx(viona_link_t *, viona_vring_t *);
@@ -170,7 +174,7 @@ viona_tx_ring_alloc(viona_vring_t *ring, const uint16_t qsz)
 	}
 
 	/* Allocate ring-sized iovec buffers for TX */
-	ring->vr_txiov = kmem_alloc(sizeof (struct iovec) * qsz, KM_SLEEP);
+	ring->vr_txiov = kmem_alloc(sizeof (ring_iovec_t) * qsz, KM_SLEEP);
 }
 
 void
@@ -187,7 +191,7 @@ viona_tx_ring_free(viona_vring_t *ring, const uint16_t qsz)
 	}
 
 	if (ring->vr_txiov != NULL) {
-		kmem_free(ring->vr_txiov, sizeof (struct iovec) * qsz);
+		kmem_free(ring->vr_txiov, sizeof (ring_iovec_t) * qsz);
 		ring->vr_txiov = NULL;
 	}
 }
@@ -492,9 +496,25 @@ viona_tx_csum(viona_vring_t *ring, const struct virtio_net_hdr *hdr,
 }
 
 static void
+viona_desb_assume_holds(viona_vring_t *ring, viona_desb_t *dp,
+    ring_iovec_t *iov, uint_t niov)
+{
+	ASSERT(MUTEX_HELD(&ring->vr_lock));
+
+	for (uint_t i = 0; i < niov && i < VIONA_DESB_HOLDS; i++) {
+		dp->d_holds[i] = iov->riov_hold;
+	}
+	if (niov <= VIONA_DESB_HOLDS) {
+		return;
+	}
+
+
+}
+
+static void
 viona_tx(viona_link_t *link, viona_vring_t *ring)
 {
-	struct iovec		*iov = ring->vr_txiov;
+	ring_iovec_t		*iov = ring->vr_txiov;
 	const uint_t		max_segs = ring->vr_size;
 	uint16_t		cookie;
 	int			i, n;
@@ -524,7 +544,7 @@ viona_tx(viona_link_t *link, viona_vring_t *ring)
 	}
 
 	/* Grab the header and ensure it is of adequate length */
-	hdr = (const struct virtio_net_hdr *)iov[0].iov_base;
+	hdr = (const struct virtio_net_hdr *)RIOV_BASE(iov[0]);
 	len = iov[0].iov_len;
 	if (len < sizeof (struct virtio_net_hdr)) {
 		goto drop_fail;
@@ -573,7 +593,7 @@ viona_tx(viona_link_t *link, viona_vring_t *ring)
 	for (i = 1; i < n; i++) {
 		const uint32_t to_copy = MIN(min_copy, iov[i].iov_len);
 
-		bcopy(iov[i].iov_base, mp_head->b_wptr, to_copy);
+		bcopy(RIOV_BASE(iov[i]), mp_head->b_wptr, to_copy);
 		mp_head->b_wptr += to_copy;
 		len += to_copy;
 		min_copy -= to_copy;
@@ -602,7 +622,7 @@ viona_tx(viona_link_t *link, viona_vring_t *ring)
 	ASSERT3P(mp_tail, !=, NULL);
 
 	for (; i < n; i++) {
-		uintptr_t base = (uintptr_t)iov[i].iov_base + base_off;
+		uintptr_t base = (uintptr_t)RIOV_BASE(iov[i]) + base_off;
 		uint32_t chunk = iov[i].iov_len - base_off;
 
 		ASSERT3U(base_off, <, iov[i].iov_len);

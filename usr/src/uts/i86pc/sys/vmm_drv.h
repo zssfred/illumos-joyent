@@ -26,6 +26,12 @@ typedef struct vmm_hold vmm_hold_t;
 struct vmm_lease;
 typedef struct vmm_lease vmm_lease_t;
 
+struct vmm_page_hold {
+	void		*vph_cookie;
+	void		*vph_kva;
+};
+typedef struct vmm_page_hold vmm_page_hold_t;
+
 /*
  * Because of tangled headers, these definitions mirror their vmm_[rw]mem_cb_t
  * counterparts in vmm.h.
@@ -43,6 +49,10 @@ extern void vmm_drv_lease_break(vmm_hold_t *, vmm_lease_t *);
 extern boolean_t vmm_drv_lease_expired(vmm_lease_t *);
 
 extern void *vmm_drv_gpa2kva(vmm_lease_t *, uintptr_t, size_t);
+boolean_t vmm_drv_gpa_hold(vmm_lease_t *, vmm_page_hold_t *, uintptr_t, int);
+void *vmm_drv_gpa_kva(const vmm_page_hold_t *);
+void vmm_drv_gpa_rele(vmm_lease_t *, vmm_page_hold_t *);
+
 extern int vmm_drv_msi(vmm_lease_t *, uint64_t, uint64_t);
 
 extern int vmm_drv_ioport_hook(vmm_hold_t *, uint_t, vmm_drv_rmem_cb_t,

@@ -42,20 +42,22 @@
 
 #include "viona_impl.h"
 
-#define	VRING_ALIGN		4096
+#define	VRING_ALIGN_LEGACY	4096
 #define	VRING_MAX_LEN		32768
 
-static boolean_t viona_ring_map(viona_vring_t *);
-static void viona_ring_unmap(viona_vring_t *);
+#define	VRING_SZ_DESCR(qsz)	((qsz) * sizeof (struct virtio_desc))
+#define	VRING_SZ_AVAIL(qsz)	((qsz) * sizeof (uint16_t) + 6)
+#define	VRING_SZ_USED(qsz)	(((qsz) * sizeof (struct virtio_used)) + 6)
+#define	VRING_ALIGN_DESCR	(sizeof (struct virtio_desc))
+#define	VRING_ALIGN_AVAIL	(sizeof (uint16_t))
+#define	VRING_ALIGN_USED	(sizeof (struct virtio_used))
+
+#define	VRING_PAGES(addr,sz)	\
+	(P2ROUNDUP(P2PHASE((addr), PAGESIZE) + (sz), PAGESIZE)/PAGESIZE)
+
+static boolean_t viona_ring_map_legacy(viona_vring_t *);
+static void viona_ring_unmap_legacy(viona_vring_t *);
 static kthread_t *viona_create_worker(viona_vring_t *);
-
-static void *
-viona_gpa2kva(viona_vring_t *ring, uint64_t gpa, size_t len)
-{
-	ASSERT3P(ring->vr_lease, !=, NULL);
-
-	return (vmm_drv_gpa2kva(ring->vr_lease, gpa, len));
-}
 
 static boolean_t
 viona_ring_lease_expire_cb(void *arg)
@@ -82,7 +84,7 @@ viona_ring_lease_drop(viona_vring_t *ring)
 		 * Without an active lease, the ring mappings cannot be
 		 * considered valid.
 		 */
-		viona_ring_unmap(ring);
+		viona_ring_unmap_legacy(ring);
 
 		vmm_drv_lease_break(hold, ring->vr_lease);
 		ring->vr_lease = NULL;
@@ -107,12 +109,12 @@ viona_ring_lease_renew(viona_vring_t *ring)
 	    ring);
 	if (ring->vr_lease != NULL) {
 		/* A ring undergoing renewal will need valid guest mappings */
-		if (ring->vr_pa != 0 && ring->vr_size != 0) {
+		if (ring->vr_gpa != 0 && ring->vr_size != 0) {
 			/*
 			 * If new mappings cannot be established, consider the
 			 * lease renewal a failure.
 			 */
-			if (!viona_ring_map(ring)) {
+			if (!viona_ring_map_legacy(ring)) {
 				viona_ring_lease_drop(ring);
 				return (B_FALSE);
 			}
@@ -179,8 +181,8 @@ viona_ring_init(viona_link_t *link, uint16_t idx, uint16_t qsz, uint64_t pa)
 
 	ring->vr_size = qsz;
 	ring->vr_mask = (ring->vr_size - 1);
-	ring->vr_pa = pa;
-	if (!viona_ring_map(ring)) {
+	ring->vr_gpa = pa;
+	if (!viona_ring_map_legacy(ring)) {
 		err = EINVAL;
 		goto fail;
 	}
@@ -250,65 +252,292 @@ viona_ring_reset(viona_vring_t *ring, boolean_t heed_signals)
 	return (0);
 }
 
-static boolean_t
-viona_ring_map(viona_vring_t *ring)
+static vmm_page_hold_t *
+vring_map_pages(vmm_lease_t *lease, uint64_t gpa, uint_t pages, int prot)
 {
-	uint64_t pos = ring->vr_pa;
+	vmm_page_hold_t *holds;
+	uint64_t pos;
+
+	holds = kmem_zalloc(sizeof (vmm_page_hold_t) * pages, KM_SLEEP);
+
+	pos = P2ALIGN(gpa, PAGESIZE);
+	for (uint_t i = 0; i < pages; i++, pos += PAGESIZE) {
+		if (!vmm_drv_gpa_hold(lease, &holds[i], pos, prot)) {
+			if (i != 0) {
+				do {
+					vmm_drv_gpa_rele(lease, &holds[i]);
+				} while (i != 0);
+			}
+			kmem_free(holds, sizeof (vmm_page_hold_t) * pages);
+			return (NULL);
+		}
+	}
+	return (holds);
+}
+
+static inline caddr_t
+vring_addr_at(const vmm_page_hold_t *holds, uint64_t base, uint_t pages,
+    uint64_t addr, uint_t size)
+{
+	const uint64_t offset = addr - base;
+	const uint_t skip = offset / PAGESIZE;
+	const uint_t poffset = P2PHASE(offset, PAGESIZE);
+
+	ASSERT3U(skip, <, pages);
+	ASSERT3U(poffset + size, <=, PAGESIZE);
+
+	return ((caddr_t)holds[skip].vph_kva + poffset);
+}
+
+static boolean_t
+viona_ring_map_descr(viona_vring_t *ring)
+{
+	const uint64_t gpa = ring->vr_descr_gpa;
+	const uint_t pages = VRING_PAGES(gpa, VRING_SZ_DESCR(ring->vr_size));
+	vmm_page_hold_t *holds;
+
+	ASSERT(MUTEX_HELD(&ring->vr_lock));
+	ASSERT0(gpa & VRING_ALIGN_DESCR);
+
+	holds = vring_map_pages(ring->vr_lease, gpa, pages, PROT_READ);
+	if (holds == NULL) {
+		return (B_FALSE);
+	}
+
+	ring->vr_descr_pages = pages;
+	ring->vr_descr_holds = holds;
+
+	return (B_TRUE);
+}
+
+static boolean_t
+viona_ring_map_avail(viona_vring_t *ring)
+{
+	const uint64_t gpa = ring->vr_avail_gpa;
+	const uint_t pages = VRING_PAGES(gpa, VRING_SZ_AVAIL(ring->vr_size));
+	const uint64_t base = P2ALIGN(gpa, PAGESIZE);
+	vmm_page_hold_t *holds;
+
+	ASSERT(MUTEX_HELD(&ring->vr_lock));
+	ASSERT0(gpa & VRING_ALIGN_AVAIL);
+
+	holds = vring_map_pages(ring->vr_lease, gpa, pages, PROT_READ);
+	if (holds == NULL) {
+		return (B_FALSE);
+	}
+
+	ring->vr_avail_gpa = gpa;
+	ring->vr_avail_holds = holds;
+	ring->vr_avail_pages = pages;
+
+	ring->vr_avail_flags = (volatile uint16_t *)vring_addr_at(holds, base,
+	    pages, gpa, 2);
+	ring->vr_avail_idx = (volatile uint16_t *)vring_addr_at(holds, base,
+	    pages, gpa + 2, 2);
+	ring->vr_avail_used_event = (volatile uint16_t *)vring_addr_at(holds,
+	    base, pages, gpa + 4 + (ring->vr_size * 2),
+	    sizeof (uint16_t));
+
+	return (B_TRUE);
+}
+
+static boolean_t
+viona_ring_map_used(viona_vring_t *ring)
+{
+	const uint64_t gpa = ring->vr_used_gpa;
+	const uint_t pages = VRING_PAGES(gpa, VRING_SZ_USED(ring->vr_size));
+	const uint64_t base = P2ALIGN(gpa, PAGESIZE);
+	vmm_page_hold_t *holds;
+
+	ASSERT(MUTEX_HELD(&ring->vr_lock));
+	ASSERT0(gpa & VRING_ALIGN_USED);
+
+	holds = vring_map_pages(ring->vr_lease, gpa, pages, PROT_WRITE);
+	if (holds == NULL) {
+		return (B_FALSE);
+	}
+
+	ring->vr_used_gpa = gpa;
+	ring->vr_used_holds = holds;
+	ring->vr_used_pages = pages;
+
+	ring->vr_used_flags = (volatile uint16_t *)vring_addr_at(holds, base,
+	    pages, gpa, 2);
+	ring->vr_used_idx = (volatile uint16_t *)vring_addr_at(holds, base,
+	    pages, gpa + 2, 2);
+	ring->vr_used_avail_event = (volatile uint16_t *)vring_addr_at(holds,
+	    base, pages, gpa + 4 + (ring->vr_size * 8), 2);
+
+	return (B_TRUE);
+}
+
+static void
+viona_ring_unmap_descr(viona_vring_t *ring)
+{
+	const uint_t pages = ring->vr_descr_pages;
+	vmm_page_hold_t *holds = ring->vr_descr_holds;
+
+	ASSERT(MUTEX_HELD(&ring->vr_lock));
+
+	for (uint_t i = 0; i < pages; i++) {
+		vmm_drv_gpa_rele(ring->vr_lease, &holds[i]);
+	}
+
+	ring->vr_descr_pages = 0;
+	ring->vr_descr_holds = NULL;
+	kmem_free(holds, sizeof (vmm_page_hold_t) * pages);
+}
+
+static void
+viona_ring_unmap_avail(viona_vring_t *ring)
+{
+	const uint_t pages = ring->vr_avail_pages;
+	vmm_page_hold_t *holds = ring->vr_avail_holds;
+
+	ASSERT(MUTEX_HELD(&ring->vr_lock));
+
+	for (uint_t i = 0; i < pages; i++) {
+		vmm_drv_gpa_rele(ring->vr_lease, &holds[i]);
+	}
+
+	ring->vr_avail_flags = NULL;
+	ring->vr_avail_idx = NULL;
+	ring->vr_avail_used_event = NULL;
+
+	ring->vr_avail_pages = 0;
+	ring->vr_avail_holds = NULL;
+	kmem_free(holds, sizeof (vmm_page_hold_t) * pages);
+}
+
+static void
+viona_ring_unmap_used(viona_vring_t *ring)
+{
+	const uint_t pages = ring->vr_used_pages;
+	vmm_page_hold_t *holds = ring->vr_used_holds;
+
+	ASSERT(MUTEX_HELD(&ring->vr_lock));
+	ASSERT(ring->vr_used_gpa != 0);
+
+	for (uint_t i = 0; i < pages; i++) {
+		vmm_drv_gpa_rele(ring->vr_lease, &holds[i]);
+	}
+
+	ring->vr_used_flags = NULL;
+	ring->vr_used_idx = NULL;
+	ring->vr_used_avail_event = NULL;
+
+	ring->vr_used_pages = 0;
+	ring->vr_used_holds = NULL;
+	kmem_free(holds, sizeof (vmm_page_hold_t) * pages);
+}
+
+static boolean_t
+viona_ring_map_legacy(viona_vring_t *ring)
+{
 	const uint16_t qsz = ring->vr_size;
 
 	ASSERT3U(qsz, !=, 0);
 	ASSERT3U(pos, !=, 0);
 	ASSERT(MUTEX_HELD(&ring->vr_lock));
 
-	const size_t desc_sz = qsz * sizeof (struct virtio_desc);
-	ring->vr_descr = viona_gpa2kva(ring, pos, desc_sz);
-	if (ring->vr_descr == NULL) {
+	/* Expecting page alignment for a legacy ring */
+	if ((ring->vr_gpa & PAGEOFFSET) != 0) {
+		return (B_FALSE);
+	}
+
+	ring->vr_descr_gpa = ring->vr_gpa;
+	ring->vr_avail_gpa = ring->vr_descr_gpa + VRING_SZ_DESCR(qsz);
+	ring->vr_used_gpa = P2ALIGN(ring->vr_avail_gpa + VRING_SZ_AVAIL(qsz),
+	    PAGESIZE);
+
+	if (!viona_ring_map_descr(ring)) {
 		goto fail;
 	}
-	pos += desc_sz;
-
-	const size_t avail_sz = (qsz + 3) * sizeof (uint16_t);
-	ring->vr_avail_flags = viona_gpa2kva(ring, pos, avail_sz);
-	if (ring->vr_avail_flags == NULL) {
+	if (!viona_ring_map_avail(ring)) {
+		viona_ring_unmap_descr(ring);
 		goto fail;
 	}
-	ring->vr_avail_idx = ring->vr_avail_flags + 1;
-	ring->vr_avail_ring = ring->vr_avail_flags + 2;
-	ring->vr_avail_used_event = ring->vr_avail_ring + qsz;
-	pos += avail_sz;
-
-	const size_t used_sz = (qsz * sizeof (struct virtio_used)) +
-	    (sizeof (uint16_t) * 3);
-	pos = P2ROUNDUP(pos, VRING_ALIGN);
-	ring->vr_used_flags = viona_gpa2kva(ring, pos, used_sz);
-	if (ring->vr_used_flags == NULL) {
+	if (!viona_ring_map_used(ring)) {
+		viona_ring_unmap_descr(ring);
+		viona_ring_unmap_avail(ring);
 		goto fail;
 	}
-	ring->vr_used_idx = ring->vr_used_flags + 1;
-	ring->vr_used_ring = (struct virtio_used *)(ring->vr_used_flags + 2);
-	ring->vr_used_avail_event = (uint16_t *)(ring->vr_used_ring + qsz);
-
 	return (B_TRUE);
 
 fail:
-	viona_ring_unmap(ring);
+	ring->vr_descr_gpa = 0;
+	ring->vr_avail_gpa = 0;
+	ring->vr_used_gpa = 0;
 	return (B_FALSE);
 }
 
 static void
-viona_ring_unmap(viona_vring_t *ring)
+viona_ring_unmap_legacy(viona_vring_t *ring)
 {
 	ASSERT(MUTEX_HELD(&ring->vr_lock));
 
-	ring->vr_descr = NULL;
-	ring->vr_avail_flags = NULL;
-	ring->vr_avail_idx = NULL;
-	ring->vr_avail_ring = NULL;
-	ring->vr_avail_used_event = NULL;
-	ring->vr_used_flags = NULL;
-	ring->vr_used_idx = NULL;
-	ring->vr_used_ring = NULL;
-	ring->vr_used_avail_event = NULL;
+	if (ring->vr_descr_gpa != 0) {
+		ASSERT(ring->vr_avail_gpa);
+		ASSERT(ring->vr_used_gpa);
+
+		viona_ring_unmap_descr(ring);
+		viona_ring_unmap_avail(ring);
+		viona_ring_unmap_used(ring);
+		ring->vr_descr_gpa = 0;
+		ring->vr_avail_gpa = 0;
+		ring->vr_used_gpa = 0;
+	}
+}
+
+static inline struct virtio_desc
+vring_read_descr(viona_vring_t *ring, uint_t idx)
+{
+	ASSERT(MUTEX_HELD(&ring->vr_a_mutex));
+	ASSERT(ring->vr_descr_gpa != 0);
+
+	volatile struct virtio_desc *valp = (struct virtio_desc *)
+	    vring_addr_at(ring->vr_descr_holds,
+	    P2ALIGN(ring->vr_descr_gpa, PAGESIZE),
+	    ring->vr_descr_pages,
+	    ring->vr_descr_gpa + (idx * sizeof (struct virtio_desc)),
+	    sizeof (struct virtio_desc));
+
+	return (*valp);
+}
+
+static inline uint16_t
+vring_read_avail(viona_vring_t *ring, uint_t idx)
+{
+	ASSERT(MUTEX_HELD(&ring->vr_a_mutex));
+	ASSERT(ring->vr_avail_gpa != 0);
+
+	const uint_t midx = idx & ring->vr_mask;
+	volatile uint16_t *valp = (uint16_t *)
+	    vring_addr_at(ring->vr_avail_holds,
+	    P2ALIGN(ring->vr_avail_gpa, PAGESIZE),
+	    ring->vr_avail_pages,
+	    ring->vr_avail_gpa + 4 + (midx * 2),
+	    2);
+
+	return (*valp);
+}
+
+static inline void
+vring_write_used(viona_vring_t *ring, uint_t idx, uint16_t id, uint32_t len)
+{
+	ASSERT(MUTEX_HELD(&ring->vr_u_mutex));
+	ASSERT(ring->vr_used_gpa != 0);
+
+	const uint_t midx = idx & ring->vr_mask;
+	volatile struct virtio_used *vu = (struct virtio_used *)
+	    vring_addr_at(ring->vr_used_holds,
+	    P2ALIGN(ring->vr_used_gpa, PAGESIZE),
+	    ring->vr_used_pages,
+	    ring->vr_used_gpa + 4 + (midx * 8),
+	    2);
+
+	vu->vu_idx = id;
+	vu->vu_tlen = len;
 }
 
 void
@@ -438,8 +667,152 @@ viona_create_worker(viona_vring_t *ring)
 	return (t);
 }
 
+static uint_t
+vq_popchain_direct(viona_vring_t *ring, const struct virtio_desc *vd,
+    vring_iovec_t *iov, uint_t niov, uint_t i)
+{
+	if (vdir.vd_len == 0) {
+		VIONA_PROBE2(desc_bad_len,
+		    viona_vring_t *, ring,
+		    uint32_t, vdir.vd_len);
+		VIONA_RING_STAT_INCR(ring, desc_bad_len);
+		goto bail;
+	}
+	uint_t pages = VRING_PAGES(vd->vd_addr, vd->vd_len);
+
+	ASSERT(i < niov);
+
+	if (pages == 1) {
+		uint_t off = P2PHASE(vd->vd_addr, PAGESIZE);
+		uint64_t base = P2ALIGN(vd->vd_addr, PAGESIZE);
+
+		if (!vmm_drv_gpa_hold(ring->vr_lease, &iov[i].riov_hold, base,
+		    PROT_READ|PROT_WRITE)) {
+			/* XXX bail-out handline */
+		}
+		iov[i].riov_offset = off;
+		iov[i].riov_len = vd.vd_len;
+		return (i + 1);
+	} else {
+		/*
+		 * The guest has provided a descriptor referring to a
+		 * guest-physical contiguous mapping.  With no guarantee (or
+		 * frankly, likelihood) of it being host-physical contiguous,
+		 * treat it like multiple descriptors.
+		 */
+
+		if ((i + pages) >= niov) {
+			/* bail if there is not adequate room */
+			return (i);
+		}
+		while (vd.vd_len > 0) {
+			uint_t off = P2PHASE(vd->vd_addr, PAGESIZE);
+			uint64_t base = P2ALIGN(vd->vd_addr, PAGESIZE);
+			if (!vmm_drv_gpa_hold(ring->vr_lease, &iov[i].riov_hold,
+			    base, PROT_READ|PROT_WRITE)) {
+				/* XXX bail-out handline */
+			}
+			iov[i].riov_offset = off;
+			iov[i].riov_len = PAGESIZE - off;
+			i++;
+		}
+	}
+
+	buf = viona_gpa2kva(ring, vdir.vd_addr, vdir.vd_len);
+	if (buf == NULL) {
+		VIONA_PROBE_BAD_RING_ADDR(ring, vdir.vd_addr);
+		VIONA_RING_STAT_INCR(ring, bad_ring_addr);
+		goto bail;
+	}
+	iov[i].iov_base = buf;
+	iov[i].iov_len = vdir.vd_len;
+	i++;
+}
+
+static uint_t
+vq_popchain_indirect(viona_vring_t *ring, const struct virtio_desc *vd,
+    vring_iovec_t *iov, uint_t niov, uint_t i)
+{
+	const uint_t nindir = vd->vd_len / sizeof (struct virtio_desc);
+
+	if (P2PHASE(vd->vd_len, sizeof (struct virtio_desc)) != 0 ||
+	    nindir == 0) {
+		VIONA_PROBE2(indir_bad_len, viona_vring_t *, ring,
+		    uint32_t, vd->vd_len);
+		VIONA_RING_STAT_INCR(ring, indir_bad_len);
+		goto bail;
+	}
+
+
+	const uint_t pages = VRING_PAGES(vd->vd_addr, vd->vd_len);
+
+	vindir = viona_gpa2kva(ring, vdir.vd_addr, vdir.vd_len);
+	if (vindir == NULL) {
+		VIONA_PROBE_BAD_RING_ADDR(ring, vdir.vd_addr);
+		VIONA_RING_STAT_INCR(ring, bad_ring_addr);
+		goto bail;
+	}
+	next = 0;
+	for (;;) {
+		struct virtio_desc vp;
+
+		/*
+		 * A copy of the indirect descriptor is made
+		 * here, rather than simply using a reference
+		 * pointer.  This prevents malicious or
+		 * erroneous guest writes to the descriptor
+		 * from fooling the flags/bounds verification
+		 * through a race.
+		 */
+		vp = vindir[next];
+		if (vp.vd_flags & VRING_DESC_F_INDIRECT) {
+			VIONA_PROBE1(indir_bad_nest,
+			    viona_vring_t *, ring);
+			VIONA_RING_STAT_INCR(ring,
+			    indir_bad_nest);
+			goto bail;
+		} else if (vp.vd_len == 0) {
+			VIONA_PROBE2(desc_bad_len,
+			    viona_vring_t *, ring,
+			    uint32_t, vp.vd_len);
+			VIONA_RING_STAT_INCR(ring,
+			    desc_bad_len);
+			goto bail;
+		}
+		buf = viona_gpa2kva(ring, vp.vd_addr,
+		    vp.vd_len);
+		if (buf == NULL) {
+			VIONA_PROBE_BAD_RING_ADDR(ring,
+			    vp.vd_addr);
+			VIONA_RING_STAT_INCR(ring,
+			    bad_ring_addr);
+			goto bail;
+		}
+		iov[i].iov_base = buf;
+		iov[i].iov_len = vp.vd_len;
+		i++;
+
+		if ((vp.vd_flags & VRING_DESC_F_NEXT) == 0)
+			break;
+		if (i >= niov) {
+			goto loopy;
+		}
+
+		next = vp.vd_next;
+		if (next >= nindir) {
+			VIONA_PROBE3(indir_bad_next,
+			    viona_vring_t *, ring,
+			    uint16_t, next,
+			    uint_t, nindir);
+			VIONA_RING_STAT_INCR(ring,
+			    indir_bad_next);
+			goto bail;
+		}
+	}
+}
+
 int
-vq_popchain(viona_vring_t *ring, struct iovec *iov, uint_t niov,
+vq_popchain(viona_vring_t *ring, ring_iovec_t *iov, uint_t niov,
     uint16_t *cookie)
 {
 	uint_t i, ndesc, idx, head, next;
@@ -470,7 +843,7 @@ vq_popchain(viona_vring_t *ring, struct iovec *iov, uint_t niov,
 		VIONA_RING_STAT_INCR(ring, ndesc_too_high);
 	}
 
-	head = ring->vr_avail_ring[idx & ring->vr_mask];
+	head = vring_read_avail(ring, idx);
 	next = head;
 
 	for (i = 0; i < niov; next = vdir.vd_next) {
@@ -481,7 +854,7 @@ vq_popchain(viona_vring_t *ring, struct iovec *iov, uint_t niov,
 			goto bail;
 		}
 
-		vdir = ring->vr_descr[next];
+		vdir = vring_read_descr(ring, next);
 		if ((vdir.vd_flags & VRING_DESC_F_INDIRECT) == 0) {
 			if (vdir.vd_len == 0) {
 				VIONA_PROBE2(desc_bad_len,
@@ -490,16 +863,15 @@ vq_popchain(viona_vring_t *ring, struct iovec *iov, uint_t niov,
 				VIONA_RING_STAT_INCR(ring, desc_bad_len);
 				goto bail;
 			}
-			buf = viona_gpa2kva(ring, vdir.vd_addr, vdir.vd_len);
-			if (buf == NULL) {
-				VIONA_PROBE_BAD_RING_ADDR(ring, vdir.vd_addr);
-				VIONA_RING_STAT_INCR(ring, bad_ring_addr);
-				goto bail;
-			}
+			vq_popchain_direct(ring, &vdir)
+
 			iov[i].iov_base = buf;
 			iov[i].iov_len = vdir.vd_len;
 			i++;
 		} else {
+			vq_popchain_indirect(ring, &vdir);
+
+
 			const uint_t nindir = vdir.vd_len / 16;
 			volatile struct virtio_desc *vindir;
 
@@ -593,17 +965,16 @@ bail:
 void
 vq_pushchain(viona_vring_t *ring, uint32_t len, uint16_t cookie)
 {
-	volatile struct virtio_used *vu;
 	uint_t uidx;
 
 	mutex_enter(&ring->vr_u_mutex);
 
-	uidx = *ring->vr_used_idx;
-	vu = &ring->vr_used_ring[uidx++ & ring->vr_mask];
-	vu->vu_idx = cookie;
-	vu->vu_tlen = len;
+	uidx = ring->vr_cur_uidx;
+	vring_write_used(ring, uidx, cookie, len);
+	uidx++;
 	membar_producer();
 	*ring->vr_used_idx = uidx;
+	ring->vr_cur_uidx = uidx;
 
 	mutex_exit(&ring->vr_u_mutex);
 }
@@ -611,26 +982,20 @@ vq_pushchain(viona_vring_t *ring, uint32_t len, uint16_t cookie)
 void
 vq_pushchain_many(viona_vring_t *ring, uint_t num_bufs, used_elem_t *elem)
 {
-	volatile struct virtio_used *vu;
-	uint_t uidx, i;
+	uint_t uidx;
+
+	ASSERT(num_bufs <= ring->vr_size);
 
 	mutex_enter(&ring->vr_u_mutex);
 
-	uidx = *ring->vr_used_idx;
-	if (num_bufs == 1) {
-		vu = &ring->vr_used_ring[uidx++ & ring->vr_mask];
-		vu->vu_idx = elem[0].id;
-		vu->vu_tlen = elem[0].len;
-	} else {
-		for (i = 0; i < num_bufs; i++) {
-			vu = &ring->vr_used_ring[(uidx + i) & ring->vr_mask];
-			vu->vu_idx = elem[i].id;
-			vu->vu_tlen = elem[i].len;
-		}
-		uidx = uidx + num_bufs;
+	uidx = ring->vr_cur_uidx;
+	for (uint_t i = 0; i < num_bufs; i++) {
+		vring_write_used(ring, uidx, elem[i].id, elem[i].len);
+		uidx++;
 	}
 	membar_producer();
 	*ring->vr_used_idx = uidx;
+	ring->vr_cur_uidx = uidx;
 
 	mutex_exit(&ring->vr_u_mutex);
 }
