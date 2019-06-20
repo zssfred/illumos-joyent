@@ -23,14 +23,13 @@
 .\" Copyright 2011 Joshua M. Clulow <josh@sysmgr.org>
 .\" Copyright (c) 2011, 2016 by Delphix. All rights reserved.
 .\" Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
-.\" Copyright (c) 2015, Joyent, Inc. All rights reserved.
 .\" Copyright (c) 2014 by Adam Stevko. All rights reserved.
 .\" Copyright (c) 2014 Integros [integros.com]
 .\" Copyright 2018 Nexenta Systems, Inc.
-.\" Copyright 2018 Joyent, Inc.
+.\" Copyright 2019 Joyent, Inc.
 .\" Copyright (c) 2018 Datto Inc.
 .\"
-.Dd Jan 05, 2019
+.Dd February 26, 2019
 .Dt ZFS 1M
 .Os
 .Sh NAME
@@ -38,7 +37,7 @@
 .Nd configures ZFS file systems
 .Sh SYNOPSIS
 .Nm
-.Op Fl \?
+.Op Fl \&?
 .Nm
 .Cm create
 .Op Fl p
@@ -1133,6 +1132,20 @@ This feature must be enabled to be used
 .Po see
 .Xr zpool-features 5
 .Pc .
+.It Sy special_small_blocks Ns = Ns Em size
+This value represents the threshold block size for including small file
+blocks into the special allocation class.
+Blocks smaller than or equal to this value will be assigned to the special
+allocation class while greater blocks will be assigned to the regular class.
+Valid values are zero or a power of two from 512B up to 128K.
+The default size is 0 which means no small file blocks will be allocated in
+the special class.
+.Pp
+Before setting this property, a special class vdev must be added to the
+pool.
+See
+.Xr zpool 1M
+for more details on the special allocation class.
 .It Sy mountpoint Ns = Ns Pa path Ns | Ns Sy none Ns | Ns Sy legacy
 Controls the mount point used for this file system.
 See the
@@ -1848,7 +1861,7 @@ commands.
 All subcommands that modify state are logged persistently to the pool in their
 original form.
 .Bl -tag -width ""
-.It Nm Fl \?
+.It Nm Fl \&?
 Displays a help message.
 .It Xo
 .Nm
@@ -3496,6 +3509,7 @@ Channel programs may only be run with root privileges.
 .sp
 For full documentation of the ZFS channel program interface, see the manual
 page for
+.Xr zfs-program 1M .
 .Bl -tag -width ""
 .It Fl j
 Display channel program output in JSON format.
@@ -3921,6 +3935,7 @@ M       F       /tank/test/modified
 .Xr share 1M ,
 .Xr sharemgr 1M ,
 .Xr unshare 1M ,
+.Xr zfs-program 1M ,
 .Xr zonecfg 1M ,
 .Xr zpool 1M ,
 .Xr chmod 2 ,

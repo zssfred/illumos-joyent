@@ -25,7 +25,7 @@
 # Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
 # Copyright 2018 Nexenta Systems, Inc.
 # Copyright 2016 Garrett D'Amore <garrett@damore.org>
-# Copyright 2017 Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 # Copyright 2016 OmniTI Computer Consulting, Inc.  All rights reserved.
 # Copyright 2016 Hans Rosenfeld <rosenfeld@grumpf.hope-2000.org>
 #
@@ -152,6 +152,7 @@ GENUNIX_OBJS +=	\
 		ddi_intr_irm.o	\
 		ddi_nodeid.o	\
 		ddi_periodic.o	\
+		ddi_ufm.o	\
 		devcfg.o	\
 		devcache.o	\
 		device.o	\
@@ -853,7 +854,7 @@ SATA_OBJS +=	sata.o
 
 USBA_OBJS +=	hcdi.o	usba.o	usbai.o hubdi.o parser.o genconsole.o \
 		usbai_pipe_mgmt.o usbai_req.o usbai_util.o usbai_register.o \
-		usba_devdb.o usba10_calls.o usba_ugen.o
+		usba_devdb.o usba10_calls.o usba_ugen.o usba_bos.o
 
 USBA10_OBJS +=	usba10.o
 
@@ -1055,12 +1056,6 @@ SYSEVENT_OBJS += sysevent.o
 
 BL_OBJS += bl.o
 
-DRM_OBJS += drm_sunmod.o drm_kstat.o drm_agpsupport.o \
-	    drm_auth.o drm_bufs.o drm_context.o drm_dma.o \
-	    drm_drawable.o drm_drv.o drm_fops.o drm_ioctl.o drm_irq.o \
-	    drm_lock.o drm_memory.o drm_msg.o drm_pci.o drm_scatter.o \
-	    drm_cache.o drm_gem.o drm_mm.o ati_pcigart.o
-
 FM_OBJS += devfm.o devfm_machdep.o
 
 RTLS_OBJS +=	rtls.o
@@ -1137,6 +1132,7 @@ NFSSRV_OBJS +=	nfs_server.o	nfs_srv.o	nfs3_srv.o \
 		nfs4_deleg_ops.o nfs4_srv_readdir.o nfs4_dispatch.o
 
 SMBSRV_SHARED_OBJS += \
+		smb_cfg_util.o \
 		smb_door_legacy.o \
 		smb_inet.o \
 		smb_match.o \
@@ -1158,6 +1154,7 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb_alloc.o				\
 		smb_authenticate.o			\
 		smb_close.o				\
+		smb_cmn_oplock.o			\
 		smb_cmn_rename.o			\
 		smb_cmn_setfile.o			\
 		smb_common_open.o			\
@@ -1218,6 +1215,7 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb_set_fileinfo.o			\
 		smb_sign_kcf.o				\
 		smb_signing.o				\
+		smb_srv_oplock.o			\
 		smb_thread.o				\
 		smb_tree.o				\
 		smb_trans2_create_directory.o		\
@@ -1231,7 +1229,9 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb_vss.o				\
 		smb_write.o				\
 		\
+		smb2_aapl.o \
 		smb2_dispatch.o \
+		smb2_durable.o \
 		smb2_cancel.o \
 		smb2_change_notify.o \
 		smb2_close.o \
@@ -1239,6 +1239,7 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb2_echo.o \
 		smb2_flush.o \
 		smb2_ioctl.o \
+		smb2_lease.o \
 		smb2_lock.o \
 		smb2_logoff.o \
 		smb2_negotiate.o \
@@ -1260,7 +1261,10 @@ SMBSRV_OBJS +=	$(SMBSRV_SHARED_OBJS)			\
 		smb2_signing.o \
 		smb2_tree_connect.o \
 		smb2_tree_disconn.o \
-		smb2_write.o
+		smb2_write.o \
+		\
+		smb3_encrypt.o \
+		smb3_encrypt_kcf.o
 
 PCFS_OBJS +=	pc_alloc.o	pc_dir.o	pc_node.o	pc_subr.o \
 		pc_vfsops.o	pc_vnops.o
@@ -1301,11 +1305,13 @@ VSCAN_OBJS +=	vscan_drv.o	vscan_svc.o vscan_door.o
 NSMB_OBJS +=	smb_conn.o	smb_dev.o	smb_iod.o	smb_pass.o \
 		smb_rq.o	smb_sign.o	smb_smb.o	smb_subrs.o \
 		smb_time.o	smb_tran.o	smb_trantcp.o	smb_usr.o \
-		subr_mchain.o
+		smb2_rq.o	smb2_sign.o	smb2_smb.o	subr_mchain.o \
+		nsmb_sign_kcf.o
 
 SMBFS_COMMON_OBJS += smbfs_ntacl.o
 SMBFS_OBJS +=	smbfs_vfsops.o	smbfs_vnops.o	smbfs_node.o	\
 		smbfs_acl.o	smbfs_client.o	smbfs_smb.o	\
+		smbfs_smb1.o	smbfs_smb2.o	\
 		smbfs_subr.o	smbfs_subr2.o	\
 		smbfs_rwlock.o	smbfs_xattr.o	\
 		$(SMBFS_COMMON_OBJS)
@@ -1356,6 +1362,7 @@ ZFS_COMMON_OBJS +=		\
 	ddt_zap.o		\
 	dmu.o			\
 	dmu_diff.o		\
+	dmu_recv.o		\
 	dmu_send.o		\
 	dmu_object.o		\
 	dmu_objset.o		\
@@ -1380,6 +1387,7 @@ ZFS_COMMON_OBJS +=		\
 	lz4.o			\
 	lzjb.o			\
 	metaslab.o		\
+	mmp.o			\
 	multilist.o		\
 	range_tree.o		\
 	refcount.o		\
@@ -1646,10 +1654,14 @@ CONSCONFIG_DACF_OBJS  += consconfig_dacf.o consplat.o
 TEM_OBJS += tem.o tem_safe.o
 
 #
-#	Font data for generated 8x16 font
+#	Font data for generated console fonts
 #
-FONT	= 8x16
-FONT_SRC= ter-u16n
+i386_FONT	= 8x16
+i386_FONT_SRC= ter-u16n
+sparc_FONT	= 12x22
+sparc_FONT_SRC= Gallant19
+FONT=$($(MACH)_FONT)
+FONT_SRC=$($(MACH)_FONT_SRC)
 FONT_DIR= $(SRC)/data/consfonts
 FONT_OBJS += font.o $(FONT).o
 

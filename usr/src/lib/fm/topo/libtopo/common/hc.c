@@ -22,7 +22,7 @@
 
 /*
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #include <stdio.h>
@@ -133,6 +133,13 @@ const topo_method_t hc_methods[] = {
 	{ NULL }
 };
 
+static const topo_method_t fru_container_methods[] = {
+	{ TOPO_METH_OCCUPIED, TOPO_METH_OCCUPIED_DESC,
+	    TOPO_METH_OCCUPIED_VERSION, TOPO_STABILITY_INTERNAL,
+	    topo_mod_hc_occupied },
+	{ NULL }
+};
+
 static const topo_modops_t hc_ops =
 	{ hc_enum, hc_release };
 static const topo_modinfo_t hc_info =
@@ -147,6 +154,7 @@ static const hcc_t hc_canon[] = {
 	{ CENTERPLANE, TOPO_STABILITY_PRIVATE },
 	{ CHASSIS, TOPO_STABILITY_PRIVATE },
 	{ CHIP, TOPO_STABILITY_PRIVATE },
+	{ CHIPSET, TOPO_STABILITY_PRIVATE },
 	{ CHIP_SELECT, TOPO_STABILITY_PRIVATE },
 	{ CORE, TOPO_STABILITY_PRIVATE },
 	{ CONTROLLER, TOPO_STABILITY_PRIVATE },
@@ -198,6 +206,7 @@ static const hcc_t hc_canon[] = {
 	{ SUBCHASSIS, TOPO_STABILITY_PRIVATE },
 	{ SYSTEMBOARD, TOPO_STABILITY_PRIVATE },
 	{ TRANSCEIVER, TOPO_STABILITY_PRIVATE },
+	{ UFM, TOPO_STABILITY_PRIVATE },
 	{ USB_DEVICE, TOPO_STABILITY_PRIVATE },
 	{ XAUI, TOPO_STABILITY_PRIVATE },
 	{ XFP, TOPO_STABILITY_PRIVATE }
@@ -279,6 +288,15 @@ hc_enum(topo_mod_t *mod, tnode_t *pnode, const char *name, topo_instance_t min,
 		nvlist_free(auth);
 		nvlist_free(nvl);
 		return (-1);
+	}
+	if (strcmp(name, BAY) == 0 || strcmp(name, PORT) == 0 ||
+	    strcmp(name, RECEPTACLE) == 0 || strcmp(name, SLOT) == 0) {
+		if (topo_method_register(mod, node, fru_container_methods) <
+		    0) {
+			topo_mod_dprintf(mod, "failed to register methods on "
+			    "%s=%d\n", name, min);
+			return (-1);
+		}
 	}
 
 	/*

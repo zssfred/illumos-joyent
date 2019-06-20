@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  * Copyright 2017 RackTop Systems.
  */
 
@@ -610,10 +610,10 @@ mac_client_link_state(mac_client_impl_t *mcip)
 uint64_t
 mac_client_stat_get(mac_client_handle_t mch, uint_t stat)
 {
-	mac_client_impl_t 	*mcip = (mac_client_impl_t *)mch;
-	mac_impl_t 		*mip = mcip->mci_mip;
-	flow_entry_t 		*flent = mcip->mci_flent;
-	mac_soft_ring_set_t 	*mac_srs;
+	mac_client_impl_t	*mcip = (mac_client_impl_t *)mch;
+	mac_impl_t		*mip = mcip->mci_mip;
+	flow_entry_t		*flent = mcip->mci_flent;
+	mac_soft_ring_set_t	*mac_srs;
 	mac_rx_stats_t		*mac_rx_stat, *old_rx_stat;
 	mac_tx_stats_t		*mac_tx_stat, *old_tx_stat;
 	int i;
@@ -1452,7 +1452,7 @@ mac_client_open(mac_handle_t mh, mac_client_handle_t *mchp, char *name,
 	 */
 	mac_client_add(mcip);
 
-	mcip->mci_share = NULL;
+	mcip->mci_share = 0;
 	if (share_desired)
 		i_mac_share_alloc(mcip);
 
@@ -1633,6 +1633,32 @@ mac_rx_clear(mac_client_handle_t mch)
 }
 
 void
+mac_rx_barrier(mac_client_handle_t mch)
+{
+	mac_client_impl_t *mcip = (mac_client_impl_t *)mch;
+	mac_impl_t *mip = mcip->mci_mip;
+
+	i_mac_perim_enter(mip);
+
+	/* If a RX callback is set, quiesce and restart that datapath */
+	if (mcip->mci_rx_fn != mac_rx_def) {
+		mac_rx_client_quiesce(mch);
+		mac_rx_client_restart(mch);
+	}
+
+	/* If any promisc callbacks are registered, perform a barrier there */
+	if (mcip->mci_promisc_list != NULL || mip->mi_promisc_list != NULL) {
+		mac_cb_info_t *mcbi =  &mip->mi_promisc_cb_info;
+
+		mutex_enter(mcbi->mcbi_lockp);
+		mac_callback_barrier(mcbi);
+		mutex_exit(mcbi->mcbi_lockp);
+	}
+
+	i_mac_perim_exit(mip);
+}
+
+void
 mac_secondary_dup(mac_client_handle_t smch, mac_client_handle_t dmch)
 {
 	mac_client_impl_t *smcip = (mac_client_impl_t *)smch;
@@ -1708,7 +1734,7 @@ mac_client_set_rings_prop(mac_client_impl_t *mcip, mac_resource_props_t *mrp,
 	uint_t			ringcnt;
 	boolean_t		unspec;
 
-	if (mcip->mci_share != NULL)
+	if (mcip->mci_share != 0)
 		return (EINVAL);
 
 	if (mrp->mrp_mask & MRP_RX_RINGS) {
@@ -1801,7 +1827,7 @@ mac_client_set_rings_prop(mac_client_impl_t *mcip, mac_resource_props_t *mrp,
 				if (mac_check_macaddr_shared(mcip->mci_unicast))
 					return (0);
 
-				ngrp = 	mac_reserve_rx_group(mcip, mac_addr,
+				ngrp = mac_reserve_rx_group(mcip, mac_addr,
 				    B_TRUE);
 				/* Couldn't give it a group, that's fine */
 				if (ngrp == NULL)
@@ -1833,7 +1859,7 @@ mac_client_set_rings_prop(mac_client_impl_t *mcip, mac_resource_props_t *mrp,
 			if (mac_check_macaddr_shared(mcip->mci_unicast))
 				return (EINVAL);
 
-			ngrp = 	mac_reserve_rx_group(mcip, mac_addr, B_TRUE);
+			ngrp = mac_reserve_rx_group(mcip, mac_addr, B_TRUE);
 			if (ngrp == NULL)
 				return (ENOSPC);
 
@@ -1976,7 +2002,7 @@ mac_client_set_rings_prop(mac_client_impl_t *mcip, mac_resource_props_t *mrp,
 
 		/* Switch to H/W */
 		if (group == defgrp && ((mrp->mrp_ntxrings > 0) || unspec)) {
-			ngrp = 	mac_reserve_tx_group(mcip, B_TRUE);
+			ngrp = mac_reserve_tx_group(mcip, B_TRUE);
 			if (ngrp == NULL)
 				return (ENOSPC);
 			mac_tx_client_quiesce((mac_client_handle_t)mcip);
@@ -2041,7 +2067,7 @@ mac_client_set_rings_prop(mac_client_impl_t *mcip, mac_resource_props_t *mrp,
 static int
 mac_resource_ctl_set(mac_client_handle_t mch, mac_resource_props_t *mrp)
 {
-	mac_client_impl_t 	*mcip = (mac_client_impl_t *)mch;
+	mac_client_impl_t	*mcip = (mac_client_impl_t *)mch;
 	mac_impl_t		*mip = (mac_impl_t *)mcip->mci_mip;
 	mac_impl_t		*umip = mcip->mci_upper_mip;
 	int			err = 0;
@@ -3495,7 +3521,7 @@ mac_tx_cookie_t
 mac_tx(mac_client_handle_t mch, mblk_t *mp_chain, uintptr_t hint,
     uint16_t flag, mblk_t **ret_mp)
 {
-	mac_tx_cookie_t		cookie = NULL;
+	mac_tx_cookie_t		cookie = 0;
 	int			error;
 	mac_tx_percpu_t		*mytx;
 	mac_soft_ring_set_t	*srs;
@@ -3512,7 +3538,7 @@ mac_tx(mac_client_handle_t mch, mblk_t *mp_chain, uintptr_t hint,
 		MAC_TX_TRY_HOLD(mcip, mytx, error);
 		if (error != 0) {
 			freemsgchain(mp_chain);
-			return (NULL);
+			return (0);
 		}
 	}
 
@@ -3556,7 +3582,9 @@ mac_tx(mac_client_handle_t mch, mblk_t *mp_chain, uintptr_t hint,
 	srs_tx = &srs->srs_tx;
 	if (srs_tx->st_mode == SRS_TX_DEFAULT &&
 	    (srs->srs_state & SRS_ENQUEUED) == 0 &&
-	    mip->mi_nactiveclients == 1 && mp_chain->b_next == NULL) {
+	    mip->mi_nactiveclients == 1 &&
+	    mp_chain->b_next == NULL &&
+	    (DB_CKSUMFLAGS(mp_chain) & HW_LSO) == 0) {
 		uint64_t	obytes;
 
 		/*
@@ -3597,10 +3625,11 @@ mac_tx(mac_client_handle_t mch, mblk_t *mp_chain, uintptr_t hint,
 		 * receiver -- mark the packet accordingly.
 		 */
 		DB_CKSUMFLAGS(mp_chain) |= HW_LOCAL_MAC;
+		mp_chain = mac_provider_tx(mip, srs_tx->st_arg2, mp_chain,
+		    mcip);
 
-		MAC_TX(mip, srs_tx->st_arg2, mp_chain, mcip);
 		if (mp_chain == NULL) {
-			cookie = NULL;
+			cookie = 0;
 			SRS_TX_STAT_UPDATE(srs, opackets, 1);
 			SRS_TX_STAT_UPDATE(srs, obytes, obytes);
 		} else {
@@ -3610,7 +3639,74 @@ mac_tx(mac_client_handle_t mch, mblk_t *mp_chain, uintptr_t hint,
 			mutex_exit(&srs->srs_lock);
 		}
 	} else {
-		cookie = srs_tx->st_func(srs, mp_chain, hint, flag, ret_mp);
+		mblk_t *mp = mp_chain;
+		mblk_t *new_head = NULL;
+		mblk_t *new_tail = NULL;
+
+		/*
+		 * There are occasions where the packets arriving here
+		 * may request hardware offloads that are not
+		 * available from the underlying MAC provider. This
+		 * currently only happens when a packet is sent across
+		 * the MAC-loopback path of one MAC and then forwarded
+		 * (via IP) to another MAC that lacks one or more of
+		 * the hardware offloads provided by the first one.
+		 * However, in the future, we may choose to pretend
+		 * all MAC providers support all offloads, performing
+		 * emulation on Tx as needed.
+		 *
+		 * We iterate each mblk in-turn, emulating hardware
+		 * offloads as required. From this process, we create
+		 * a new chain. The new chain may be the same as the
+		 * original chain (no hardware emulation needed), a
+		 * collection of new mblks (hardware emulation
+		 * needed), or a mix. At this point, the chain is safe
+		 * for consumption by the underlying MAC provider and
+		 * is passed down to the SRS.
+		 */
+		while (mp != NULL) {
+			mblk_t *next = mp->b_next;
+			mblk_t *tail = NULL;
+			const uint16_t needed =
+			    (DB_CKSUMFLAGS(mp) ^ mip->mi_tx_cksum_flags) &
+			    DB_CKSUMFLAGS(mp);
+
+			mp->b_next = NULL;
+
+			if (needed != 0) {
+				mac_emul_t emul = 0;
+
+				if (needed & HCK_IPV4_HDRCKSUM)
+					emul |= MAC_IPCKSUM_EMUL;
+				if (needed & (HCK_PARTIALCKSUM | HCK_FULLCKSUM))
+					emul |= MAC_HWCKSUM_EMUL;
+				if (needed & HW_LSO)
+					emul = MAC_LSO_EMUL;
+
+				mac_hw_emul(&mp, &tail, NULL, emul);
+
+				if (mp == NULL) {
+					mp = next;
+					continue;
+				}
+			}
+
+			if (new_head == NULL) {
+				new_head = mp;
+			} else {
+				new_tail->b_next = mp;
+			}
+
+			new_tail = (tail == NULL) ? mp : tail;
+			mp = next;
+		}
+
+		if (new_head == NULL) {
+			cookie = 0;
+			goto done;
+		}
+
+		cookie = srs_tx->st_func(srs, new_head, hint, flag, ret_mp);
 	}
 
 done:
@@ -3670,7 +3766,7 @@ mac_tx_is_flow_blocked(mac_client_handle_t mch, mac_tx_cookie_t cookie)
 	 */
 	if (mac_srs->srs_tx.st_mode == SRS_TX_FANOUT ||
 	    mac_srs->srs_tx.st_mode == SRS_TX_AGGR) {
-		if (cookie != NULL) {
+		if (cookie != 0) {
 			sringp = (mac_soft_ring_t *)cookie;
 			mutex_enter(&sringp->s_ring_lock);
 			if (sringp->s_ring_state & S_RING_TX_HIWAT)
@@ -4712,7 +4808,7 @@ mac_set_resources(mac_handle_t mh, mac_resource_props_t *mrp)
 void
 mac_get_resources(mac_handle_t mh, mac_resource_props_t *mrp)
 {
-	mac_impl_t 		*mip = (mac_impl_t *)mh;
+	mac_impl_t		*mip = (mac_impl_t *)mh;
 	mac_client_impl_t	*mcip;
 
 	mcip = mac_primary_client_handle(mip);
@@ -4730,7 +4826,7 @@ mac_get_resources(mac_handle_t mh, mac_resource_props_t *mrp)
 void
 mac_get_effective_resources(mac_handle_t mh, mac_resource_props_t *mrp)
 {
-	mac_impl_t 		*mip = (mac_impl_t *)mh;
+	mac_impl_t		*mip = (mac_impl_t *)mh;
 	mac_client_impl_t	*mcip;
 
 	mcip = mac_primary_client_handle(mip);

@@ -237,7 +237,7 @@
 #include <sys/strsubr.h>
 #include <sys/strsun.h>
 #include <vm/seg_kmem.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 
 #include <sys/pattr.h>
 #include <sys/dls.h>
@@ -410,7 +410,10 @@ typedef struct viona_vring {
 	uint16_t	vr_state_flags;
 	uint_t		vr_xfer_outstanding;
 	kthread_t	*vr_worker_thread;
-	viona_desb_t	*vr_desb;
+
+	/* ring-sized resources for TX activity */
+	viona_desb_t	*vr_txdesb;
+	struct iovec	*vr_txiov;
 
 	uint_t		vr_intr_enabled;
 	uint64_t	vr_msi_addr;
@@ -457,6 +460,7 @@ typedef struct viona_vring {
 		uint64_t	rs_rx_merge_overrun;
 		uint64_t	rs_rx_merge_underrun;
 		uint64_t	rs_rx_pad_short;
+		uint64_t	rs_rx_mcast_check;
 		uint64_t	rs_too_short;
 		uint64_t	rs_tx_absent;
 
@@ -482,6 +486,7 @@ struct viona_link {
 	datalink_id_t		l_linkid;
 	mac_handle_t		l_mh;
 	mac_client_handle_t	l_mch;
+	mac_promisc_handle_t	l_mph;
 
 	pollhead_t		l_pollhead;
 
@@ -592,7 +597,9 @@ static int viona_ioc_intr_poll(viona_link_t *, void *, int, int *);
 static void viona_intr_ring(viona_vring_t *);
 
 static void viona_desb_release(viona_desb_t *);
-static void viona_rx(void *, mac_resource_handle_t, mblk_t *, boolean_t);
+static void viona_rx_classified(void *, mac_resource_handle_t, mblk_t *,
+    boolean_t);
+static void viona_rx_mcast(void *, mac_resource_handle_t, mblk_t *, boolean_t);
 static void viona_tx(viona_link_t *, viona_vring_t *);
 
 static viona_neti_t *viona_neti_lookup_by_zid(zoneid_t);
@@ -1036,6 +1043,30 @@ viona_get_mac_capab(viona_link_t *link)
 }
 
 static int
+viona_rx_set(viona_link_t *link)
+{
+	viona_vring_t *ring = &link->l_vrings[VIONA_VQ_RX];
+	int err;
+
+	mac_rx_set(link->l_mch, viona_rx_classified, ring);
+	err = mac_promisc_add(link->l_mch, MAC_CLIENT_PROMISC_MULTI,
+	    viona_rx_mcast, ring, &link->l_mph,
+	    MAC_PROMISC_FLAGS_NO_TX_LOOP | MAC_PROMISC_FLAGS_VLAN_TAG_STRIP);
+	if (err != 0) {
+		mac_rx_clear(link->l_mch);
+	}
+
+	return (err);
+}
+
+static void
+viona_rx_clear(viona_link_t *link)
+{
+	mac_promisc_remove(link->l_mph);
+	mac_rx_clear(link->l_mch);
+}
+
+static int
 viona_ioc_create(viona_soft_state_t *ss, void *dptr, int md, cred_t *cr)
 {
 	vioc_create_t	kvc;
@@ -1100,12 +1131,17 @@ viona_ioc_create(viona_soft_state_t *ss, void *dptr, int md, cred_t *cr)
 		goto bail;
 	}
 
-	link->l_neti = nip;
-
 	viona_ring_alloc(link, &link->l_vrings[VIONA_VQ_RX]);
 	viona_ring_alloc(link, &link->l_vrings[VIONA_VQ_TX]);
-	ss->ss_link = link;
 
+	if ((err = viona_rx_set(link)) != 0) {
+		viona_ring_free(&link->l_vrings[VIONA_VQ_RX]);
+		viona_ring_free(&link->l_vrings[VIONA_VQ_TX]);
+		goto bail;
+	}
+
+	link->l_neti = nip;
+	ss->ss_link = link;
 	mutex_exit(&ss->ss_lock);
 
 	mutex_enter(&nip->vni_lock);
@@ -1162,6 +1198,12 @@ viona_ioc_delete(viona_soft_state_t *ss, boolean_t on_close)
 	 * successful completion is reached.
 	 */
 	link->l_destroyed = B_TRUE;
+
+	/*
+	 * Tear down the IO port hook so it cannot be used to kick any of the
+	 * rings which are about to be reset and stopped.
+	 */
+	VERIFY0(viona_ioc_set_notify_ioport(link, 0));
 	mutex_exit(&ss->ss_lock);
 
 	/*
@@ -1172,12 +1214,9 @@ viona_ioc_delete(viona_soft_state_t *ss, boolean_t on_close)
 	VERIFY0(viona_ring_reset(&link->l_vrings[VIONA_VQ_TX], B_FALSE));
 
 	mutex_enter(&ss->ss_lock);
-	VERIFY0(viona_ioc_set_notify_ioport(link, 0));
 	if (link->l_mch != NULL) {
-		/*
-		 * The RX ring will have cleared its receive function from the
-		 * mac client handle, so all that is left to do is close it.
-		 */
+		/* Unhook the receive callbacks and close out the client */
+		viona_rx_clear(link);
 		mac_client_close(link->l_mch, 0);
 	}
 	if (link->l_mh != NULL) {
@@ -1227,16 +1266,24 @@ viona_ring_alloc(viona_link_t *link, viona_vring_t *ring)
 }
 
 static void
-viona_ring_desb_free(viona_vring_t *ring)
+viona_ring_misc_free(viona_vring_t *ring)
 {
-	viona_desb_t *dp = ring->vr_desb;
+	const uint_t cnt = ring->vr_size;
 
-	for (uint_t i = 0; i < ring->vr_size; i++, dp++) {
-		kmem_free(dp->d_headers, VIONA_MAX_HDRS_LEN);
+	if (ring->vr_txdesb != NULL) {
+		viona_desb_t *dp = ring->vr_txdesb;
+
+		for (uint_t i = 0; i < cnt; i++, dp++) {
+			kmem_free(dp->d_headers, VIONA_MAX_HDRS_LEN);
+		}
+		kmem_free(ring->vr_txdesb, sizeof (viona_desb_t) * cnt);
+		ring->vr_txdesb = NULL;
 	}
 
-	kmem_free(ring->vr_desb, sizeof (viona_desb_t) * ring->vr_size);
-	ring->vr_desb = NULL;
+	if (ring->vr_txiov != NULL) {
+		kmem_free(ring->vr_txiov, sizeof (struct iovec) * cnt);
+		ring->vr_txiov = NULL;
+	}
 }
 
 static void
@@ -1352,7 +1399,7 @@ viona_ioc_ring_init(viona_link_t *link, void *udata, int md)
 		viona_desb_t *dp;
 
 		dp = kmem_zalloc(sizeof (viona_desb_t) * cnt, KM_SLEEP);
-		ring->vr_desb = dp;
+		ring->vr_txdesb = dp;
 		for (uint_t i = 0; i < cnt; i++, dp++) {
 			dp->d_frtn.free_func = viona_desb_release;
 			dp->d_frtn.free_arg = (void *)dp;
@@ -1360,6 +1407,12 @@ viona_ioc_ring_init(viona_link_t *link, void *udata, int md)
 			dp->d_headers = kmem_zalloc(VIONA_MAX_HDRS_LEN,
 			    KM_SLEEP);
 		}
+	}
+
+	/* Allocate ring-sized iovec buffers for TX */
+	if (kri.ri_index == VIONA_VQ_TX) {
+		ring->vr_txiov = kmem_alloc(sizeof (struct iovec) * cnt,
+		    KM_SLEEP);
 	}
 
 	/* Zero out MSI-X configuration */
@@ -1381,9 +1434,7 @@ viona_ioc_ring_init(viona_link_t *link, void *udata, int md)
 	return (0);
 
 fail:
-	if (ring->vr_desb != NULL) {
-		viona_ring_desb_free(ring);
-	}
+	viona_ring_misc_free(ring);
 	ring->vr_size = 0;
 	ring->vr_mask = 0;
 	ring->vr_descr = NULL;
@@ -1532,34 +1583,24 @@ viona_worker_rx(viona_vring_t *ring, viona_link_t *link)
 {
 	proc_t *p = ttoproc(curthread);
 
-	thread_vsetname(curthread, "viona_rx_%p", ring);
+	(void) thread_vsetname(curthread, "viona_rx_%p", ring);
 
 	ASSERT(MUTEX_HELD(&ring->vr_lock));
 	ASSERT3U(ring->vr_state, ==, VRS_RUN);
 
 	*ring->vr_used_flags |= VRING_USED_F_NO_NOTIFY;
-	mac_rx_set(link->l_mch, viona_rx, link);
 
 	do {
 		/*
 		 * For now, there is little to do in the RX worker as inbound
-		 * data is delivered by MAC via the viona_rx callback.
-		 * If tap-like functionality is added later, this would be a
-		 * convenient place to inject frames into the guest.
+		 * data is delivered by MAC via the RX callbacks.  If tap-like
+		 * functionality is added later, this would be a convenient
+		 * place to inject frames into the guest.
 		 */
 		(void) cv_wait_sig(&ring->vr_cv, &ring->vr_lock);
 	} while (!VRING_NEED_BAIL(ring, p));
 
-	mutex_exit(&ring->vr_lock);
-	/*
-	 * Clearing the RX function involves MAC quiescing any flows on that
-	 * client.  If MAC happens to be delivering packets to this ring via
-	 * viona_rx() at the time of worker clean-up, that thread may need to
-	 * acquire vr_lock for tasks such as delivering an interrupt.  In order
-	 * to avoid such deadlocks, vr_lock must temporarily be dropped here.
-	 */
-	mac_rx_clear(link->l_mch);
-	mutex_enter(&ring->vr_lock);
+	*ring->vr_used_flags &= ~VRING_USED_F_NO_NOTIFY;
 }
 
 static void
@@ -1567,7 +1608,7 @@ viona_worker_tx(viona_vring_t *ring, viona_link_t *link)
 {
 	proc_t *p = ttoproc(curthread);
 
-	thread_vsetname(curthread, "viona_tx_%p", ring);
+	(void) thread_vsetname(curthread, "viona_tx_%p", ring);
 
 	ASSERT(MUTEX_HELD(&ring->vr_lock));
 	ASSERT3U(ring->vr_state, ==, VRS_RUN);
@@ -1632,11 +1673,6 @@ viona_worker_tx(viona_vring_t *ring, viona_link_t *link)
 		 */
 		cv_wait(&ring->vr_cv, &ring->vr_lock);
 	}
-
-	/* Free any desb resources before the ring is completely stopped */
-	if (ring->vr_desb != NULL) {
-		viona_ring_desb_free(ring);
-	}
 }
 
 static void
@@ -1680,11 +1716,14 @@ viona_worker(void *arg)
 	}
 
 cleanup:
-	/* Free any desb resources before the ring is completely stopped */
-	if (ring->vr_desb != NULL) {
+	if (ring->vr_txdesb != NULL) {
+		/*
+		 * Transmit activity must be entirely concluded before the
+		 * associated descriptors can be cleaned up.
+		 */
 		VERIFY(ring->vr_xfer_outstanding == 0);
-		viona_ring_desb_free(ring);
 	}
+	viona_ring_misc_free(ring);
 
 	ring->vr_cur_aidx = 0;
 	ring->vr_state = VRS_RESET;
@@ -2290,10 +2329,9 @@ done:
 }
 
 static void
-viona_rx(void *arg, mac_resource_handle_t mrh, mblk_t *mp, boolean_t loopback)
+viona_rx_common(viona_vring_t *ring, mblk_t *mp, boolean_t is_loopback)
 {
-	viona_link_t *link = (viona_link_t *)arg;
-	viona_vring_t *ring = &link->l_vrings[VIONA_VQ_RX];
+	viona_link_t *link = ring->vr_link;
 	mblk_t *mprx = NULL, **mprx_prevp = &mprx;
 	mblk_t *mpdrop = NULL, **mpdrop_prevp = &mpdrop;
 	const boolean_t do_merge =
@@ -2482,6 +2520,92 @@ pad_drop:
 		ndrop++;
 	}
 	VIONA_PROBE3(rx, viona_link_t *, link, size_t, nrx, size_t, ndrop);
+}
+
+static void
+viona_rx_classified(void *arg, mac_resource_handle_t mrh, mblk_t *mp,
+    boolean_t is_loopback)
+{
+	viona_vring_t *ring = (viona_vring_t *)arg;
+
+	/* Immediately drop traffic if ring is inactive */
+	if (ring->vr_state != VRS_RUN) {
+		freemsgchain(mp);
+		return;
+	}
+
+	viona_rx_common(ring, mp, is_loopback);
+}
+
+static void
+viona_rx_mcast(void *arg, mac_resource_handle_t mrh, mblk_t *mp,
+    boolean_t is_loopback)
+{
+	viona_vring_t *ring = (viona_vring_t *)arg;
+	mac_handle_t mh = ring->vr_link->l_mh;
+	mblk_t *mp_mcast_only = NULL;
+	mblk_t **mpp = &mp_mcast_only;
+
+	/* Immediately drop traffic if ring is inactive */
+	if (ring->vr_state != VRS_RUN) {
+		freemsgchain(mp);
+		return;
+	}
+
+	/*
+	 * In addition to multicast traffic, broadcast packets will also arrive
+	 * via the MAC_CLIENT_PROMISC_MULTI handler. The mac_rx_set() callback
+	 * for fully-classified traffic has already delivered that broadcast
+	 * traffic, so it should be suppressed here, rather than duplicating it
+	 * to the guest.
+	 */
+	while (mp != NULL) {
+		mblk_t *mp_next;
+		mac_header_info_t mhi;
+		int err;
+
+		mp_next = mp->b_next;
+		mp->b_next = NULL;
+
+		/* Determine the packet type */
+		err = mac_vlan_header_info(mh, mp, &mhi);
+		if (err != 0) {
+			mblk_t *pull;
+
+			/*
+			 * It is possible that gathering of the header
+			 * information was impeded by a leading mblk_t which
+			 * was of inadequate length to reference the needed
+			 * fields.  Try again, in case that could be solved
+			 * with a pull-up.
+			 */
+			pull = msgpullup(mp, sizeof (struct ether_vlan_header));
+			if (pull == NULL) {
+				err = ENOMEM;
+			} else {
+				err = mac_vlan_header_info(mh, pull, &mhi);
+				freemsg(pull);
+			}
+
+			if (err != 0) {
+				VIONA_RING_STAT_INCR(ring, rx_mcast_check);
+			}
+		}
+
+		/* Chain up matching packets while discarding others */
+		if (err == 0 && mhi.mhi_dsttype == MAC_ADDRTYPE_MULTICAST) {
+			*mpp = mp;
+			mpp = &mp->b_next;
+		} else {
+			freemsg(mp);
+		}
+
+		mp = mp_next;
+	}
+
+	if (mp_mcast_only != NULL) {
+		viona_rx_common(ring, mp_mcast_only, is_loopback);
+	}
 }
 
 static void
@@ -2703,7 +2827,8 @@ viona_tx_csum(viona_vring_t *ring, const struct virtio_net_hdr *hdr,
 static void
 viona_tx(viona_link_t *link, viona_vring_t *ring)
 {
-	struct iovec		iov[VTNET_MAXSEGS];
+	struct iovec		*iov = ring->vr_txiov;
+	const uint_t		max_segs = ring->vr_size;
 	uint16_t		cookie;
 	int			i, n;
 	uint32_t		len, base_off = 0;
@@ -2715,10 +2840,19 @@ viona_tx(viona_link_t *link, viona_vring_t *ring)
 
 	mp_head = mp_tail = NULL;
 
-	n = vq_popchain(ring, iov, VTNET_MAXSEGS, &cookie);
-	if (n <= 0) {
+	ASSERT(iov != NULL);
+
+	n = vq_popchain(ring, iov, max_segs, &cookie);
+	if (n == 0) {
 		VIONA_PROBE1(tx_absent, viona_vring_t *, ring);
 		VIONA_RING_STAT_INCR(ring, tx_absent);
+		return;
+	} else if (n < 0) {
+		/*
+		 * Any error encountered in vq_popchain has already resulted in
+		 * specific probe and statistic handling.  Further action here
+		 * is unnecessary.
+		 */
 		return;
 	}
 
@@ -2730,8 +2864,8 @@ viona_tx(viona_link_t *link, viona_vring_t *ring)
 	}
 
 	/* Make sure the packet headers are always in the first mblk. */
-	if (ring->vr_desb != NULL) {
-		dp = &ring->vr_desb[cookie];
+	if (ring->vr_txdesb != NULL) {
+		dp = &ring->vr_txdesb[cookie];
 
 		/*
 		 * If the guest driver is operating properly, each desb slot
@@ -2856,8 +2990,22 @@ viona_tx(viona_link_t *link, viona_vring_t *ring)
 			goto drop_hook;
 		}
 
-		if (dp != NULL)
+		if (dp != NULL) {
 			dp->d_ref--;
+
+			/*
+			 * It is possible that the hook(s) accepted the packet,
+			 * but as part of its processing, it issued a pull-up
+			 * which released all references to the desb.  In that
+			 * case, go back to acting like the packet is entirely
+			 * copied (which it is).
+			 */
+			if (dp->d_ref == 1) {
+				dp->d_cookie = 0;
+				dp->d_ref = 0;
+				dp = NULL;
+			}
+		}
 	}
 
 	/*
@@ -2891,9 +3039,9 @@ viona_tx(viona_link_t *link, viona_vring_t *ring)
 	 * We're potentially going deep into the networking layer; make sure the
 	 * guest can't run concurrently.
 	 */
-	ht_begin_unsafe();
+	smt_begin_unsafe();
 	mac_tx(link_mch, mp_head, 0, MAC_DROP_ON_NO_DESC, NULL);
-	ht_end_unsafe();
+	smt_end_unsafe();
 	return;
 
 drop_fail:

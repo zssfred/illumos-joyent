@@ -181,6 +181,7 @@
 #include <sys/dsl_scan.h>
 #include <sharefs/share.h>
 #include <sys/dmu_objset.h>
+#include <sys/dmu_recv.h>
 #include <sys/dmu_send.h>
 #include <sys/dsl_destroy.h>
 #include <sys/dsl_bookmark.h>
@@ -306,7 +307,7 @@ history_str_get(zfs_cmd_t *zc)
 {
 	char *buf;
 
-	if (zc->zc_history == NULL)
+	if (zc->zc_history == 0)
 		return (NULL);
 
 	buf = kmem_alloc(HIS_MAX_RECORD_LEN, KM_SLEEP);
@@ -2240,7 +2241,7 @@ zfs_ioc_objset_zplprops(zfs_cmd_t *zc)
 	 * which we aren't supposed to do with a DS_MODE_USER
 	 * hold, because it could be inconsistent.
 	 */
-	if (zc->zc_nvlist_dst != NULL &&
+	if (zc->zc_nvlist_dst != 0 &&
 	    !zc->zc_objset_stats.dds_inconsistent &&
 	    dmu_objset_type(os) == DMU_OST_ZFS) {
 		nvlist_t *nv;
@@ -2812,7 +2813,7 @@ zfs_ioc_set_prop(zfs_cmd_t *zc)
 	if (error == 0)
 		error = zfs_set_prop_nvlist(zc->zc_name, source, nvl, errors);
 
-	if (zc->zc_nvlist_dst != NULL && errors != NULL) {
+	if (zc->zc_nvlist_dst != 0 && errors != NULL) {
 		(void) put_nvlist(zc, errors);
 	}
 
@@ -2963,7 +2964,7 @@ zfs_ioc_pool_get_props(zfs_cmd_t *zc)
 		spa_close(spa, FTAG);
 	}
 
-	if (error == 0 && zc->zc_nvlist_dst != NULL)
+	if (error == 0 && zc->zc_nvlist_dst != 0)
 		error = put_nvlist(zc, nvp);
 	else
 		error = SET_ERROR(EFAULT);
@@ -4111,6 +4112,15 @@ zfs_check_settable(const char *dsname, nvpair_t *pair, cred_t *cr)
 		}
 		break;
 
+	case ZFS_PROP_SPECIAL_SMALL_BLOCKS:
+		/*
+		 * This property could require the allocation classes
+		 * feature to be active for setting, however we allow
+		 * it so that tests of settable properties succeed.
+		 * The CLI will issue a warning in this case.
+		 */
+		break;
+
 	case ZFS_PROP_SHARESMB:
 		if (zpl_earlier_version(dsname, ZPL_VERSION_FUID))
 			return (SET_ERROR(ENOTSUP));
@@ -4439,7 +4449,7 @@ zfs_ioc_recv(zfs_cmd_t *zc)
 	tosnap = strchr(tofs, '@');
 	*tosnap++ = '\0';
 
-	if (zc->zc_nvlist_src != NULL &&
+	if (zc->zc_nvlist_src != 0 &&
 	    (error = get_nvlist(zc->zc_nvlist_src, zc->zc_nvlist_src_size,
 	    zc->zc_iflags, &props)) != 0)
 		return (error);
@@ -4863,7 +4873,7 @@ zfs_ioc_clear(zfs_cmd_t *zc)
 		nvlist_t *policy;
 		nvlist_t *config = NULL;
 
-		if (zc->zc_nvlist_src == NULL)
+		if (zc->zc_nvlist_src == 0)
 			return (SET_ERROR(EINVAL));
 
 		if ((error = get_nvlist(zc->zc_nvlist_src,
@@ -4883,6 +4893,13 @@ zfs_ioc_clear(zfs_cmd_t *zc)
 
 	if (error != 0)
 		return (error);
+
+	/*
+	 * If multihost is enabled, resuming I/O is unsafe as another
+	 * host may have imported the pool.
+	 */
+	if (spa_multihost(spa) && spa_suspended(spa))
+		return (SET_ERROR(EINVAL));
 
 	spa_vdev_state_enter(spa, SCL_NONE);
 
@@ -5560,6 +5577,7 @@ zfs_ioc_hold(const char *pool, nvlist_t *args, nvlist_t *errlist)
 static int
 zfs_ioc_get_holds(const char *snapname, nvlist_t *args, nvlist_t *outnvl)
 {
+	ASSERT3P(args, ==, NULL);
 	return (dsl_dataset_get_holds(snapname, outnvl));
 }
 
@@ -5828,6 +5846,44 @@ out:
 	return (error);
 }
 
+/*
+ * Sync the currently open TXG to disk for the specified pool.
+ * This is somewhat similar to 'zfs_sync()'.
+ * For cases that do not result in error this ioctl will wait for
+ * the currently open TXG to commit before returning back to the caller.
+ *
+ * innvl: {
+ *  "force" -> when true, force uberblock update even if there is no dirty data.
+ *             In addition this will cause the vdev configuration to be written
+ *             out including updating the zpool cache file. (boolean_t)
+ * }
+ *
+ * onvl is unused
+ */
+/* ARGSUSED */
+static int
+zfs_ioc_pool_sync(const char *pool, nvlist_t *innvl, nvlist_t *onvl)
+{
+	int err;
+	boolean_t force;
+	spa_t *spa;
+
+	if ((err = spa_open(pool, &spa, FTAG)) != 0)
+		return (err);
+
+	force = fnvlist_lookup_boolean_value(innvl, "force");
+	if (force) {
+		spa_config_enter(spa, SCL_CONFIG, FTAG, RW_WRITER);
+		vdev_config_dirty(spa->spa_root_vdev);
+		spa_config_exit(spa, SCL_CONFIG, FTAG);
+	}
+	txg_wait_synced(spa_get_dsl(spa), 0);
+
+	spa_close(spa, FTAG);
+
+	return (err);
+}
+
 static zfs_ioc_vec_t zfs_ioc_vec[ZFS_IOC_LAST - ZFS_IOC_FIRST];
 
 static void
@@ -6020,6 +6076,10 @@ zfs_ioctl_init(void)
 	zfs_ioctl_register("initialize", ZFS_IOC_POOL_INITIALIZE,
 	    zfs_ioc_pool_initialize, zfs_secpolicy_config, POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE);
+
+	zfs_ioctl_register("sync", ZFS_IOC_POOL_SYNC,
+	    zfs_ioc_pool_sync, zfs_secpolicy_none, POOL_NAME,
+	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_FALSE, B_FALSE);
 
 	/* IOCTLS that use the legacy function signature */
 

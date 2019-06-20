@@ -125,34 +125,24 @@ pmap_kextract(vm_offset_t va)
 int
 cpusetobj_ffs(const cpuset_t *set)
 {
-#if	CPUSET_WORDS > 1
-	int	i, cbit;
+	uint_t large, small;
 
-	cbit = 0;
-	for (i = 0; i < CPUSET_WORDS; i++) {
-		if (set->cpub[i] != 0) {
-			cbit = ffsl(set->cpub[i]);
-			cbit += i * sizeof (set->cpub[0]);
-			break;
-		}
+	/*
+	 * Rather than reaching into the cpuset_t ourselves, leave that task to
+	 * cpuset_bounds().  The simplicity is worth the extra wasted work to
+	 * find the upper bound.
+	 */
+	cpuset_bounds(set, &small, &large);
+
+	if (small == CPUSET_NOTINSET) {
+		/* The FreeBSD version returns 0 if it find nothing */
+		return (0);
 	}
-	return (cbit);
-#else
-	return (ffsl(*set));
-#endif
-}
 
-void
-smp_rendezvous(void (* setup_func)(void *), void (* action_func)(void *),
-    void (* teardown_func)(void *), void *arg)
-{
-	cpuset_t cpuset;
+	ASSERT3U(small, <=, INT_MAX);
 
-	ASSERT(setup_func == NULL);
-	ASSERT(teardown_func == NULL);
-
-	CPUSET_ALL(cpuset);
-	xc_sync((xc_arg_t)arg, 0, 0, CPUSET2BV(cpuset), (xc_func_t)action_func);
+	/* Least significant bit index starts at 1 for valid results */
+	return (small + 1);
 }
 
 struct kmem_item {

@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2011 NetApp, Inc.
  * All rights reserved.
+ * Copyright (c) 2018 Joyent, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -56,7 +57,7 @@ __FBSDID("$FreeBSD$");
 #ifndef __FreeBSD__
 #include <sys/x86_archext.h>
 #include <sys/smp_impldefs.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 #include <sys/hma.h>
 #include <sys/trap.h>
 #endif
@@ -929,7 +930,7 @@ vmx_init(int ipinum)
 		}
 	}
 #else
-	/* L1D flushing is taken care of by ht_acquire() and friends */
+	/* L1D flushing is taken care of by smt_acquire() and friends */
 	guest_l1d_flush = 0;
 #endif /* __FreeBSD__ */
 
@@ -1044,6 +1045,7 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 	struct vmx *vmx;
 	struct vmcs *vmcs;
 	uint32_t exc_bitmap;
+	uint16_t maxcpus;
 
 	vmx = malloc(sizeof(struct vmx), M_VMX, M_WAITOK | M_ZERO);
 	if ((uintptr_t)vmx & PAGE_MASK) {
@@ -1105,7 +1107,8 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 		KASSERT(error == 0, ("vm_map_mmio(apicbase) error %d", error));
 	}
 
-	for (i = 0; i < VM_MAXCPU; i++) {
+	maxcpus = vm_get_maxcpus(vm);
+	for (i = 0; i < maxcpus; i++) {
 #ifndef __FreeBSD__
 		/*
 		 * Cache physical address lookups for various components which
@@ -1522,6 +1525,8 @@ vmx_inject_interrupts(struct vmx *vmx, int vcpu, struct vlapic *vlapic,
 	int vector;
 	boolean_t extint_pending = B_FALSE;
 
+	vlapic_tmr_update(vlapic);
+
 	gi = vmcs_read(VMCS_GUEST_INTERRUPTIBILITY);
 	info = vmcs_read(VMCS_ENTRY_INTR_INFO);
 
@@ -1697,6 +1702,8 @@ vmx_inject_interrupts(struct vmx *vmx, int vcpu, struct vlapic *vlapic,
 	int vector, need_nmi_exiting, extint_pending;
 	uint64_t rflags, entryinfo;
 	uint32_t gi, info;
+
+	vlapic_tmr_update(vlapic);
 
 	if (vmx->state[vcpu].nextrip != guestrip) {
 		gi = vmcs_read(VMCS_GUEST_INTERRUPTIBILITY);
@@ -2640,7 +2647,7 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 #ifdef __FreeBSD__
 		__asm __volatile("int $18");
 #else
-		vmx_call_trap(T_MCE);
+		vmm_call_trap(T_MCE);
 #endif
 		return (1);
 	}
@@ -2929,7 +2936,7 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 #ifdef __FreeBSD__
 			__asm __volatile("int $18");
 #else
-			vmx_call_trap(T_MCE);
+			vmm_call_trap(T_MCE);
 #endif
 			return (1);
 		}
@@ -3147,7 +3154,7 @@ vmx_exit_handle_nmi(struct vmx *vmx, int vcpuid, struct vm_exit *vmexit)
 #ifdef __FreeBSD__
 		__asm __volatile("int $2");
 #else
-		vmx_call_trap(T_NMIFLT);
+		vmm_call_trap(T_NMIFLT);
 #endif
 	}
 }
@@ -3318,9 +3325,9 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 			break;
 		}
 
-		if (vcpu_rendezvous_pending(evinfo)) {
+		if (vcpu_runblocked(evinfo)) {
 			enable_intr();
-			vm_exit_rendezvous(vmx->vm, vcpu, rip);
+			vm_exit_runblock(vmx->vm, vcpu, rip);
 			break;
 		}
 
@@ -3345,7 +3352,7 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 		}
 
 #ifndef __FreeBSD__
-		if ((rc = ht_acquire()) != 1) {
+		if ((rc = smt_acquire()) != 1) {
 			enable_intr();
 			vmexit->rip = rip;
 			vmexit->inst_length = 0;
@@ -3375,7 +3382,7 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 		 * anyone attempting to break that rule.
 		 */
 		if (curproc->p_model != DATAMODEL_LP64) {
-			ht_release();
+			smt_release();
 			enable_intr();
 			bzero(vmexit, sizeof (*vmexit));
 			vmexit->rip = rip;
@@ -3409,7 +3416,7 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 
 #ifndef	__FreeBSD__
 		vmx->vmcs_state[vcpu] |= VS_LAUNCHED;
-		ht_release();
+		smt_release();
 #else
 		bare_lgdt(&gdtr);
 		lidt(&idtr);
@@ -3472,11 +3479,13 @@ vmx_vmcleanup(void *arg)
 {
 	int i;
 	struct vmx *vmx = arg;
+	uint16_t maxcpus;
 
 	if (apic_access_virtualization(vmx, 0))
 		vm_unmap_mmio(vmx->vm, DEFAULT_APIC_BASE, PAGE_SIZE);
 
-	for (i = 0; i < VM_MAXCPU; i++)
+	maxcpus = vm_get_maxcpus(vmx->vm);
+	for (i = 0; i < maxcpus; i++)
 		vpid_free(vmx->state[i].vpid);
 
 	free(vmx, M_VMX);
@@ -3873,7 +3882,7 @@ struct vlapic_vtx {
 	struct vlapic	vlapic;
 	struct pir_desc	*pir_desc;
 	struct vmx	*vmx;
-	uint_t pending_prio;
+	u_int	pending_prio;
 };
 
 #define VPR_PRIO_BIT(vpr)	(1 << ((vpr) >> 4))
@@ -3935,8 +3944,8 @@ vmx_set_intr_ready(struct vlapic *vlapic, int vector, bool level)
 		notify = 1;
 		vlapic_vtx->pending_prio = 0;
 	} else {
-		const uint_t old_prio = vlapic_vtx->pending_prio;
-		const uint_t prio_bit = VPR_PRIO_BIT(vector & APIC_TPR_INT);
+		const u_int old_prio = vlapic_vtx->pending_prio;
+		const u_int prio_bit = VPR_PRIO_BIT(vector & APIC_TPR_INT);
 
 		if ((old_prio & prio_bit) == 0 && prio_bit > old_prio) {
 			atomic_set_int(&vlapic_vtx->pending_prio, prio_bit);
@@ -4014,6 +4023,7 @@ vmx_pending_intr(struct vlapic *vlapic, int *vecptr)
 			break;
 		}
 	}
+
 	/*
 	 * If the highest-priority pending interrupt falls short of the
 	 * processor priority of this vCPU, ensure that 'pending_prio' does not
@@ -4021,8 +4031,8 @@ vmx_pending_intr(struct vlapic *vlapic, int *vecptr)
 	 * from incurring a notification later.
 	 */
 	if (vpr <= ppr) {
-		const uint_t prio_bit = VPR_PRIO_BIT(vpr);
-		const uint_t old = vlapic_vtx->pending_prio;
+		const u_int prio_bit = VPR_PRIO_BIT(vpr);
+		const u_int old = vlapic_vtx->pending_prio;
 
 		if (old > prio_bit && (old & prio_bit) == 0) {
 			vlapic_vtx->pending_prio = prio_bit;
@@ -4040,30 +4050,12 @@ vmx_intr_accepted(struct vlapic *vlapic, int vector)
 }
 
 static void
-vmx_set_tmr(struct vlapic *vlapic, int vector, bool level)
+vmx_set_tmr(struct vlapic *vlapic, const uint32_t *masks)
 {
-	struct vlapic_vtx *vlapic_vtx;
-	struct vmx *vmx;
-	struct vmcs *vmcs;
-	uint64_t mask, val;
-
-	KASSERT(vector >= 0 && vector <= 255, ("invalid vector %d", vector));
-	KASSERT(!vcpu_is_running(vlapic->vm, vlapic->vcpuid, NULL),
-	    ("vmx_set_tmr: vcpu cannot be running"));
-
-	vlapic_vtx = (struct vlapic_vtx *)vlapic;
-	vmx = vlapic_vtx->vmx;
-	vmcs = &vmx->vmcs[vlapic->vcpuid];
-	mask = 1UL << (vector % 64);
-
-	VMPTRLD(vmcs);
-	val = vmcs_read(VMCS_EOI_EXIT(vector));
-	if (level)
-		val |= mask;
-	else
-		val &= ~mask;
-	vmcs_write(VMCS_EOI_EXIT(vector), val);
-	VMCLEAR(vmcs);
+	vmcs_write(VMCS_EOI_EXIT0, ((uint64_t)masks[1] << 32) | masks[0]);
+	vmcs_write(VMCS_EOI_EXIT1, ((uint64_t)masks[3] << 32) | masks[2]);
+	vmcs_write(VMCS_EOI_EXIT2, ((uint64_t)masks[5] << 32) | masks[4]);
+	vmcs_write(VMCS_EOI_EXIT3, ((uint64_t)masks[7] << 32) | masks[6]);
 }
 
 static void

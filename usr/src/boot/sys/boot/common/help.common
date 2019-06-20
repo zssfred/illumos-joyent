@@ -57,6 +57,14 @@
 	Displays statistics about disk cache usage.  For debugging only.
 
 ################################################################################
+# Tconsole DOutput information about console devices
+
+	console
+
+	Display the currently active console device(s) and show
+	information about available console devices.
+
+################################################################################
 # Tchain DChain load disk block
 
 	chain disk:
@@ -129,6 +137,13 @@
 	lsmod [-v]
 
 	List loaded modules. If [-v] is specified, print more details.
+
+################################################################################
+# Tmap-vdisk DMap virtual disk
+
+	map-vdisk filename
+
+	Map file as virtual disk.
 
 ################################################################################
 # Tmore DPage files
@@ -337,6 +352,13 @@
 	unload
 
 	This command removes any kernel and all loaded modules from memory.
+
+################################################################################
+# Tunmap-vdisk DUnmap virtual disk
+
+	unmap-vdisk diskname
+
+	Delete virtual disk mapping.
 
 ################################################################################
 # Tunset DUnset a variable

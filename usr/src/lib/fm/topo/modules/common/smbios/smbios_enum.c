@@ -10,13 +10,14 @@
  */
 
 /*
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright (c) 2019, Joyent, Inc.
  */
 
 #include <assert.h>
 #include <fcntl.h>
 #include <fm/libtopo.h>
 #include <fm/topo_mod.h>
+#include <fm/topo_method.h>
 #ifdef	__x86
 #include <sys/mc.h>
 #endif
@@ -33,6 +34,13 @@ typedef struct smb_enum_data {
 	smbios_info_t	*sme_smb_info;
 	char		*sme_slot_form;
 } smb_enum_data_t;
+
+static const topo_method_t slot_methods[] = {
+	{ TOPO_METH_OCCUPIED, TOPO_METH_OCCUPIED_DESC,
+	    TOPO_METH_OCCUPIED_VERSION, TOPO_STABILITY_INTERNAL,
+	    topo_mod_hc_occupied },
+	{ NULL }
+};
 
 /*
  * This function serves two purposes.  It filters out memory devices that
@@ -153,6 +161,14 @@ smbios_make_slot(smb_enum_data_t *smed, smbios_memdevice_t *smb_md)
 		return (NULL);
 	}
 	nvlist_free(fmri);
+
+	if (topo_method_register(mod, slotnode, slot_methods) != 0) {
+		topo_mod_dprintf(mod, "topo_method_register() failed on "
+		    "%s=%d: %s", SLOT, smed->sme_slot_inst,
+		    topo_mod_errmsg(mod));
+		/* errno set */
+		return (NULL);
+	}
 
 	pgi.tpi_name = TOPO_PGROUP_SLOT;
 	pgi.tpi_namestab = TOPO_STABILITY_PRIVATE;
@@ -504,18 +520,6 @@ smbios_enum_motherboard(smbios_hdl_t *shp, smb_enum_data_t *smed)
 	if (rc == 0 && asset != NULL)
 		rc += topo_prop_set_string(mbnode, TOPO_PGROUP_MOTHERBOARD,
 		    TOPO_PROP_MB_ASSET, TOPO_PROP_IMMUTABLE, asset, &err);
-	if (rc == 0 && bios_vendor != NULL)
-		rc += topo_prop_set_string(mbnode, TOPO_PGROUP_MOTHERBOARD,
-		    TOPO_PROP_MB_FIRMWARE_VENDOR, TOPO_PROP_IMMUTABLE,
-		    bios_vendor, &err);
-	if (rc == 0 && bios_rev != NULL)
-		rc += topo_prop_set_string(mbnode, TOPO_PGROUP_MOTHERBOARD,
-		    TOPO_PROP_MB_FIRMWARE_REV, TOPO_PROP_IMMUTABLE,
-		    bios_rev, &err);
-	if (rc == 0 && bios_reldate != NULL)
-		rc += topo_prop_set_string(mbnode, TOPO_PGROUP_MOTHERBOARD,
-		    TOPO_PROP_MB_FIRMWARE_RELDATE, TOPO_PROP_IMMUTABLE,
-		    bios_reldate, &err);
 
 	if (rc != 0) {
 		topo_mod_dprintf(mod, "error setting properties on %s node",
@@ -523,6 +527,45 @@ smbios_enum_motherboard(smbios_hdl_t *shp, smb_enum_data_t *smed)
 		(void) topo_mod_seterrno(mod, err);
 		goto err;
 	}
+	/*
+	 * If we were able to gleen the BIOS version from SMBIOS, then set
+	 * up a UFM node to capture that information.
+	 */
+	if (bios_rev != NULL) {
+		topo_ufm_slot_info_t slotinfo = { 0 };
+		nvlist_t *extra;
+
+		slotinfo.usi_version = bios_rev;
+		slotinfo.usi_active = B_TRUE;
+		slotinfo.usi_mode = TOPO_UFM_SLOT_MODE_NONE;
+
+		if (bios_vendor != NULL || bios_reldate != NULL) {
+			if (nvlist_alloc(&extra, NV_UNIQUE_NAME, 0) != 0) {
+				goto err;
+			}
+			if (bios_vendor != NULL && nvlist_add_string(extra,
+			    TOPO_PROP_MB_FIRMWARE_VENDOR, bios_vendor) != 0) {
+				nvlist_free(extra);
+				goto err;
+			}
+			if (bios_reldate != NULL && nvlist_add_string(extra,
+			    TOPO_PROP_MB_FIRMWARE_RELDATE, bios_reldate) !=
+			    0) {
+				nvlist_free(extra);
+				goto err;
+			}
+			slotinfo.usi_extra = extra;
+		}
+		if (topo_node_range_create(mod, mbnode, UFM, 0, 0) != 0) {
+			topo_mod_dprintf(mod, "failed to create %s range",
+			    UFM);
+			nvlist_free(extra);
+			goto err;
+		}
+		(void) topo_mod_create_ufm(mod, mbnode, "BIOS", &slotinfo);
+		nvlist_free(extra);
+	}
+
 err:
 	topo_mod_strfree(mod, manuf);
 	topo_mod_strfree(mod, prod);

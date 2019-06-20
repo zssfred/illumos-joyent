@@ -20,7 +20,11 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2017, Joyent, Inc.
+ * Copyright 2019, Joyent, Inc.
+ */
+
+/*
+ * Copyright 2019, Joyent, Inc.
  */
 
 #ifndef	_SYS_PCIE_IMPL_H
@@ -116,19 +120,19 @@ extern "C" {
 #define	PCIE_PUT(sz, bus_p, off, val) \
 	pci_config_put ## sz(bus_p->bus_cfg_hdl, off, val)
 #define	PCIE_CAP_GET(sz, bus_p, off) \
-	PCI_CAP_GET ## sz(bus_p->bus_cfg_hdl, NULL, bus_p->bus_pcie_off, off)
+	PCI_CAP_GET ## sz(bus_p->bus_cfg_hdl, 0, bus_p->bus_pcie_off, off)
 #define	PCIE_CAP_PUT(sz, bus_p, off, val) \
-	PCI_CAP_PUT ## sz(bus_p->bus_cfg_hdl, NULL, bus_p->bus_pcie_off, off, \
+	PCI_CAP_PUT ## sz(bus_p->bus_cfg_hdl, 0, bus_p->bus_pcie_off, off, \
 	    val)
 #define	PCIE_AER_GET(sz, bus_p, off) \
-	PCI_XCAP_GET ## sz(bus_p->bus_cfg_hdl, NULL, bus_p->bus_aer_off, off)
+	PCI_XCAP_GET ## sz(bus_p->bus_cfg_hdl, 0, bus_p->bus_aer_off, off)
 #define	PCIE_AER_PUT(sz, bus_p, off, val) \
-	PCI_XCAP_PUT ## sz(bus_p->bus_cfg_hdl, NULL, bus_p->bus_aer_off, off, \
+	PCI_XCAP_PUT ## sz(bus_p->bus_cfg_hdl, 0, bus_p->bus_aer_off, off, \
 	    val)
 #define	PCIX_CAP_GET(sz, bus_p, off) \
-	PCI_CAP_GET ## sz(bus_p->bus_cfg_hdl, NULL, bus_p->bus_pcix_off, off)
+	PCI_CAP_GET ## sz(bus_p->bus_cfg_hdl, 0, bus_p->bus_pcix_off, off)
 #define	PCIX_CAP_PUT(sz, bus_p, off, val) \
-	PCI_CAP_PUT ## sz(bus_p->bus_cfg_hdl, NULL, bus_p->bus_pcix_off, off, \
+	PCI_CAP_PUT ## sz(bus_p->bus_cfg_hdl, 0, bus_p->bus_pcix_off, off, \
 	    val)
 
 /* Translate PF error return values to DDI_FM values */
@@ -301,7 +305,8 @@ typedef enum pcie_link_speed {
 	PCIE_LINK_SPEED_UNKNOWN = 0x00,
 	PCIE_LINK_SPEED_2_5	= 0x01,
 	PCIE_LINK_SPEED_5	= 0x02,
-	PCIE_LINK_SPEED_8	= 0x04
+	PCIE_LINK_SPEED_8	= 0x04,
+	PCIE_LINK_SPEED_16	= 0x08
 } pcie_link_speed_t;
 
 /*
@@ -524,11 +529,11 @@ typedef struct {
 
 #else	/* DEBUG */
 
-#define	PCIE_DBG_CFG 0 &&
-#define	PCIE_DBG 0 &&
-#define	PCIE_ARI_DBG 0 &&
-#define	PCIE_DBG_CAP 0 &&
-#define	PCIE_DBG_AER 0 &&
+#define	PCIE_DBG_CFG(...)	(void)(0)
+#define	PCIE_DBG(...)		(void)(0)
+#define	PCIE_ARI_DBG(...)	(void)(0)
+#define	PCIE_DBG_CAP(...)	(void)(0)
+#define	PCIE_DBG_AER(...)	(void)(0)
 
 #endif	/* DEBUG */
 

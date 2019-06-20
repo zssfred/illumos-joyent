@@ -21,6 +21,7 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
+ * Copyright (c) 2017, Intel Corporation.
  */
 
 #ifndef _SYS_VDEV_IMPL_H
@@ -72,6 +73,7 @@ typedef uint64_t vdev_asize_func_t(vdev_t *vd, uint64_t psize);
 typedef void	vdev_io_start_func_t(zio_t *zio);
 typedef void	vdev_io_done_func_t(zio_t *zio);
 typedef void	vdev_state_change_func_t(vdev_t *vd, int, int);
+typedef boolean_t vdev_need_resilver_func_t(vdev_t *vd, uint64_t, size_t);
 typedef void	vdev_hold_func_t(vdev_t *vd);
 typedef void	vdev_rele_func_t(vdev_t *vd);
 
@@ -93,6 +95,7 @@ typedef struct vdev_ops {
 	vdev_io_start_func_t		*vdev_op_io_start;
 	vdev_io_done_func_t		*vdev_op_io_done;
 	vdev_state_change_func_t	*vdev_op_state_change;
+	vdev_need_resilver_func_t	*vdev_op_need_resilver;
 	vdev_hold_func_t		*vdev_op_hold;
 	vdev_rele_func_t		*vdev_op_rele;
 	vdev_remap_func_t		*vdev_op_remap;
@@ -146,6 +149,14 @@ struct vdev_queue {
 	hrtime_t	vq_io_complete_ts; /* time last i/o completed */
 	kmutex_t	vq_lock;
 };
+
+typedef enum vdev_alloc_bias {
+	VDEV_BIAS_NONE,
+	VDEV_BIAS_LOG,		/* dedicated to ZIL data (SLOG) */
+	VDEV_BIAS_SPECIAL,	/* dedicated to ddt, metadata, and small blks */
+	VDEV_BIAS_DEDUP		/* dedicated to dedup metadata */
+} vdev_alloc_bias_t;
+
 
 /*
  * On-disk indirect vdev state.
@@ -215,6 +226,7 @@ struct vdev {
 	vdev_stat_t	vdev_stat;	/* virtual device statistics	*/
 	boolean_t	vdev_expanding;	/* expand the vdev?		*/
 	boolean_t	vdev_reopening;	/* reopen in progress?		*/
+	boolean_t	vdev_nonrot;	/* true if solid state		*/
 	int		vdev_open_error; /* error on last open		*/
 	kthread_t	*vdev_open_thread; /* thread opening children	*/
 	uint64_t	vdev_crtxg;	/* txg when top-level was added */
@@ -238,12 +250,12 @@ struct vdev {
 	uint64_t	vdev_islog;	/* is an intent log device	*/
 	uint64_t	vdev_removing;	/* device is being removed?	*/
 	boolean_t	vdev_ishole;	/* is a hole in the namespace	*/
-	kmutex_t	vdev_queue_lock; /* protects vdev_queue_depth	*/
 	uint64_t	vdev_top_zap;
+	vdev_alloc_bias_t vdev_alloc_bias; /* metaslab allocation bias	*/
 
 	/* pool checkpoint related */
 	space_map_t	*vdev_checkpoint_sm;	/* contains reserved blocks */
-	
+
 	boolean_t	vdev_initialize_exit_wanted;
 	vdev_initializing_state_t	vdev_initialize_state;
 	kthread_t	*vdev_initialize_thread;
@@ -297,14 +309,11 @@ struct vdev {
 	space_map_t	*vdev_obsolete_sm;
 
 	/*
-	 * The queue depth parameters determine how many async writes are
-	 * still pending (i.e. allocated but not yet issued to disk) per
-	 * top-level (vdev_async_write_queue_depth) and the maximum allowed
-	 * (vdev_max_async_write_queue_depth). These values only apply to
-	 * top-level vdevs.
+	 * Protects the vdev_scan_io_queue field itself as well as the
+	 * structure's contents (when present).
 	 */
-	uint64_t	vdev_async_write_queue_depth;
-	uint64_t	vdev_max_async_write_queue_depth;
+	kmutex_t	vdev_scan_io_queue_lock;
+	struct dsl_scan_io_queue	*vdev_scan_io_queue;
 
 	/*
 	 * Leaf vdev state.
@@ -338,12 +347,16 @@ struct vdev {
 	boolean_t	vdev_cant_write; /* vdev is failing all writes	*/
 	boolean_t	vdev_isspare;	/* was a hot spare		*/
 	boolean_t	vdev_isl2cache;	/* was a l2cache device		*/
+	boolean_t	vdev_resilver_deferred;  /* resilver deferred */
 	vdev_queue_t	vdev_queue;	/* I/O deadline schedule queue	*/
 	vdev_cache_t	vdev_cache;	/* physical block cache		*/
 	spa_aux_vdev_t	*vdev_aux;	/* for l2cache and spares vdevs	*/
 	zio_t		*vdev_probe_zio; /* root of current probe	*/
 	vdev_aux_t	vdev_label_aux;	/* on-disk aux state		*/
 	uint64_t	vdev_leaf_zap;
+	hrtime_t	vdev_mmp_pending; /* 0 if write finished	*/
+	uint64_t	vdev_mmp_kstat_id;	/* to find kstat entry */
+	list_node_t	vdev_leaf_node;		/* leaf vdev list */
 
 	/*
 	 * For DTrace to work in userland (libzpool) context, these fields must
@@ -364,6 +377,12 @@ struct vdev {
 #define	VDEV_SKIP_SIZE		VDEV_PAD_SIZE * 2
 #define	VDEV_PHYS_SIZE		(112 << 10)
 #define	VDEV_UBERBLOCK_RING	(128 << 10)
+
+/*
+ * MMP blocks occupy the last MMP_BLOCKS_PER_LABEL slots in the uberblock
+ * ring when MMP is enabled.
+ */
+#define	MMP_BLOCKS_PER_LABEL	1
 
 /* The largest uberblock we support is 8k. */
 #define	MAX_UBERBLOCK_SHIFT (13)

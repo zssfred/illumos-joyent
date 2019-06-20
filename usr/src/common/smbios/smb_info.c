@@ -21,7 +21,7 @@
 
 /*
  * Copyright 2015 OmniTI Computer Consulting, Inc.  All rights reserved.
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
@@ -698,8 +698,8 @@ smbios_info_slot_peers(smbios_hdl_t *shp, id_t id, uint_t *npeers,
     smbios_slot_peer_t **peerp)
 {
 	const smb_struct_t *stp = smb_lookup_id(shp, id);
-	const smb_slot_t *slotp = (const smb_slot_t *)stp->smbst_hdr;
 	smbios_slot_peer_t *peer;
+	const smb_slot_t *slotp;
 	size_t minlen;
 	uint_t i;
 
@@ -708,6 +708,8 @@ smbios_info_slot_peers(smbios_hdl_t *shp, id_t id, uint_t *npeers,
 
 	if (stp->smbst_hdr->smbh_type != SMB_TYPE_SLOT)
 		return (smb_set_errno(shp, ESMB_TYPE));
+
+	slotp = (const smb_slot_t *)stp->smbst_hdr;
 
 	if (stp->smbst_hdr->smbh_len <= offsetof(smb_slot_t, smbsl_npeers) ||
 	    slotp->smbsl_npeers == 0) {
@@ -1072,12 +1074,14 @@ id_t
 smbios_info_boot(smbios_hdl_t *shp, smbios_boot_t *bp)
 {
 	const smb_struct_t *stp = smb_lookup_type(shp, SMB_TYPE_BOOT);
-	const smb_boot_t *b = (smb_boot_t *)(uintptr_t)stp->smbst_hdr;
+	const smb_boot_t *b;
 
 	if (stp == NULL)
 		return (-1); /* errno is set for us */
 
 	bzero(bp, sizeof (smbios_boot_t));
+
+	b = (smb_boot_t *)(uintptr_t)stp->smbst_hdr;
 
 	bp->smbt_status = b->smbbo_status[0];
 	bp->smbt_size = stp->smbst_hdr->smbh_len - sizeof (smb_boot_t);

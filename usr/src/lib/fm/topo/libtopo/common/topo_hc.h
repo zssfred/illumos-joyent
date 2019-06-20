@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef _TOPO_HC_H
@@ -42,6 +42,7 @@ extern "C" {
 #define	CENTERPLANE	"centerplane"
 #define	CHASSIS		"chassis"
 #define	CHIP		"chip"
+#define	CHIPSET		"chipset"
 #define	CORE		"core"
 #define	STRAND		"strand"
 #define	CHIP_SELECT	"chip-select"
@@ -93,6 +94,7 @@ extern "C" {
 #define	SUBCHASSIS	"subchassis"
 #define	SYSTEMBOARD	"systemboard"
 #define	TRANSCEIVER	"transceiver"
+#define	UFM		"ufm"
 #define	USB_DEVICE	"usb-device"
 #define	XAUI		"xaui"
 #define	XFP		"xfp"
@@ -207,6 +209,9 @@ extern "C" {
 #define	TOPO_PGROUP_USB_PROPS_VERSION	"usb-version"
 #define	TOPO_PGROUP_USB_PROPS_SPEED	"usb-speed"
 #define	TOPO_PGROUP_USB_PROPS_PORT	"usb-port"
+#define	TOPO_PGROUP_USB_PROPS_SUPPORTED_SPEEDS	"usb-supported-speeds"
+#define	TOPO_PGROUP_USB_PROPS_MIN_SPEED	"usb-minimum-speed"
+
 
 /*
  * These properties will exist on nodes enumerated by the ipmi module. They
@@ -268,8 +273,15 @@ extern "C" {
 #define	TOPO_PROP_MB_PRODUCT		"product-id"
 #define	TOPO_PROP_MB_ASSET		"asset-tag"
 #define	TOPO_PROP_MB_FIRMWARE_VENDOR	"firmware-vendor"
-#define	TOPO_PROP_MB_FIRMWARE_REV	"firmware-revision"
 #define	TOPO_PROP_MB_FIRMWARE_RELDATE	"firmware-release-date"
+
+#define	TOPO_PGROUP_UFM			"ufm-properties"
+#define	TOPO_PROP_UFM_DESCR		"ufm-description"
+
+#define	TOPO_PGROUP_UFM_SLOT		"ufm-slot-properties"
+#define	TOPO_PROP_UFM_SLOT_VERSION	"ufm-slot-version"
+#define	TOPO_PROP_UFM_SLOT_MODE		"ufm-slot-mode"
+#define	TOPO_PROP_UFM_SLOT_ACTIVE	"ufm-slot-active"
 
 #ifdef	__cplusplus
 }

@@ -27,7 +27,7 @@
 #include <sys/cpuset.h>
 #include <sys/id_space.h>
 #include <sys/fs/sdev_plugin.h>
-#include <sys/ht.h>
+#include <sys/smt.h>
 
 #include <sys/kernel.h>
 #include <sys/hma.h>
@@ -230,7 +230,7 @@ vcpu_lock_one(vmm_softc_t *sc, int vcpu)
 {
 	int error;
 
-	if (vcpu < 0 || vcpu >= VM_MAXCPU)
+	if (vcpu < 0 || vcpu >= vm_get_maxcpus(sc->vmm_vm))
 		return (EINVAL);
 
 	error = vcpu_set_state(sc->vmm_vm, vcpu, VCPU_FROZEN, true);
@@ -254,9 +254,11 @@ vcpu_unlock_one(vmm_softc_t *sc, int vcpu)
 static int
 vcpu_lock_all(vmm_softc_t *sc)
 {
-	int error, vcpu;
+	int error = 0, vcpu;
+	uint16_t maxcpus;
 
-	for (vcpu = 0; vcpu < VM_MAXCPU; vcpu++) {
+	maxcpus = vm_get_maxcpus(sc->vmm_vm);
+	for (vcpu = 0; vcpu < maxcpus; vcpu++) {
 		error = vcpu_lock_one(sc, vcpu);
 		if (error)
 			break;
@@ -274,8 +276,10 @@ static void
 vcpu_unlock_all(vmm_softc_t *sc)
 {
 	int vcpu;
+	uint16_t maxcpus;
 
-	for (vcpu = 0; vcpu < VM_MAXCPU; vcpu++)
+	maxcpus = vm_get_maxcpus(sc->vmm_vm);
+	for (vcpu = 0; vcpu < maxcpus; vcpu++)
 		vcpu_unlock_one(sc, vcpu);
 }
 
@@ -320,7 +324,7 @@ vmmdev_do_ioctl(vmm_softc_t *sc, int cmd, intptr_t arg, int md,
 		if (ddi_copyin(datap, &vcpu, sizeof (vcpu), md)) {
 			return (EFAULT);
 		}
-		if (vcpu < 0 || vcpu >= VM_MAXCPU) {
+		if (vcpu < 0 || vcpu >= vm_get_maxcpus(sc->vmm_vm)) {
 			error = EINVAL;
 			goto done;
 		}
@@ -356,7 +360,7 @@ vmmdev_do_ioctl(vmm_softc_t *sc, int cmd, intptr_t arg, int md,
 		 * Lock a vcpu to make sure that the memory map cannot be
 		 * modified while it is being inspected.
 		 */
-		vcpu = VM_MAXCPU - 1;
+		vcpu = vm_get_maxcpus(sc->vmm_vm) - 1;
 		error = vcpu_lock_one(sc, vcpu);
 		if (error)
 			goto done;
@@ -378,7 +382,7 @@ vmmdev_do_ioctl(vmm_softc_t *sc, int cmd, intptr_t arg, int md,
 		vmrun.cpuid = vcpu;
 
 		if (!(curthread->t_schedflag & TS_VCPU))
-			ht_mark_as_vcpu();
+			smt_mark_as_vcpu();
 
 		error = vm_run(sc->vmm_vm, &vmrun);
 		/*
@@ -976,7 +980,7 @@ vmmdev_do_ioctl(vmm_softc_t *sc, int cmd, intptr_t arg, int md,
 			error = EFAULT;
 			break;
 		}
-		if (vcpu < -1 || vcpu >= VM_MAXCPU) {
+		if (vcpu < -1 || vcpu >= vm_get_maxcpus(sc->vmm_vm)) {
 			error = EINVAL;
 			break;
 		}
@@ -989,7 +993,7 @@ vmmdev_do_ioctl(vmm_softc_t *sc, int cmd, intptr_t arg, int md,
 			error = EFAULT;
 			break;
 		}
-		if (vcpu < -1 || vcpu >= VM_MAXCPU) {
+		if (vcpu < -1 || vcpu >= vm_get_maxcpus(sc->vmm_vm)) {
 			error = EINVAL;
 			break;
 		}
@@ -1628,10 +1632,19 @@ vmm_is_supported(intptr_t arg)
 	int r;
 	const char *msg;
 
-	if (!vmm_is_intel())
-		return (ENXIO);
+	if (vmm_is_intel()) {
+		r = vmx_x86_supported(&msg);
+	} else if (vmm_is_amd()) {
+		/*
+		 * HMA already ensured that the features necessary for SVM
+		 * operation were present and online during vmm_attach().
+		 */
+		r = 0;
+	} else {
+		r = ENXIO;
+		msg = "Unsupported CPU vendor";
+	}
 
-	r = vmx_x86_supported(&msg);
 	if (r != 0 && arg != NULL) {
 		if (copyoutstr(msg, (char *)arg, strlen(msg), NULL) != 0)
 			return (EFAULT);
@@ -1985,7 +1998,7 @@ static struct dev_ops vmm_ops = {
 
 static struct modldrv modldrv = {
 	&mod_driverops,
-	"vmm",
+	"bhyve vmm",
 	&vmm_ops
 };
 

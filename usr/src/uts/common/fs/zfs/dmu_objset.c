@@ -304,6 +304,20 @@ dnodesize_changed_cb(void *arg, uint64_t newval)
 }
 
 static void
+smallblk_changed_cb(void *arg, uint64_t newval)
+{
+	objset_t *os = arg;
+
+	/*
+	 * Inheritance and range checking should have been done by now.
+	 */
+	ASSERT(newval <= SPA_OLD_MAXBLOCKSIZE);
+	ASSERT(ISP2(newval));
+
+	os->os_zpl_special_smallblock = newval;
+}
+
+static void
 logbias_changed_cb(void *arg, uint64_t newval)
 {
 	objset_t *os = arg;
@@ -384,6 +398,7 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 
 	ASSERT(ds == NULL || MUTEX_HELD(&ds->ds_opening_lock));
 
+#if 0
 	/*
 	 * The $ORIGIN dataset (if it exists) doesn't have an associated
 	 * objset, so there's no reason to open it. The $ORIGIN dataset
@@ -394,6 +409,7 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 		ASSERT3P(ds->ds_dir, !=,
 		    spa_get_dsl(spa)->dp_origin_snap->ds_dir);
 	}
+#endif
 
 	os = kmem_zalloc(sizeof (objset_t), KM_SLEEP);
 	os->os_dsl_dataset = ds;
@@ -515,6 +531,12 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 				err = dsl_prop_register(ds,
 				    zfs_prop_to_name(ZFS_PROP_DNODESIZE),
 				    dnodesize_changed_cb, os);
+			}
+			if (err == 0) {
+				err = dsl_prop_register(ds,
+				    zfs_prop_to_name(
+				    ZFS_PROP_SPECIAL_SMALL_BLOCKS),
+				    smallblk_changed_cb, os);
 			}
 		}
 		if (needlock)
@@ -1247,10 +1269,23 @@ dmu_objset_sync_dnodes(multilist_sublist_t *list, dmu_tx_t *tx)
 		ASSERT3U(dn->dn_nlevels, <=, DN_MAX_LEVELS);
 		multilist_sublist_remove(list, dn);
 
+		/*
+		 * If we are not doing useraccounting (os_synced_dnodes == NULL)
+		 * we are done with this dnode for this txg. Unset dn_dirty_txg
+		 * if later txgs aren't dirtying it so that future holders do
+		 * not get a stale value. Otherwise, we will do this in
+		 * userquota_updates_task() when processing has completely
+		 * finished for this txg.
+		 */
 		multilist_t *newlist = dn->dn_objset->os_synced_dnodes;
 		if (newlist != NULL) {
 			(void) dnode_add_ref(dn, newlist);
 			multilist_insert(newlist, dn);
+		} else {
+			mutex_enter(&dn->dn_mtx);
+			if (dn->dn_dirty_txg == tx->tx_txg)
+				dn->dn_dirty_txg = 0;
+			mutex_exit(&dn->dn_mtx);
 		}
 
 		dnode_sync(dn, tx);
@@ -1610,6 +1645,8 @@ userquota_updates_task(void *arg)
 				dn->dn_id_flags |= DN_ID_CHKED_BONUS;
 		}
 		dn->dn_id_flags &= ~(DN_ID_NEW_EXIST);
+		if (dn->dn_dirty_txg == spa_syncing_txg(os->os_spa))
+			dn->dn_dirty_txg = 0;
 		mutex_exit(&dn->dn_mtx);
 
 		multilist_sublist_remove(list, dn);

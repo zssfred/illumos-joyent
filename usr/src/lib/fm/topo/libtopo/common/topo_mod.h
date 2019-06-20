@@ -23,7 +23,7 @@
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 /*
- * Copyright (c) 2018, Joyent, Inc. All rights reserved.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef _TOPO_MOD_H
@@ -220,6 +220,7 @@ extern void *topo_mod_zalloc(topo_mod_t *, size_t);
 extern void topo_mod_free(topo_mod_t *, void *, size_t);
 extern char *topo_mod_strdup(topo_mod_t *, const char *);
 extern void topo_mod_strfree(topo_mod_t *, char *);
+extern void topo_mod_strfreev(topo_mod_t *, char **, uint_t);
 extern char *topo_mod_strsplit(topo_mod_t *, const char *, const char *,
     char **);
 extern int topo_mod_nvalloc(topo_mod_t *, nvlist_t **, uint_t);
@@ -262,6 +263,11 @@ extern int topo_prop_method_register(tnode_t *, const char *, const char *,
     topo_type_t, const char *, const nvlist_t *, int *);
 extern void topo_prop_method_unregister(tnode_t *, const char *, const char *);
 
+extern tnode_t *topo_mod_create_ufm(topo_mod_t *, tnode_t *, const char *,
+    topo_ufm_slot_info_t *);
+extern tnode_t *topo_mod_create_ufm_slot(topo_mod_t *, tnode_t *,
+    topo_ufm_slot_info_t *);
+
 /*
  * This enum definition is used to define a set of error tags associated with
  * the module api error conditions.  The shell script mkerror.sh is
@@ -298,6 +304,8 @@ extern int topo_mod_seterrno(topo_mod_t *, int);
  * Function used by a module to try and open a file based on FM's search path.
  */
 extern int topo_mod_file_search(topo_mod_t *, const char *file, int oflags);
+
+extern topo_method_f topo_mod_hc_occupied;
 
 #ifdef	__cplusplus
 }

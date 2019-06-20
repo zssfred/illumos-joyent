@@ -64,9 +64,9 @@
 #define	CDMAJOR		15
 
 #ifdef DISK_DEBUG
-#define	DEBUG(fmt, args...)	printf("%s: " fmt "\n", __func__, ## args)
+#define	DPRINTF(fmt, args...)	printf("%s: " fmt "\n", __func__, ## args)
 #else
-#define	DEBUG(fmt, args...)
+#define	DPRINTF(fmt, args...)	((void)0)
 #endif
 
 struct specification_packet {
@@ -131,7 +131,7 @@ static int bd_realstrategy(void *devdata, int flag, daddr_t dblk, size_t size,
     char *buf, size_t *rsize);
 static int bd_open(struct open_file *f, ...);
 static int bd_close(struct open_file *f);
-static int bd_ioctl(struct open_file *f, u_long cmd, void *data);
+static int bd_ioctl(struct open_file *f, ulong_t cmd, void *data);
 static int bd_print(int verbose);
 static int cd_print(int verbose);
 static int fd_print(int verbose);
@@ -217,12 +217,12 @@ bd_bios2unit(int biosdev)
 	bdinfo_t *bd;
 	int i, unit;
 
-	DEBUG("looking for bios device 0x%x", biosdev);
+	DPRINTF("looking for bios device 0x%x", biosdev);
 	for (i = 0; bdi[i] != NULL; i++) {
 		unit = 0;
 		STAILQ_FOREACH(bd, bdi[i], bd_link) {
 			if (bd->bd_unit == biosdev) {
-				DEBUG("bd unit %d is BIOS device 0x%x", unit,
+				DPRINTF("bd unit %d is BIOS device 0x%x", unit,
 				    bd->bd_unit);
 				return (unit);
 			}
@@ -304,10 +304,8 @@ fd_init(void)
 		}
 		if (bd->bd_sectors == 0)
 			bd->bd_flags |= BD_NO_MEDIA;
-#ifndef BOOT2
 		printf("BIOS drive %c: is %s%d\n", ('A' + unit),
 		    biosfd.dv_name, unit);
-#endif
 		STAILQ_INSERT_TAIL(&fdinfo, bd, bd_link);
 	}
 
@@ -333,10 +331,8 @@ bd_init(void)
 			free(bd);
 			break;
 		}
-#ifndef BOOT2
 		printf("BIOS drive %c: is %s%d\n", ('C' + unit),
 		    bioshd.dv_name, unit);
-#endif
 		STAILQ_INSERT_TAIL(&hdinfo, bd, bd_link);
 	}
 	bcache_add_dev(unit);
@@ -363,29 +359,29 @@ bc_add(int biosdev)
 	int nbcinfo = 0;
 
 	if (!STAILQ_EMPTY(&cdinfo))
-                return (-1);
+		return (-1);
 
-        v86.ctl = V86_FLAGS;
-        v86.addr = 0x13;
-        v86.eax = 0x4b01;
-        v86.edx = biosdev;
-        v86.ds = VTOPSEG(&bc_sp);
-        v86.esi = VTOPOFF(&bc_sp);
-        v86int();
-        if ((v86.eax & 0xff00) != 0)
-                return (-1);
+	v86.ctl = V86_FLAGS;
+	v86.addr = 0x13;
+	v86.eax = 0x4b01;
+	v86.edx = biosdev;
+	v86.ds = VTOPSEG(&bc_sp);
+	v86.esi = VTOPOFF(&bc_sp);
+	v86int();
+	if ((v86.eax & 0xff00) != 0)
+		return (-1);
 
 	if ((bd = calloc(1, sizeof (*bd))) == NULL)
 		return (-1);
 
 	bd->bd_flags = BD_CDROM;
-        bd->bd_unit = biosdev;
+	bd->bd_unit = biosdev;
 
 	/*
 	 * Ignore result from bd_int13probe(), we will use local
 	 * workaround below.
 	 */
-	(void)bd_int13probe(bd);
+	(void) bd_int13probe(bd);
 
 	if (bd->bd_cyl == 0) {
 		bd->bd_cyl = ((bc_sp.sp_cylsec & 0xc0) << 2) +
@@ -403,10 +399,10 @@ bc_add(int biosdev)
 		bd->bd_sectors = 4173824;
 
 	STAILQ_INSERT_TAIL(&cdinfo, bd, bd_link);
-        printf("BIOS CD is cd%d\n", nbcinfo);
-        nbcinfo++;
-        bcache_add_dev(nbcinfo);        /* register cd device in bcache */
-        return(0);
+	printf("BIOS CD is cd%d\n", nbcinfo);
+	nbcinfo++;
+	bcache_add_dev(nbcinfo);	/* register cd device in bcache */
+	return (0);
 }
 
 /*
@@ -619,7 +615,7 @@ bd_int13probe(bdinfo_t *bd)
 	if (bd->bd_sectors == 0)
 		bd->bd_sectors = (uint64_t)bd->bd_cyl * bd->bd_hds * bd->bd_sec;
 
-	DEBUG("unit 0x%x geometry %d/%d/%d\n", bd->bd_unit, bd->bd_cyl,
+	DPRINTF("unit 0x%x geometry %d/%d/%d\n", bd->bd_unit, bd->bd_cyl,
 	    bd->bd_hds, bd->bd_sec);
 
 	return (true);
@@ -690,8 +686,8 @@ bd_print_common(struct devsw *dev, bdinfo_list_t *bdi, int verbose)
 
 		devd.dd.d_dev = dev;
 		devd.dd.d_unit = i;
-		devd.d_slice = -1;
-		devd.d_partition = -1;
+		devd.d_slice = D_SLICENONE;
+		devd.d_partition = D_PARTNONE;
 		if (disk_open(&devd,
 		    bd->bd_sectorsize * bd->bd_sectors,
 		    bd->bd_sectorsize) == 0) {
@@ -744,8 +740,8 @@ bd_disk_get_sectors(struct disk_devdesc *dev)
 
 	disk.dd.d_dev = dev->dd.d_dev;
 	disk.dd.d_unit = dev->dd.d_unit;
-	disk.d_slice = -1;
-	disk.d_partition = -1;
+	disk.d_slice = D_SLICENONE;
+	disk.d_partition = D_PARTNONE;
 	disk.d_offset = 0;
 
 	size = bd->bd_sectors * bd->bd_sectorsize;
@@ -789,7 +785,7 @@ bd_open(struct open_file *f, ...)
 			return (EIO);
 	}
 	if (bd->bd_bcache == NULL)
-	    bd->bd_bcache = bcache_allocate();
+		bd->bd_bcache = bcache_allocate();
 
 	if (bd->bd_open == 0)
 		bd->bd_sectors = bd_disk_get_sectors(dev);
@@ -824,8 +820,8 @@ bd_close(struct open_file *f)
 
 	bd->bd_open--;
 	if (bd->bd_open == 0) {
-	    bcache_free(bd->bd_bcache);
-	    bd->bd_bcache = NULL;
+		bcache_free(bd->bd_bcache);
+		bd->bd_bcache = NULL;
 	}
 	if (dev->dd.d_dev->dv_type == DEVT_DISK)
 		rc = disk_close(dev);
@@ -833,7 +829,7 @@ bd_close(struct open_file *f)
 }
 
 static int
-bd_ioctl(struct open_file *f, u_long cmd, void *data)
+bd_ioctl(struct open_file *f, ulong_t cmd, void *data)
 {
 	bdinfo_t *bd;
 	struct disk_devdesc *dev;
@@ -918,7 +914,7 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 		return (EIO);
 	}
 
-	DEBUG("open_disk %p", dev);
+	DPRINTF("open_disk %p", dev);
 
 	offset = dblk * BIOSDISK_SECSIZE;
 	dblk = offset / bd->bd_sectorsize;
@@ -931,7 +927,7 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 	 * while translating block count to bytes.
 	 */
 	if (size > INT_MAX) {
-		DEBUG("too large I/O: %zu bytes", size);
+		DPRINTF("too large I/O: %zu bytes", size);
 		return (EIO);
 	}
 
@@ -971,7 +967,7 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 	if (dblk + blks >= d_offset + disk_blocks) {
 		blks = d_offset + disk_blocks - dblk;
 		size = blks * bd->bd_sectorsize;
-		DEBUG("short I/O %d", blks);
+		DPRINTF("short I/O %d", blks);
 	}
 
 	bio_size = min(BIO_BUFFER_SIZE, size);
@@ -984,7 +980,7 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 	if (bbuf == NULL) {
 		bio_size = V86_IO_BUFFER_SIZE;
 		if (bio_size / bd->bd_sectorsize == 0)
-			panic("BUG: Real mode buffer is too small\n");
+			panic("BUG: Real mode buffer is too small");
 
 		/* Use alternate 4k buffer */
 		bbuf = PTOV(V86_IO_BUFFER);
@@ -996,7 +992,7 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 
 		switch (rw & F_MASK) {
 		case F_READ:
-			DEBUG("read %d from %lld to %p", x, dblk, buf);
+			DPRINTF("read %d from %lld to %p", x, dblk, buf);
 			bsize = bd->bd_sectorsize * x - blkoff;
 			if (rest < bsize)
 				bsize = rest;
@@ -1009,7 +1005,7 @@ bd_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 			bcopy(bbuf + blkoff, buf, bsize);
 			break;
 		case F_WRITE :
-			DEBUG("write %d from %lld to %p", x, dblk, buf);
+			DPRINTF("write %d from %lld to %p", x, dblk, buf);
 			if (blkoff != 0) {
 				/*
 				 * We got offset to sector, read 1 sector to
@@ -1257,7 +1253,7 @@ bd_getdev(struct i386_devdesc *d)
 		return (-1);
 
 	biosdev = bd_unit2bios(d);
-	DEBUG("unit %d BIOS device %d", dev->dd.d_unit, biosdev);
+	DPRINTF("unit %d BIOS device %d", dev->dd.d_unit, biosdev);
 	if (biosdev == -1)			/* not a BIOS device */
 		return (-1);
 
@@ -1298,7 +1294,7 @@ bd_getdev(struct i386_devdesc *d)
 		 * we pass -C to the boot args if we are the boot device.
 		 */
 		major = ACDMAJOR;
-		unit = 0;       /* XXX */
+		unit = 0;	/* XXX */
 	}
 
 	/* XXX a better kludge to set the root disk unit number */
@@ -1310,6 +1306,6 @@ bd_getdev(struct i386_devdesc *d)
 	}
 
 	rootdev = MAKEBOOTDEV(major, slice, unit, partition);
-	DEBUG("dev is 0x%x\n", rootdev);
+	DPRINTF("dev is 0x%x\n", rootdev);
 	return (rootdev);
 }

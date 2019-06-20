@@ -30,6 +30,7 @@
  *	Stand-alone ZFS file reader.
  */
 
+#include <sys/endian.h>
 #include <sys/stat.h>
 #include <sys/stdint.h>
 
@@ -106,8 +107,7 @@ zfs_alloc(size_t size)
 	char *ptr;
 
 	if (zfs_temp_ptr + size > zfs_temp_end) {
-		printf("ZFS: out of temporary buffer space\n");
-		for (;;) ;
+		panic("ZFS: out of temporary buffer space");
 	}
 	ptr = zfs_temp_ptr;
 	zfs_temp_ptr += size;
@@ -121,18 +121,14 @@ zfs_free(void *ptr, size_t size)
 
 	zfs_temp_ptr -= size;
 	if (zfs_temp_ptr != ptr) {
-		printf("ZFS: zfs_alloc()/zfs_free() mismatch\n");
-		for (;;) ;
+		panic("ZFS: zfs_alloc()/zfs_free() mismatch");
 	}
 }
 
 static int
 xdr_int(const unsigned char **xdr, int *ip)
 {
-	*ip = ((*xdr)[0] << 24)
-		| ((*xdr)[1] << 16)
-		| ((*xdr)[2] << 8)
-		| ((*xdr)[3] << 0);
+	*ip = be32dec(*xdr);
 	(*xdr) += 4;
 	return (0);
 }
@@ -140,10 +136,7 @@ xdr_int(const unsigned char **xdr, int *ip)
 static int
 xdr_u_int(const unsigned char **xdr, u_int *ip)
 {
-	*ip = ((*xdr)[0] << 24)
-		| ((*xdr)[1] << 16)
-		| ((*xdr)[2] << 8)
-		| ((*xdr)[3] << 0);
+	*ip = be32dec(*xdr);
 	(*xdr) += 4;
 	return (0);
 }
@@ -760,9 +753,8 @@ spa_create(uint64_t guid, const char *name)
 {
 	spa_t *spa;
 
-	if ((spa = malloc(sizeof(spa_t))) == NULL)
+	if ((spa = calloc(1, sizeof (spa_t))) == NULL)
 		return (NULL);
-	memset(spa, 0, sizeof(spa_t));
 	if ((spa->spa_name = strdup(name)) == NULL) {
 		free(spa);
 		return (NULL);
@@ -1708,7 +1700,7 @@ fzap_list(const spa_t *spa, const dnode_phys_t *dnode, int (*callback)(const cha
 	zap_leaf_t zl;
 	zl.l_bs = z.zap_block_shift;
 	for (i = 0; i < zh.zap_num_leafs; i++) {
-		off_t off = (i + 1) << zl.l_bs;
+		off_t off = ((off_t)(i + 1)) << zl.l_bs;
 		char name[256], *p;
 		uint64_t value;
 
@@ -1871,7 +1863,7 @@ fzap_rlookup(const spa_t *spa, const dnode_phys_t *dnode, char *name, uint64_t v
 	zap_leaf_t zl;
 	zl.l_bs = z.zap_block_shift;
 	for (i = 0; i < zh.zap_num_leafs; i++) {
-		off_t off = (i + 1) << zl.l_bs;
+		off_t off = ((off_t)(i + 1)) << zl.l_bs;
 
 		if (dnode_read(spa, dnode, off, zap_scratch, bsize))
 			return (EIO);

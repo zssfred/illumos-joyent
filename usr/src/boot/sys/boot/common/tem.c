@@ -196,7 +196,7 @@ tem_write(tem_vt_state_t tem_arg, uint8_t *buf, ssize_t len)
 {
 	struct tem_vt_state *tem = (struct tem_vt_state *)tem_arg;
 
-	if (!tem->tvs_initialized) {
+	if (tems.ts_initialized == 0 || tem->tvs_initialized == 0) {
 		return;
 	}
 
@@ -252,10 +252,9 @@ tem_init(void)
 {
 	struct tem_vt_state *ptem;
 
-	ptem = malloc(sizeof (struct tem_vt_state));
+	ptem = calloc(1, sizeof (struct tem_vt_state));
 	if (ptem == NULL)
 		return ((tem_vt_state_t)ptem);
-	bzero(ptem, sizeof (*ptem));
 
 	ptem->tvs_isactive = false;
 	ptem->tvs_fbmode = KD_TEXT;
@@ -428,7 +427,7 @@ env_screen_nounset(struct env_var *ev __unused)
 	if (tems.ts_p_dimension.width == 0 &&
 	    tems.ts_p_dimension.height == 0)
 		return (0);
-	return(EPERM);
+	return (EPERM);
 }
 
 static void
@@ -515,8 +514,9 @@ tems_setup_terminal(struct vis_devinit *tp, size_t height, size_t width)
 				tems.ts_font.vf_bytes =
 				    malloc(font_data->uncompressed_size);
 				if (tems.ts_font.vf_bytes == NULL)
-					panic("out of memory\n");
-				(void)lz4_decompress(font_data->compressed_data,
+					panic("out of memory");
+				(void) lz4_decompress(
+				    font_data->compressed_data,
 				    tems.ts_font.vf_bytes,
 				    font_data->compressed_size,
 				    font_data->uncompressed_size, 0);
@@ -590,6 +590,7 @@ tems_modechange_callback(struct vis_modechg_arg *arg __unused,
 	tem_modechg_cb_arg_t cb_arg;
 	size_t height = 0;
 	size_t width = 0;
+	int state;
 
 	diff = tems_check_videomode(devinit);
 	if (diff == 0) {
@@ -624,10 +625,13 @@ tems_modechange_callback(struct vis_modechg_arg *arg __unused,
 
 	plat_tem_get_prom_size(&height, &width);
 
+	state = tems.ts_initialized;
+	tems.ts_initialized = 0;	/* stop all output */
 	tems_setup_terminal(devinit, height, width);
 
 	tems_reset_colormap();
 	tems_get_initial_color(&tems.ts_init_color);
+	tems.ts_initialized = state;	/* restore state */
 
 	for (p = list_head(&tems.ts_list); p != NULL;
 	    p = list_next(&tems.ts_list, p)) {
@@ -696,9 +700,10 @@ tems_cursor(struct vis_conscursor *pca)
 static void
 tem_kdsetmode(int mode)
 {
-	if (tems.ts_hdl != NULL)
+	if (tems.ts_hdl != NULL) {
 		(void) tems.ts_hdl->c_ioctl(tems.ts_hdl, KDSETMODE,
-	     (void *)(intptr_t)mode);
+		    (void *)(intptr_t)mode);
+	}
 }
 
 static void
@@ -788,7 +793,7 @@ tem_prom_scroll_up(struct tem_vt_state *tem, int nrows)
 
 	/* clear */
 	width = tems.ts_font.vf_width;
-	ncols = (tems.ts_p_dimension.width + (width - 1))/ width;
+	ncols = (tems.ts_p_dimension.width + (width - 1)) / width;
 
 	tem_pix_cls_range(tem, 0, nrows, tems.ts_p_offset.y,
 	    0, ncols, 0, B_TRUE);
@@ -1145,16 +1150,13 @@ tem_control(struct tem_vt_state *tem, uint8_t ch)
 		break;
 
 	case A_CSI:
-		{
-			int i;
-			tem->tvs_curparam = 0;
-			tem->tvs_paramval = 0;
-			tem->tvs_gotparam = B_FALSE;
-			/* clear the parameters */
-			for (i = 0; i < TEM_MAXPARAMS; i++)
-				tem->tvs_params[i] = -1;
-			tem->tvs_state = A_STATE_CSI;
-		}
+		tem->tvs_curparam = 0;
+		tem->tvs_paramval = 0;
+		tem->tvs_gotparam = B_FALSE;
+		/* clear the parameters */
+		for (int i = 0; i < TEM_MAXPARAMS; i++)
+			tem->tvs_params[i] = -1;
+		tem->tvs_state = A_STATE_CSI;
 		break;
 
 	case A_GS:
@@ -1626,7 +1628,7 @@ tem_chkparam(struct tem_vt_state *tem, uint8_t ch)
 static void
 tem_getparams(struct tem_vt_state *tem, uint8_t ch)
 {
-	if (ch >= '0' && ch <= '9') {
+	if (isdigit(ch)) {
 		tem->tvs_paramval = ((tem->tvs_paramval * 10) + (ch - '0'));
 		tem->tvs_gotparam = B_TRUE;  /* Remember got parameter */
 		return; /* Return immediately */
@@ -2357,7 +2359,7 @@ tem_pix_clear_prom_output(struct tem_vt_state *tem)
 	offset = tems.ts_p_offset.y % height;
 
 	nrows = tems.ts_p_offset.y / height;
-	ncols = (tems.ts_p_dimension.width + (width - 1))/ width;
+	ncols = (tems.ts_p_dimension.width + (width - 1)) / width;
 
 	if (nrows > 0)
 		tem_pix_cls_range(tem, 0, nrows, offset, 0, ncols, 0,
@@ -2392,7 +2394,7 @@ tem_cls(struct tem_vt_state *tem)
 	bg_color = DEFAULT_ANSI_BACKGROUND;
 	tem_get_color(&fg_color, &bg_color, c);
 	cl.bg_color = bg_color;
-	(void)tems_cls(&cl);
+	(void) tems_cls(&cl);
 
 	tem->tvs_c_cursor.row = 0;
 	tem->tvs_c_cursor.col = 0;
@@ -2892,7 +2894,7 @@ tem_virtual_display(struct tem_vt_state *tem, term_char_t *string,
 		return;
 
 	width = tems.ts_c_dimension.width;
-	addr = tem->tvs_screen_buf +  (row * width + col);
+	addr = tem->tvs_screen_buf + (row * width + col);
 	for (i = 0; i < count; i++) {
 		*addr++ = string[i];
 	}

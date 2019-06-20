@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  * Copyright 2015 Garrett D'Amore <garrett@damore.org>
  */
 
@@ -707,12 +707,45 @@ mac_callback_remove_wait(mac_cb_info_t *mcbi)
 	}
 }
 
+void
+mac_callback_barrier(mac_cb_info_t *mcbi)
+{
+	ASSERT(MUTEX_HELD(mcbi->mcbi_lockp));
+	ASSERT3U(mcbi->mcbi_barrier_cnt, <, UINT_MAX);
+
+	if (mcbi->mcbi_walker_cnt == 0) {
+		return;
+	}
+
+	mcbi->mcbi_barrier_cnt++;
+	do {
+		cv_wait(&mcbi->mcbi_cv, mcbi->mcbi_lockp);
+	} while (mcbi->mcbi_walker_cnt > 0);
+	mcbi->mcbi_barrier_cnt--;
+	cv_broadcast(&mcbi->mcbi_cv);
+}
+
+void
+mac_callback_walker_enter(mac_cb_info_t *mcbi)
+{
+	mutex_enter(mcbi->mcbi_lockp);
+	/*
+	 * Incoming walkers should give precedence to timely clean-up of
+	 * deleted callback entries and requested barriers.
+	 */
+	while (mcbi->mcbi_del_cnt > 0 || mcbi->mcbi_barrier_cnt > 0) {
+		cv_wait(&mcbi->mcbi_cv, mcbi->mcbi_lockp);
+	}
+	mcbi->mcbi_walker_cnt++;
+	mutex_exit(mcbi->mcbi_lockp);
+}
+
 /*
  * The last mac callback walker does the cleanup. Walk the list and unlik
  * all the logically deleted entries and construct a temporary list of
  * removed entries. Return the list of removed entries to the caller.
  */
-mac_cb_t *
+static mac_cb_t *
 mac_callback_walker_cleanup(mac_cb_info_t *mcbi, mac_cb_t **mcb_head)
 {
 	mac_cb_t	*p;
@@ -741,7 +774,90 @@ mac_callback_walker_cleanup(mac_cb_info_t *mcbi, mac_cb_t **mcb_head)
 	return (rmlist);
 }
 
-boolean_t
+void
+mac_callback_walker_exit(mac_cb_info_t *mcbi, mac_cb_t **headp,
+    boolean_t is_promisc)
+{
+	boolean_t do_wake = B_FALSE;
+
+	mutex_enter(mcbi->mcbi_lockp);
+
+	/* If walkers remain, nothing more can be done for now */
+	if (--mcbi->mcbi_walker_cnt != 0) {
+		mutex_exit(mcbi->mcbi_lockp);
+		return;
+	}
+
+	if (mcbi->mcbi_del_cnt != 0) {
+		mac_cb_t *rmlist;
+
+		rmlist = mac_callback_walker_cleanup(mcbi, headp);
+
+		if (!is_promisc) {
+			/* The "normal" non-promisc callback clean-up */
+			mac_callback_free(rmlist);
+		} else {
+			mac_cb_t *mcb, *mcb_next;
+
+			/*
+			 * The promisc callbacks are in 2 lists, one off the
+			 * 'mip' and another off the 'mcip' threaded by
+			 * mpi_mi_link and mpi_mci_link respectively.  There
+			 * is, however, only a single shared total walker
+			 * count, and an entry cannot be physically unlinked if
+			 * a walker is active on either list. The last walker
+			 * does this cleanup of logically deleted entries.
+			 *
+			 * With a list of callbacks deleted from above from
+			 * mi_promisc_list (headp), remove the corresponding
+			 * entry from mci_promisc_list (headp_pair) and free
+			 * the structure.
+			 */
+			for (mcb = rmlist; mcb != NULL; mcb = mcb_next) {
+				mac_promisc_impl_t *mpip;
+				mac_client_impl_t *mcip;
+
+				mcb_next = mcb->mcb_nextp;
+				mpip = (mac_promisc_impl_t *)mcb->mcb_objp;
+				mcip = mpip->mpi_mcip;
+
+				ASSERT3P(&mcip->mci_mip->mi_promisc_cb_info,
+				    ==, mcbi);
+				ASSERT3P(&mcip->mci_mip->mi_promisc_list,
+				    ==, headp);
+
+				VERIFY(mac_callback_remove(mcbi,
+				    &mcip->mci_promisc_list,
+				    &mpip->mpi_mci_link));
+				mcb->mcb_flags = 0;
+				mcb->mcb_nextp = NULL;
+				kmem_cache_free(mac_promisc_impl_cache, mpip);
+			}
+		}
+
+		/*
+		 * Wake any walker threads that could be waiting in
+		 * mac_callback_walker_enter() until deleted items have been
+		 * cleaned from the list.
+		 */
+		do_wake = B_TRUE;
+	}
+
+	if (mcbi->mcbi_barrier_cnt != 0) {
+		/*
+		 * One or more threads are waiting for all walkers to exit the
+		 * callback list.  Notify them, now that the list is clear.
+		 */
+		do_wake = B_TRUE;
+	}
+
+	if (do_wake) {
+		cv_broadcast(&mcbi->mcbi_cv);
+	}
+	mutex_exit(mcbi->mcbi_lockp);
+}
+
+static boolean_t
 mac_callback_lookup(mac_cb_t **mcb_headp, mac_cb_t *mcb_elem)
 {
 	mac_cb_t	*mcb;
@@ -755,7 +871,7 @@ mac_callback_lookup(mac_cb_t **mcb_headp, mac_cb_t *mcb_elem)
 	return (B_FALSE);
 }
 
-boolean_t
+static boolean_t
 mac_callback_find(mac_cb_info_t *mcbi, mac_cb_t **mcb_headp, mac_cb_t *mcb_elem)
 {
 	boolean_t	found;
@@ -777,40 +893,6 @@ mac_callback_free(mac_cb_t *rmlist)
 	for (mcb = rmlist; mcb != NULL; mcb = mcb_next) {
 		mcb_next = mcb->mcb_nextp;
 		kmem_free(mcb->mcb_objp, mcb->mcb_objsize);
-	}
-}
-
-/*
- * The promisc callbacks are in 2 lists, one off the 'mip' and another off the
- * 'mcip' threaded by mpi_mi_link and mpi_mci_link respectively. However there
- * is only a single shared total walker count, and an entry can't be physically
- * unlinked if a walker is active on either list. The last walker does this
- * cleanup of logically deleted entries.
- */
-void
-i_mac_promisc_walker_cleanup(mac_impl_t *mip)
-{
-	mac_cb_t	*rmlist;
-	mac_cb_t	*mcb;
-	mac_cb_t	*mcb_next;
-	mac_promisc_impl_t	*mpip;
-
-	/*
-	 * Construct a temporary list of deleted callbacks by walking the
-	 * the mi_promisc_list. Then for each entry in the temporary list,
-	 * remove it from the mci_promisc_list and free the entry.
-	 */
-	rmlist = mac_callback_walker_cleanup(&mip->mi_promisc_cb_info,
-	    &mip->mi_promisc_list);
-
-	for (mcb = rmlist; mcb != NULL; mcb = mcb_next) {
-		mcb_next = mcb->mcb_nextp;
-		mpip = (mac_promisc_impl_t *)mcb->mcb_objp;
-		VERIFY(mac_callback_remove(&mip->mi_promisc_cb_info,
-		    &mpip->mpi_mcip->mci_promisc_list, &mpip->mpi_mci_link));
-		mcb->mcb_flags = 0;
-		mcb->mcb_nextp = NULL;
-		kmem_cache_free(mac_promisc_impl_cache, mpip);
 	}
 }
 
@@ -1853,8 +1935,7 @@ mac_hwring_send_priv(mac_client_handle_t mch, mac_ring_handle_t rh, mblk_t *mp)
 	mac_client_impl_t *mcip = (mac_client_impl_t *)mch;
 	mac_impl_t *mip = mcip->mci_mip;
 
-	MAC_TX(mip, rh, mp, mcip);
-	return (mp);
+	return (mac_provider_tx(mip, rh, mp, mcip));
 }
 
 /*
@@ -3168,7 +3249,7 @@ mactype_unregister(const char *ident)
 {
 	mactype_t	*mtp;
 	mod_hash_val_t	val;
-	int 		err;
+	int		err;
 
 	/*
 	 * Let's not allow MAC drivers to use this plugin while we're
@@ -4631,9 +4712,9 @@ mac_group_remmac(mac_group_t *group, const uint8_t *addr)
 }
 
 /*
- * This is the entry point for packets transmitted through the bridging code.
- * If no bridge is in place, MAC_RING_TX transmits using tx ring. The 'rh'
- * pointer may be NULL to select the default ring.
+ * This is the entry point for packets transmitted through the bridge
+ * code. If no bridge is in place, mac_ring_tx() transmits via the tx
+ * ring. The 'rh' pointer may be NULL to select the default ring.
  */
 mblk_t *
 mac_bridge_tx(mac_impl_t *mip, mac_ring_handle_t rh, mblk_t *mp)
@@ -4650,7 +4731,7 @@ mac_bridge_tx(mac_impl_t *mip, mac_ring_handle_t rh, mblk_t *mp)
 		mac_bridge_ref_cb(mh, B_TRUE);
 	mutex_exit(&mip->mi_bridge_lock);
 	if (mh == NULL) {
-		MAC_RING_TX(mip, rh, mp, mp);
+		mp = mac_ring_tx((mac_handle_t)mip, rh, mp);
 	} else {
 		mp = mac_bridge_tx_cb(mh, rh, mp);
 		mac_bridge_ref_cb(mh, B_FALSE);
@@ -6410,7 +6491,7 @@ mac_reclaim_ring_from_grp(mac_impl_t *mip, mac_ring_type_t ring_type,
 	if (mcip == NULL)
 		mcip = mac_get_grp_primary(group);
 	ASSERT(mcip != NULL);
-	ASSERT(mcip->mci_share == NULL);
+	ASSERT(mcip->mci_share == 0);
 
 	mrp = MCIP_RESOURCE_PROPS(mcip);
 	if (ring_type == MAC_RING_TYPE_RX) {
@@ -6598,7 +6679,7 @@ i_mac_group_allocate_rings(mac_impl_t *mip, mac_ring_type_t ring_type,
 	/*
 	 * First find the rings to allocate to the group.
 	 */
-	if (share != NULL) {
+	if (share != 0) {
 		/* get rings through ms_squery() */
 		mip->mi_share_capab.ms_squery(share, ring_type, NULL, &nrings);
 		ASSERT(nrings != 0);
@@ -6707,7 +6788,7 @@ i_mac_group_allocate_rings(mac_impl_t *mip, mac_ring_type_t ring_type,
 	}
 
 	/* add group to share */
-	if (share != NULL)
+	if (share != 0)
 		mip->mi_share_capab.ms_sadd(share, new_group->mrg_driver);
 
 bail:
@@ -6958,7 +7039,7 @@ mac_reserve_rx_group(mac_client_impl_t *mcip, uint8_t *mac_addr, boolean_t move)
 				 * the rings from the driver, let's populate
 				 * the property for the client now.
 				 */
-				if (share != NULL) {
+				if (share != 0) {
 					mac_client_set_rings(
 					    (mac_client_handle_t)mcip,
 					    grp->mrg_cur_count, -1);
@@ -7045,7 +7126,7 @@ mac_reserve_rx_group(mac_client_impl_t *mcip, uint8_t *mac_addr, boolean_t move)
 				 * the rings from the driver, let's populate
 				 * the property for the client now.
 				 */
-				if (share != NULL) {
+				if (share != 0) {
 					mac_client_set_rings(
 					    (mac_client_handle_t)mcip,
 					    grp->mrg_cur_count, -1);
@@ -7109,7 +7190,7 @@ mac_release_rx_group(mac_client_impl_t *mcip, mac_group_t *group)
 	}
 
 	/* remove group from share */
-	if (mcip->mci_share != NULL) {
+	if (mcip->mci_share != 0) {
 		mip->mi_share_capab.ms_sremove(mcip->mci_share,
 		    group->mrg_driver);
 	}
@@ -7452,7 +7533,7 @@ mac_reserve_tx_group(mac_client_impl_t *mcip, boolean_t move)
 				gclient = MAC_GROUP_ONLY_CLIENT(grp);
 				VERIFY3P(gclient, !=, NULL);
 				gmrp = MCIP_RESOURCE_PROPS(gclient);
-				if (gclient->mci_share == NULL &&
+				if (gclient->mci_share == 0 &&
 				    (gmrp->mrp_mask & MRP_TX_RINGS) == 0 &&
 				    (unspec ||
 				    (grp->mrg_cur_count + defnrings) >=
@@ -7521,7 +7602,7 @@ mac_reserve_tx_group(mac_client_impl_t *mcip, boolean_t move)
 				 * the rings from the driver, let's populate
 				 * the property for the client now.
 				 */
-				if (share != NULL) {
+				if (share != 0) {
 					mac_client_set_rings(
 					    (mac_client_handle_t)mcip, -1,
 					    grp->mrg_cur_count);
@@ -7555,7 +7636,7 @@ mac_reserve_tx_group(mac_client_impl_t *mcip, boolean_t move)
 	 * For a share i_mac_group_allocate_rings gets the rings from the
 	 * driver, let's populate the property for the client now.
 	 */
-	if (share != NULL) {
+	if (share != 0) {
 		mac_client_set_rings((mac_client_handle_t)mcip, -1,
 		    grp->mrg_cur_count);
 	}
@@ -7589,7 +7670,7 @@ mac_release_tx_group(mac_client_impl_t *mcip, mac_group_t *grp)
 			mac_srs_stat_delete(srs);
 		}
 	}
-	if (share != NULL)
+	if (share != 0)
 		mip->mi_share_capab.ms_sremove(share, grp->mrg_driver);
 
 	/* move the ring back to the pool */
@@ -7987,7 +8068,7 @@ mac_group_ring_modify(mac_client_impl_t *mcip, mac_group_t *group,
 	}
 
 	/* don't allow modifying rings for a share for now. */
-	ASSERT(mcip->mci_share == NULL);
+	ASSERT(mcip->mci_share == 0);
 
 	if (ringcnt == group->mrg_cur_count)
 		return (0);
@@ -8703,4 +8784,53 @@ mac_led_set(mac_handle_t mh, mac_led_mode_t desired)
 	}
 
 	return (ret);
+}
+
+/*
+ * Send packets through the Tx ring ('mrh') or through the default
+ * handler if no ring is specified. Before passing the packet down to
+ * the MAC provider, emulate any hardware offloads which have been
+ * requested but are not supported by the provider.
+ */
+mblk_t *
+mac_ring_tx(mac_handle_t mh, mac_ring_handle_t mrh, mblk_t *mp)
+{
+	mac_impl_t *mip = (mac_impl_t *)mh;
+
+	if (mrh == NULL)
+		mrh = mip->mi_default_tx_ring;
+
+	if (mrh == NULL)
+		return (mip->mi_tx(mip->mi_driver, mp));
+	else
+		return (mac_hwring_tx(mrh, mp));
+}
+
+/*
+ * This is the final stop before reaching the underlying MAC provider.
+ * This is also where the bridging hook is inserted. Packets that are
+ * bridged will return through mac_bridge_tx(), with rh nulled out if
+ * the bridge chooses to send output on a different link due to
+ * forwarding.
+ */
+mblk_t *
+mac_provider_tx(mac_impl_t *mip, mac_ring_handle_t rh, mblk_t *mp,
+    mac_client_impl_t *mcip)
+{
+	/*
+	 * If there is a bound Hybrid I/O share, send packets through
+	 * the default tx ring. When there's a bound Hybrid I/O share,
+	 * the tx rings of this client are mapped in the guest domain
+	 * and not accessible from here.
+	 */
+	if (mcip->mci_state_flags & MCIS_SHARE_BOUND)
+		rh = mip->mi_default_tx_ring;
+
+	if (mip->mi_promisc_list != NULL)
+		mac_promisc_dispatch(mip, mp, mcip);
+
+	if (mip->mi_bridge_link == NULL)
+		return (mac_ring_tx((mac_handle_t)mip, rh, mp));
+	else
+		return (mac_bridge_tx(mip, rh, mp));
 }

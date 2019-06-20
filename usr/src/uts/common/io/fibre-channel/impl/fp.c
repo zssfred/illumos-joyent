@@ -91,7 +91,7 @@ static struct dev_ops fp_ops = {
 	&fp_cb_ops,			/* cb_ops */
 	NULL,				/* bus_ops */
 	fp_power,			/* power */
-	ddi_quiesce_not_needed 		/* quiesce */
+	ddi_quiesce_not_needed		/* quiesce */
 };
 
 #define	FP_VERSION		"20091123-1.101"
@@ -4839,7 +4839,7 @@ fp_ulp_devc_cb(fc_local_port_t *port, fc_portmap_t *changelist,
 	}
 
 	ret = taskq_dispatch(port->fp_taskq, fctl_ulp_statec_cb, clist, sleep);
-	if (sync && ret) {
+	if (sync && ret != TASKQID_INVALID) {
 		mutex_enter(&clist->clist_mutex);
 		while (clist->clist_wait) {
 			cv_wait(&clist->clist_cv, &clist->clist_mutex);
@@ -10902,7 +10902,7 @@ fp_unsol_cb(opaque_t port_handle, fc_unsol_buf_t *buf, uint32_t type)
 	 * longer to get released but we save interrupt time in
 	 * the bargain.
 	 */
-	cb_arg = (rscn_count == FC_INVALID_RSCN_COUNT) ? NULL : rscn_count;
+	cb_arg = (rscn_count == FC_INVALID_RSCN_COUNT) ? 0 : rscn_count;
 
 	/*
 	 * One way that the rscn_count will get used is described below :

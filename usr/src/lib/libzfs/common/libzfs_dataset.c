@@ -444,6 +444,8 @@ make_dataset_handle_common(zfs_handle_t *zhp, zfs_cmd_t *zc)
 		zhp->zfs_head_type = ZFS_TYPE_VOLUME;
 	else if (zhp->zfs_dmustats.dds_type == DMU_OST_ZFS)
 		zhp->zfs_head_type = ZFS_TYPE_FILESYSTEM;
+	else if (zhp->zfs_dmustats.dds_type == DMU_OST_OTHER)
+		return (-1);
 	else
 		abort();
 
@@ -776,15 +778,13 @@ typedef struct mnttab_node {
 static int
 libzfs_mnttab_cache_compare(const void *arg1, const void *arg2)
 {
-	const mnttab_node_t *mtn1 = arg1;
-	const mnttab_node_t *mtn2 = arg2;
+	const mnttab_node_t *mtn1 = (const mnttab_node_t *)arg1;
+	const mnttab_node_t *mtn2 = (const mnttab_node_t *)arg2;
 	int rv;
 
 	rv = strcmp(mtn1->mtn_mt.mnt_special, mtn2->mtn_mt.mnt_special);
 
-	if (rv == 0)
-		return (0);
-	return (rv > 0 ? 1 : -1);
+	return (AVL_ISIGN(rv));
 }
 
 void
@@ -1175,6 +1175,36 @@ zfs_valid_proplist(libzfs_handle_t *hdl, zfs_type_t type, nvlist_t *nvl,
 			}
 			break;
 		}
+
+		case ZFS_PROP_SPECIAL_SMALL_BLOCKS:
+			if (zpool_hdl != NULL) {
+				char state[64] = "";
+
+				/*
+				 * Issue a warning but do not fail so that
+				 * tests for setable properties succeed.
+				 */
+				if (zpool_prop_get_feature(zpool_hdl,
+				    "feature@allocation_classes", state,
+				    sizeof (state)) != 0 ||
+				    strcmp(state, ZFS_FEATURE_ACTIVE) != 0) {
+					(void) fprintf(stderr, gettext(
+					    "%s: property requires a special "
+					    "device in the pool\n"), propname);
+				}
+			}
+			if (intval != 0 &&
+			    (intval < SPA_MINBLOCKSIZE ||
+			    intval > SPA_OLD_MAXBLOCKSIZE || !ISP2(intval))) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "invalid '%s=%d' property: must be zero or "
+				    "a power of 2 from 512B to 128K"), propname,
+				    intval);
+				(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
+				goto error;
+			}
+			break;
+
 		case ZFS_PROP_MLSLABEL:
 		{
 			/*

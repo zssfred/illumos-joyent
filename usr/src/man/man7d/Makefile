@@ -12,7 +12,7 @@
 #
 # Copyright 2011, Richard Lowe
 # Copyright 2016 Garrett D'Amore <garrett@damore.org>
-# Copyright (c) 2017, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 # Copyright 2016 Hans Rosenfeld <rosenfeld@grumpf.hope-2000.org>
 # Copyright 2018 Nexenta Systems, Inc.
 # Copyright 2019 Peter Tribble
@@ -20,10 +20,11 @@
 
 include		$(SRC)/Makefile.master
 
-MANSECT= 	7d
+MANSECT=	7d
 
 _MANFILES=	aac.7d		\
 		afe.7d		\
+		amdf17nbdf.7d	\
 		audio.7d	\
 		audio1575.7d	\
 		audioens.7d	\
@@ -38,6 +39,7 @@ _MANFILES=	aac.7d		\
 		bscv.7d		\
 		chxge.7d	\
 		console.7d	\
+		coretemp.7d	\
 		cpuid.7d	\
 		dca.7d		\
 		dcam1394.7d	\
@@ -108,6 +110,7 @@ _MANFILES=	aac.7d		\
 		random.7d	\
 		rge.7d		\
 		rtls.7d		\
+		pchtemp.7d	\
 		sad.7d		\
 		sata.7d		\
 		scsa1394.7d	\
@@ -126,6 +129,7 @@ _MANFILES=	aac.7d		\
 		tty.7d		\
 		ttymux.7d	\
 		tzmon.7d	\
+		ufm.7d		\
 		ugen.7d		\
 		uhci.7d		\
 		usb_ac.7d	\
@@ -153,8 +157,6 @@ _MANFILES=	aac.7d		\
 sparc_MANFILES=	audiocs.7d	\
 		bbc_beep.7d	\
 		ctsmc.7d	\
-		cvc.7d		\
-		cvcredir.7d	\
 		dad.7d		\
 		dm2s.7d		\
 		dr.7d		\
@@ -172,7 +174,6 @@ sparc_MANFILES=	audiocs.7d	\
 		pcicmu.7d	\
 		pcipsy.7d	\
 		pcisch.7d	\
-		schpc.7d	\
 		sf.7d		\
 		smbus.7d	\
 		socal.7d	\
@@ -209,7 +210,6 @@ i386_MANFILES=	ahci.7d		\
 		ecpp.7d		\
 		elxl.7d		\
 		i40e.7d		\
-		i915.7d		\
 		ipmi.7d		\
 		iprb.7d		\
 		ipw.7d		\
@@ -223,7 +223,6 @@ i386_MANFILES=	ahci.7d		\
 		nvme.7d		\
 		pcn.7d		\
 		qede.7d		\
-		radeon.7d	\
 		ral.7d		\
 		rtw.7d		\
 		rum.7d		\

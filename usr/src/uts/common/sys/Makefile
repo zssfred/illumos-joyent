@@ -21,9 +21,8 @@
 
 #
 # Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright (c) 2018, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 # Copyright 2013 Garrett D'Amore <garrett@damore.org>
-# Copyright 2015, Joyent, Inc. All rights reserved.
 # Copyright 2013 Saso Kiselkov. All rights reserved.
 # Copyright 2015 Igor Kozhukhov <ikozhukhov@gmail.com>
 # Copyright 2017 Nexenta Systems, Inc.
@@ -43,12 +42,6 @@ FILEMODE=644
 #
 
 i386_HDRS=			\
-	agp/agpamd64gart_io.h	\
-	agp/agpdefs.h		\
-	agp/agpgart_impl.h	\
-	agp/agpmaster_io.h	\
-	agp/agptarget_io.h	\
-	agpgart.h		\
 	asy.h			\
 	fd_debug.h		\
 	fdc.h			\
@@ -171,6 +164,8 @@ CHKHDRS=			\
 	ddi_implfuncs.h		\
 	ddi_obsolete.h		\
 	ddi_periodic.h		\
+	ddi_ufm.h		\
+	ddi_ufm_impl.h		\
 	ddidevmap.h		\
 	ddidmareq.h		\
 	ddimapreq.h		\
@@ -518,6 +513,7 @@ CHKHDRS=			\
 	sema_impl.h		\
 	semaphore.h		\
 	sendfile.h		\
+	sensors.h		\
 	ser_sync.h		\
 	session.h		\
 	sha1.h			\

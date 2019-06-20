@@ -21,11 +21,11 @@
 
 /*
  * Copyright (c) 1989, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2017, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*	Copyright (c) 1984, 1986, 1987, 1988, 1989 AT&T	*/
-/*	  All Rights Reserved  	*/
+/*	  All Rights Reserved	*/
 
 #include <sys/types.h>
 #include <sys/t_lock.h>
@@ -715,7 +715,6 @@ pr_p_lock(prnode_t *pnp)
 		mutex_enter(&p->p_lock);
 	}
 	p->p_proc_flag |= P_PR_LOCK;
-	THREAD_KPRI_REQUEST();
 	return (p);
 }
 
@@ -822,7 +821,6 @@ prunmark(proc_t *p)
 
 	cv_signal(&pr_pid_cv[p->p_slot]);
 	p->p_proc_flag &= ~P_PR_LOCK;
-	THREAD_KPRI_RELEASE();
 }
 
 void
@@ -1403,10 +1401,10 @@ prgetaction32(proc_t *p, user_t *up, uint_t sig, struct sigaction32 *sp)
 /*
  * Count the number of segments in this process's address space.
  */
-int
+uint_t
 prnsegs(struct as *as, int reserved)
 {
-	int n = 0;
+	uint_t n = 0;
 	struct seg *seg;
 
 	ASSERT(as != &kas && AS_WRITE_HELD(as));
@@ -1423,8 +1421,21 @@ prnsegs(struct as *as, int reserved)
 		for (saddr = seg->s_base; saddr < eaddr; saddr = naddr) {
 			(void) pr_getprot(seg, reserved, &tmp,
 			    &saddr, &naddr, eaddr);
-			if (saddr != naddr)
+			if (saddr != naddr) {
 				n++;
+				/*
+				 * prnsegs() was formerly designated to return
+				 * an 'int' despite having no ability or use
+				 * for negative results.  As part of changing
+				 * it to 'uint_t', keep the old effective limit
+				 * of INT_MAX in place.
+				 */
+				if (n == INT_MAX) {
+					pr_getprot_done(&tmp);
+					ASSERT(tmp == NULL);
+					return (n);
+				}
+			}
 		}
 
 		ASSERT(tmp == NULL);
@@ -2702,7 +2713,7 @@ prgetlwpsinfo32(kthread_t *t, lwpsinfo32_t *psp)
 #define	PR_COPY_TIMESPEC(s, d, field)				\
 	TIMESPEC_TO_TIMESPEC32(&d->field, &s->field);
 
-#define	PR_COPY_BUF(s, d, field)	 			\
+#define	PR_COPY_BUF(s, d, field)				\
 	bcopy(s->field, d->field, sizeof (d->field));
 
 #define	PR_IGNORE_FIELD(s, d, field)

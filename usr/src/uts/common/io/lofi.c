@@ -25,6 +25,7 @@
  * Copyright (c) 2016 Andrey Sokolov
  * Copyright 2016 Toomas Soome <tsoome@me.com>
  * Copyright 2019 Joyent, Inc.
+ * Copyright 2019 OmniOS Community Edition (OmniOSce) Association.
  */
 
 /*
@@ -168,6 +169,8 @@
 #include <sys/scsi/scsi.h>	/* for DTYPE_DIRECT */
 #include <sys/scsi/impl/uscsi.h>
 #include <sys/sysevent/dev.h>
+#include <sys/efi_partition.h>
+#include <sys/note.h>
 #include <LzmaDec.h>
 
 #define	NBLOCKS_PROP_NAME	"Nblocks"
@@ -188,8 +191,9 @@
 		return (EINVAL); \
 	}
 
-#define	LOFI_TIMEOUT	30
+#define	LOFI_TIMEOUT	120
 
+int lofi_timeout = LOFI_TIMEOUT;
 static void *lofi_statep;
 static kmutex_t lofi_lock;		/* state lock */
 static id_space_t *lofi_id;		/* lofi ID values */
@@ -1741,24 +1745,56 @@ lofi_strategy(struct buf *bp)
 	return (0);
 }
 
-/*ARGSUSED2*/
 static int
 lofi_read(dev_t dev, struct uio *uio, struct cred *credp)
 {
+	_NOTE(ARGUNUSED(credp));
+
 	if (getminor(dev) == 0)
 		return (EINVAL);
 	UIO_CHECK(uio);
 	return (physio(lofi_strategy, NULL, dev, B_READ, minphys, uio));
 }
 
-/*ARGSUSED2*/
 static int
 lofi_write(dev_t dev, struct uio *uio, struct cred *credp)
 {
+	_NOTE(ARGUNUSED(credp));
+
 	if (getminor(dev) == 0)
 		return (EINVAL);
 	UIO_CHECK(uio);
 	return (physio(lofi_strategy, NULL, dev, B_WRITE, minphys, uio));
+}
+
+static int
+lofi_urw(struct lofi_state *lsp, uint16_t fmode, diskaddr_t off, size_t size,
+    intptr_t arg, int flag, cred_t *credp)
+{
+	struct uio uio;
+	iovec_t iov;
+
+	/*
+	 * 1024 * 1024 apes cmlb_tg_max_efi_xfer as a reasonable max.
+	 */
+	if (size == 0 || size > 1024 * 1024 ||
+	    (size % (1 << lsp->ls_lbshift)) != 0)
+		return (EINVAL);
+
+	iov.iov_base = (void *)arg;
+	iov.iov_len = size;
+	uio.uio_iov = &iov;
+	uio.uio_iovcnt = 1;
+	uio.uio_loffset = off;
+	uio.uio_segflg = (flag & FKIOCTL) ? UIO_SYSSPACE : UIO_USERSPACE;
+	uio.uio_llimit = MAXOFFSET_T;
+	uio.uio_resid = size;
+	uio.uio_fmode = fmode;
+	uio.uio_extflg = 0;
+
+	return (fmode == FREAD ?
+	    lofi_read(lsp->ls_dev, &uio, credp) :
+	    lofi_write(lsp->ls_dev, &uio, credp));
 }
 
 /*ARGSUSED2*/
@@ -2748,24 +2784,29 @@ lofi_copy_devpath(struct lofi_ioctl *klip)
 	}
 
 	(void) snprintf(namebuf, sizeof (namebuf), "%d", klip->li_id);
-	ticks = ddi_get_lbolt() + LOFI_TIMEOUT * drv_usectohz(1000000);
 
 	mutex_enter(&lofi_devlink_cache.ln_lock);
-	error = nvlist_lookup_nvlist(lofi_devlink_cache.ln_data, namebuf, &nvl);
-	while (error != 0) {
+	for (;;) {
+		error = nvlist_lookup_nvlist(lofi_devlink_cache.ln_data,
+		    namebuf, &nvl);
+
+		if (error == 0 &&
+		    nvlist_lookup_string(nvl, DEV_NAME, &str) == 0 &&
+		    strncmp(str, "/dev/" LOFI_CHAR_NAME,
+		    sizeof ("/dev/" LOFI_CHAR_NAME) - 1) != 0) {
+			(void) strlcpy(klip->li_devpath, str,
+			    sizeof (klip->li_devpath));
+			break;
+		}
+		/*
+		 * Either there is no data in the cache, or the
+		 * cache entry still has the wrong device name.
+		 */
+		ticks = ddi_get_lbolt() + lofi_timeout * drv_usectohz(1000000);
 		error = cv_timedwait(&lofi_devlink_cache.ln_cv,
 		    &lofi_devlink_cache.ln_lock, ticks);
 		if (error == -1)
-			break;
-		error = nvlist_lookup_nvlist(lofi_devlink_cache.ln_data,
-		    namebuf, &nvl);
-	}
-
-	if (nvl != NULL) {
-		if (nvlist_lookup_string(nvl, DEV_NAME, &str) == 0) {
-			(void) strlcpy(klip->li_devpath, str,
-			    sizeof (klip->li_devpath));
-		}
+			break;	/* timeout */
 	}
 	mutex_exit(&lofi_devlink_cache.ln_lock);
 }
@@ -3029,6 +3070,7 @@ lofi_unmap_file(struct lofi_ioctl *ulip, int byfilename,
 	/* Remove name from devlink cache */
 	mutex_enter(&lofi_devlink_cache.ln_lock);
 	(void) nvlist_remove_all(lofi_devlink_cache.ln_data, namebuf);
+	cv_broadcast(&lofi_devlink_cache.ln_cv);
 	mutex_exit(&lofi_devlink_cache.ln_lock);
 done:
 	mutex_exit(&lofi_lock);
@@ -3185,10 +3227,11 @@ static int
 lofi_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *credp,
     int *rvalp)
 {
-	int	error;
+	int error;
 	enum dkio_state dkstate;
 	struct lofi_state *lsp;
-	int	id;
+	dk_efi_t user_efi;
+	int id;
 
 	id = LOFI_MINOR2ID(getminor(dev));
 
@@ -3438,6 +3481,35 @@ lofi_ioctl(dev_t dev, int cmd, intptr_t arg, int flag, cred_t *credp,
 #endif	/* _MULTI_DATAMODEL */
 		return (0);
 	}
+
+	case DKIOCGMBOOT:
+		return (lofi_urw(lsp, FREAD, 0, 1 << lsp->ls_lbshift,
+		    arg, flag, credp));
+
+	case DKIOCSMBOOT:
+		return (lofi_urw(lsp, FWRITE, 0, 1 << lsp->ls_lbshift,
+		    arg, flag, credp));
+
+	case DKIOCGETEFI:
+		if (ddi_copyin((void *)arg, &user_efi,
+		    sizeof (dk_efi_t), flag) != 0)
+			return (EFAULT);
+
+		return (lofi_urw(lsp, FREAD,
+		    user_efi.dki_lba * (1 << lsp->ls_lbshift),
+		    user_efi.dki_length, (intptr_t)user_efi.dki_data,
+		    flag, credp));
+
+	case DKIOCSETEFI:
+		if (ddi_copyin((void *)arg, &user_efi,
+		    sizeof (dk_efi_t), flag) != 0)
+			return (EFAULT);
+
+		return (lofi_urw(lsp, FWRITE,
+		    user_efi.dki_lba * (1 << lsp->ls_lbshift),
+		    user_efi.dki_length, (intptr_t)user_efi.dki_data,
+		    flag, credp));
+
 	default:
 #ifdef DEBUG
 		cmn_err(CE_WARN, "lofi_ioctl: %d is not implemented\n", cmd);

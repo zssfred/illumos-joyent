@@ -24,6 +24,10 @@
  */
 
 /*
+ * Copyright 2019 Joyent, Inc.
+ */
+
+/*
  * PICL plug-in that creates device tree nodes for all platforms
  */
 
@@ -1770,7 +1774,7 @@ static int
 is_snapshot_stale(di_node_t root)
 {
 	snapshot_stale = 0;
-	di_walk_node(root, DI_WALK_CLDFIRST, NULL, check_stale_node);
+	(void) di_walk_node(root, DI_WALK_CLDFIRST, NULL, check_stale_node);
 	return (snapshot_stale);
 }
 
@@ -1909,6 +1913,9 @@ get_pi_state(ptree_rarg_t *rarg, void *vbuf)
 		break;
 	case P_POWEROFF:
 		(void) strlcpy(vbuf, PS_POWEROFF, MAX_STATE_SIZE);
+		break;
+	case P_DISABLED:
+		(void) strlcpy(vbuf, PS_DISABLED, MAX_STATE_SIZE);
 		break;
 	default:
 		(void) strlcpy(vbuf, "unknown", MAX_STATE_SIZE);
@@ -2363,7 +2370,8 @@ process_devtree_conf_file(void)
 static	asr_conf_entries_t	*conf_name_asr_map = NULL;
 
 static void
-free_asr_conf_entries(asr_conf_entries_t *list) {
+free_asr_conf_entries(asr_conf_entries_t *list)
+{
 	asr_conf_entries_t  *el;
 	asr_conf_entries_t  *del;
 
@@ -2546,8 +2554,8 @@ get_asr_export_list(char **exportlist, int *exportlistlen)
 		return (0);
 	}
 	(void) memcpy(*exportlist, opp->oprom_array, opp->oprom_size);
-	free(opp);
 	*exportlistlen = opp->oprom_size;
+	free(opp);
 	(void) close(d);
 	return (1);
 }
@@ -2602,7 +2610,7 @@ add_status_prop(picl_nodehdl_t chdh, char *status)
 
 static void
 create_asr_node(char *parent, char *child, char *unitaddr, char *class,
-	char *status, char *props)
+    char *status, char *props)
 {
 	char			ptreepath[PATH_MAX];
 	char			nodename[PICL_PROPNAMELEN_MAX];

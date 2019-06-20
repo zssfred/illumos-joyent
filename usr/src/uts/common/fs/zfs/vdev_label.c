@@ -22,6 +22,8 @@
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
+ * Copyright (c) 2017, Intel Corporation.
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*
@@ -183,8 +185,9 @@ static void
 vdev_label_read(zio_t *zio, vdev_t *vd, int l, abd_t *buf, uint64_t offset,
     uint64_t size, zio_done_func_t *done, void *private, int flags)
 {
-	ASSERT(spa_config_held(zio->io_spa, SCL_STATE_ALL, RW_WRITER) ==
-	    SCL_STATE_ALL);
+	ASSERT(
+	    spa_config_held(zio->io_spa, SCL_STATE, RW_READER) == SCL_STATE ||
+	    spa_config_held(zio->io_spa, SCL_STATE, RW_WRITER) == SCL_STATE);
 	ASSERT(flags & ZIO_FLAG_CONFIG_WRITER);
 
 	zio_nowait(zio_read_phys(zio, vd,
@@ -193,14 +196,13 @@ vdev_label_read(zio_t *zio, vdev_t *vd, int l, abd_t *buf, uint64_t offset,
 	    ZIO_PRIORITY_SYNC_READ, flags, B_TRUE));
 }
 
-static void
+void
 vdev_label_write(zio_t *zio, vdev_t *vd, int l, abd_t *buf, uint64_t offset,
     uint64_t size, zio_done_func_t *done, void *private, int flags)
 {
-	ASSERT(spa_config_held(zio->io_spa, SCL_ALL, RW_WRITER) == SCL_ALL ||
-	    (spa_config_held(zio->io_spa, SCL_CONFIG | SCL_STATE, RW_READER) ==
-	    (SCL_CONFIG | SCL_STATE) &&
-	    dsl_pool_sync_context(spa_get_dsl(zio->io_spa))));
+	ASSERT(
+	    spa_config_held(zio->io_spa, SCL_STATE, RW_READER) == SCL_STATE ||
+	    spa_config_held(zio->io_spa, SCL_STATE, RW_WRITER) == SCL_STATE);
 	ASSERT(flags & ZIO_FLAG_CONFIG_WRITER);
 
 	zio_nowait(zio_write_phys(zio, vd,
@@ -316,6 +318,28 @@ vdev_config_generate(spa_t *spa, vdev_t *vd, boolean_t getstats,
 			fnvlist_add_uint64(nv, ZPOOL_CONFIG_REMOVING,
 			    vd->vdev_removing);
 		}
+
+		/* zpool command expects alloc class data */
+		if (getstats && vd->vdev_alloc_bias != VDEV_BIAS_NONE) {
+			const char *bias = NULL;
+
+			switch (vd->vdev_alloc_bias) {
+			case VDEV_BIAS_LOG:
+				bias = VDEV_ALLOC_BIAS_LOG;
+				break;
+			case VDEV_BIAS_SPECIAL:
+				bias = VDEV_ALLOC_BIAS_SPECIAL;
+				break;
+			case VDEV_BIAS_DEDUP:
+				bias = VDEV_ALLOC_BIAS_DEDUP;
+				break;
+			default:
+				ASSERT3U(vd->vdev_alloc_bias, ==,
+				    VDEV_BIAS_NONE);
+			}
+			fnvlist_add_string(nv, ZPOOL_CONFIG_ALLOCATION_BIAS,
+			    bias);
+		}
 	}
 
 	if (vd->vdev_dtl_sm != NULL) {
@@ -352,6 +376,12 @@ vdev_config_generate(spa_t *spa, vdev_t *vd, boolean_t getstats,
 			ASSERT(vd == vd->vdev_top);
 			fnvlist_add_uint64(nv, ZPOOL_CONFIG_VDEV_TOP_ZAP,
 			    vd->vdev_top_zap);
+		}
+
+		if (vd->vdev_resilver_deferred) {
+			ASSERT(vd->vdev_ops->vdev_op_leaf);
+			ASSERT(spa->spa_resilver_deferred);
+			fnvlist_add_boolean(nv, ZPOOL_CONFIG_RESILVER_DEFER);
 		}
 	}
 
@@ -989,19 +1019,13 @@ retry:
  * among uberblocks with equal txg, choose the one with the latest timestamp.
  */
 static int
-vdev_uberblock_compare(uberblock_t *ub1, uberblock_t *ub2)
+vdev_uberblock_compare(const uberblock_t *ub1, const uberblock_t *ub2)
 {
-	if (ub1->ub_txg < ub2->ub_txg)
-		return (-1);
-	if (ub1->ub_txg > ub2->ub_txg)
-		return (1);
+	int cmp = AVL_CMP(ub1->ub_txg, ub2->ub_txg);
+	if (likely(cmp))
+		return (cmp);
 
-	if (ub1->ub_timestamp < ub2->ub_timestamp)
-		return (-1);
-	if (ub1->ub_timestamp > ub2->ub_timestamp)
-		return (1);
-
-	return (0);
+	return (AVL_CMP(ub1->ub_timestamp, ub2->ub_timestamp));
 }
 
 struct ubl_cbdata {
@@ -1142,7 +1166,8 @@ vdev_uberblock_sync(zio_t *zio, uint64_t *good_writes,
 	if (!vdev_writeable(vd))
 		return;
 
-	int n = ub->ub_txg & (VDEV_UBERBLOCK_COUNT(vd) - 1);
+	int m = spa_multihost(vd->vdev_spa) ? MMP_BLOCKS_PER_LABEL : 0;
+	int n = ub->ub_txg % (VDEV_UBERBLOCK_COUNT(vd) - m);
 
 	/* Copy the uberblock_t into the ABD */
 	abd_t *ub_abd = abd_alloc_for_io(VDEV_UBERBLOCK_SIZE(vd), B_TRUE);
@@ -1360,10 +1385,13 @@ retry:
 	 * and the vdev configuration hasn't changed,
 	 * then there's nothing to do.
 	 */
-	if (ub->ub_txg < txg &&
-	    uberblock_update(ub, spa->spa_root_vdev, txg) == B_FALSE &&
-	    list_is_empty(&spa->spa_config_dirty_list))
-		return (0);
+	if (ub->ub_txg < txg) {
+		boolean_t changed = uberblock_update(ub, spa->spa_root_vdev,
+		    txg, spa->spa_mmp.mmp_delay);
+
+		if (!changed && list_is_empty(&spa->spa_config_dirty_list))
+			return (0);
+	}
 
 	if (txg > spa_freeze_txg(spa))
 		return (0);
@@ -1425,6 +1453,9 @@ retry:
 		}
 		goto retry;
 	}
+
+	if (spa_multihost(spa))
+		mmp_update_uberblock(spa, ub);
 
 	/*
 	 * Sync out odd labels for every dirty vdev.  If the system dies

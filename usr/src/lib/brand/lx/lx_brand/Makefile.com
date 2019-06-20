@@ -21,7 +21,7 @@
 #
 # Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-# Copyright 2018 Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 LX_CMN  =	$(SRC)/common/brand/lx
@@ -77,6 +77,9 @@ CPPFLAGS +=	-D_REENTRANT -I. -I../ -I$(UTSBASE)/common/brand/lx -I$(LX_CMN)
 ASFLAGS =	-P $(ASFLAGS_$(CURTYPE)) -D_ASM -I../	\
 			-I$(UTSBASE)/common/brand/lx
 
+# not linted
+SMATCH=off
+
 C99MODE=	-xc99=%all
 C99LMODE=	-Xc99=%all
 
@@ -91,7 +94,7 @@ include ../../../../Makefile.usdt
 
 pics/%.o: $(ISASRCDIR)/%.s
 	$(COMPILE.s) -o $@ $<
-	$(POST_PROCESS_O)
+	$(POST_PROCESS_S_O)
 
 pics/%.o: $(LX_CMN)/%.c
 	$(COMPILE.c) -o $@ $<

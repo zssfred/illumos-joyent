@@ -124,17 +124,11 @@ zil_bp_compare(const void *x1, const void *x2)
 	const dva_t *dva1 = &((zil_bp_node_t *)x1)->zn_dva;
 	const dva_t *dva2 = &((zil_bp_node_t *)x2)->zn_dva;
 
-	if (DVA_GET_VDEV(dva1) < DVA_GET_VDEV(dva2))
-		return (-1);
-	if (DVA_GET_VDEV(dva1) > DVA_GET_VDEV(dva2))
-		return (1);
+	int cmp = AVL_CMP(DVA_GET_VDEV(dva1), DVA_GET_VDEV(dva2));
+	if (likely(cmp))
+		return (cmp);
 
-	if (DVA_GET_OFFSET(dva1) < DVA_GET_OFFSET(dva2))
-		return (-1);
-	if (DVA_GET_OFFSET(dva1) > DVA_GET_OFFSET(dva2))
-		return (1);
-
-	return (0);
+	return (AVL_CMP(DVA_GET_OFFSET(dva1), DVA_GET_OFFSET(dva2)));
 }
 
 static void
@@ -496,12 +490,7 @@ zil_lwb_vdev_compare(const void *x1, const void *x2)
 	const uint64_t v1 = ((zil_vdev_node_t *)x1)->zv_vdev;
 	const uint64_t v2 = ((zil_vdev_node_t *)x2)->zv_vdev;
 
-	if (v1 < v2)
-		return (-1);
-	if (v1 > v2)
-		return (1);
-
-	return (0);
+	return (AVL_CMP(v1, v2));
 }
 
 static lwb_t *
@@ -1264,7 +1253,7 @@ zil_lwb_set_zio_dependency(zilog_t *zilog, lwb_t *lwb)
 		 * root zios). This is required because of how we can
 		 * defer the DKIOCFLUSHWRITECACHE commands for each lwb.
 		 *
-		 * When the DKIOCFLUSHWRITECACHE commands are defered,
+		 * When the DKIOCFLUSHWRITECACHE commands are deferred,
 		 * the previous lwb will rely on this lwb to flush the
 		 * vdevs written to by that previous lwb. Thus, we need
 		 * to ensure this lwb doesn't issue the flush until
@@ -1730,12 +1719,7 @@ zil_aitx_compare(const void *x1, const void *x2)
 	const uint64_t o1 = ((itx_async_node_t *)x1)->ia_foid;
 	const uint64_t o2 = ((itx_async_node_t *)x2)->ia_foid;
 
-	if (o1 < o2)
-		return (-1);
-	if (o1 > o2)
-		return (1);
-
-	return (0);
+	return (AVL_CMP(o1, o2));
 }
 
 /*
@@ -1908,7 +1892,8 @@ zil_clean(zilog_t *zilog, uint64_t synced_txg)
 	ASSERT3P(zilog->zl_dmu_pool, !=, NULL);
 	ASSERT3P(zilog->zl_dmu_pool->dp_zil_clean_taskq, !=, NULL);
 	if (taskq_dispatch(zilog->zl_dmu_pool->dp_zil_clean_taskq,
-	    (void (*)(void *))zil_itxg_clean, clean_me, TQ_NOSLEEP) == NULL)
+	    (void (*)(void *))zil_itxg_clean, clean_me, TQ_NOSLEEP) ==
+	    TASKQID_INVALID)
 		zil_itxg_clean(clean_me);
 }
 

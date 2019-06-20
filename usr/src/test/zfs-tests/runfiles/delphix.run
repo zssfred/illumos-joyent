@@ -12,7 +12,7 @@
 #
 # Copyright (c) 2012, 2018 by Delphix. All rights reserved.
 # Copyright 2016, OmniTI Computer Consulting, Inc. All rights reserved.
-# Copyright 2018 Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 [DEFAULT]
@@ -54,6 +54,14 @@ tests = ['zfs_acl_chmod_001_pos', 'zfs_acl_compress_001_pos',
     'zfs_acl_tar_001_pos', 'zfs_acl_tar_002_neg',
     'zfs_acl_aclmode_restricted_001_pos']
 
+[/opt/zfs-tests/tests/functional/alloc_class]
+tests = ['alloc_class_001_pos', 'alloc_class_002_neg', 'alloc_class_003_pos',
+    'alloc_class_004_pos', 'alloc_class_005_pos', 'alloc_class_006_pos',
+    'alloc_class_007_pos', 'alloc_class_008_pos', 'alloc_class_009_pos',
+    'alloc_class_010_pos', 'alloc_class_011_neg', 'alloc_class_012_pos',
+    'alloc_class_013_pos']
+tags = ['functional', 'alloc_class']
+
 [/opt/zfs-tests/tests/functional/atime]
 tests = ['atime_001_pos', 'atime_002_neg']
 
@@ -61,8 +69,6 @@ tests = ['atime_001_pos', 'atime_002_neg']
 tests = ['bootfs_001_pos', 'bootfs_002_neg', 'bootfs_003_pos',
     'bootfs_004_neg', 'bootfs_005_neg', 'bootfs_006_pos', 'bootfs_007_pos',
     'bootfs_008_pos']
-pre =
-post =
 
 [/opt/zfs-tests/tests/functional/cache]
 tests = ['cache_001_pos', 'cache_002_pos', 'cache_003_pos', 'cache_004_neg',
@@ -232,6 +238,7 @@ tests = ['zpool_001_neg', 'zpool_002_pos', 'zpool_003_pos']
 tests = ['zpool_add_001_pos', 'zpool_add_002_pos', 'zpool_add_003_pos',
     'zpool_add_004_pos', 'zpool_add_005_pos', 'zpool_add_006_pos',
     'zpool_add_007_neg', 'zpool_add_008_neg', 'zpool_add_009_neg',
+    'zpool_add_010_pos',
     'add_nested_replacing_spare']
 
 [/opt/zfs-tests/tests/functional/cli_root/zpool_attach]
@@ -250,6 +257,7 @@ tests = ['zpool_create_001_pos', 'zpool_create_002_pos',
     'zpool_create_015_neg', 'zpool_create_016_pos', 'zpool_create_017_neg',
     'zpool_create_018_pos', 'zpool_create_019_pos', 'zpool_create_020_pos',
     'zpool_create_021_pos', 'zpool_create_022_pos', 'zpool_create_023_neg',
+    'zpool_create_024_pos',
     'zpool_create_features_001_pos', 'zpool_create_features_002_pos',
     'zpool_create_features_003_pos', 'zpool_create_features_004_neg',
     'zpool_create_tempname']
@@ -331,9 +339,14 @@ tests = ['zpool_remove_001_neg', 'zpool_remove_002_pos',
 [/opt/zfs-tests/tests/functional/cli_root/zpool_replace]
 tests = ['zpool_replace_001_neg']
 
+[/opt/zfs-tests/tests/functional/cli_root/zpool_resilver]
+tests = ['zpool_resilver_bad_args', 'zpool_resilver_restart']
+tags = ['functional', 'cli_root', 'zpool_resilver']
+
 [/opt/zfs-tests/tests/functional/cli_root/zpool_scrub]
 tests = ['zpool_scrub_001_neg', 'zpool_scrub_002_pos', 'zpool_scrub_003_pos',
-    'zpool_scrub_004_pos', 'zpool_scrub_005_pos']
+    'zpool_scrub_004_pos', 'zpool_scrub_005_pos', 'zpool_scrub_print_repairing',
+    'zpool_scrub_offline_device', 'zpool_scrub_multiple_copies']
 
 [/opt/zfs-tests/tests/functional/cli_root/zpool_set]
 tests = ['zpool_set_001_pos', 'zpool_set_002_neg', 'zpool_set_003_neg']
@@ -348,6 +361,9 @@ tests = ['zpool_upgrade_001_pos', 'zpool_upgrade_002_pos',
     'zpool_upgrade_003_pos', 'zpool_upgrade_004_pos', 'zpool_upgrade_005_neg',
     'zpool_upgrade_006_neg', 'zpool_upgrade_007_pos', 'zpool_upgrade_008_pos',
     'zpool_upgrade_009_neg']
+
+[/opt/zfs-tests/tests/functional/cli_root/zpool_sync]
+tests = ['zpool_sync_001_pos', 'zpool_sync_002_neg']
 
 [/opt/zfs-tests/tests/functional/cli_user/misc]
 tests = ['zdb_001_neg', 'zfs_001_neg', 'zfs_allow_001_neg',
@@ -458,6 +474,12 @@ tests = ['migration_001_pos', 'migration_002_pos', 'migration_003_pos',
 
 [/opt/zfs-tests/tests/functional/mmap]
 tests = ['mmap_read_001_pos', 'mmap_write_001_pos']
+
+[/opt/zfs-tests/tests/functional/mmp]
+tests = ['mmp_on_thread', 'mmp_on_uberblocks', 'mmp_on_off', 'mmp_interval',
+    'mmp_active_import', 'mmp_inactive_import', 'mmp_exported_import',
+    'mmp_write_uberblocks', 'mmp_reset_interval', 'multihost_history',
+    'mmp_on_zdb']
 
 [/opt/zfs-tests/tests/functional/mount]
 tests = ['umount_001', 'umountall_001']
