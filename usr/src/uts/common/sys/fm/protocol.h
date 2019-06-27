@@ -22,7 +22,9 @@
 /*
  * Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
  */
-
+/*
+ * Copyright 2019 Joyent, Inc.
+ */
 #ifndef	_SYS_FM_PROTOCOL_H
 #define	_SYS_FM_PROTOCOL_H
 
@@ -200,6 +202,7 @@ extern "C" {
 #define	FM_FMRI_SCHEME_LEGACY		"legacy-hc"
 #define	FM_FMRI_SCHEME_ZFS		"zfs"
 #define	FM_FMRI_SCHEME_SW		"sw"
+#define	FM_FMRI_SCHEME_SAS		"sas"
 
 /* Scheme versions */
 #define	FMD_SCHEME_VERSION0		0
@@ -225,6 +228,8 @@ extern "C" {
 #define	FM_ZFS_SCHEME_VERSION		ZFS_SCHEME_VERSION0
 #define	SW_SCHEME_VERSION0		0
 #define	FM_SW_SCHEME_VERSION		SW_SCHEME_VERSION0
+#define	SAS_SCHEME_VERSION0		0
+#define	FM_SAS_SCHEME_VERSION		SAS_SCHEME_VERSION0
 
 /* hc scheme member names */
 #define	FM_FMRI_HC_SERIAL_ID		"serial"

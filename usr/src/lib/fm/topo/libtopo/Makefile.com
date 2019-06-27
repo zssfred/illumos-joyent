@@ -20,7 +20,7 @@
 #
 #
 # Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
-# Copyright (c) 2019, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 LIBRARY = libtopo.a
@@ -35,6 +35,7 @@ BUILTINSRCS = \
 	mem.c \
 	mod.c \
 	pkg.c \
+	sas.c \
 	svc.c \
 	sw.c \
 	zfs.c
@@ -43,6 +44,7 @@ LIBSRCS = \
 	topo_2xml.c \
 	topo_alloc.c \
 	topo_builtin.c \
+	topo_digraph.c \
 	topo_error.c \
 	topo_file.c \
 	topo_fmri.c \

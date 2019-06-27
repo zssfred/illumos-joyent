@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2019, Joyent, Inc. All rights reserved.
+ * Copyright 2019 Joyent, Inc.
  */
 
 /*
@@ -315,7 +315,7 @@ topo_node_range_create(topo_mod_t *mod, tnode_t *pnode, const char *name,
 			    EMOD_NODE_DUP));
 	}
 
-	if (min < 0 || max < min)
+	if (max < min)
 		return (node_create_seterror(mod, pnode, NULL,
 		    EMOD_NODE_RANGE));
 
@@ -766,9 +766,7 @@ topo_node_unbind(tnode_t *node)
 	topo_node_unlock(node);
 
 	topo_dprintf(node->tn_hdl, TOPO_DBG_MODSVC,
-	    "node unbound %s=%d/%s=%d refs = %d\n",
-	    topo_node_name(node->tn_parent),
-	    topo_node_instance(node->tn_parent), node->tn_name,
+	    "node unbound %s=%d refs = %d\n", node->tn_name,
 	    node->tn_instance, node->tn_refs);
 
 	topo_node_rele(node);

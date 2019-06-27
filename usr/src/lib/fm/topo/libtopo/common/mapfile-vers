@@ -43,6 +43,12 @@ SYMBOL_VERSION SUNWprivate {
     global:
 	topo_close;
 	topo_debug_set;
+	topo_digraph_destroy;
+	topo_digraph_get;
+	topo_digraph_new;
+	topo_digraph_paths;
+	topo_edge_iter;
+	topo_edge_new;
 	topo_fmri_asru;
 	topo_fmri_compare;
 	topo_fmri_contains;
@@ -204,6 +210,10 @@ SYMBOL_VERSION SUNWprivate {
 	topo_snap_hold;
 	topo_snap_release;
 	topo_strerror;
+	topo_vertex_destroy;
+	topo_vertex_iter;
+	topo_vertex_node;
+	topo_vertex_new;
 	topo_walk_fini;
 	topo_walk_init;
 	topo_walk_step;

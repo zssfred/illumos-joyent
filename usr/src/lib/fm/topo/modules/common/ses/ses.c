@@ -23,7 +23,7 @@
  * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2012 Milan Jurik. All rights reserved.
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
- * Copyright (c) 2019, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #include <alloca.h>
@@ -98,7 +98,7 @@ typedef struct ses_enum_chassis {
 	ses_enum_target_t	*sec_target;
 	topo_instance_t		sec_instance;
 	topo_instance_t		sec_scinstance;
-	topo_instance_t		sec_maxinstance;
+	int			sec_maxinstance;
 	boolean_t		sec_hasdev;
 	boolean_t		sec_internal;
 } ses_enum_chassis_t;

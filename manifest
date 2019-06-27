@@ -3070,6 +3070,7 @@ f usr/include/fm/topo_hc.h 0644 root bin
 f usr/include/fm/topo_list.h 0644 root bin
 f usr/include/fm/topo_method.h 0644 root bin
 f usr/include/fm/topo_mod.h 0644 root bin
+f usr/include/fm/topo_sas.h 0644 root bin
 f usr/include/fmtmsg.h 0644 root bin
 f usr/include/fnmatch.h 0644 root bin
 f usr/include/form.h 0644 root bin

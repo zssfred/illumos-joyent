@@ -24,7 +24,7 @@
  * Use is subject to license terms.
  */
 /*
- * Copyright (c) 2018, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #ifndef _TOPO_TREE_H
@@ -118,6 +118,7 @@ struct topo_hdl {
 	di_prom_handle_t th_pi;		/* handle to root of prom tree */
 	topo_modhash_t *th_modhash;	/* Module hash */
 	topo_list_t th_trees;		/* Scheme-specific topo tree list */
+	topo_list_t th_digraphs;	/* Scheme-specific topo digraph list */
 	topo_alloc_t *th_alloc;		/* allocators */
 	int th_errno;			/* errno */
 	int th_debug;			/* Debug mask */
