@@ -37,11 +37,11 @@ struct topo_digraph
 {
 	topo_list_t	tdg_list;		/* next/prev pointers */
 	pthread_mutex_t	tdg_lock;
-	const char	*tdg_scheme;
+	const char	*tdg_scheme;		/* FMRI scheme */
 	topo_mod_t	*tdg_mod;		/* builtin enumerator mod */
-	topo_list_t	tdg_vertices;
-	uint_t		tdg_nvertices;
-	uint_t		tdg_nedges;
+	topo_list_t	tdg_vertices;		/* adjacency list */
+	uint_t		tdg_nvertices;		/* total num of vertices */
+	uint_t		tdg_nedges;		/* total num of edges */
 };
 
 struct topo_vertex
@@ -57,8 +57,6 @@ struct topo_edge
 	topo_list_t	tve_list;		/* next/prev pointers */
 	topo_vertex_t	*tve_vertex;
 };
-
-/* handle interfaces */
 
 #ifdef __cplusplus
 }

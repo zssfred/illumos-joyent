@@ -122,7 +122,7 @@ topo_vertex_new(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	pthread_mutex_lock(&tdg->tdg_lock);
 	topo_list_append(&tdg->tdg_vertices, vtx);
 	tdg->tdg_nvertices++;
-	pthread_mutex_lock(&tdg->tdg_lock);
+	pthread_mutex_unlock(&tdg->tdg_lock);
 
 	return (vtx);
 err:

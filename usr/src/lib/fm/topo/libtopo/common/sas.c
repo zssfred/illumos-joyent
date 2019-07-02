@@ -13,6 +13,56 @@
  * Copyright 2019 Joyent, Inc.
  */
 
+/*
+ * The sas FMRI scheme is intended to be used in conjuction with a
+ * digraph-based topology to represent a SAS fabric.
+ *
+ * There are four types of vertices in the topology:
+ *
+ * initiator
+ * ---------
+ * An initiator is a device on the SAS fabric that originates SCSI commands.
+ * Typically this is a SAS host-bus adapter (HBA) which can be built onto the
+ * system board or be part of a PCIe add-in card.
+ *
+ * port
+ * ----
+ * A port is a logical construct that represents a grouping of one or more
+ * PHYs.  A port with one PHY is known as a narrow port.  An example of a 
+ * narrow port would be the connection from an expander to a target device.
+ * A port with more than one PHY is known as a wide port.  A typical example
+ * of a wide port would be the connection from an initiator to an exander
+ * (typically 4 or 8 PHYs wide).
+ *
+ * expander
+ * --------
+ * An expander acts as both a port multiplexer and expander routes signals
+ * between one or more initiators and one or more targets or possibly a
+ * second layer of downstream expanders, depending on the size of the fabric.
+ *
+ * target
+ * ------
+ * A target (or end-device)  represents the device that is receiving
+ * SCSI commands from the an initiator.   Examples include disks and SSDs as
+ * well as SMP and SES management devices.  SES and SMP targets would
+ * be connected to an expander.  Disk/SSD targets can be connected to an
+ * expander or directly attached (via a narrow port) to an initiator.
+ *
+ * sas scheme FMRIs
+ * ----------------
+ * The resource in the sas FMRI scheme doesn't represent a discrete component
+ * like the hc or svc schemes.  Rather, the resource represents a unique
+ * path from a given initiator to a given target.  Hence, the first two
+ * node/instance pairs are always an initiator and port and last two pairs
+ * are always a port and a target. In between there may be one or two sets
+ * of expander and port pairs.
+ *
+ * e.g.
+ * sas:///initiator=<inst>/<port>=<inst>/.../port=<inst>/target=<inst>
+ *
+ * Node instance numbers are based on the local SAS address of the underlying
+ * component.
+ */
 #include <libnvpair.h>
 #include <fm/topo_mod.h>
 
@@ -94,6 +144,12 @@ static int
 sas_enum(topo_mod_t *mod, tnode_t *pnode, const char *name,
     topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
 {
+	/* 
+	 * XXX = this code simply hardcodes a minimal topology in order to
+	 * facilitate early unit testing of the topo_digraph code.  This
+	 * will be replaced by proper code that will discover and dynamically
+	 * enumerate the SAS fabric.
+	 */
 	topo_vertex_t *vi1, *vp1, *vp2, *vp3, *ve1, *vp4, *vt1;
 
 	/* (void) topo_method_register(mod, pnode, sas_methods); */
@@ -138,6 +194,9 @@ sas_release(topo_mod_t *mod, tnode_t *node)
 	topo_method_unregister_all(mod, node);
 }
 
+/*
+ * XXX still need to implement the two methods below
+ */
 /*ARGSUSED*/
 static int
 sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
