@@ -21,6 +21,7 @@
 
 #
 # Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
+# Copyright 2019 Joyent, Inc.
 #
 
 SUBDIRS = \
@@ -36,7 +37,8 @@ SUBDIRS = \
 	modules \
 	dicts \
 	eversholt \
-	notify
+	notify \
+	sastopo
 
 include ./Makefile.subdirs
 

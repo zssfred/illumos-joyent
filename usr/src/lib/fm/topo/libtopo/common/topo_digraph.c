@@ -91,7 +91,7 @@ topo_vertex_new(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	topo_vertex_t *vtx = NULL;
 	topo_digraph_t *tdg;
 
-	topo_mod_dprintf(mod, "Creating vertex %s=%" PRIu64 "", name, inst);
+	topo_mod_dprintf(mod, "Creating vertex %s=%" PRIx64 "", name, inst);
 	if ((tdg = find_digraph(mod)) == NULL) {
 		return (NULL);
 	}
@@ -126,7 +126,7 @@ topo_vertex_new(topo_mod_t *mod, const char *name, topo_instance_t inst)
 
 	return (vtx);
 err:
-	topo_mod_dprintf(mod, "failed to add create vertex %s=%" PRIu64 "(%s)",
+	topo_mod_dprintf(mod, "failed to add create vertex %s=%" PRIx64 "(%s)",
 	    name, inst, topo_strerror(topo_mod_errno(mod)));
 	topo_mod_free(mod, tn, sizeof (tnode_t));
 	topo_mod_free(mod, vtx, sizeof (topo_vertex_t));
@@ -188,8 +188,8 @@ topo_edge_new(topo_mod_t *mod, topo_vertex_t *from, topo_vertex_t *to)
 	topo_digraph_t *tdg;
 	topo_edge_t *e_from = NULL, *e_to = NULL;
 
-	topo_mod_dprintf(mod, "Adding edge from vertex %s=%" PRIu64 " to "
-	    "%s=%" PRIu64"", topo_node_name(from->tvt_node),
+	topo_mod_dprintf(mod, "Adding edge from vertex %s=%" PRIx64 " to "
+	    "%s=%" PRIx64"", topo_node_name(from->tvt_node),
 	    topo_node_instance(from->tvt_node),
 	    topo_node_name(to->tvt_node), topo_node_instance(to->tvt_node));
 
@@ -251,7 +251,7 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 	struct digraph_path *path;
 	char *pathstr;
 
-	asprintf(&pathstr, "%s/%s=%" PRIu64"",
+	asprintf(&pathstr, "%s/%s=%" PRIx64"",
 	    curr_path,
 	    topo_node_name(vtx->tvt_node),
 	    topo_node_instance(vtx->tvt_node));
@@ -294,7 +294,7 @@ topo_digraph_paths(topo_hdl_t *thp, topo_digraph_t *tdg, topo_vertex_t *from,
 	struct digraph_path *path;
 	uint_t i, npaths = 0;
 
-	asprintf(&curr_path, "sas:///%s=%" PRIu64"",
+	asprintf(&curr_path, "sas:///%s=%" PRIx64"",
 	    topo_node_name(from->tvt_node),
 	    topo_node_instance(from->tvt_node));
 
