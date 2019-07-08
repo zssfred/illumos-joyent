@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libnvpair.h>
 #include <fm/libtopo.h>
 #include <fm/topo_list.h>
 #include <fm/topo_sas.h>
@@ -87,19 +88,20 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if ((thp = topo_open(TOPO_VERSION, root, &err)) == NULL) {
-		(void) fprintf(stderr, "failed to get topo handle: %s\n",
-		    topo_strerror(err));
-		goto out;
-	}
 	if (debug) {
 		if (putenv("TOPOSASDEBUG=1") != 0) {
 			(void) fprintf(stderr, "Failed to set debug mode: "
 			    "%s\n", strerror(errno));
 			goto out;
 		}
-		topo_debug_set(thp, "module", "stderr");
 	}
+	if ((thp = topo_open(TOPO_VERSION, root, &err)) == NULL) {
+		(void) fprintf(stderr, "failed to get topo handle: %s\n",
+		    topo_strerror(err));
+		goto out;
+	}
+	if (debug)
+		topo_debug_set(thp, "module", "stderr");
 
 	if (topo_snap_hold(thp, NULL, &err) == NULL) {
 		(void) fprintf(stderr, "failed to take topo snapshot: %s\n",
@@ -137,7 +139,8 @@ main(int argc, char *argv[])
 			np = topo_digraph_paths(thp, tdg, ini->vtx, tgt->vtx,
 			    &paths);
 			if (np <= 0) {
-				(void) fprintf(stderr, "failed to find paths\n");
+				(void) fprintf(stderr, "failed to find "
+				    "paths\n");
 				goto out;
 			}
 			for (int i = 0; i < np; i++) {

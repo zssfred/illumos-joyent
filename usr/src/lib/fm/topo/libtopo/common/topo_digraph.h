@@ -39,6 +39,7 @@ struct topo_digraph
 	pthread_mutex_t	tdg_lock;
 	const char	*tdg_scheme;		/* FMRI scheme */
 	topo_mod_t	*tdg_mod;		/* builtin enumerator mod */
+	tnode_t		*tdg_rootnode;		/* see topo_digraph_new() */
 	topo_list_t	tdg_vertices;		/* adjacency list */
 	uint_t		tdg_nvertices;		/* total num of vertices */
 	uint_t		tdg_nedges;		/* total num of edges */

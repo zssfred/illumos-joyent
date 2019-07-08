@@ -165,8 +165,9 @@ topo_builtin_create(topo_hdl_t *thp, const char *rootdir)
 			}
 			topo_list_append(&thp->th_digraphs, tdg);
 			topo_mod_enter(mod);
-			if (mod->tm_info->tmi_ops->tmo_enum(mod, NULL, NULL, 0,
-			    0, mod->tm_priv, NULL) != 0) {
+			if (mod->tm_info->tmi_ops->tmo_enum(mod,
+			    tdg->tdg_rootnode, NULL, 0, 0, mod->tm_priv,
+			    NULL) != 0) {
 				/*
 				 * If we see a failure, note it in the handle
 				 * and drive on

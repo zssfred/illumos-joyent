@@ -49,6 +49,7 @@ topo_digraph_t *
 topo_digraph_new(topo_hdl_t *thp, topo_mod_t *mod, const char *scheme)
 {
 	topo_digraph_t *tdg;
+	tnode_t *tn = NULL;
 
 	if ((tdg = topo_mod_zalloc(mod, sizeof (topo_digraph_t))) == NULL) {
 		(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
@@ -61,6 +62,26 @@ topo_digraph_new(topo_hdl_t *thp, topo_mod_t *mod, const char *scheme)
 		(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
 		goto err;
 	}
+
+	/*
+	 * For digraph topologies, the "root" node, which gets passed in to
+	 * the scheme module's enum method is not part of the actual graph
+	 * structure per-se.
+	 * Its purpose is simply to provide a place on which to register the
+	 * scheme-specific methods.  Client code then invokes these methods via
+	 * the topo_fmri_* interfaces.
+	 */
+	if ((tn = topo_mod_zalloc(mod, sizeof (tnode_t))) == NULL)
+		goto err;
+
+	tn->tn_state = TOPO_NODE_ROOT | TOPO_NODE_INIT;
+	tn->tn_name = (char *)scheme;
+	tn->tn_instance = 0;
+	tn->tn_enum = mod;
+	tn->tn_hdl = thp;
+	topo_node_hold(tn);
+
+	tdg->tdg_rootnode = tn;
 
 	(void) pthread_mutex_init(&tdg->tdg_lock, NULL);
 

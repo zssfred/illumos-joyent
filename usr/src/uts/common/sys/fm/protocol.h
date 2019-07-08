@@ -334,9 +334,10 @@ extern "C" {
 #define	FM_FMRI_SW_CTXT_STACK			"stack"
 
 /* sas scheme member names */
+#define	FM_FMRI_SAS_VERSION		"sas-scheme-version"
 #define	FM_FMRI_SAS_PATH		"sas-path"
 #define	FM_FMRI_SAS_NAME		"sas-name"
-#define	FM_FMRI_SAS_ID			"sas-id"
+#define	FM_FMRI_SAS_ADDR		"sas-addr"
 
 extern nv_alloc_t *fm_nva_xcreate(char *, size_t);
 extern void fm_nva_xdestroy(nv_alloc_t *);
