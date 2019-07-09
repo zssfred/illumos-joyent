@@ -67,6 +67,7 @@
 #endif /* _HAVE_TEM_FIRMWARE */
 #include <sys/consplat.h>
 #include <sys/kd.h>
+#include <stdbool.h>
 
 extern int lz4_decompress(void *, void *, size_t, size_t, int);
 
@@ -431,10 +432,64 @@ env_screen_nounset(struct env_var *ev __unused)
 }
 
 static void
-tems_setup_terminal(struct vis_devinit *tp, size_t height, size_t width)
+tems_setup_font(screen_size_t height, screen_size_t width)
 {
 	bitmap_data_t *font_data;
 	int i;
+
+	/*
+	 * set_font() will select a appropriate sized font for
+	 * the number of rows and columns selected.  If we don't
+	 * have a font that will fit, then it will use the
+	 * default builtin font and adjust the rows and columns
+	 * to fit on the screen.
+	 */
+	font_data = set_font(&tems.ts_c_dimension.height,
+	    &tems.ts_c_dimension.width, height, width);
+
+	/*
+	 * The built in font is compressed, to use it, we
+	 * uncompress it into the allocated buffer.
+	 * To use loaded font, we assign the loaded buffer.
+	 * In case of next load, the previously loaded data
+	 * is freed by the process of loading the new font.
+	 */
+	if (tems.ts_font.vf_bytes == NULL) {
+		for (i = 0; i < VFNT_MAPS; i++) {
+			tems.ts_font.vf_map[i] =
+			    font_data->font->vf_map[i];
+		}
+
+		if (font_data->compressed_size != 0) {
+			/*
+			 * We only expect this allocation to
+			 * happen at startup, and therefore not to fail.
+			 */
+			tems.ts_font.vf_bytes =
+			    malloc(font_data->uncompressed_size);
+			if (tems.ts_font.vf_bytes == NULL)
+				panic("out of memory");
+			(void) lz4_decompress(
+			    font_data->compressed_data,
+			    tems.ts_font.vf_bytes,
+			    font_data->compressed_size,
+			    font_data->uncompressed_size, 0);
+		} else {
+			tems.ts_font.vf_bytes =
+			    font_data->font->vf_bytes;
+		}
+		tems.ts_font.vf_width = font_data->font->vf_width;
+		tems.ts_font.vf_height = font_data->font->vf_height;
+		for (i = 0; i < VFNT_MAPS; i++) {
+			tems.ts_font.vf_map_count[i] =
+			    font_data->font->vf_map_count[i];
+		}
+	}
+}
+
+static void
+tems_setup_terminal(struct vis_devinit *tp, size_t height, size_t width)
+{
 	char env[8];
 
 	tems.ts_pdepth = tp->depth;
@@ -444,18 +499,15 @@ tems_setup_terminal(struct vis_devinit *tp, size_t height, size_t width)
 
 	switch (tp->mode) {
 	case VIS_TEXT:
+		/* Set fake pixel dimensions to assist set_font() */
 		tems.ts_p_dimension.width = 0;
 		tems.ts_p_dimension.height = 0;
 		tems.ts_c_dimension.width = tp->width;
 		tems.ts_c_dimension.height = tp->height;
 		tems.ts_callbacks = &tem_text_callbacks;
 
-		snprintf(env, sizeof (env), "%d", tems.ts_c_dimension.height);
-		env_setenv("screen-#rows", EV_VOLATILE | EV_NOHOOK, env,
-		    env_noset, env_nounset);
-		snprintf(env, sizeof (env), "%d", tems.ts_c_dimension.width);
-		env_setenv("screen-#cols", EV_VOLATILE | EV_NOHOOK, env,
-		    env_noset, env_nounset);
+		tems_setup_font(16 * tp->height + BORDER_PIXELS,
+		    8 * tp->width + BORDER_PIXELS);
 
 		/* ensure the following are not set for text mode */
 		unsetenv("screen-height");
@@ -473,71 +525,11 @@ tems_setup_terminal(struct vis_devinit *tp, size_t height, size_t width)
 		}
 		tems.ts_c_dimension.height = (screen_size_t)height;
 		tems.ts_c_dimension.width = (screen_size_t)width;
-
 		tems.ts_p_dimension.height = tp->height;
 		tems.ts_p_dimension.width = tp->width;
-
 		tems.ts_callbacks = &tem_pix_callbacks;
 
-		/*
-		 * set_font() will select a appropriate sized font for
-		 * the number of rows and columns selected.  If we don't
-		 * have a font that will fit, then it will use the
-		 * default builtin font and adjust the rows and columns
-		 * to fit on the screen.
-		 */
-		font_data = set_font(&tems.ts_c_dimension.height,
-		    &tems.ts_c_dimension.width,
-		    tems.ts_p_dimension.height,
-		    tems.ts_p_dimension.width);
-
-		/*
-		 * The built in font is compressed, to use it, we
-		 * uncompress it into the allocated buffer.
-		 * To use loaded font, we assign the loaded buffer.
-		 * In case of next load, the previously loaded data
-		 * is freed by the process of loading the new font.
-		 */
-		tems.update_font = false;
-
-		if (tems.ts_font.vf_bytes == NULL) {
-			for (i = 0; i < VFNT_MAPS; i++) {
-				tems.ts_font.vf_map[i] =
-				    font_data->font->vf_map[i];
-			}
-
-			if (font_data->compressed_size != 0) {
-				/*
-				 * We only expect this allocation to
-				 * happen at startup, and therefore not to fail.
-				 */
-				tems.ts_font.vf_bytes =
-				    malloc(font_data->uncompressed_size);
-				if (tems.ts_font.vf_bytes == NULL)
-					panic("out of memory");
-				(void) lz4_decompress(
-				    font_data->compressed_data,
-				    tems.ts_font.vf_bytes,
-				    font_data->compressed_size,
-				    font_data->uncompressed_size, 0);
-			} else {
-				tems.ts_font.vf_bytes =
-				    font_data->font->vf_bytes;
-			}
-			tems.ts_font.vf_width = font_data->font->vf_width;
-			tems.ts_font.vf_height = font_data->font->vf_height;
-			for (i = 0; i < VFNT_MAPS; i++) {
-				tems.ts_font.vf_map_count[i] =
-				    font_data->font->vf_map_count[i];
-			}
-		}
-
-		snprintf(env, sizeof (env), "%d", tems.ts_c_dimension.height);
-		env_setenv("screen-#rows", EV_VOLATILE | EV_NOHOOK, env,
-		    env_noset, env_nounset);
-		snprintf(env, sizeof (env), "%d", tems.ts_c_dimension.width);
-		env_setenv("screen-#cols", EV_VOLATILE | EV_NOHOOK, env,
-		    env_noset, env_nounset);
+		tems_setup_font(tp->height, tp->width);
 
 		snprintf(env, sizeof (env), "%d", tems.ts_p_dimension.height);
 		env_setenv("screen-height", EV_VOLATILE | EV_NOHOOK, env,
@@ -546,25 +538,31 @@ tems_setup_terminal(struct vis_devinit *tp, size_t height, size_t width)
 		env_setenv("screen-width", EV_VOLATILE | EV_NOHOOK, env,
 		    env_noset, env_screen_nounset);
 
-		snprintf(env, sizeof (env), "%dx%d", tems.ts_font.vf_width,
-		    tems.ts_font.vf_height);
-		env_setenv("screen-font", EV_VOLATILE | EV_NOHOOK, env, NULL,
-		    NULL);
-
 		tems.ts_p_offset.y = (tems.ts_p_dimension.height -
 		    (tems.ts_c_dimension.height * tems.ts_font.vf_height)) / 2;
 		tems.ts_p_offset.x = (tems.ts_p_dimension.width -
 		    (tems.ts_c_dimension.width * tems.ts_font.vf_width)) / 2;
-
 		tems.ts_pix_data_size =
 		    tems.ts_font.vf_width * tems.ts_font.vf_height;
-
 		tems.ts_pix_data_size *= 4;
-
 		tems.ts_pdepth = tp->depth;
 
 		break;
 	}
+
+	tems.update_font = false;
+
+	snprintf(env, sizeof (env), "%d", tems.ts_c_dimension.height);
+	env_setenv("screen-#rows", EV_VOLATILE | EV_NOHOOK, env,
+	    env_noset, env_nounset);
+	snprintf(env, sizeof (env), "%d", tems.ts_c_dimension.width);
+	env_setenv("screen-#cols", EV_VOLATILE | EV_NOHOOK, env,
+	    env_noset, env_nounset);
+
+	snprintf(env, sizeof (env), "%dx%d", tems.ts_font.vf_width,
+	    tems.ts_font.vf_height);
+	env_setenv("screen-font", EV_VOLATILE | EV_NOHOOK, env, NULL,
+	    NULL);
 }
 
 /*
@@ -1185,6 +1183,35 @@ tem_setparam(struct tem_vt_state *tem, int count, int newparam)
 	}
 }
 
+static void
+tem_select_color(struct tem_vt_state *tem, text_color_t color, bool fg)
+{
+	if (tems.ts_pdepth >= 24 ||
+	    (color < 8 && tems.ts_pdepth < 24)) {
+		if (fg == true) {
+			tem->tvs_fg_color = color;
+			tem->tvs_flags &= ~TEM_ATTR_BRIGHT_FG;
+		} else {
+			tem->tvs_bg_color = color;
+			tem->tvs_flags &= ~TEM_ATTR_BRIGHT_BG;
+		}
+		return;
+	}
+
+	if (color > 15)
+		return;
+
+	/* Bright color and depth < 24 */
+	color -= 8;
+	if (fg == true) {
+		tem->tvs_fg_color = color;
+		tem->tvs_flags |= TEM_ATTR_BRIGHT_FG;
+	} else {
+		tem->tvs_bg_color = color;
+		tem->tvs_flags |= TEM_ATTR_BRIGHT_BG;
+	}
+}
+
 /*
  * select graphics mode based on the param vals stored in a_params
  */
@@ -1282,10 +1309,8 @@ tem_selgraph(struct tem_vt_state *tem)
 			case 5:	/* 256 colors */
 				count++;
 				curparam--;
-				if (tems.ts_pdepth < 24)
-					break;
-				tem->tvs_fg_color = tem->tvs_params[count];
-				tem->tvs_flags &= ~TEM_ATTR_BRIGHT_FG;
+				tem_select_color(tem, tem->tvs_params[count],
+				    true);
 				break;
 			default:
 				break;
@@ -1331,10 +1356,8 @@ tem_selgraph(struct tem_vt_state *tem)
 			case 5:	/* 256 colors */
 				count++;
 				curparam--;
-				if (tems.ts_pdepth < 24)
-					break;
-				tem->tvs_bg_color = tem->tvs_params[count];
-				tem->tvs_flags &= ~TEM_ATTR_BRIGHT_FG;
+				tem_select_color(tem, tem->tvs_params[count],
+				    false);
 				break;
 			default:
 				break;
