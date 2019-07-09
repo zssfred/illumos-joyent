@@ -167,13 +167,20 @@ topo_vertex_destroy(topo_mod_t *mod, topo_vertex_t *vtx)
 
 	topo_node_unbind(vtx->tvt_node);
 
-	for (edge = topo_list_next(&vtx->tvt_incoming); edge != NULL;
-	    edge = topo_list_next(edge)) {
-		topo_mod_free(mod, edge, sizeof (topo_edge_t));
+	edge = topo_list_next(&vtx->tvt_incoming);
+	while (edge != NULL) {
+		topo_edge_t *tmp = edge;
+
+		edge = topo_list_next(edge);
+		topo_mod_free(mod, tmp, sizeof (topo_edge_t));
 	}
-	for (edge = topo_list_next(&vtx->tvt_outgoing); edge != NULL;
-	    edge = topo_list_next(edge)) {
-		topo_mod_free(mod, edge, sizeof (topo_edge_t));
+
+	edge = topo_list_next(&vtx->tvt_outgoing);
+	while (edge != NULL) {
+		topo_edge_t *tmp = edge;
+
+		edge = topo_list_next(edge);
+		topo_mod_free(mod, tmp, sizeof (topo_edge_t));
 	}
 
 	topo_mod_free(mod, vtx, sizeof (topo_vertex_t));

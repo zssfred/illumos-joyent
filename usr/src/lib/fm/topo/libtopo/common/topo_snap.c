@@ -480,15 +480,22 @@ topo_snap_destroy(topo_hdl_t *thp)
 
 		topo_vertex_t *vtx;
 
+		if (tdg->tdg_nvertices == 0)
+			continue;
 		/*
-		 * We maintain an adjacency in the topo_digraph_t structure,
-		 * so we can just walk the list to destroy all the vertices.
+		 * We maintain an adjacency list in the topo_digraph_t
+		 * structure, so we can just walk the list to destroy all the
+		 * vertices.
 		 */
 		mod = tdg->tdg_mod;
-		for (vtx = topo_list_next(&tdg->tdg_vertices); vtx != NULL;
-		    vtx = topo_list_next(vtx)) {
-			topo_vertex_destroy(mod, vtx);
+		vtx = topo_list_next(&tdg->tdg_vertices);
+		while (vtx != NULL) {
+			topo_vertex_t *tmp = vtx;
+
+			vtx = topo_list_next(vtx);
+			topo_vertex_destroy(mod, tmp);
 		}
+		tdg->tdg_nvertices = 0;
 	}
 
 	/*
