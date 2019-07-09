@@ -147,7 +147,7 @@ main(int argc, char *argv[])
 				(void) printf("%s\n\n", paths[i]);
 				topo_hdl_strfree(thp, paths[i]);
 			}
-			topo_hdl_free(thp, *paths, np * sizeof (char *));
+			topo_hdl_free(thp, paths, np * sizeof (char *));
 		}
 	}
 	status = EXIT_SUCCESS;

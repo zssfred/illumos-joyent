@@ -330,7 +330,7 @@ topo_digraph_paths(topo_hdl_t *thp, topo_digraph_t *tdg, topo_vertex_t *from,
 	if (npaths == 0)
 		return (0);
 
-	*paths = calloc(npaths, sizeof (char *));
+	*paths = topo_hdl_zalloc(thp, npaths * sizeof (char *));
 	for (i = 0, path = topo_list_next(&all_paths); path != NULL;
 	    i++, path = topo_list_next(path)) {
 
