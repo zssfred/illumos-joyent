@@ -78,7 +78,7 @@
  * of expander and port pairs.
  *
  * e.g.
- * sas:///initiator=<inst>/<port>=<inst>/.../port=<inst>/target=<inst>
+ * sas://<auth>/initiator=<inst>/<port>=<inst>/.../port=<inst>/target=<inst>
  *
  * Node instance numbers are based on the local SAS address of the underlying
  * component.  Each initiator, expander and target will have a unique[1] SAS
@@ -124,7 +124,9 @@ static int sas_fmri_nvl2str(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_fmri_str2nvl(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
-static int sas_fmri_create(topo_mod_t *, tnode_t *, topo_version_t,
+static int sas_dev_fmri(topo_mod_t *, tnode_t *, topo_version_t,
+    nvlist_t *, nvlist_t **);
+static int sas_hc_fmri(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 
 static const topo_method_t sas_methods[] = {
@@ -132,8 +134,10 @@ static const topo_method_t sas_methods[] = {
 	    TOPO_STABILITY_INTERNAL, sas_fmri_nvl2str },
 	{ TOPO_METH_STR2NVL, TOPO_METH_STR2NVL_DESC, TOPO_METH_STR2NVL_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_fmri_str2nvl },
-	{ TOPO_METH_FMRI, TOPO_METH_FMRI_DESC, TOPO_METH_FMRI_VERSION,
-	    TOPO_STABILITY_INTERNAL, sas_fmri_create },
+	{ TOPO_METH_SAS2DEV, TOPO_METH_SAS2DEV_DESC, TOPO_METH_SAS2DEV_VERSION,
+	    TOPO_STABILITY_INTERNAL, sas_dev_fmri },
+	{ TOPO_METH_SAS2HC, TOPO_METH_SAS2HC_DESC, TOPO_METH_SAS2HC_VERSION,
+	    TOPO_STABILITY_INTERNAL, sas_hc_fmri },
 	{ NULL }
 };
 
@@ -302,9 +306,33 @@ sas_release(topo_mod_t *mod, tnode_t *node)
  * XXX still need to implement the two methods below
  */
 
-/*ARGSUSED*/
+/*
+ * This is a prop method that returns the dev-scheme FMRI of the component.
+ * This should be registered on the underlying nodes for initiator, expander
+ * and target vertices.
+ */
 static int
-sas_fmri_create(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+sas_dev_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+    nvlist_t *in, nvlist_t **out)
+{
+	if (version > TOPO_METH_FMRI_VERSION)
+		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
+
+	return (-1);
+}
+
+/*
+ * This is a prop method that returns the hc-scheme FMRI of the corresponding
+ * component in the hc-scheme topology.  This should be registered on the
+ * underlying nodes for initiator and non-SMP target vertices.
+ *
+ * For initiators this would be the corresponding pciexfn node.
+ * For disk/ssd targets, this would be thew corresponding disk node.  For SES
+ * targets, this would be the corresonding ses-enclosure node.  SMP targets
+ * are not represented in the hc-scheme topology.
+ */
+static int
+sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
 	if (version > TOPO_METH_FMRI_VERSION)
@@ -416,7 +444,7 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	char *fmristr, *tmp, *lastpair;
 	char *sasname;
 	nvlist_t *fmri = NULL, **sas_path = NULL;
-	uint_t npairs = 0, i = 0;
+	uint_t npairs = 0, i = 0, fmrilen;
 
 	if (version > TOPO_METH_STR2NVL_VERSION)
 		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
@@ -442,13 +470,26 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	/*
 	 * Count the number of "=" chars after the "sas:///" portion of the
 	 * FMRI to determine how big the sas-path array needs to be.
+	 *
+	 * We need to make a copy of the fmri string because strtok will
+	 * modify it.  We can't use topo_mod_strdup/strfree because
+	 * topo_mod_strfree will end up leaking part of the string because
+	 * of the NUL chars that strtok inserts - which will cause
+	 * topo_mod_strfree to miscalculate the length of the string.  So we
+	 * keep track of the length of the original string and use
+	 * topo_mod_zalloc/topo_mod_free.
 	 */
-	tmp = topo_mod_strdup(mod, fmristr + 7);
-	(void) strtok_r(tmp, "=", &lastpair);
+	fmrilen = strlen(fmristr);
+	if ((tmp = topo_mod_zalloc(mod, fmrilen + 1)) == NULL) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+	(void) strncpy(tmp, fmristr, fmrilen);
+	(void) strtok_r(tmp + 7, "=", &lastpair);
 	while (strtok_r(NULL, "=", &lastpair) != NULL)
 		npairs++;
 
-	topo_mod_strfree(mod, tmp);
+	topo_mod_free(mod, tmp, fmrilen + 1);
 
 	if ((sas_path = topo_mod_zalloc(mod, npairs + sizeof (nvlist_t *))) ==
 	    NULL) {

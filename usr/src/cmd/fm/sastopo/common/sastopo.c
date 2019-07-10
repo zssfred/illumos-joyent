@@ -17,12 +17,12 @@
 #define	EXIT_USAGE	2
 
 static const char *pname;
-static const char optstr[] = "dR:";
+static const char optstr[] = "djR:V";
 
 static void
 usage()
 {
-	(void) fprintf(stderr, "usage: %s [-d][-R root]\n\n", pname);
+	(void) fprintf(stderr, "usage: %s [-d][-j][-V][-R root]\n\n", pname);
 }
 
 struct sastopo_vertex {
@@ -60,13 +60,25 @@ vertex_cb(topo_hdl_t *thp, topo_vertex_t *vtx, void *arg)
 	return (TOPO_WALK_NEXT);
 }
 
+static void
+print_path(topo_path_t *path)
+{
+	(void) printf("%s\n\n", path->tsp_fmristr);
+}
+
+static void
+print_path_json(topo_path_t *path)
+{
+	/* XXX - add implementation */
+}
+
 int
 main(int argc, char *argv[])
 {
 	topo_hdl_t *thp = NULL;
 	topo_digraph_t *tdg;
 	char c, *root = "/";
-	boolean_t debug = B_FALSE;
+	boolean_t debug = B_FALSE, json = B_FALSE, verbose = B_FALSE;
 	int err, status = EXIT_FAILURE;
 	struct cb_arg cbarg = { 0 };
 	struct sastopo_vertex *ini, *tgt;
@@ -78,9 +90,13 @@ main(int argc, char *argv[])
 			switch (c) {
 			case 'd':
 				debug = B_TRUE;
+			case 'j':
+				json = B_TRUE;
 			case 'R':
 				root = optarg;
 				break;
+			case 'V':
+				verbose = B_TRUE;
 			default:
 				usage();
 				return (EXIT_USAGE);
@@ -134,7 +150,7 @@ main(int argc, char *argv[])
 		for (tgt = topo_list_next(&cbarg.tgt_list); tgt != NULL;
 		    tgt = topo_list_next(tgt)) {
 			int np;
-			char **paths;
+			topo_path_t **paths;
 
 			np = topo_digraph_paths(thp, tdg, ini->vtx, tgt->vtx,
 			    &paths);
@@ -144,10 +160,13 @@ main(int argc, char *argv[])
 				goto out;
 			}
 			for (int i = 0; i < np; i++) {
-				(void) printf("%s\n\n", paths[i]);
-				topo_hdl_strfree(thp, paths[i]);
+				if (json)
+					print_path_json(paths[i]);
+				else
+					print_path(paths[i]);
 			}
-			topo_hdl_free(thp, paths, np * sizeof (char *));
+			topo_hdl_free(thp, paths,
+			    np * sizeof (topo_path_t *));
 		}
 	}
 	status = EXIT_SUCCESS;

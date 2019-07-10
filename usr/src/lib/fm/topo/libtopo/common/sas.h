@@ -25,6 +25,14 @@ extern "C" {
 extern int sas_init(topo_mod_t *, topo_version_t);
 extern void sas_fini(topo_mod_t *);
 
+#define	TOPO_METH_SAS2DEV		"sas_dev_fmri"
+#define	TOPO_METH_SAS2DEV_DESC		"compute dev-scheme FMRI"
+#define	TOPO_METH_SAS2DEV_VERSION	0
+
+#define	TOPO_METH_SAS2HC		"sas_hc_fmri"
+#define	TOPO_METH_SAS2HC_DESC		"compute hc-scheme FMRI"
+#define	TOPO_METH_SAS2HC_VERSION	0
+
 #ifdef	__cplusplus
 }
 #endif

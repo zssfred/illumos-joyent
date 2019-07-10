@@ -59,6 +59,17 @@ typedef struct topo_digraph topo_digraph_t;
 typedef struct topo_vertex topo_vertex_t;
 typedef struct topo_edge topo_edge_t;
 
+typedef struct topo_path {
+	const char	*tsp_fmristr;
+	nvlist_t	*tsp_fmri;
+	topo_list_t	tsp_components;
+} topo_path_t;
+
+typedef struct topo_path_component {
+	topo_list_t	tspc_link;
+	topo_vertex_t	*tspc_vertex;
+} topo_path_component_t;
+
 /*
  * The following functions, error codes and data structures are private
  * to libtopo snapshot consumers and enumerator modules.
@@ -412,7 +423,8 @@ extern tnode_t *topo_vertex_node(topo_vertex_t *);
 extern int topo_edge_iter(topo_hdl_t *, topo_vertex_t *,
     int (*)(topo_hdl_t *, topo_edge_t *, void *), void *);
 extern int topo_digraph_paths(topo_hdl_t *, topo_digraph_t *,
-    topo_vertex_t *, topo_vertex_t *, char ***);
+    topo_vertex_t *, topo_vertex_t *, topo_path_t ***);
+extern void topo_path_destroy(topo_hdl_t *, topo_path_t *);
 
 /*
  * Interfaces for converting sensor/indicator types, units, states, etc to

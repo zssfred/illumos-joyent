@@ -163,6 +163,7 @@ SYMBOL_VERSION SUNWprivate {
 	topo_node_setspecific;
 	topo_node_unbind;
 	topo_open;
+	topo_path_destroy;
 	topo_pgroup_create;
 	topo_pgroup_destroy;
 	topo_pgroup_info;
