@@ -333,6 +333,7 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
 			goto err;
 		}
+
 		pathcomp->tspc_vertex = vtx;
 		topo_list_append(&path->tsp_components, pathcomp);
 
@@ -340,7 +341,15 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 			/* errno set */
 			goto err;
 		}
+
 		path->tsp_fmri = fmri;
+
+		/* Workaround for topo_fmri_str2nvl memory stomping. */
+		if ((path->tsp_fmristr = topo_hdl_strdup(thp, pathstr)) ==
+		    NULL) {
+			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+			goto err;
+		}
 
 		pathnode->dgp_path = path;
 

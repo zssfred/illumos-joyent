@@ -63,7 +63,7 @@ vertex_cb(topo_hdl_t *thp, topo_vertex_t *vtx, void *arg)
 static void
 print_path(topo_path_t *path)
 {
-	(void) printf("%s\n\n", path->tsp_fmristr);
+	(void) printf("%s\n", path->tsp_fmristr);
 }
 
 static void

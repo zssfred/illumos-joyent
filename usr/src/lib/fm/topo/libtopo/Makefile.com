@@ -91,7 +91,7 @@ LINTFLAGS64 = -msux -m64
 
 $(DYNLIB)  := LDLIBS += \
 	-lnvpair -lelf -lumem -lxml2 -lkstat -luuid -ldevinfo \
-	-lsmbios -lc -ldevid -lipmi -lscf -lpcidb
+	-lsmbios -lc -ldevid -lipmi -lscf -lpcidb -lSMHBAAPI
 
 $(LINTLIB) := SRCS = $(SRCDIR)/$(LINTSRC)
 $(LINTLIB) := LINTFLAGS = -nsvx

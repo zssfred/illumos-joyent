@@ -120,6 +120,8 @@
 #include <topo_subr.h>
 #include "sas.h"
 
+#include <smhbaapi.h>
+
 static int sas_fmri_nvl2str(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_fmri_str2nvl(topo_mod_t *, tnode_t *, topo_version_t,
@@ -215,17 +217,247 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	return (vtx);
 }
 
-/*ARGSUSED*/
-static int
-sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
-    topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
+uint64_t
+wwn_to_uint64(HBA_WWN wwn)
 {
-	if (topo_method_register(mod, rnode, sas_methods) != 0) {
-		topo_mod_dprintf(mod, "failed to register scheme methods");
-		/* errno set */
-		return (-1);
+	uint64_t res;
+	(void) memcpy(&res, &wwn, sizeof(uint64_t));
+	return (ntohll(res));
+}
+
+typedef struct sas_node {
+	SMHBA_PORTATTRIBUTES attrs;
+	SMHBA_SAS_PORT sas_attr;
+	uint64_t local_wwn;
+	uint64_t att_wwn;
+} sas_node_t;
+
+int
+process_ports(topo_mod_t *mod, HBA_HANDLE *handle, uint32_t port,
+    uint32_t num_disc_ports, topo_vertex_t *upstream, uint64_t upstream_sasaddr)
+{
+	int ret = 0;
+	int i;
+
+	topo_mod_dprintf(mod, "process_ports\n");
+
+	for (i = 0; i < num_disc_ports; i++) {
+		sas_node_t *device_node;
+		SMHBA_SAS_PORT *sas_port;
+		const char *vertex_type;
+		topo_vertex_t *down_port_vertex, *att_port_vertex, *device_vertex;
+		uint64_t att_wwn, local_wwn;
+
+		device_node = topo_mod_zalloc(mod, sizeof(sas_node_t));
+		device_node->attrs.PortSpecificAttribute.SASPort =
+		    &device_node->sas_attr;
+
+		if ((ret = SMHBA_GetDiscoveredPortAttributes(*handle, port, i,
+		    &device_node->attrs)) != HBA_STATUS_OK) {
+			topo_mod_dprintf(mod, "failed to get disc port attrs"
+			    "for port %d:%d (%d)\n", port, i, ret);
+			goto done;
+		}
+
+		/* XXX skip these? */
+		if (device_node->attrs.PortState != HBA_PORTSTATE_ONLINE) {
+			topo_mod_dprintf(mod, "Port %d not online\n", i);
+			continue;
+		}
+
+		sas_port = device_node->attrs.PortSpecificAttribute.SASPort;
+		local_wwn = wwn_to_uint64(sas_port->LocalSASAddress);
+		att_wwn = wwn_to_uint64(sas_port->AttachedSASAddress);
+
+		if (att_wwn == upstream_sasaddr) {
+			switch (device_node->attrs.PortType) {
+			case HBA_PORTTYPE_SASEXPANDER:
+				vertex_type = TOPO_VTX_EXPANDER;
+				break;
+			case HBA_PORTTYPE_SATADEVICE:
+			case HBA_PORTTYPE_SASDEVICE:
+				vertex_type = TOPO_VTX_TARGET;
+				break;
+			default:
+				topo_mod_dprintf(mod, "unrecognized port type:"
+				    "%d\n", device_node->attrs.PortType);
+				ret = -1;
+				topo_mod_free(mod, device_node,
+				    sizeof(sas_node_t));
+				goto done;
+			}
+
+			att_port_vertex = sas_create_vertex(mod, TOPO_VTX_PORT,
+			    att_wwn);
+			topo_edge_new(mod, upstream, att_port_vertex);
+
+			if ((down_port_vertex = sas_create_vertex(mod, TOPO_VTX_PORT,
+			    local_wwn)) == NULL) {
+				ret = -1;
+				topo_mod_free(mod, device_node,
+				    sizeof(sas_node_t));
+				goto done;
+			}
+
+			if ((device_vertex = sas_create_vertex(mod, vertex_type,
+			    local_wwn)) == NULL) {
+				ret = -1;
+				topo_mod_free(mod, device_node,
+				    sizeof(sas_node_t));
+				goto done;
+			}
+
+			/* Store the node's data */
+			topo_node_setspecific(device_vertex->tvt_node,
+			    device_node);
+
+			if (topo_edge_new(mod, att_port_vertex, down_port_vertex) != 0 ||
+			    topo_edge_new(mod, down_port_vertex,
+			    device_vertex) != 0) {
+
+				ret = -1;
+				goto done;
+			}
+
+			if (device_node->attrs.PortType ==
+			    HBA_PORTTYPE_SASEXPANDER) {
+				if ((ret = process_ports(mod, handle, port,
+				    num_disc_ports, device_vertex,
+				    local_wwn)) != HBA_STATUS_OK) {
+
+					ret = -1;
+					topo_mod_free(mod, device_node,
+					    sizeof(sas_node_t));
+					goto done;
+				}
+			}
+		}
 	}
 
+done:
+	return ret;
+}
+
+int
+process_hba(topo_mod_t *mod, uint_t hba_index)
+{
+	HBA_STATUS status;
+	HBA_HANDLE handle;
+	SMHBA_ADAPTERATTRIBUTES attrs;
+	HBA_UINT32 num_ports;
+	int i;
+	int ret = 0;
+
+	char aname[256];
+	topo_vertex_t *hba;
+
+	if ((status = HBA_GetAdapterName(hba_index, aname)) != 0) {
+		ret = -1;
+		goto done;
+	}
+	topo_mod_dprintf(mod, "adapter name: %s\n", aname);
+
+	if (aname[0] == '\0') {
+		topo_mod_dprintf(mod, "invalid adapter name\n");
+		ret = -1;
+		goto done;
+	}
+
+	if ((handle = HBA_OpenAdapter(aname)) == 0) {
+		topo_mod_dprintf(mod, "couldn't open adapter '%s'\n", aname);
+		ret = -1;
+		goto done;
+	}
+
+	if ((status = SMHBA_GetAdapterAttributes(handle, &attrs)) !=
+	    HBA_STATUS_OK) {
+		topo_mod_dprintf(mod, "couldn't get adapter attributes"
+		    " for '%s'\n", aname);
+		ret = -1;
+		goto done;
+	}
+
+	if ((status = SMHBA_GetNumberOfPorts(handle, &num_ports)) !=
+	    HBA_STATUS_OK) {
+		topo_mod_dprintf(mod, "couldn't get number of ports"
+		    " for '%s'\n", aname);
+		ret = -1;
+		goto done;
+	}
+
+	topo_mod_dprintf(mod, "num ports: %d\n", num_ports);
+
+	for (i = 0; i < num_ports; i++) {
+		SMHBA_PORTATTRIBUTES *port_attrs;
+		SMHBA_SAS_PORT *sas_port;
+		uint64_t local_wwn, att_wwn;
+		HBA_UINT32 num_disc_ports;
+
+		sas_node_t *hba_node;
+		hba_node = topo_mod_zalloc(mod, sizeof(sas_node_t));
+		hba_node->attrs.PortSpecificAttribute.SASPort =
+		    &hba_node->sas_attr;
+		
+		port_attrs = &hba_node->attrs;
+		sas_port = &hba_node->sas_attr;
+
+		topo_mod_dprintf(mod, "processing port: %d\n", i);
+
+		if ((status = SMHBA_GetAdapterPortAttributes(handle, i,
+		    port_attrs)) != HBA_STATUS_OK) {
+
+			topo_mod_dprintf(mod, "couldn't get port attrs for"
+				" '%s' port %d (%d)\n", aname, i, status);
+			ret = -1;
+			topo_mod_free(mod, hba_node, sizeof(sas_node_t));
+			goto done;
+		}
+
+		/* XXX make sure this is a SAS port, not FC. */
+		topo_mod_dprintf(mod, "type: %d\n", port_attrs->PortType);
+
+		local_wwn = wwn_to_uint64(sas_port->LocalSASAddress);
+		att_wwn = wwn_to_uint64(sas_port->AttachedSASAddress);
+
+		/* XXX we still want to add this to topo, right? */
+		/*
+		if (port_attrs->PortState != HBA_PORTSTATE_ONLINE) {
+			continue;
+		}
+		*/
+
+		if ((hba = sas_create_vertex(mod,
+		    TOPO_VTX_INITIATOR, local_wwn)) == NULL) {
+			ret = -1;
+			topo_mod_free(mod, hba_node, sizeof(sas_node_t));
+			goto done;
+		}
+
+		/* XXX unique per HBA or per port? */
+		hba_node->local_wwn = local_wwn;
+		hba_node->att_wwn = att_wwn;
+
+		num_disc_ports = sas_port->NumberofDiscoveredPorts;
+		ret = process_ports(mod, &handle, i, num_disc_ports, hba,
+		    local_wwn);
+		if (ret != 0) {
+			topo_mod_free(mod, hba_node, sizeof(sas_node_t));
+			goto done;
+		}
+	}
+
+done:
+	/* XXX free hba sas_node_t */
+	HBA_CloseAdapter(handle);
+	topo_mod_dprintf(mod, "done processing hba '%s'\n", aname);
+	return (ret);
+}
+
+/* ARGSUSED */
+static int
+fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
+    topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
+{
 	/*
 	 * XXX - this code simply hardcodes a minimal topology in order to
 	 * facilitate early unit testing of the topo_digraph code.  This
@@ -234,10 +466,16 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	 */
 	topo_vertex_t *ini, *ini_p1, *exp_in1, *exp, *exp_out1, *exp_out2,
 	    *tgt1_p1, *tgt2_p1, *tgt1, *tgt2;
+
+	topo_vertex_t *exp_out3, *tgt3_p1, *tgt3, *exp2, *exp2_in1, *exp2_out1;
+
 	uint64_t ini_addr = 0x5003048023567a00;
 	uint64_t exp_addr = 0x500304801861347f;
 	uint64_t tg1_addr = 0x5000cca2531b1025;
 	uint64_t tg2_addr = 0x5000cca2531a41b9;
+
+	uint64_t tg3_addr = 0xDEADBEED;
+	uint64_t exp2_addr = 0xDEADBEEF;
 
 	if ((ini = sas_create_vertex(mod, TOPO_VTX_INITIATOR, ini_addr)) ==
 	    NULL)
@@ -293,6 +531,79 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, tgt2_p1, tgt2) != 0)
 		return (-1);
 
+	/* Attach to second expander with one target device */
+	if ((exp_out3 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr)) ==
+	    NULL)
+		return (-1);
+	if (topo_edge_new(mod, exp, exp_out3) != 0)
+		return (-1);
+
+	if ((exp2_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp2_addr)) ==
+	    NULL) {
+		return (-1);
+	}
+	if (topo_edge_new(mod, exp_out3, exp2_in1) != 0)
+		return (-1);
+
+	if ((exp2 = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp2_addr)) ==
+	    NULL)
+		return (-1);
+	if (topo_edge_new(mod, exp2_in1, exp2) != 0)
+		return (-1);
+
+	if ((exp2_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr)) ==
+	    NULL)
+		return (-1);
+	if (topo_edge_new(mod, exp2, exp2_out1) != 0)
+		return (-1);
+
+	if ((tgt3_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr)) ==
+	    NULL)
+		return (-1);
+	if (topo_edge_new(mod, exp2_out1, tgt3_p1) != 0)
+		return (-1);
+
+	if ((tgt3 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg3_addr)) == NULL)
+		return (-1);
+	if (topo_edge_new(mod, tgt3_p1, tgt3) != 0)
+		return (-1);
+
+	return (0);
+}
+
+/*ARGSUSED*/
+static int
+sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
+    topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
+{
+	if (topo_method_register(mod, rnode, sas_methods) != 0) {
+		topo_mod_dprintf(mod, "failed to register scheme methods");
+		/* errno set */
+		return (-1);
+	}
+
+	if (B_FALSE)
+		fake_enum(mod, rnode, name, min, max, notused1, notused2);
+
+	HBA_STATUS status;
+	HBA_UINT32 num_adapters;
+	uint_t i;
+
+	if ((status = HBA_LoadLibrary()) != HBA_STATUS_OK) {
+		return (-1);
+	}
+
+	num_adapters = HBA_GetNumberOfAdapters();
+	if (num_adapters == 0) {
+		// XXX still try to iterate the stuff in /dev/smp/ ?
+		return (-1);
+	}
+
+	for (i = 0; i < num_adapters; i++) {
+		process_hba(mod, i);
+	}
+
+	HBA_FreeLibrary();
 	return (0);
 }
 
