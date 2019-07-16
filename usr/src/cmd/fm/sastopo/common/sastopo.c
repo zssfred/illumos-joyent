@@ -154,10 +154,23 @@ main(int argc, char *argv[])
 
 			np = topo_digraph_paths(thp, tdg, ini->vtx, tgt->vtx,
 			    &paths);
-			if (np <= 0) {
-				(void) fprintf(stderr, "failed to find "
-				    "paths\n");
+			if (np < 0) {
+				(void) fprintf(stderr, "topo_digraph_paths "
+				    "failed!\n");
 				goto out;
+			} else if (np == 0) {
+				tnode_t *ti, *tt;
+
+				ti = topo_vertex_node(ini->vtx);
+				tt = topo_vertex_node(tgt->vtx);
+				if (debug) {
+					(void) fprintf(stderr, "failed to find "
+					    "path between initiator=%" PRIx64
+					    " and target=%" PRIx64 "\n",
+					    topo_node_instance(ti),
+					    topo_node_instance(tt));
+				}
+				continue;
 			}
 			for (int i = 0; i < np; i++) {
 				if (json)
