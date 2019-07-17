@@ -343,14 +343,6 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 		}
 
 		path->tsp_fmri = fmri;
-
-		/* Workaround for topo_fmri_str2nvl memory stomping. */
-		if ((path->tsp_fmristr = topo_hdl_strdup(thp, pathstr)) ==
-		    NULL) {
-			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
-			goto err;
-		}
-
 		pathnode->dgp_path = path;
 
 		topo_list_append(all_paths, pathnode);

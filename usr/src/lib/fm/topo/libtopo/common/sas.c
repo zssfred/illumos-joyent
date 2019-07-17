@@ -802,7 +802,7 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 
 	topo_mod_free(mod, tmp, fmrilen + 1);
 
-	if ((sas_path = topo_mod_zalloc(mod, npairs + sizeof (nvlist_t *))) ==
+	if ((sas_path = topo_mod_zalloc(mod, npairs * sizeof (nvlist_t *))) ==
 	    NULL) {
 		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
 		goto err;
@@ -878,7 +878,7 @@ err:
 		for (i = 0; i < npairs; i++)
 			nvlist_free(sas_path[i]);
 
-		topo_mod_free(mod, sas_path, npairs + sizeof (nvlist_t *));
+		topo_mod_free(mod, sas_path, npairs * sizeof (nvlist_t *));
 	}
 	nvlist_free(fmri);
 	return (-1);
