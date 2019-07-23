@@ -605,10 +605,23 @@ sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
 		 * SAS addr as the downstream device's addr. This is the
 		 * opposite of every other device's addressing scheme.
 		 *
-		 * We skip making an edge if the downstream device is an HBA.
+		 * This only makes edges between HBAs and other devices when
+		 * the _upstream_ device is an HBA. This prevents the code from
+		 * creating circular links, or a link to every HBA port.
 		 */
-		if (upstream_info->si_local_wwn == info->si_att_wwn &&
-		    !info->si_is_hba) {
+		if ((info->si_local_wwn == upstream_info->si_att_wwn &&
+		    upstream_info->si_is_hba) || (upstream_info->si_local_wwn ==
+		    info->si_att_wwn && !info->si_is_hba &&
+		    !upstream_info->si_is_hba)) {
+			/*
+			 * Case: 'upstream' is an HBA attached to an expander or
+			 * disk.
+			 *
+			 * OR
+			 *
+			 * Case: Everything else. E.g. upstream is expander and
+			 * vtx is a disk or another expander.
+			 */
 			topo_vertex_t *u_port_vtx, *port_vtx;
 
 			if ((u_port_vtx = sas_create_vertex(iter_arg->sas_mod,
@@ -621,6 +634,10 @@ sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
 				return (TOPO_WALK_ERR);
 			}
 
+			if (topo_edge_new(iter_arg->sas_mod, port_vtx, vtx)
+			    != 0)
+				return (TOPO_WALK_ERR);
+
 			if (topo_edge_new(iter_arg->sas_mod, u_vtx, u_port_vtx)
 			    != 0)
 				return (TOPO_WALK_ERR);
@@ -629,11 +646,12 @@ sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
 			    port_vtx) != 0)
 				return (TOPO_WALK_ERR);
 
-			if (topo_edge_new(iter_arg->sas_mod, port_vtx, vtx)
-			    != 0)
-				return (TOPO_WALK_ERR);
+		} else if (info->si_is_hba) {
+			/*
+			 * Case: Device is an HBA. We already created links in
+			 * the previous case.
+			 */
 		}
-
 		return (TOPO_WALK_NEXT);
 	}
 
@@ -652,9 +670,7 @@ sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
 		if ((dgp = topo_digraph_get(hdl, FM_FMRI_SCHEME_SAS)) == NULL)
 			return (TOPO_WALK_ERR);
 
-		return (topo_vertex_iter(hdl,
-		    topo_digraph_get(hdl, FM_FMRI_SCHEME_SAS),
-		    sas_digraph_link, &sub_arg));
+		return (topo_vertex_iter(hdl, dgp, sas_digraph_link, &sub_arg));
 	}
 
 	return (TOPO_WALK_NEXT);
