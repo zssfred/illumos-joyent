@@ -107,6 +107,23 @@
  * sas-id             DATA_TYPE_UINT64       SAS address (see above)
  *
  * XXX - what, if anything, should we put in the FMRI authority?
+ *
+ *
+ *
+ * Overview of SAS Topology Generation
+ * ===================================
+ * The SAS topology is iterated using this high-level logic:
+ *
+ * 1) Each HBA is discovered.
+ * 2) Each SAS port on each HBA is added to a list of ports that need to be
+ *    further discovered (search_list).
+ * 3) Create a digraph vertex for every device discovered. Some information is
+ *    stored with each vertex like its local WWN, attached WWN, and port
+ *    attributes.
+ * 4) Iterate through each vertex drawing edges between all connected
+ *    vertices. The connections are determined by matching local/attached WWN
+ *    pairs. E.g. a disk with an attached WWN of 0xDEADBEEF and an HBA with a
+ *    local WWN of 0xDEADBEEF are connected.
  */
 #include <libnvpair.h>
 #include <fm/topo_mod.h>
@@ -215,242 +232,6 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst)
 		    topo_strerror(err));
 	}
 	return (vtx);
-}
-
-uint64_t
-wwn_to_uint64(HBA_WWN wwn)
-{
-	uint64_t res;
-	(void) memcpy(&res, &wwn, sizeof(uint64_t));
-	return (ntohll(res));
-}
-
-typedef struct sas_node {
-	SMHBA_PORTATTRIBUTES attrs;
-	SMHBA_SAS_PORT sas_attr;
-	uint64_t local_wwn;
-	uint64_t att_wwn;
-} sas_node_t;
-
-int
-process_ports(topo_mod_t *mod, HBA_HANDLE *handle, uint32_t port,
-    uint32_t num_disc_ports, topo_vertex_t *upstream, uint64_t upstream_sasaddr)
-{
-	int ret = 0;
-	int i;
-
-	topo_mod_dprintf(mod, "process_ports\n");
-
-	for (i = 0; i < num_disc_ports; i++) {
-		sas_node_t *device_node;
-		SMHBA_SAS_PORT *sas_port;
-		const char *vertex_type;
-		topo_vertex_t *down_port_vertex, *att_port_vertex, *device_vertex;
-		uint64_t att_wwn, local_wwn;
-
-		device_node = topo_mod_zalloc(mod, sizeof(sas_node_t));
-		device_node->attrs.PortSpecificAttribute.SASPort =
-		    &device_node->sas_attr;
-
-		if ((ret = SMHBA_GetDiscoveredPortAttributes(*handle, port, i,
-		    &device_node->attrs)) != HBA_STATUS_OK) {
-			topo_mod_dprintf(mod, "failed to get disc port attrs"
-			    "for port %d:%d (%d)\n", port, i, ret);
-			goto done;
-		}
-
-		/* XXX skip these? */
-		if (device_node->attrs.PortState != HBA_PORTSTATE_ONLINE) {
-			topo_mod_dprintf(mod, "Port %d not online\n", i);
-			continue;
-		}
-
-		sas_port = device_node->attrs.PortSpecificAttribute.SASPort;
-		local_wwn = wwn_to_uint64(sas_port->LocalSASAddress);
-		att_wwn = wwn_to_uint64(sas_port->AttachedSASAddress);
-
-		if (att_wwn == upstream_sasaddr) {
-			switch (device_node->attrs.PortType) {
-			case HBA_PORTTYPE_SASEXPANDER:
-				vertex_type = TOPO_VTX_EXPANDER;
-				break;
-			case HBA_PORTTYPE_SATADEVICE:
-			case HBA_PORTTYPE_SASDEVICE:
-				vertex_type = TOPO_VTX_TARGET;
-				break;
-			default:
-				topo_mod_dprintf(mod, "unrecognized port type:"
-				    "%d\n", device_node->attrs.PortType);
-				ret = -1;
-				topo_mod_free(mod, device_node,
-				    sizeof(sas_node_t));
-				goto done;
-			}
-
-			att_port_vertex = sas_create_vertex(mod, TOPO_VTX_PORT,
-			    att_wwn);
-			topo_edge_new(mod, upstream, att_port_vertex);
-
-			if ((down_port_vertex = sas_create_vertex(mod, TOPO_VTX_PORT,
-			    local_wwn)) == NULL) {
-				ret = -1;
-				topo_mod_free(mod, device_node,
-				    sizeof(sas_node_t));
-				goto done;
-			}
-
-			if ((device_vertex = sas_create_vertex(mod, vertex_type,
-			    local_wwn)) == NULL) {
-				ret = -1;
-				topo_mod_free(mod, device_node,
-				    sizeof(sas_node_t));
-				goto done;
-			}
-
-			/* Store the node's data */
-			topo_node_setspecific(device_vertex->tvt_node,
-			    device_node);
-
-			if (topo_edge_new(mod, att_port_vertex, down_port_vertex) != 0 ||
-			    topo_edge_new(mod, down_port_vertex,
-			    device_vertex) != 0) {
-
-				ret = -1;
-				goto done;
-			}
-
-			if (device_node->attrs.PortType ==
-			    HBA_PORTTYPE_SASEXPANDER) {
-				if ((ret = process_ports(mod, handle, port,
-				    num_disc_ports, device_vertex,
-				    local_wwn)) != HBA_STATUS_OK) {
-
-					ret = -1;
-					topo_mod_free(mod, device_node,
-					    sizeof(sas_node_t));
-					goto done;
-				}
-			}
-		}
-	}
-
-done:
-	return ret;
-}
-
-int
-process_hba(topo_mod_t *mod, uint_t hba_index)
-{
-	HBA_STATUS status;
-	HBA_HANDLE handle;
-	SMHBA_ADAPTERATTRIBUTES attrs;
-	HBA_UINT32 num_ports;
-	int i;
-	int ret = 0;
-
-	char aname[256];
-	topo_vertex_t *hba;
-
-	if ((status = HBA_GetAdapterName(hba_index, aname)) != 0) {
-		ret = -1;
-		goto done;
-	}
-	topo_mod_dprintf(mod, "adapter name: %s\n", aname);
-
-	if (aname[0] == '\0') {
-		topo_mod_dprintf(mod, "invalid adapter name\n");
-		ret = -1;
-		goto done;
-	}
-
-	if ((handle = HBA_OpenAdapter(aname)) == 0) {
-		topo_mod_dprintf(mod, "couldn't open adapter '%s'\n", aname);
-		ret = -1;
-		goto done;
-	}
-
-	if ((status = SMHBA_GetAdapterAttributes(handle, &attrs)) !=
-	    HBA_STATUS_OK) {
-		topo_mod_dprintf(mod, "couldn't get adapter attributes"
-		    " for '%s'\n", aname);
-		ret = -1;
-		goto done;
-	}
-
-	if ((status = SMHBA_GetNumberOfPorts(handle, &num_ports)) !=
-	    HBA_STATUS_OK) {
-		topo_mod_dprintf(mod, "couldn't get number of ports"
-		    " for '%s'\n", aname);
-		ret = -1;
-		goto done;
-	}
-
-	topo_mod_dprintf(mod, "num ports: %d\n", num_ports);
-
-	for (i = 0; i < num_ports; i++) {
-		SMHBA_PORTATTRIBUTES *port_attrs;
-		SMHBA_SAS_PORT *sas_port;
-		uint64_t local_wwn, att_wwn;
-		HBA_UINT32 num_disc_ports;
-
-		sas_node_t *hba_node;
-		hba_node = topo_mod_zalloc(mod, sizeof(sas_node_t));
-		hba_node->attrs.PortSpecificAttribute.SASPort =
-		    &hba_node->sas_attr;
-		
-		port_attrs = &hba_node->attrs;
-		sas_port = &hba_node->sas_attr;
-
-		topo_mod_dprintf(mod, "processing port: %d\n", i);
-
-		if ((status = SMHBA_GetAdapterPortAttributes(handle, i,
-		    port_attrs)) != HBA_STATUS_OK) {
-
-			topo_mod_dprintf(mod, "couldn't get port attrs for"
-				" '%s' port %d (%d)\n", aname, i, status);
-			ret = -1;
-			topo_mod_free(mod, hba_node, sizeof(sas_node_t));
-			goto done;
-		}
-
-		/* XXX make sure this is a SAS port, not FC. */
-		topo_mod_dprintf(mod, "type: %d\n", port_attrs->PortType);
-
-		local_wwn = wwn_to_uint64(sas_port->LocalSASAddress);
-		att_wwn = wwn_to_uint64(sas_port->AttachedSASAddress);
-
-		/* XXX we still want to add this to topo, right? */
-		/*
-		if (port_attrs->PortState != HBA_PORTSTATE_ONLINE) {
-			continue;
-		}
-		*/
-
-		if ((hba = sas_create_vertex(mod,
-		    TOPO_VTX_INITIATOR, local_wwn)) == NULL) {
-			ret = -1;
-			topo_mod_free(mod, hba_node, sizeof(sas_node_t));
-			goto done;
-		}
-
-		/* XXX unique per HBA or per port? */
-		hba_node->local_wwn = local_wwn;
-		hba_node->att_wwn = att_wwn;
-
-		num_disc_ports = sas_port->NumberofDiscoveredPorts;
-		ret = process_ports(mod, &handle, i, num_disc_ports, hba,
-		    local_wwn);
-		if (ret != 0) {
-			topo_mod_free(mod, hba_node, sizeof(sas_node_t));
-			goto done;
-		}
-	}
-
-done:
-	/* XXX free hba sas_node_t */
-	HBA_CloseAdapter(handle);
-	topo_mod_dprintf(mod, "done processing hba '%s'\n", aname);
-	return (ret);
 }
 
 /* ARGSUSED */
@@ -571,6 +352,371 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	return (0);
 }
 
+uint64_t
+wwn_to_uint64(HBA_WWN wwn)
+{
+	uint64_t res;
+	(void) memcpy(&res, &wwn, sizeof (uint64_t));
+	return (ntohll(res));
+}
+
+typedef struct sas_info {
+	SMHBA_PORTATTRIBUTES	si_port_attrs;
+	SMHBA_SAS_PORT		si_port;
+	uint64_t		si_local_wwn;
+	uint64_t		si_att_wwn;
+	boolean_t		si_is_hba;
+} sas_info_t;
+
+typedef struct sas_search_node {
+	topo_list_t	ssn_search_list;
+	HBA_UINT32	ssn_hba_index;
+	HBA_UINT32	ssn_hba_port;
+	HBA_UINT32	ssn_disc_port;
+	HBA_HANDLE	ssn_hdl;
+} sas_search_node_t;
+
+typedef struct sas_dg_iter_arg {
+	topo_mod_t	*sas_mod;
+	topo_vertex_t	*sas_vtx;
+} sas_dg_iter_arg_t;
+
+/*
+ * Create a vertex for the discovered port represented by search_node.
+ */
+int
+sas_port_vtx_create(topo_mod_t *mod, topo_list_t *search_list,
+    sas_search_node_t *search_node)
+{
+	SMHBA_SAS_PORT *si_port;
+
+	topo_vertex_t *dev_vtx;
+	sas_info_t *dev_info;
+
+	const char *vtx_type;
+	int ret = 0;
+
+	dev_info = topo_mod_zalloc(mod, sizeof (sas_info_t));
+	dev_info->si_port_attrs.PortSpecificAttribute.SASPort =
+	    &dev_info->si_port;
+
+	if ((ret = SMHBA_GetDiscoveredPortAttributes(search_node->ssn_hdl,
+	    search_node->ssn_hba_port, search_node->ssn_disc_port,
+	    &dev_info->si_port_attrs)) != HBA_STATUS_OK) {
+
+		topo_mod_dprintf(mod, "failed to get disc port si_port_attrs"
+		    " for port %d:%d (%d)\n", search_node->ssn_hba_port,
+		    search_node->ssn_disc_port, ret);
+		goto done;
+	}
+
+	/* XXX skip these? */
+	if (dev_info->si_port_attrs.PortState != HBA_PORTSTATE_ONLINE) {
+		topo_mod_dprintf(mod, "Port %d not online\n",
+		    search_node->ssn_disc_port);
+		return (0);
+	}
+
+	si_port = dev_info->si_port_attrs.PortSpecificAttribute.SASPort;
+	dev_info->si_local_wwn = wwn_to_uint64(si_port->LocalSASAddress);
+	dev_info->si_att_wwn = wwn_to_uint64(si_port->AttachedSASAddress);
+
+	switch (dev_info->si_port_attrs.PortType) {
+	case HBA_PORTTYPE_SASEXPANDER:
+		vtx_type = TOPO_VTX_EXPANDER;
+		break;
+	case HBA_PORTTYPE_SATADEVICE:
+	case HBA_PORTTYPE_SASDEVICE:
+		vtx_type = TOPO_VTX_TARGET;
+		break;
+	default:
+		topo_mod_dprintf(mod, "unrecognized port type:"
+		    "%d\n", dev_info->si_port_attrs.PortType);
+		ret = -1;
+		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
+		goto done;
+	}
+
+	if ((dev_vtx = sas_create_vertex(mod, vtx_type,
+	    dev_info->si_local_wwn)) == NULL) {
+		ret = -1;
+		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
+		goto done;
+	}
+
+	topo_node_setspecific(dev_vtx->tvt_node, dev_info);
+
+done:
+	return (ret);
+}
+
+/*
+ * Open the HBA pointed at by search_node and investigate it.
+ *
+ * First this will create a vertex for each HBA port discovered. Metadata is
+ * stored  with the vertex, including the relevant information needed for
+ * identifying connections between the HBA and devices attached to it.
+ *
+ * Each HBA port's discovered ports are then iterated over. The discovered ports
+ * are generally things that the HBA is connected to (e.g. disks, expanders).
+ * Each discovered port is added to search_list to be investigated in a later
+ * step (sas_port_vtx_create).
+ */
+int
+sas_hba_port_discover(topo_mod_t *mod, topo_list_t *search_list,
+    sas_search_node_t *search_node)
+{
+	HBA_STATUS status;
+	HBA_HANDLE handle;
+	SMHBA_ADAPTERATTRIBUTES attrs;
+	HBA_UINT32 num_ports, hba_index, i, j;
+
+	int ret = 0;
+	char aname[256];
+
+	hba_index = search_node->ssn_hba_index;
+
+	if ((status = HBA_GetAdapterName(hba_index, aname)) != 0) {
+		ret = -1;
+		goto done;
+	}
+	topo_mod_dprintf(mod, "adapter name: %s\n", aname);
+
+	if (aname[0] == '\0') {
+		topo_mod_dprintf(mod, "invalid adapter name\n");
+		ret = -1;
+		goto done;
+	}
+
+	if ((handle = HBA_OpenAdapter(aname)) == 0) {
+		topo_mod_dprintf(mod, "couldn't open adapter '%s'\n", aname);
+		ret = -1;
+		goto done;
+	}
+
+	if ((status = SMHBA_GetAdapterAttributes(handle, &attrs)) !=
+	    HBA_STATUS_OK) {
+		topo_mod_dprintf(mod, "couldn't get adapter attributes"
+		    " for '%s'\n", aname);
+		ret = -1;
+		goto done;
+	}
+
+	if ((status = SMHBA_GetNumberOfPorts(handle, &num_ports)) !=
+	    HBA_STATUS_OK) {
+		topo_mod_dprintf(mod, "couldn't get number of ports"
+		    " for '%s'\n", aname);
+		ret = -1;
+		goto done;
+	}
+
+	for (i = 0; i < num_ports; i++) {
+		SMHBA_PORTATTRIBUTES *attrs;
+		SMHBA_SAS_PORT *si_port;
+		HBA_UINT32 num_disc_ports;
+
+		topo_vertex_t *hba;
+		sas_info_t *hba_info;
+
+		hba_info = topo_mod_zalloc(mod, sizeof (sas_info_t));
+		hba_info->si_port_attrs.PortSpecificAttribute.SASPort =
+		    &hba_info->si_port;
+
+		attrs = &hba_info->si_port_attrs;
+		si_port = &hba_info->si_port;
+
+		if ((status = SMHBA_GetAdapterPortAttributes(handle, i,
+		    attrs)) != HBA_STATUS_OK) {
+
+			topo_mod_dprintf(mod, "couldn't get port attrs for"
+			    " '%s' port %d (%d)\n", aname, i, status);
+			ret = -1;
+			topo_mod_free(mod, hba_info, sizeof (sas_info_t));
+			goto done;
+		}
+
+		hba_info->si_is_hba = B_TRUE;
+		hba_info->si_local_wwn =
+		    wwn_to_uint64(si_port->LocalSASAddress);
+		hba_info->si_att_wwn =
+		    wwn_to_uint64(si_port->AttachedSASAddress);
+
+		/* XXX we still want to add this to topo, right? */
+		/*
+		 * if (attrs->PortState != HBA_PORTSTATE_ONLINE)
+		 */
+
+		/* XXX: One vertex per hba, or per HBA port? */
+		if ((hba = sas_create_vertex(mod,
+		    TOPO_VTX_INITIATOR, hba_info->si_local_wwn)) == NULL) {
+			ret = -1;
+			topo_mod_dprintf(mod, "failed to create vertex\n");
+			topo_mod_free(mod, hba_info, sizeof (sas_info_t));
+			goto done;
+		}
+		topo_node_setspecific(hba->tvt_node, hba_info);
+
+		num_disc_ports = si_port->NumberofDiscoveredPorts;
+		for (j = 0; j < num_disc_ports; j++) {
+			sas_search_node_t *search_node;
+			search_node = topo_mod_zalloc(mod,
+			    sizeof (sas_search_node_t));
+
+			/* XXX unique per HBA or per port? */
+			search_node->ssn_hba_index = hba_index;
+			search_node->ssn_hba_port = i;
+			search_node->ssn_disc_port = j;
+			search_node->ssn_hdl = handle;
+
+			/*
+			 * Store the discovered port so we can enumerate it
+			 * later.
+			 */
+			topo_list_append(search_list, search_node);
+		}
+	}
+
+done:
+	return (ret);
+}
+
+int
+sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
+{
+	sas_info_t *info = topo_node_getspecific(vtx->tvt_node);
+	sas_dg_iter_arg_t *iter_arg = (sas_dg_iter_arg_t *)arg;
+
+	if (info == NULL)
+		return (TOPO_WALK_NEXT);
+
+	if (iter_arg->sas_vtx != NULL) {
+		topo_vertex_t *u_vtx;
+
+		u_vtx = (topo_vertex_t *)iter_arg->sas_vtx;
+		sas_info_t *upstream_info =
+		    topo_node_getspecific(u_vtx->tvt_node);
+
+		/*
+		 * If this vertex's local port is the downstream vertex's
+		 * attached port are the same, then these two vertices are
+		 * connected.
+		 *
+		 * The special case is HBA links. The HBA reports its attached
+		 * SAS addr as the downstream device's addr. This is the
+		 * opposite of every other device's addressing scheme.
+		 *
+		 * We skip making an edge if the downstream device is an HBA.
+		 */
+		if (upstream_info->si_local_wwn == info->si_att_wwn &&
+		    !info->si_is_hba) {
+			topo_vertex_t *u_port_vtx, *port_vtx;
+
+			if ((u_port_vtx = sas_create_vertex(iter_arg->sas_mod,
+			    TOPO_VTX_PORT, upstream_info->si_local_wwn)) ==
+			    NULL) {
+				return (TOPO_WALK_ERR);
+			}
+			if ((port_vtx = sas_create_vertex(iter_arg->sas_mod,
+			    TOPO_VTX_PORT, info->si_local_wwn)) == NULL) {
+				return (TOPO_WALK_ERR);
+			}
+
+			if (topo_edge_new(iter_arg->sas_mod, u_vtx, u_port_vtx)
+			    != 0)
+				return (TOPO_WALK_ERR);
+
+			if (topo_edge_new(iter_arg->sas_mod, u_port_vtx,
+			    port_vtx) != 0)
+				return (TOPO_WALK_ERR);
+
+			if (topo_edge_new(iter_arg->sas_mod, port_vtx, vtx)
+			    != 0)
+				return (TOPO_WALK_ERR);
+		}
+
+		return (TOPO_WALK_NEXT);
+	}
+
+	/*
+	 * Expanders and HBAs contain WWNs that targets and expanders list
+	 * as their attached WWNs.
+	 */
+	if (info->si_is_hba || info->si_port_attrs.PortType ==
+	    HBA_PORTTYPE_SASEXPANDER) {
+
+		sas_dg_iter_arg_t sub_arg;
+		sub_arg.sas_mod = iter_arg->sas_mod;
+		sub_arg.sas_vtx = vtx;
+		topo_digraph_t *dgp;
+
+		if ((dgp = topo_digraph_get(hdl, FM_FMRI_SCHEME_SAS)) == NULL)
+			return (TOPO_WALK_ERR);
+
+		return (topo_vertex_iter(hdl,
+		    topo_digraph_get(hdl, FM_FMRI_SCHEME_SAS),
+		    sas_digraph_link, &sub_arg));
+	}
+
+	return (TOPO_WALK_NEXT);
+}
+
+void
+sas_topo_search(topo_mod_t *mod, topo_list_t *search_list)
+{
+	sas_search_node_t *search_node, *tmp;
+
+	tmp = NULL;
+
+	/*
+	 * Iterate over the search list until there's nothing left.
+	 *
+	 * This portion creates a vertex for each component discovered through
+	 * libsmhbaapi. The vertices are linked together with edges later.
+	 */
+	for (search_node = topo_list_next(search_list); search_node != NULL;
+	    search_node = topo_list_next(search_node)) {
+
+		if (search_node->ssn_hdl == NULL) {
+			/* No HBA handle, so we're starting with an HBA. */
+			sas_hba_port_discover(mod, search_list, search_node);
+		} else {
+			sas_port_vtx_create(mod, search_list, search_node);
+		}
+	}
+
+	/* Clean up now that we are done with the search list. */
+	for (search_node = topo_list_next(search_list); search_node != NULL;
+	    search_node = topo_list_next(search_node)) {
+
+		if (tmp != NULL)
+			topo_mod_free(mod, tmp, sizeof (sas_search_node_t));
+
+		/*
+		 * Close every handle that might be open. It's okay if this is
+		 * called more than once on a given handle.
+		 */
+		if (search_node->ssn_hdl != NULL) {
+			HBA_CloseAdapter(search_node->ssn_hdl);
+		}
+		tmp = search_node;
+	}
+	if (tmp != NULL)
+		topo_mod_free(mod, tmp, sizeof (sas_search_node_t));
+
+	sas_dg_iter_arg_t arg;
+	bzero(&arg, sizeof (sas_dg_iter_arg_t));
+	arg.sas_mod = mod;
+	arg.sas_vtx = NULL;
+
+	/* Create edges between vertices. */
+	if ((topo_vertex_iter(mod->tm_hdl,
+	    topo_digraph_get(mod->tm_hdl, FM_FMRI_SCHEME_SAS),
+	    sas_digraph_link, &arg)) != 0) {
+
+		topo_mod_dprintf(mod, "vertex iter failed\n");
+	}
+}
+
 /*ARGSUSED*/
 static int
 sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
@@ -586,8 +732,11 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		fake_enum(mod, rnode, name, min, max, notused1, notused2);
 
 	HBA_STATUS status;
-	HBA_UINT32 num_adapters;
-	uint_t i;
+	HBA_UINT32 num_adapters, i;
+	topo_list_t *search_list;
+
+	if ((search_list = topo_mod_zalloc(mod, sizeof (topo_list_t))) == NULL)
+		return (-1);
 
 	if ((status = HBA_LoadLibrary()) != HBA_STATUS_OK) {
 		return (-1);
@@ -599,9 +748,24 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		return (-1);
 	}
 
+	/*
+	 * Append a placeholder to the search list for every HBA discovered.
+	 *
+	 * Each of the HBAs will be further investigated in sas_topo_search.
+	 */
 	for (i = 0; i < num_adapters; i++) {
-		process_hba(mod, i);
+		sas_search_node_t *search_node;
+		if ((search_node = topo_mod_zalloc(mod,
+		    sizeof (sas_search_node_t))) == NULL) {
+			return (-1);
+		}
+		search_node->ssn_hba_index = i;
+
+		topo_list_append(search_list, search_node);
 	}
+
+	/* Do the work of mapping the SAS topology. */
+	sas_topo_search(mod, search_list);
 
 	HBA_FreeLibrary();
 	return (0);

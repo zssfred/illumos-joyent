@@ -42,6 +42,10 @@
  * Use is subject to license terms.
  */
 
+/*
+ * Copyright 2019 Joyent, Inc.
+ */
+
 #ifndef _SMHBAAPI_H_
 #define	_SMHBAAPI_H_
 
@@ -75,6 +79,7 @@ extern "C" {
 
 
 /* SM-HBA 6.4.1.1 Port Type */
+/* See hbaapi.h for types 1 - 21 */
 #define	HBA_PORTTYPE_SASDEVICE   30 /* SAS (SSP or STP) */
 #define	HBA_PORTTYPE_SATADEVICE  31 /* SATA Device, i.e. Direct Attach SATA */
 #define	HBA_PORTTYPE_SASEXPANDER 32 /* SAS Expander */
