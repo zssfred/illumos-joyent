@@ -218,7 +218,7 @@ di_physlotinfo_get(topo_mod_t *mp, di_node_t src, int bdf, int *slotnum,
 		 */
 		smbios_info_smbios_version(shp, &smbv);
 		if (smbv.smbv_major < 2 ||
-		    (smbv.smbv_major = 2 && smbv.smbv_minor < 6)) {
+		    (smbv.smbv_major == 2 && smbv.smbv_minor < 6)) {
 			bdf_supp = B_FALSE;
 		}
 
