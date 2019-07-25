@@ -21,9 +21,9 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ *
+ * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <string.h>
 #include <errno.h>
@@ -2623,7 +2623,7 @@ start_thread(ns_conn_mgmt_t *cmg) {
 	/*
 	 * start a thread to get and process config and server status changes
 	 */
-	if (thr_create(NULL, NULL, get_server_change,
+	if (thr_create(NULL, 0, get_server_change,
 	    (void *)cmg, THR_DETACHED, NULL) != 0) {
 		errnum = errno;
 		syslog(LOG_WARNING, NS_CONN_MSG_NO_PROCCHG_THREAD,

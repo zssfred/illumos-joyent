@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -212,8 +212,7 @@ smb_pre_nt_create_andx(smb_request_t *sr)
 			op->op_oplock_level = SMB_OPLOCK_EXCLUSIVE;
 	}
 
-	DTRACE_SMB_2(op__NtCreateX__start, smb_request_t *, sr,
-	    struct open_param *, op);
+	DTRACE_SMB_START(op__NtCreateX, smb_request_t *, sr); /* arg.open */
 
 	return ((rc == 0) ? SDRC_SUCCESS : SDRC_ERROR);
 }
@@ -221,7 +220,7 @@ smb_pre_nt_create_andx(smb_request_t *sr)
 void
 smb_post_nt_create_andx(smb_request_t *sr)
 {
-	DTRACE_SMB_1(op__NtCreateX__done, smb_request_t *, sr);
+	DTRACE_SMB_DONE(op__NtCreateX, smb_request_t *, sr);
 
 	if (sr->arg.open.dir != NULL) {
 		smb_ofile_release(sr->arg.open.dir);
@@ -291,12 +290,14 @@ smb_com_nt_create_andx(struct smb_request *sr)
 		op->fqi.fq_dnode = op->dir->f_node;
 	}
 
-	op->op_oplock_levelII = B_TRUE;
-
 	status = smb_common_open(sr);
 	if (status != NT_STATUS_SUCCESS) {
 		smbsr_status(sr, status, 0, 0);
 		return (SDRC_ERROR);
+	}
+	if (op->op_oplock_level != SMB_OPLOCK_NONE) {
+		/* Oplock req. in op->op_oplock_level etc. */
+		smb1_oplock_acquire(sr, B_TRUE);
 	}
 
 	/*
@@ -310,7 +311,7 @@ smb_com_nt_create_andx(struct smb_request *sr)
 	case STYPE_DISKTREE:
 	case STYPE_PRINTQ:
 		if (op->create_options & FILE_DELETE_ON_CLOSE)
-			smb_ofile_set_delete_on_close(of);
+			smb_ofile_set_delete_on_close(sr, of);
 		DirFlag = smb_node_is_dir(of->f_node) ? 1 : 0;
 		break;
 

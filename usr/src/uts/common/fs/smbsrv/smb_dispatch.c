@@ -195,10 +195,12 @@ smb_disp_table[SMB_COM_NUM] = {
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x17, 0 },		/* 0x17 023 */
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x18, 0 },		/* 0x18 024 */
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x19, 0 },		/* 0x19 025 */
-	{ "SmbReadRaw", SMB_SDT_OPS(invalid), 0x1A, 0 },	/* 0x1A 026 */
+	{ "SmbReadRaw", SMB_SDT_OPS(read_raw),			/* 0x1A 026 */
+	    0x1A, LANMAN1_0 },
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x1B, 0 },		/* 0x1B 027 */
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x1C, 0 },		/* 0x1C 028 */
-	{ "SmbWriteRaw", SMB_SDT_OPS(invalid), 0x1D, 0 },	/* 0x1D 029 */
+	{ "SmbWriteRaw", SMB_SDT_OPS(write_raw),		/* 0x1D 029 */
+	    0x1D, LANMAN1_0 },
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x1E, 0 },		/* 0x1E 030 */
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x1F, 0 },		/* 0x1F 031 */
 	{ "Invalid", SMB_SDT_OPS(invalid), 0x20, 0 },		/* 0x20 032 */
@@ -904,19 +906,8 @@ reply_ready:
 	smbsr_send_reply(sr);
 
 drop_connection:
-	if (disconnect) {
-		smb_rwx_rwenter(&session->s_lock, RW_WRITER);
-		switch (session->s_state) {
-		case SMB_SESSION_STATE_DISCONNECTED:
-		case SMB_SESSION_STATE_TERMINATED:
-			break;
-		default:
-			smb_soshutdown(session->sock);
-			session->s_state = SMB_SESSION_STATE_DISCONNECTED;
-			break;
-		}
-		smb_rwx_rwexit(&session->s_lock);
-	}
+	if (disconnect)
+		smb_session_disconnect(session);
 
 out:
 	if (sr != NULL) {
@@ -1229,14 +1220,14 @@ is_andx_com(unsigned char com)
 smb_sdrc_t
 smb_pre_invalid(smb_request_t *sr)
 {
-	DTRACE_SMB_1(op__Invalid__start, smb_request_t *, sr);
+	DTRACE_SMB_START(op__Invalid, smb_request_t *, sr);
 	return (SDRC_SUCCESS);
 }
 
 void
 smb_post_invalid(smb_request_t *sr)
 {
-	DTRACE_SMB_1(op__Invalid__done, smb_request_t *, sr);
+	DTRACE_SMB_DONE(op__Invalid, smb_request_t *, sr);
 }
 
 smb_sdrc_t

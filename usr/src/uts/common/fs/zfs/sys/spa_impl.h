@@ -45,6 +45,7 @@
 #include <sys/refcount.h>
 #include <sys/bplist.h>
 #include <sys/bpobj.h>
+#include <sys/dsl_crypt.h>
 #include <sys/zfeature.h>
 #include <sys/zthr.h>
 #include <zfeature_common.h>
@@ -281,6 +282,13 @@ struct spa {
 	uint64_t	spa_scan_pass_scrub_spent_paused; /* total paused */
 	uint64_t	spa_scan_pass_exam;	/* examined bytes per pass */
 	uint64_t	spa_scan_pass_issued;	/* issued bytes per pass */
+
+	/*
+	 * We are in the middle of a resilver, and another resilver
+	 * is needed once this one completes. This is set iff any
+	 * vdev_resilver_deferred is set.
+	 */
+	boolean_t	spa_resilver_deferred;
 	kmutex_t	spa_async_lock;		/* protect async state */
 	kthread_t	*spa_async_thread;	/* thread doing async task */
 	int		spa_async_suspended;	/* async tasks suspended */
@@ -367,6 +375,8 @@ struct spa {
 	uint64_t	spa_deadman_synctime;	/* deadman expiration timer */
 	uint64_t	spa_all_vdev_zaps;	/* ZAP of per-vd ZAP obj #s */
 	spa_avz_action_t	spa_avz_action;	/* destroy/rebuild AVZ? */
+	spa_keystore_t	spa_keystore;	/* loaded crypto keys */
+	uint64_t	spa_errata;	/* errata issues detected */
 
 	/*
 	 * spa_iokstat_lock protects spa_iokstat and

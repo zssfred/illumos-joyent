@@ -1239,6 +1239,8 @@ vdev_indirect_read_all(zio_t *zio)
 {
 	indirect_vsd_t *iv = zio->io_vsd;
 
+	ASSERT3U(zio->io_type, ==, ZIO_TYPE_READ);
+
 	for (indirect_split_t *is = list_head(&iv->iv_splits);
 	    is != NULL; is = list_next(&iv->iv_splits, is)) {
 		for (int i = 0; i < is->is_children; i++) {
@@ -1321,7 +1323,8 @@ vdev_indirect_io_start(zio_t *zio)
 		    vdev_indirect_child_io_done, zio));
 	} else {
 		iv->iv_split_block = B_TRUE;
-		if (zio->io_flags & (ZIO_FLAG_SCRUB | ZIO_FLAG_RESILVER)) {
+		if (zio->io_type == ZIO_TYPE_READ &&
+		    zio->io_flags & (ZIO_FLAG_SCRUB | ZIO_FLAG_RESILVER)) {
 			/*
 			 * Read all copies.  Note that for simplicity,
 			 * we don't bother consulting the DTL in the
@@ -1330,13 +1333,17 @@ vdev_indirect_io_start(zio_t *zio)
 			vdev_indirect_read_all(zio);
 		} else {
 			/*
-			 * Read one copy of each split segment, from the
-			 * top-level vdev.  Since we don't know the
-			 * checksum of each split individually, the child
-			 * zio can't ensure that we get the right data.
-			 * E.g. if it's a mirror, it will just read from a
-			 * random (healthy) leaf vdev.  We have to verify
-			 * the checksum in vdev_indirect_io_done().
+			 * If this is a read zio, we read one copy of each
+			 * split segment, from the top-level vdev.  Since
+			 * we don't know the checksum of each split
+			 * individually, the child zio can't ensure that
+			 * we get the right data. E.g. if it's a mirror,
+			 * it will just read from a random (healthy) leaf
+			 * vdev. We have to verify the checksum in
+			 * vdev_indirect_io_done().
+			 *
+			 * For write zios, the vdev code will ensure we write
+			 * to all children.
 			 */
 			for (indirect_split_t *is = list_head(&iv->iv_splits);
 			    is != NULL; is = list_next(&iv->iv_splits, is)) {
@@ -1374,7 +1381,7 @@ vdev_indirect_checksum_error(zio_t *zio,
 	void *bad_buf = abd_borrow_buf_copy(ic->ic_data, is->is_size);
 	abd_t *good_abd = is->is_good_child->ic_data;
 	void *good_buf = abd_borrow_buf_copy(good_abd, is->is_size);
-	zfs_ereport_post_checksum(zio->io_spa, vd, zio,
+	zfs_ereport_post_checksum(zio->io_spa, vd, &zio->io_bookmark, zio,
 	    is->is_target_offset, is->is_size, good_buf, bad_buf, &zbc);
 	abd_return_buf(ic->ic_data, bad_buf, is->is_size);
 	abd_return_buf(good_abd, good_buf, is->is_size);
@@ -1451,9 +1458,9 @@ vdev_indirect_all_checksum_errors(zio_t *zio)
 			vd->vdev_stat.vs_checksum_errors++;
 			mutex_exit(&vd->vdev_stat_lock);
 
-			zfs_ereport_post_checksum(zio->io_spa, vd, zio,
-			    is->is_target_offset, is->is_size,
-			    NULL, NULL, NULL);
+			zfs_ereport_post_checksum(zio->io_spa, vd,
+			    &zio->io_bookmark, zio, is->is_target_offset,
+			    is->is_size, NULL, NULL, NULL);
 		}
 	}
 }

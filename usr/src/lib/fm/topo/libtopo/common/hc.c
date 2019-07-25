@@ -22,7 +22,7 @@
 
 /*
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2019, Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #include <stdio.h>
@@ -154,6 +154,7 @@ static const hcc_t hc_canon[] = {
 	{ CENTERPLANE, TOPO_STABILITY_PRIVATE },
 	{ CHASSIS, TOPO_STABILITY_PRIVATE },
 	{ CHIP, TOPO_STABILITY_PRIVATE },
+	{ CHIPSET, TOPO_STABILITY_PRIVATE },
 	{ CHIP_SELECT, TOPO_STABILITY_PRIVATE },
 	{ CORE, TOPO_STABILITY_PRIVATE },
 	{ CONTROLLER, TOPO_STABILITY_PRIVATE },
@@ -205,6 +206,7 @@ static const hcc_t hc_canon[] = {
 	{ SUBCHASSIS, TOPO_STABILITY_PRIVATE },
 	{ SYSTEMBOARD, TOPO_STABILITY_PRIVATE },
 	{ TRANSCEIVER, TOPO_STABILITY_PRIVATE },
+	{ UFM, TOPO_STABILITY_PRIVATE },
 	{ USB_DEVICE, TOPO_STABILITY_PRIVATE },
 	{ XAUI, TOPO_STABILITY_PRIVATE },
 	{ XFP, TOPO_STABILITY_PRIVATE }

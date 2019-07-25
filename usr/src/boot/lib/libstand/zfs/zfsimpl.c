@@ -30,6 +30,7 @@
  *	Stand-alone ZFS file reader.
  */
 
+#include <sys/endian.h>
 #include <sys/stat.h>
 #include <sys/stdint.h>
 
@@ -62,6 +63,13 @@ static const char *features_for_read[] = {
 	"org.illumos:edonr",
 	"org.zfsonlinux:large_dnode",
 	"com.joyent:multi_vdev_crash_dump",
+	"com.delphix:spacemap_histogram",
+	"com.delphix:zpool_checkpoint",
+	"com.delphix:spacemap_v2",
+	"com.datto:encryption",
+	"com.datto:bookmark_v2",
+	"org.zfsonlinux:allocation_classes",
+	"com.datto:resilver_defer",
 	NULL
 };
 
@@ -106,8 +114,7 @@ zfs_alloc(size_t size)
 	char *ptr;
 
 	if (zfs_temp_ptr + size > zfs_temp_end) {
-		printf("ZFS: out of temporary buffer space\n");
-		for (;;) ;
+		panic("ZFS: out of temporary buffer space");
 	}
 	ptr = zfs_temp_ptr;
 	zfs_temp_ptr += size;
@@ -121,18 +128,14 @@ zfs_free(void *ptr, size_t size)
 
 	zfs_temp_ptr -= size;
 	if (zfs_temp_ptr != ptr) {
-		printf("ZFS: zfs_alloc()/zfs_free() mismatch\n");
-		for (;;) ;
+		panic("ZFS: zfs_alloc()/zfs_free() mismatch");
 	}
 }
 
 static int
 xdr_int(const unsigned char **xdr, int *ip)
 {
-	*ip = ((*xdr)[0] << 24)
-		| ((*xdr)[1] << 16)
-		| ((*xdr)[2] << 8)
-		| ((*xdr)[3] << 0);
+	*ip = be32dec(*xdr);
 	(*xdr) += 4;
 	return (0);
 }
@@ -140,10 +143,7 @@ xdr_int(const unsigned char **xdr, int *ip)
 static int
 xdr_u_int(const unsigned char **xdr, u_int *ip)
 {
-	*ip = ((*xdr)[0] << 24)
-		| ((*xdr)[1] << 16)
-		| ((*xdr)[2] << 8)
-		| ((*xdr)[3] << 0);
+	*ip = be32dec(*xdr);
 	(*xdr) += 4;
 	return (0);
 }
@@ -760,9 +760,8 @@ spa_create(uint64_t guid, const char *name)
 {
 	spa_t *spa;
 
-	if ((spa = malloc(sizeof(spa_t))) == NULL)
+	if ((spa = calloc(1, sizeof (spa_t))) == NULL)
 		return (NULL);
-	memset(spa, 0, sizeof(spa_t));
 	if ((spa->spa_name = strdup(name)) == NULL) {
 		free(spa);
 		return (NULL);
@@ -1366,7 +1365,7 @@ dnode_read(const spa_t *spa, const dnode_phys_t *dnode, off_t offset, void *buf,
 		/*
 		 * The buffer contains our data block. Copy what we
 		 * need from it and loop.
-		 */ 
+		 */
 		i = bsize - boff;
 		if (i > buflen) i = buflen;
 		memcpy(buf, &dnode_cache_buf[boff], i);
@@ -1422,7 +1421,7 @@ fzap_name_equal(const zap_leaf_t *zl, const zap_leaf_chunk_t *zc, const char *na
 	const char *p;
 
 	namelen = zc->l_entry.le_name_numints;
-			
+
 	nc = &ZAP_LEAF_CHUNK(zl, zc->l_entry.le_name_chunk);
 	p = name;
 	while (namelen > 0) {

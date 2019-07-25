@@ -22,7 +22,7 @@
  * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2017 Nexenta Systems, Inc.  All rights reserved.
  */
 
 /*
@@ -112,9 +112,12 @@ smb2_query_dir(smb_request_t *sr)
 		return (SDRC_ERROR);
 
 	status = smb2sr_lookup_fid(sr, &smb2fid);
+	of = sr->fid_ofile;
+
+	DTRACE_SMB2_START(op__QueryDirectory, smb_request_t *, sr);
+
 	if (status)
 		goto errout;
-	of = sr->fid_ofile;
 
 	/*
 	 * If there's an input buffer (search pattern), decode it.
@@ -250,24 +253,28 @@ smb2_query_dir(smb_request_t *sr)
 
 	of->f_seek_pos = od->d_offset;
 
-	if (status == NT_STATUS_NO_MORE_FILES) {
-		if (args.fa_fflags & SMB2_QDIR_FLAG_SINGLE) {
-			status = NT_STATUS_NO_SUCH_FILE;
-			goto errout;
-		}
-		/*
-		 * This is not an error, but a warning that can be
-		 * used to tell the client that this data return
-		 * is the last of the enumeration.  Returning this
-		 * warning now (with the data) saves the client a
-		 * round trip that would otherwise be needed to
-		 * find out it's at the end.
-		 */
-		sr->smb2_status = status;
-		status = 0;
+	if ((args.fa_fflags & SMB2_QDIR_FLAG_SINGLE) &&
+	    status == NT_STATUS_NO_MORE_FILES) {
+		status = NT_STATUS_NO_SUCH_FILE;
 	}
-	if (status)
-		goto errout;
+
+errout:
+	sr->smb2_status = status;
+	DTRACE_SMB2_DONE(op__QueryDirectory, smb_request_t *, sr);
+
+	/*
+	 * Note: NT_STATUS_NO_MORE_FILES is a warning
+	 * used to tell the client that this data return
+	 * is the last of the enumeration.  Returning this
+	 * warning now (with the data) saves the client a
+	 * round trip that would otherwise be needed to
+	 * find out it's at the end.
+	 */
+	if (status != 0 &&
+	    status != NT_STATUS_NO_MORE_FILES) {
+		smb2sr_put_error(sr, status);
+		return (SDRC_SUCCESS);
+	}
 
 	/*
 	 * SMB2 Query Directory reply
@@ -283,12 +290,10 @@ smb2_query_dir(smb_request_t *sr)
 	    &sr->raw_data);	/* C */
 	if (DataLen == 0)
 		(void) smb_mbc_encodef(&sr->reply, ".");
-	if (rc == 0)
-		return (SDRC_SUCCESS);
-	status = NT_STATUS_UNSUCCESSFUL;
 
-errout:
-	smb2sr_put_error(sr, status);
+	if (rc)
+		sr->smb2_status = NT_STATUS_INTERNAL_ERROR;
+
 	return (SDRC_SUCCESS);
 }
 
@@ -304,7 +309,7 @@ static uint32_t
 smb2_find_entries(smb_request_t *sr, smb_odir_t *od, smb2_find_args_t *args)
 {
 	smb_odir_resume_t odir_resume;
-	char 		*tbuf = NULL;
+	char		*tbuf = NULL;
 	size_t		tbuflen = 0;
 	uint16_t	count;
 	uint16_t	minsize;
@@ -432,7 +437,7 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 	smb_macinfo_t	*macinfo = &args->fa_mi;
 	uint8_t		buf83[26];
 	smb_msgbuf_t	mb;
-	int		namelen, padsz;
+	int		namelen;
 	int		shortlen = 0;
 	int		rc, starting_offset;
 	uint32_t	next_entry_offset;
@@ -642,11 +647,8 @@ smb2_find_mbc_encode(smb_request_t *sr, smb2_find_args_t *args)
 		return (NT_STATUS_BUFFER_OVERFLOW);
 
 	/* Next entry needs to be 8-byte aligned. */
-	padsz = sr->raw_data.chain_offset & 7;
-	if (padsz) {
-		padsz = 8 - padsz;
-		(void) smb_mbc_encodef(&sr->raw_data, "#.", padsz);
-	}
+	(void) smb_mbc_put_align(&sr->raw_data, 8);
+
 	next_entry_offset = sr->raw_data.chain_offset -	starting_offset;
 	(void) smb_mbc_poke(&sr->raw_data, starting_offset, "l",
 	    next_entry_offset);

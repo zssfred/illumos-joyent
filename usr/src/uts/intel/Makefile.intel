@@ -21,9 +21,10 @@
 #
 # Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
 # Copyright (c) 2013 Andrew Stormont.  All rights reserved.
-# Copyright 2019, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 # Copyright 2016 Garrett D'Amore <garrett@damore.org>
 # Copyright 2018 Nexenta Systems, Inc.
+# Copyright 2019 RackTop Systems
 #
 
 #
@@ -351,6 +352,8 @@ DRV_KMODS	+= trill
 DRV_KMODS	+= udp
 DRV_KMODS	+= udp6
 DRV_KMODS	+= ucode
+DRV_KMODS	+= ufm
+DRV_KMODS	+= ufmtest
 DRV_KMODS	+= ural
 DRV_KMODS	+= uath
 DRV_KMODS	+= urtw
@@ -644,7 +647,6 @@ MISC_KMODS	+= usba usba10 usbs49_fw
 MISC_KMODS	+= scsi_vhci_f_sym_hds
 MISC_KMODS	+= scsi_vhci_f_sym
 MISC_KMODS	+= scsi_vhci_f_tpgs
-MISC_KMODS	+= scsi_vhci_f_asym_sun
 MISC_KMODS	+= scsi_vhci_f_tape
 MISC_KMODS	+= scsi_vhci_f_tpgs_tape
 MISC_KMODS	+= fctl
@@ -752,3 +754,4 @@ LINTFLAGS	+= -D_MACHDEP -I$(UTSBASE)/i86pc
 #
 DRV_KMODS	+= amdf17nbdf
 DRV_KMODS	+= coretemp
+DRV_KMODS	+= pchtemp

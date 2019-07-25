@@ -31,7 +31,7 @@ VERS =		.1
 
 OBJS_LOCAL = \
 		fksmb_cred.o \
-		fksmb_dt.o \
+		fksmb_encrypt_pkcs.o \
 		fksmb_fem.o \
 		fksmb_idmap.o \
 		fksmb_init.o \
@@ -55,6 +55,7 @@ OBJS_FS_SMBSRV = \
 		smb_alloc.o				\
 		smb_authenticate.o			\
 		smb_close.o				\
+		smb_cmn_oplock.o			\
 		smb_cmn_rename.o			\
 		smb_cmn_setfile.o			\
 		smb_common_open.o			\
@@ -109,6 +110,7 @@ OBJS_FS_SMBSRV = \
 		smb_session_setup_andx.o		\
 		smb_set_fileinfo.o			\
 		smb_signing.o				\
+		smb_srv_oplock.o			\
 		smb_thread.o				\
 		smb_tree.o				\
 		smb_trans2_create_directory.o		\
@@ -124,13 +126,19 @@ OBJS_FS_SMBSRV = \
 		\
 		smb2_aapl.o \
 		smb2_dispatch.o \
+		smb2_durable.o \
 		smb2_cancel.o \
 		smb2_change_notify.o \
 		smb2_close.o \
 		smb2_create.o \
 		smb2_echo.o \
 		smb2_flush.o \
+		smb2_fsctl_copychunk.o \
+		smb2_fsctl_fs.o \
+		smb2_fsctl_odx.o \
+		smb2_fsctl_sparse.o \
 		smb2_ioctl.o \
+		smb2_lease.o \
 		smb2_lock.o \
 		smb2_logoff.o \
 		smb2_negotiate.o \
@@ -152,12 +160,15 @@ OBJS_FS_SMBSRV = \
 		smb2_signing.o \
 		smb2_tree_connect.o \
 		smb2_tree_disconn.o \
-		smb2_write.o
+		smb2_write.o \
+	        \
+	        smb3_encrypt.o
 
 # Can't just link with -lsmb because of user vs kernel API
 # i.e. can't call free with mem from kmem_alloc, which is
 # what happens if we just link with -lsmb
 OBJS_CMN_SMBSRV = \
+		smb_cfg_util.o \
 		smb_inet.o \
 		smb_match.o \
 		smb_msgbuf.o \
@@ -177,6 +188,11 @@ OBJS_MISC = \
 		refstr.o \
 		smb_status2winerr.o \
 		xattr_common.o
+
+# This one can't be in OBJECTS, as it has to depend on
+# all of those for the COMPILE.d rule (which processes
+# all those objects collecting probe instances).
+DTRACE_OBJS = fksmb_dt.o
 
 OBJECTS = \
 	$(OBJS_LOCAL) \
@@ -233,16 +249,16 @@ pics/acl_common.o:	   $(SRC)/common/acl/acl_common.c
 	$(COMPILE.c) -o $@ $(SRC)/common/acl/acl_common.c
 	$(POST_PROCESS_O)
 
-pics/smb_status2winerr.o:  $(SRC)/common/smbclnt/smb_status2winerr.c
-	$(COMPILE.c) -o $@ $(SRC)/common/smbclnt/smb_status2winerr.c
-	$(POST_PROCESS_O)
-
 pics/pathname.o:	   $(SRC)/uts/common/fs/pathname.c
 	$(COMPILE.c) -o $@ $(SRC)/uts/common/fs/pathname.c
 	$(POST_PROCESS_O)
 
 pics/refstr.o:		   $(SRC)/uts/common/os/refstr.c
 	$(COMPILE.c) -o $@ $(SRC)/uts/common/os/refstr.c
+	$(POST_PROCESS_O)
+
+pics/smb_status2winerr.o:  $(SRC)/common/smbclnt/smb_status2winerr.c
+	$(COMPILE.c) -o $@ $(SRC)/common/smbclnt/smb_status2winerr.c
 	$(POST_PROCESS_O)
 
 pics/xattr_common.o:	   $(SRC)/common/xattr/xattr_common.c
@@ -255,3 +271,12 @@ pics/xattr_common.o:	   $(SRC)/common/xattr/xattr_common.c
 
 include ../../Makefile.targ
 include ../../../Makefile.targ
+
+EXTPICS= $(DTRACE_OBJS:%=pics/%)
+CLEANFILES += $(EXTPICS)
+
+$(OBJS) $(PICS) : ../common/fksmb_dt.h
+
+pics/fksmb_dt.o: ../common/fksmb_dt.d $(PICS)
+	$(COMPILE.d) -C -s ../common/fksmb_dt.d -o $@ $(PICS)
+	$(POST_PROCESS_O)

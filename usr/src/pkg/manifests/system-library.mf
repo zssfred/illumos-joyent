@@ -360,6 +360,7 @@ file path=usr/lib/$(ARCH64)/libike.so.1
 file path=usr/lib/$(ARCH64)/libipmi.so.1
 file path=usr/lib/$(ARCH64)/libipp.so.1
 file path=usr/lib/$(ARCH64)/libipsecutil.so.1
+file path=usr/lib/$(ARCH64)/libjedec.so.1
 file path=usr/lib/$(ARCH64)/libkvm.so.1
 file path=usr/lib/$(ARCH64)/libl.so.1
 file path=usr/lib/$(ARCH64)/libldap.so.5
@@ -437,6 +438,7 @@ file path=usr/lib/libinetsvc.so.1
 file path=usr/lib/libipmi.so.1
 file path=usr/lib/libipp.so.1
 file path=usr/lib/libipsecutil.so.1
+file path=usr/lib/libjedec.so.1
 file path=usr/lib/libkvm.so.1
 file path=usr/lib/libl.so.1
 file path=usr/lib/libldap.so.5
@@ -577,6 +579,10 @@ license usr/src/common/crypto/ecc/THIRDPARTYLICENSE \
     license=usr/src/common/crypto/ecc/THIRDPARTYLICENSE
 license usr/src/common/crypto/md5/amd64/THIRDPARTYLICENSE \
     license=usr/src/common/crypto/md5/amd64/THIRDPARTYLICENSE
+license usr/src/common/crypto/sha1/amd64/THIRDPARTYLICENSE.sha1-ni \
+    license=usr/src/common/crypto/sha1/amd64/THIRDPARTYLICENSE.sha1-ni
+license usr/src/common/crypto/sha2/amd64/THIRDPARTYLICENSE.sha256-ni \
+    license=usr/src/common/crypto/sha2/amd64/THIRDPARTYLICENSE.sha256-ni
 license usr/src/common/mpi/THIRDPARTYLICENSE \
     license=usr/src/common/mpi/THIRDPARTYLICENSE
 license usr/src/lib/libast/THIRDPARTYLICENSE \

@@ -37,8 +37,6 @@
 #include <smbsrv/smb_xdr.h>
 #include <smb/winioctl.h>
 
-static uint32_t smb_opipe_transceive(smb_request_t *, smb_fsctl_t *);
-
 /*
  * Allocate a new opipe and return it, or NULL, in which case
  * the caller will report "internal error".
@@ -111,9 +109,12 @@ smb_opipe_cancel(smb_request_t *sr)
 {
 	ksocket_t so;
 
-	if (sr->session->s_state == SMB_SESSION_STATE_DISCONNECTED &&
-	    (so = sr->cancel_arg2) != NULL) {
-		(void) ksocket_shutdown(so, SHUT_RDWR, sr->user_cr);
+	switch (sr->session->s_state) {
+	case SMB_SESSION_STATE_DISCONNECTED:
+	case SMB_SESSION_STATE_TERMINATED:
+		if ((so = sr->cancel_arg2) != NULL)
+			(void) ksocket_shutdown(so, SHUT_RDWR, sr->user_cr);
+		break;
 	}
 }
 
@@ -265,11 +266,10 @@ out:
  * Returns 0 on success, Otherwise an NT status code.
  */
 int
-smb_opipe_open(smb_request_t *sr, uint32_t uniqid)
+smb_opipe_open(smb_request_t *sr, smb_ofile_t *ofile)
 {
 	smb_arg_open_t	*op = &sr->sr_open;
 	smb_attr_t *ap = &op->fqi.fq_fattr;
-	smb_ofile_t *ofile;
 	smb_opipe_t *opipe;
 	smb_error_t err;
 
@@ -289,18 +289,23 @@ smb_opipe_open(smb_request_t *sr, uint32_t uniqid)
 	}
 
 	/*
-	 * Note: If smb_ofile_open succeeds, the new ofile is
-	 * in the FID lists can can be used by I/O requests.
+	 * We might have blocked in smb_opipe_connect long enough so
+	 * a tree disconnect might have happened.  In that case, we
+	 * would be adding an ofile to a tree that's disconnecting,
+	 * which would interfere with tear-down.
 	 */
-	op->create_options = 0;
-	op->pipe = opipe;
-	ofile = smb_ofile_open(sr, NULL, op,
-	    SMB_FTYPE_MESG_PIPE, uniqid, &err);
-	op->pipe = NULL;
-	if (ofile == NULL) {
+	if (!smb_tree_is_connected(sr->tid_tree)) {
 		smb_opipe_dealloc(opipe);
-		return (err.status);
+		return (NT_STATUS_NETWORK_NAME_DELETED);
 	}
+
+	/*
+	 * Note: The new opipe is given to smb_ofile_open
+	 * via op->pipe
+	 */
+	op->pipe = opipe;
+	smb_ofile_open(sr, op, ofile);
+	op->pipe = NULL;
 
 	/* An "up" pointer, for debug. */
 	opipe->p_ofile = ofile;
@@ -550,13 +555,17 @@ smb_opipe_getname(smb_ofile_t *of, char *buf, size_t buflen)
 }
 
 /*
- * Handler for smb2_ioctl
+ * Handle device type FILE_DEVICE_NAMED_PIPE
+ * for smb2_ioctl
  */
 /* ARGSUSED */
 uint32_t
 smb_opipe_fsctl(smb_request_t *sr, smb_fsctl_t *fsctl)
 {
 	uint32_t status;
+
+	if (!STYPE_ISIPC(sr->tid_tree->t_res_type))
+		return (NT_STATUS_INVALID_DEVICE_REQUEST);
 
 	switch (fsctl->CtlCode) {
 	case FSCTL_PIPE_TRANSCEIVE:
@@ -578,7 +587,7 @@ smb_opipe_fsctl(smb_request_t *sr, smb_fsctl_t *fsctl)
 	return (status);
 }
 
-static uint32_t
+uint32_t
 smb_opipe_transceive(smb_request_t *sr, smb_fsctl_t *fsctl)
 {
 	smb_vdb_t	vdb;

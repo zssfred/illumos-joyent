@@ -355,7 +355,20 @@ ld_perform_outreloc(Rel_desc * orsp, Ofl_desc * ofl, Boolean *remain_seen)
 			return (S_ERROR);
 	}
 
-	relbits = (char *)relosp->os_outdata->d_buf;
+	if ((orsp->rel_rtype != M_R_NONE) &&
+	    (orsp->rel_rtype != M_R_RELATIVE)) {
+		if (ndx == 0) {
+			Conv_inv_buf_t	inv_buf;
+			Is_desc *isp = orsp->rel_isdesc;
+
+			ld_eprintf(ofl, ERR_FATAL, MSG_INTL(MSG_REL_NOSYMBOL),
+			    conv_reloc_type(ofl->ofl_nehdr->e_machine,
+			    orsp->rel_rtype, 0, &inv_buf),
+			    isp->is_file->ifl_name, EC_WORD(isp->is_scnndx),
+			    isp->is_name, EC_XWORD(roffset));
+			return (S_ERROR);
+		}
+	}
 
 	rea.r_info = ELF_R_INFO(ndx, orsp->rel_rtype);
 	rea.r_offset = roffset;
@@ -366,6 +379,8 @@ ld_perform_outreloc(Rel_desc * orsp, Ofl_desc * ofl, Boolean *remain_seen)
 	 * Assert we haven't walked off the end of our relocation table.
 	 */
 	assert(relosp->os_szoutrels <= relosp->os_shdr->sh_size);
+
+	relbits = (char *)relosp->os_outdata->d_buf;
 
 	(void) memcpy((relbits + relosp->os_szoutrels),
 	    (char *)&rea, sizeof (Rel));
@@ -1136,6 +1151,19 @@ ld_add_outrel(Word flags, Rel_desc *rsp, Ofl_desc *ofl)
 		return (1);
 
 	/*
+	 * If the symbol will be reduced, we can't leave outstanding
+	 * relocations against it, as nothing will ever be able to satisfy them
+	 * (and the symbol won't be in .dynsym
+	 */
+	if ((sdp != NULL) &&
+	    (sdp->sd_sym->st_shndx == SHN_UNDEF) &&
+	    (rsp->rel_rtype != M_R_NONE) &&
+	    (rsp->rel_rtype != M_R_RELATIVE)) {
+		if (ld_sym_reducable(ofl, sdp))
+			return (1);
+	}
+
+	/*
 	 * If we are adding a output relocation against a section
 	 * symbol (non-RELATIVE) then mark that section.  These sections
 	 * will be added to the .dynsym symbol table.
@@ -1241,7 +1269,7 @@ ld_reloc_local(Rel_desc * rsp, Ofl_desc * ofl)
 		Word	ortype = rsp->rel_rtype;
 
 		rsp->rel_rtype = R_386_RELATIVE;
-		if (ld_add_outrel(NULL, rsp, ofl) == S_ERROR)
+		if (ld_add_outrel(0, rsp, ofl) == S_ERROR)
 			return (S_ERROR);
 		rsp->rel_rtype = ortype;
 	}
@@ -1285,7 +1313,7 @@ ld_reloc_local(Rel_desc * rsp, Ofl_desc * ofl)
 	/*
 	 * Perform relocation.
 	 */
-	return (ld_add_actrel(NULL, rsp, ofl));
+	return (ld_add_actrel(0, rsp, ofl));
 }
 
 static uintptr_t
@@ -1315,7 +1343,7 @@ ld_reloc_TLS(Boolean local, Rel_desc * rsp, Ofl_desc * ofl)
 
 				if (ld_assign_got_TLS(local, rsp, ofl, sdp,
 				    gnp, GOT_REF_TLSIE, FLG_REL_STLS,
-				    rtype, R_386_TLS_TPOFF, NULL) == S_ERROR)
+				    rtype, R_386_TLS_TPOFF, 0) == S_ERROR)
 					return (S_ERROR);
 			}
 
@@ -1334,7 +1362,7 @@ ld_reloc_TLS(Boolean local, Rel_desc * rsp, Ofl_desc * ofl)
 				if (((flags & FLG_OF_EXEC) == 0) &&
 				    (rtype == R_386_TLS_IE)) {
 					rsp->rel_rtype = R_386_RELATIVE;
-					return (ld_add_outrel(NULL, rsp, ofl));
+					return (ld_add_outrel(0, rsp, ofl));
 				}
 				return (1);
 			}
@@ -1365,7 +1393,7 @@ ld_reloc_TLS(Boolean local, Rel_desc * rsp, Ofl_desc * ofl)
 	    GOT_REF_TLSLD, ofl, NULL)) == NULL)) {
 
 		if (ld_assign_got_TLS(local, rsp, ofl, sdp, gnp, GOT_REF_TLSLD,
-		    FLG_REL_MTLS, rtype, R_386_TLS_DTPMOD32, NULL) == S_ERROR)
+		    FLG_REL_MTLS, rtype, R_386_TLS_DTPMOD32, 0) == S_ERROR)
 			return (S_ERROR);
 
 	} else if (IS_TLS_GD(rtype) && ((gnp = ld_find_got_ndx(sdp->sd_GOTndxs,
