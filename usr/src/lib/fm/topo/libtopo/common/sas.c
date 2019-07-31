@@ -70,12 +70,21 @@
  *
  * Version 0 sas FMRI scheme
  * -------------------------
- * The resource in the sas FMRI scheme doesn't represent a discrete component
- * like the hc or svc schemes.  Rather, the resource represents a unique
- * path from a given initiator to a given target.  Hence, the first two
- * node/instance pairs are always an initiator and port and last two pairs
- * are always a port and a target. In between there may be one or two sets
- * of expander and port pairs.
+ * Two types of resources can be represented in the sas FMRI scheme: paths
+ * and pathnodes.  The "type" field in the authority portion of the FMRI
+ * denotes whether the FMRI indentifies a pathnode or path:
+ *
+ * e.g.
+ * sas://type=path/....
+ * sas://type=pathnode/....
+ *
+ * Path
+ * ----
+ * The first resource type is a path, which represents a unique path from a
+ * given initiator to a given target.  Hence, the first two node/instance pairs
+ * are always an initiator and port and the last two pairs are always a port
+ * and a target. In between there may be one or two sets of expander and port
+ * pairs.
  *
  * e.g.
  * sas://<auth>/initiator=<inst>/<port>=<inst>/.../port=<inst>/target=<inst>
@@ -83,11 +92,9 @@
  * Node instance numbers are based on the local SAS address of the underlying
  * component.  Each initiator, expander and target will have a unique[1] SAS
  * address.  And each port from an initiator or to a target will also have a
- * unique SAS address.  However, expander ports are not individually
- * addressed.  If the expander port is attached, the instance number shall
- * be the SAS address of the attached device.  If the expander port is not
- * attached, the instance number shall be the SAS address of the expander,
- * itself.
+ * unique SAS address.  Note that expander ports are not individually
+ * addressed, thus the instance number shall be the SAS address of the
+ * expander, itself.
  *
  * [1] The SAS address will be unique within a given SAS fabric (domain)
  *
@@ -106,9 +113,29 @@
  * sas-name           DATA_TYPE_STRING       (initiator|port|expander|target)
  * sas-id             DATA_TYPE_UINT64       SAS address (see above)
  *
- * XXX - what, if anything, should we put in the FMRI authority?
  *
+ * Pathnode
+ * --------
+ * The second resource type in the sas FMRI scheme is a pathnode, which
+ * represents a single node in the underlying graph topology.  In this form,
+ * the FMRI consists of a single sas-name/sas-id pair.  In order to
+ * differentiate the FMRIs for expander "port" nodes, which will share the same
+ * SAS address as the expander, the range of PHYs associated with the port will
+ * be added to the authority portion of the FMRI.  For expander ports that
+ * connect directly to a target device, this will be a narrow port that spans a
+ * single PHY:
  *
+ * e.g.
+ *
+ * sas://type=pathnode:start-phy=0:end-phy=0/port=500304801861347f
+ * sas://type=pathnode:start-phy=1:end-phy=1/port=500304801861347f
+ *
+ * For expander ports that connect to another expander, this will be a wide
+ * port that will span a range of phys (typically 4 or 8 wide)
+ *
+ * e.g.
+ *
+ * sas://type=pathnode:start_phy=0:end_phy=7/port=500304801861347f
  *
  * Overview of SAS Topology Generation
  * ===================================
@@ -143,6 +170,8 @@ static int sas_fmri_nvl2str(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_fmri_str2nvl(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
+static int sas_fmri_create(topo_mod_t *, tnode_t *, topo_version_t,
+    nvlist_t *, nvlist_t **);
 static int sas_dev_fmri(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_hc_fmri(topo_mod_t *, tnode_t *, topo_version_t,
@@ -153,6 +182,8 @@ static const topo_method_t sas_methods[] = {
 	    TOPO_STABILITY_INTERNAL, sas_fmri_nvl2str },
 	{ TOPO_METH_STR2NVL, TOPO_METH_STR2NVL_DESC, TOPO_METH_STR2NVL_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_fmri_str2nvl },
+	{ TOPO_METH_FMRI, TOPO_METH_FMRI_DESC, TOPO_METH_FMRI_VERSION,
+	    TOPO_STABILITY_INTERNAL, sas_fmri_create },
 	{ TOPO_METH_SAS2DEV, TOPO_METH_SAS2DEV_DESC, TOPO_METH_SAS2DEV_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_dev_fmri },
 	{ TOPO_METH_SAS2HC, TOPO_METH_SAS2HC_DESC, TOPO_METH_SAS2HC_VERSION,
@@ -195,6 +226,20 @@ sas_fini(topo_mod_t *mod)
 	topo_mod_unregister(mod);
 }
 
+static topo_pgroup_info_t protocol_pgroup = {
+	TOPO_PGROUP_PROTOCOL,
+	TOPO_STABILITY_PRIVATE,
+	TOPO_STABILITY_PRIVATE,
+	1
+};
+
+static const topo_pgroup_info_t auth_pgroup = {
+	FM_FMRI_AUTHORITY,
+	TOPO_STABILITY_PRIVATE,
+	TOPO_STABILITY_PRIVATE,
+	1
+};
+
 static topo_vertex_t *
 sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst)
 {
@@ -202,6 +247,7 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	tnode_t *tn;
 	topo_pgroup_info_t pgi;
 	int err;
+	nvlist_t *auth = NULL, *fmri = NULL;
 
 	pgi.tpi_namestab = TOPO_STABILITY_PRIVATE;
 	pgi.tpi_datastab = TOPO_STABILITY_PRIVATE;
@@ -226,15 +272,39 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	}
 	tn = topo_vertex_node(vtx);
 
+	/*
+	 * XXX - for expander ports, need code to add FM_FMRI_SAS_START_PHY
+	 *	and FM_FMRI_SAS_START_PHY nvpairs to auth nvlist
+	 */
+	if (topo_mod_nvalloc(mod, &auth, NV_UNIQUE_NAME) != 0 ||
+	    nvlist_add_string(auth, FM_FMRI_SAS_TYPE,
+	    FM_FMRI_SAS_TYPE_PATHNODE) != 0) {
+		goto err;
+	}
+	if ((fmri = topo_mod_sasfmri(mod, FM_SAS_SCHEME_VERSION, name, inst,
+	    auth)) == NULL) {
+		topo_mod_dprintf(mod, "failed to construct FMRI for "
+		    "%s=%" PRIx64 ": %s", name, inst, topo_strerror(err));
+		goto err;
+	}
 	if (topo_pgroup_create(tn, &pgi, &err) != 0) {
 		topo_mod_dprintf(mod, "failed to create %s propgroup on "
 		    "%s=%" PRIx64 ": %s", pgi.tpi_name, name, inst,
 		    topo_strerror(err));
 	}
+	if (topo_pgroup_create(tn, &protocol_pgroup, &err) < 0 ||
+	    topo_prop_set_fmri(tn, TOPO_PGROUP_PROTOCOL, TOPO_PROP_RESOURCE,
+	    TOPO_PROP_IMMUTABLE, fmri, &err) < 0) {
+		goto err;
+	}
+
 	return (vtx);
+err:
+	nvlist_free(auth);
+	topo_vertex_destroy(mod, vtx);
+	return (NULL);
 }
 
-/* ARGSUSED */
 static int
 fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
     topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
@@ -352,7 +422,7 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	return (0);
 }
 
-uint64_t
+static uint64_t
 wwn_to_uint64(HBA_WWN wwn)
 {
 	uint64_t res;
@@ -384,7 +454,7 @@ typedef struct sas_dg_iter_arg {
 /*
  * Create a vertex for the discovered port represented by search_node.
  */
-int
+static int
 sas_port_vtx_create(topo_mod_t *mod, topo_list_t *search_list,
     sas_search_node_t *search_node)
 {
@@ -454,7 +524,7 @@ done:
  * Open the HBA pointed at by search_node and investigate it.
  *
  * First this will create a vertex for each HBA port discovered. Metadata is
- * stored  with the vertex, including the relevant information needed for
+ * stored with the vertex, including the relevant information needed for
  * identifying connections between the HBA and devices attached to it.
  *
  * Each HBA port's discovered ports are then iterated over. The discovered ports
@@ -462,7 +532,7 @@ done:
  * Each discovered port is added to search_list to be investigated in a later
  * step (sas_port_vtx_create).
  */
-int
+static int
 sas_hba_port_discover(topo_mod_t *mod, topo_list_t *search_list,
     sas_search_node_t *search_node)
 {
@@ -580,7 +650,7 @@ done:
 	return (ret);
 }
 
-int
+static int
 sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
 {
 	sas_info_t *info = topo_node_getspecific(vtx->tvt_node);
@@ -676,7 +746,7 @@ sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
 	return (TOPO_WALK_NEXT);
 }
 
-void
+static void
 sas_topo_search(topo_mod_t *mod, topo_list_t *search_list)
 {
 	sas_search_node_t *search_node, *tmp;
@@ -733,7 +803,6 @@ sas_topo_search(topo_mod_t *mod, topo_list_t *search_list)
 	}
 }
 
-/*ARGSUSED*/
 static int
 sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
     topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
@@ -744,8 +813,9 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		return (-1);
 	}
 
-	if (B_FALSE)
-		fake_enum(mod, rnode, name, min, max, notused1, notused2);
+	if (getenv("SAS_FAKE_ENUM"))
+		return (fake_enum(mod, rnode, name, min, max, notused1,
+		    notused2));
 
 	HBA_STATUS status;
 	HBA_UINT32 num_adapters, i;
@@ -835,11 +905,16 @@ sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 static ssize_t
 fmri_bufsz(nvlist_t *nvl)
 {
-	nvlist_t **paths;
+	nvlist_t **paths, *auth;
 	uint_t nelem;
+	char *type;
 	ssize_t bufsz = 0;
 
-	bufsz += snprintf(NULL, 0, "sas://");
+	if (nvlist_lookup_nvlist(nvl, FM_FMRI_AUTHORITY, &auth) != 0 ||
+	    nvlist_lookup_string(nvl, FM_FMRI_SAS_TYPE, &type) != 0)
+		return (0);
+
+	bufsz += snprintf(NULL, 0, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
 	if (nvlist_lookup_nvlist_array(nvl, FM_FMRI_SAS_PATH, &paths,
 	    &nelem) != 0) {
 		return (0);
@@ -861,17 +936,16 @@ fmri_bufsz(nvlist_t *nvl)
 	return (bufsz);
 }
 
-/*ARGSUSED*/
 static int
 sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
 	uint8_t scheme_vers;
 	nvlist_t *outnvl;
-	nvlist_t **paths;
+	nvlist_t **paths, *auth;
 	uint_t nelem;
 	ssize_t bufsz, end = 0;
-	char *buf;
+	char *buf, *type;
 
 	if (version > TOPO_METH_NVL2STR_VERSION)
 		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
@@ -897,9 +971,11 @@ sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	 * We've already successfully done these nvlist lookups in fmri_bufsz()
 	 * so we don't worry about checking retvals this time around.
 	 */
-	end += sprintf(buf, "sas://");
+	(void) nvlist_lookup_nvlist(in, FM_FMRI_AUTHORITY, &auth);
+	(void) nvlist_lookup_string(in, FM_FMRI_SAS_TYPE, &type);
 	(void) nvlist_lookup_nvlist_array(in, FM_FMRI_SAS_PATH, &paths,
 	    &nelem);
+	end += sprintf(buf, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
 	for (uint_t i = 0; i < nelem; i++) {
 		char *sasname;
 		uint64_t sasaddr;
@@ -927,15 +1003,14 @@ sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	return (0);
 }
 
-/*ARGSUSED*/
 static int
 sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
 	char *fmristr, *tmp, *lastpair;
-	char *sasname;
+	char *sasname, *path_start;
 	nvlist_t *fmri = NULL, **sas_path = NULL;
-	uint_t npairs = 0, i = 0, fmrilen;
+	uint_t npairs = 0, i = 0, fmrilen, path_offset;
 
 	if (version > TOPO_METH_STR2NVL_VERSION)
 		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
@@ -943,7 +1018,7 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	if (nvlist_lookup_string(in, "fmri-string", &fmristr) != 0)
 		return (topo_mod_seterrno(mod, EMOD_METHOD_INVAL));
 
-	if (strncmp(fmristr, "sas:///", 7) != 0)
+	if (strncmp(fmristr, "sas://", 6) != 0)
 		return (topo_mod_seterrno(mod, EMOD_FMRI_MALFORM));
 
 	if (topo_mod_nvalloc(mod, &fmri, NV_UNIQUE_NAME) != 0) {
@@ -976,7 +1051,18 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		goto err;
 	}
 	(void) strncpy(tmp, fmristr, fmrilen);
-	(void) strtok_r(tmp + 7, "=", &lastpair);
+
+	/*
+	 * Find the "/" after the authority portion of the FMRI.
+	 */
+	if ((path_start = strchr(tmp + 6, '/')) == NULL) {
+		(void) topo_mod_seterrno(mod, EMOD_FMRI_MALFORM);
+		topo_mod_free(mod, tmp, fmrilen + 1);
+		goto err;
+	}
+	path_offset = path_start - tmp;
+
+	(void) strtok_r(tmp + path_offset, "=", &lastpair);
 	while (strtok_r(NULL, "=", &lastpair) != NULL)
 		npairs++;
 
@@ -988,7 +1074,7 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		goto err;
 	}
 
-	sasname = fmristr + 7;
+	sasname = fmristr + path_offset;
 	while (i < npairs) {
 		nvlist_t *pathcomp;
 		uint64_t sasaddr;
@@ -1052,7 +1138,7 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 
 	return (0);
 err:
-	topo_mod_dprintf(mod, "sas_fmri_str2nvl failed: %s",
+	topo_mod_dprintf(mod, "%s failed: %s", __func__,
 	    topo_strerror(topo_mod_errno(mod)));
 	if (sas_path != NULL) {
 		for (i = 0; i < npairs; i++)
@@ -1060,6 +1146,71 @@ err:
 
 		topo_mod_free(mod, sas_path, npairs * sizeof (nvlist_t *));
 	}
+	nvlist_free(fmri);
+	return (-1);
+}
+
+/*
+ * This method creates a sas-SCHEME FMRI that represents a pathnode.  This is
+ * not intended to be called directly, but rather be called via
+ * topo_mod_sasfmri()
+ */
+static int
+sas_fmri_create(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+    nvlist_t *in, nvlist_t **out)
+{
+	char *nodename;
+	uint64_t nodeinst;
+	nvlist_t *fmri = NULL, *args, *auth, *saspath[1], *pathcomp = NULL;
+
+	if (version > TOPO_METH_STR2NVL_VERSION)
+		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
+
+	if (nvlist_lookup_string(in, TOPO_METH_FMRI_ARG_NAME, &nodename) !=
+	    0 ||
+	    nvlist_lookup_uint64(in, TOPO_METH_FMRI_ARG_INST, &nodeinst) !=
+	    0 ||
+	    nvlist_lookup_nvlist(in, TOPO_METH_FMRI_ARG_NVL, &args) != 0 ||
+	    nvlist_lookup_nvlist(args, TOPO_METH_FMRI_ARG_AUTH, &auth) != 0) {
+
+		return (topo_mod_seterrno(mod, EMOD_METHOD_INVAL));
+	}
+
+	if (topo_mod_nvalloc(mod, &fmri, NV_UNIQUE_NAME) != 0) {
+		/* errno set */
+		return (-1);
+	}
+
+	if (nvlist_add_nvlist(fmri, FM_FMRI_AUTHORITY, auth) != 0 ||
+	    nvlist_add_string(fmri, FM_FMRI_SCHEME, FM_FMRI_SCHEME_SAS) != 0 ||
+	    nvlist_add_uint8(fmri, FM_FMRI_SAS_VERSION, FM_SAS_SCHEME_VERSION)
+	    != 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+
+	if (topo_mod_nvalloc(mod, &pathcomp, NV_UNIQUE_NAME) != 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+	if (nvlist_add_string(pathcomp, FM_FMRI_SAS_NAME, nodename) != 0 ||
+	    nvlist_add_uint64(pathcomp, FM_FMRI_SAS_ADDR, nodeinst) != 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+	saspath[0] = pathcomp;
+
+	if (nvlist_add_nvlist_array(fmri, FM_FMRI_SAS_PATH, saspath, 1) != 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+	*out = fmri;
+
+	return (0);
+err:
+	topo_mod_dprintf(mod, "%s failed: %s", __func__,
+	    topo_strerror(topo_mod_errno(mod)));
+	nvlist_free(pathcomp);
 	nvlist_free(fmri);
 	return (-1);
 }

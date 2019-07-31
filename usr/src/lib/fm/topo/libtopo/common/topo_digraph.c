@@ -18,6 +18,8 @@
  */
 
 #include <libtopo.h>
+#include <sys/fm/protocol.h>
+
 #include <topo_digraph.h>
 #define	__STDC_FORMAT_MACROS
 #include <inttypes.h>
@@ -336,7 +338,7 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 
 		pathcomp->tspc_vertex = vtx;
 		topo_list_append(&path->tsp_components, pathcomp);
-
+topo_dprintf(thp, TOPO_DBG_ERR, "converting path: %s\n", pathstr);
 		if (topo_fmri_str2nvl(thp, pathstr, &fmri, &err) != 0) {
 			/* errno set */
 			goto err;
@@ -384,7 +386,8 @@ topo_digraph_paths(topo_hdl_t *thp, topo_digraph_t *tdg, topo_vertex_t *from,
 	uint_t i, npaths = 0;
 	int ret;
 
-	ret = asprintf(&curr_path, "sas:///%s=%" PRIx64"",
+	ret = asprintf(&curr_path, "sas://%s=%s/%s=%" PRIx64"",
+	    FM_FMRI_SAS_TYPE, FM_FMRI_SAS_TYPE_PATH,
 	    topo_node_name(from->tvt_node),
 	    topo_node_instance(from->tvt_node));
 

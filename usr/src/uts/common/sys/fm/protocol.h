@@ -335,6 +335,11 @@ extern "C" {
 
 /* sas scheme member names */
 #define	FM_FMRI_SAS_VERSION		"sas-scheme-version"
+#define	FM_FMRI_SAS_TYPE		"type"
+#define	FM_FMRI_SAS_START_PHY		"start-phy"
+#define	FM_FMRI_SAS_END_PHY		"end-phy"
+#define	FM_FMRI_SAS_TYPE_PATH		"path"
+#define	FM_FMRI_SAS_TYPE_PATHNODE	"pathnode"
 #define	FM_FMRI_SAS_PATH		"sas-path"
 #define	FM_FMRI_SAS_NAME		"sas-name"
 #define	FM_FMRI_SAS_ADDR		"sas-addr"

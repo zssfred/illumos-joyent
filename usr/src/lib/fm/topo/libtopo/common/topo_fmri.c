@@ -23,6 +23,9 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+/*
+ * Copyright 2019 Joyent, Inc.
+ */
 
 #include <ctype.h>
 #include <string.h>
@@ -711,7 +714,7 @@ topo_fmri_create(topo_hdl_t *thp, const char *scheme, const char *name,
 		    TOPO_METH_FMRI, NULL));
 
 	if (nvlist_add_string(ins, TOPO_METH_FMRI_ARG_NAME, name) != 0 ||
-	    nvlist_add_uint32(ins, TOPO_METH_FMRI_ARG_INST, inst) != 0) {
+	    nvlist_add_uint64(ins, TOPO_METH_FMRI_ARG_INST, inst) != 0) {
 		return (set_nverror(thp, ETOPO_FMRI_NVL, err,
 		    TOPO_METH_FMRI, ins));
 	}
