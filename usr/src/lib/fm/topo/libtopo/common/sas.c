@@ -911,7 +911,7 @@ fmri_bufsz(nvlist_t *nvl)
 	ssize_t bufsz = 0;
 
 	if (nvlist_lookup_nvlist(nvl, FM_FMRI_AUTHORITY, &auth) != 0 ||
-	    nvlist_lookup_string(nvl, FM_FMRI_SAS_TYPE, &type) != 0)
+	    nvlist_lookup_string(auth, FM_FMRI_SAS_TYPE, &type) != 0)
 		return (0);
 
 	bufsz += snprintf(NULL, 0, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
@@ -972,10 +972,11 @@ sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	 * so we don't worry about checking retvals this time around.
 	 */
 	(void) nvlist_lookup_nvlist(in, FM_FMRI_AUTHORITY, &auth);
-	(void) nvlist_lookup_string(in, FM_FMRI_SAS_TYPE, &type);
+	(void) nvlist_lookup_string(auth, FM_FMRI_SAS_TYPE, &type);
 	(void) nvlist_lookup_nvlist_array(in, FM_FMRI_SAS_PATH, &paths,
 	    &nelem);
 	end += sprintf(buf, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
+
 	for (uint_t i = 0; i < nelem; i++) {
 		char *sasname;
 		uint64_t sasaddr;

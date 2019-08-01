@@ -338,7 +338,6 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 
 		pathcomp->tspc_vertex = vtx;
 		topo_list_append(&path->tsp_components, pathcomp);
-topo_dprintf(thp, TOPO_DBG_ERR, "converting path: %s\n", pathstr);
 		if (topo_fmri_str2nvl(thp, pathstr, &fmri, &err) != 0) {
 			/* errno set */
 			goto err;
@@ -434,3 +433,41 @@ err:
 	    topo_hdl_errmsg(thp));
 	return (-1);
 }
+#if 0
+static int
+serialize_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, void *arg)
+{
+	return (0);
+}
+
+/*
+ * This function takes a pointer to a topo_digraph_t and serializes it by
+ * encoding the adjeacency list as a JSON object`that takes the following
+ * form:
+ *
+ * {
+ *   vertices: [
+ *     {
+ *       "fmri": {...}.
+ *       "propgroups": [
+ *           { "name": string, "properties": [
+ *               { "name": string, "type": string, "value": {...} },
+ *               . . .
+ *              ]
+ *           },
+ *           . . .
+ *       ],
+ *       "incoming": [ { fmri: {...} }, ... ],
+ *       "outgoing": [ { fmri: {...} }, ... ]
+ *     },
+ *     . . .
+ *   ]
+ * }
+ *
+ */
+void
+topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
+{
+
+}
+#endif

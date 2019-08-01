@@ -35,12 +35,43 @@ struct cb_arg {
 	topo_list_t tgt_list;
 };
 
-int
+static void
+print_vertex(topo_hdl_t *thp, topo_vertex_t *vtx)
+{
+	tnode_t *tn;
+	nvlist_t *fmri = NULL;
+	char *fmristr = NULL;
+	int err;
+
+	tn = topo_vertex_node(vtx);
+	if (topo_node_resource(tn, &fmri, &err) != 0 ||
+	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
+		(void) fprintf(stderr, "failed to convert FMRI for %s=%"
+		    PRIx64 " to a string\n", topo_node_name(tn),
+		    topo_node_instance(tn));
+		nvlist_print(stderr, fmri);
+		goto out;
+	}
+	(void) printf("%s\n", fmristr);
+out:
+	topo_hdl_strfree(thp, fmristr);
+	nvlist_free(fmri);
+}
+
+static void
+print_path(topo_path_t *path)
+{
+	(void) printf("%s\n", path->tsp_fmristr);
+}
+
+static int
 vertex_cb(topo_hdl_t *thp, topo_vertex_t *vtx, void *arg)
 {
 	struct cb_arg *cbarg = arg;
 	tnode_t *tn = topo_vertex_node(vtx);
 	struct sastopo_vertex *sasvtx;
+
+	print_vertex(thp, vtx);
 
 	if (strcmp(topo_node_name(tn), TOPO_VTX_INITIATOR) != 0 &&
 	    strcmp(topo_node_name(tn), TOPO_VTX_TARGET) != 0) {
@@ -58,18 +89,6 @@ vertex_cb(topo_hdl_t *thp, topo_vertex_t *vtx, void *arg)
 		topo_list_append(&cbarg->tgt_list, sasvtx);
 	}
 	return (TOPO_WALK_NEXT);
-}
-
-static void
-print_path(topo_path_t *path)
-{
-	(void) printf("%s\n", path->tsp_fmristr);
-}
-
-static void
-print_path_json(topo_path_t *path)
-{
-	/* XXX - add implementation */
 }
 
 int
@@ -133,13 +152,14 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 * Iterate through the vertices to generate a list of initiators and a
-	 * list of targets.
+	 * Iterate through the print all of the vertices.  While iterating we
+	 * also generate a list of initiators and a list of targets.
 	 */
 	if (topo_vertex_iter(thp, tdg, vertex_cb, &cbarg) != 0) {
 		(void) fprintf(stderr, "failed to iterate vertices\n");
 		goto out;
 	}
+	(void) printf("\n");
 
 	/*
 	 * Find and print all unique paths between the initiators and
@@ -172,14 +192,10 @@ main(int argc, char *argv[])
 				}
 				continue;
 			}
-			for (int i = 0; i < np; i++) {
-				if (json)
-					print_path_json(paths[i]);
-				else
-					print_path(paths[i]);
-			}
-			topo_hdl_free(thp, paths,
-			    np * sizeof (topo_path_t *));
+			for (int i = 0; i < np; i++)
+				print_path(paths[i]);
+
+			topo_hdl_free(thp, paths, np * sizeof (topo_path_t *));
 		}
 	}
 	status = EXIT_SUCCESS;
