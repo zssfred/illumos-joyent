@@ -24,6 +24,8 @@
 # Copyright 2019 Joyent, Inc.
 #
 
+i386_SUBDIRS = mcdecode
+
 SUBDIRS = \
 	fmd \
 	fmadm \
@@ -38,7 +40,8 @@ SUBDIRS = \
 	dicts \
 	eversholt \
 	notify \
-	sastopo
+	sastopo \
+	$($(MACH)_SUBDIRS)
 
 include ./Makefile.subdirs
 
