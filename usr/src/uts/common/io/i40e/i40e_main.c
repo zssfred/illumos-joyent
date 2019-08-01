@@ -2044,12 +2044,12 @@ i40e_set_shared_vsi_props(i40e_t *i40e,
 	 * and 128 for the X722.
 	 *
 	 * Some examples:
-	 * 	i40e_num_trqpairs_per_vsi == 1 =>  tc_queues = 0, 2^^0 = 1.
-	 * 	i40e_num_trqpairs_per_vsi == 7 =>  tc_queues = 3, 2^^3 = 8.
-	 * 	i40e_num_trqpairs_per_vsi == 8 =>  tc_queues = 3, 2^^3 = 8.
-	 * 	i40e_num_trqpairs_per_vsi == 9 =>  tc_queues = 4, 2^^4 = 16.
-	 * 	i40e_num_trqpairs_per_vsi == 17 => tc_queues = 5, 2^^5 = 32.
-	 * 	i40e_num_trqpairs_per_vsi == 64 => tc_queues = 6, 2^^6 = 64.
+	 *	i40e_num_trqpairs_per_vsi == 1 =>  tc_queues = 0, 2^^0 = 1.
+	 *	i40e_num_trqpairs_per_vsi == 7 =>  tc_queues = 3, 2^^3 = 8.
+	 *	i40e_num_trqpairs_per_vsi == 8 =>  tc_queues = 3, 2^^3 = 8.
+	 *	i40e_num_trqpairs_per_vsi == 9 =>  tc_queues = 4, 2^^4 = 16.
+	 *	i40e_num_trqpairs_per_vsi == 17 => tc_queues = 5, 2^^5 = 32.
+	 *	i40e_num_trqpairs_per_vsi == 64 => tc_queues = 6, 2^^6 = 64.
 	 */
 	tc_queues = ddi_fls(i40e->i40e_num_trqpairs_per_vsi - 1);
 
@@ -2397,7 +2397,7 @@ out:
 
 /*
  * Set up RSS.
- * 	1. Seed the hash key.
+ *	1. Seed the hash key.
  *	2. Enable PCTYPEs for the hash filter.
  *	3. Populate the LUT.
  */
