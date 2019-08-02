@@ -142,10 +142,10 @@ topo_vertex_new(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	/* Bump the refcnt on the module that's creating this vertex. */
 	topo_mod_hold(mod);
 
-	pthread_mutex_lock(&tdg->tdg_lock);
+	(void) pthread_mutex_lock(&tdg->tdg_lock);
 	topo_list_append(&tdg->tdg_vertices, vtx);
 	tdg->tdg_nvertices++;
-	pthread_mutex_unlock(&tdg->tdg_lock);
+	(void) pthread_mutex_unlock(&tdg->tdg_lock);
 
 	return (vtx);
 err:
@@ -238,11 +238,11 @@ topo_edge_new(topo_mod_t *mod, topo_vertex_t *from, topo_vertex_t *to)
 	e_from->tve_vertex = from;
 	e_to->tve_vertex = to;
 
-	pthread_mutex_lock(&tdg->tdg_lock);
+	(void) pthread_mutex_lock(&tdg->tdg_lock);
 	topo_list_append(&from->tvt_outgoing, e_to);
 	topo_list_append(&to->tvt_incoming, e_from);
 	tdg->tdg_nedges++;
-	pthread_mutex_unlock(&tdg->tdg_lock);
+	(void) pthread_mutex_unlock(&tdg->tdg_lock);
 
 	return (0);
 }
@@ -317,7 +317,7 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 	char *pathstr;
 	int err;
 
-	asprintf(&pathstr, "%s/%s=%" PRIx64"",
+	(void) asprintf(&pathstr, "%s/%s=%" PRIx64"",
 	    curr_path,
 	    topo_node_name(vtx->tvt_node),
 	    topo_node_instance(vtx->tvt_node));
@@ -354,8 +354,9 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 	for (topo_edge_t *edge = topo_list_next(&vtx->tvt_outgoing);
 	    edge != NULL; edge = topo_list_next(edge)) {
 
-		visit_vertex(thp, edge->tve_vertex, to, all_paths, pathstr,
-		    npaths);
+		if (visit_vertex(thp, edge->tve_vertex, to, all_paths, pathstr,
+		    npaths) != 0)
+			goto err;
 	}
 	free(pathstr);
 

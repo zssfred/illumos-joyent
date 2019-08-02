@@ -764,9 +764,11 @@ sas_topo_search(topo_mod_t *mod, topo_list_t *search_list)
 
 		if (search_node->ssn_hdl == NULL) {
 			/* No HBA handle, so we're starting with an HBA. */
-			sas_hba_port_discover(mod, search_list, search_node);
+			(void) sas_hba_port_discover(mod, search_list,
+			    search_node);
 		} else {
-			sas_port_vtx_create(mod, search_list, search_node);
+			(void) sas_port_vtx_create(mod, search_list,
+			    search_node);
 		}
 	}
 
@@ -853,7 +855,7 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	/* Do the work of mapping the SAS topology. */
 	sas_topo_search(mod, search_list);
 
-	HBA_FreeLibrary();
+	(void) HBA_FreeLibrary();
 	return (0);
 }
 
