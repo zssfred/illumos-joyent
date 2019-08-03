@@ -25,10 +25,22 @@ extern "C" {
 #define	TOPO_VTX_PORT		"port"
 #define	TOPO_VTX_TARGET		"target"
 
-#define	TOPO_PGROUP_EXPANDER	"expander-properties"
-#define	TOPO_PGROUP_INITIATOR	"initiator-properties"
-#define	TOPO_PGROUP_SASPORT	"port-properties"
-#define	TOPO_PGROUP_TARGET	"target-properties"
+#define	TOPO_PGROUP_EXPANDER		"expander-properties"
+#define	TOPO_PROP_EXPANDER_DEVFSNAME	"devfs-name"
+
+#define	TOPO_PGROUP_INITIATOR		"initiator-properties"
+#define	TOPO_PROP_INITIATOR_MANUF	"manufacturer"
+#define	TOPO_PROP_INITIATOR_MODEL	"model"
+#define	TOPO_PROP_INITIATOR_SERIAL	"serial"
+	
+#define	TOPO_PGROUP_SASPORT		"port-properties"
+#define	TOPO_PROP_SASPORT_LOCAL_ADDR	"local-sas-address"
+#define	TOPO_PROP_SASPORT_ATTACH_ADDR	"attached-sas-address"
+/* XXX - add props to capture link error counters per PHY */
+
+#define	TOPO_PGROUP_TARGET		"target-properties"
+#define	TOPO_PROP_TARGET_MANUF		"manufacturer"
+#define	TOPO_PROP_TARGET_MODEL		"model"
 
 #ifdef	__cplusplus
 }

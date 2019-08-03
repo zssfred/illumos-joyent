@@ -320,6 +320,9 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 	topo_vertex_t *exp_out3, *tgt3_p1, *tgt3, *exp2, *exp2_in1, *exp2_out1;
 
+	tnode_t *tn;
+	int err;
+
 	uint64_t ini_addr = 0x5003048023567a00;
 	uint64_t exp_addr = 0x500304801861347f;
 	uint64_t tg1_addr = 0x5000cca2531b1025;
@@ -328,57 +331,184 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	uint64_t tg3_addr = 0xDEADBEED;
 	uint64_t exp2_addr = 0xDEADBEEF;
 
+	/*
+	 * Create vertices for an initiator and one outgoing port
+	 */
 	if ((ini = sas_create_vertex(mod, TOPO_VTX_INITIATOR, ini_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(ini);
+	if (topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
+	    TOPO_PROP_INITIATOR_MANUF, TOPO_PROP_IMMUTABLE, "LSI",
+	    &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
+	    TOPO_PROP_INITIATOR_MODEL, TOPO_PROP_IMMUTABLE, "LSI3008-IT",
+	    &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
+	    TOPO_PROP_INITIATOR_SERIAL, TOPO_PROP_IMMUTABLE, "LSI23098420374",
+	    &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
+
 	if ((ini_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr)) == NULL)
 		return (-1);
+
+	tn = topo_vertex_node(ini_p1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5003048023567a00, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
+
 	if (topo_edge_new(mod, ini, ini_p1) != 0)
 		return (-1);
 
 	if ((exp_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(exp_in1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5003048023567a00, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, ini_p1, exp_in1) != 0)
 		return (-1);
 
 	if ((exp = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(exp);
+	if (topo_prop_set_string(tn, TOPO_PGROUP_EXPANDER,
+	    TOPO_PROP_EXPANDER_DEVFSNAME, TOPO_PROP_IMMUTABLE,
+	    "/dev/smp/expd0", &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp_in1, exp) != 0)
 		return (-1);
 
 	if ((exp_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg1_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(exp_out1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5000cca2531a41b9, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp, exp_out1) != 0)
 		return (-1);
 
 	if ((tgt1_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg1_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(tgt1_p1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5000cca2531a41b9, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp_out1, tgt1_p1) != 0)
 		return (-1);
 
 	if ((tgt1 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg1_addr)) == NULL)
 		return (-1);
+
+	tn = topo_vertex_node(tgt1);
+	if (topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_MANUF, TOPO_PROP_IMMUTABLE, "HGST",
+	    &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_MODEL, TOPO_PROP_IMMUTABLE, "HUH721212AL4200",
+	    &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
+
 	if (topo_edge_new(mod, tgt1_p1, tgt1) != 0)
 		return (-1);
 
 	if ((exp_out2 = sas_create_vertex(mod, TOPO_VTX_PORT, tg2_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(exp_out2);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5000cca2531b1025, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp, exp_out2) != 0)
 		return (-1);
 
 	if ((tgt2_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg2_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(tgt2_p1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5000cca2531b1025, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp_out2, tgt2_p1) != 0)
 		return (-1);
 
 	if ((tgt2 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg2_addr)) == NULL)
 		return (-1);
+
+	tn = topo_vertex_node(tgt2);
+	if (topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_MANUF, TOPO_PROP_IMMUTABLE, "HGST",
+	    &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_MODEL, TOPO_PROP_IMMUTABLE, "HUH721212AL4200",
+	    &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
+
 	if (topo_edge_new(mod, tgt2_p1, tgt2) != 0)
 		return (-1);
 
@@ -386,11 +516,35 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if ((exp_out3 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(exp_out3);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801e84c7ff, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp, exp_out3) != 0)
 		return (-1);
 
 	if ((exp2_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp2_addr)) ==
 	    NULL) {
+		return (-1);
+	}
+
+	tn = topo_vertex_node(exp2_in1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801e84c7ff, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801861347f, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
 		return (-1);
 	}
 	if (topo_edge_new(mod, exp_out3, exp2_in1) != 0)
@@ -399,23 +553,69 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if ((exp2 = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp2_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(exp2);
+	if (topo_prop_set_string(tn, TOPO_PGROUP_EXPANDER,
+	    TOPO_PROP_EXPANDER_DEVFSNAME, TOPO_PROP_IMMUTABLE,
+	    "/dev/smp/expd1", &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp2_in1, exp2) != 0)
 		return (-1);
 
 	if ((exp2_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(exp2_out1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801e84c7ff, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5000cca2530f9c55, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp2, exp2_out1) != 0)
 		return (-1);
 
 	if ((tgt3_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr)) ==
 	    NULL)
 		return (-1);
+
+	tn = topo_vertex_node(tgt3_p1);
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x5000cca2530f9c55, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    0x500304801e84c7ff, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
 	if (topo_edge_new(mod, exp2_out1, tgt3_p1) != 0)
 		return (-1);
 
 	if ((tgt3 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg3_addr)) == NULL)
 		return (-1);
+
+	tn = topo_vertex_node(tgt3);
+	if (topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_MANUF, TOPO_PROP_IMMUTABLE, "HGST",
+	    &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_MODEL, TOPO_PROP_IMMUTABLE, "HUH721212AL4200",
+	    &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		return (-1);
+	}
+
 	if (topo_edge_new(mod, tgt3_p1, tgt3) != 0)
 		return (-1);
 
