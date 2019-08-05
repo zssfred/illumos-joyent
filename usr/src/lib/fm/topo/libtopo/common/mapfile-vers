@@ -47,6 +47,7 @@ SYMBOL_VERSION SUNWprivate {
 	topo_digraph_get;
 	topo_digraph_new;
 	topo_digraph_paths;
+	topo_digraph_serialize;
 	topo_edge_iter;
 	topo_edge_new;
 	topo_fmri_asru;

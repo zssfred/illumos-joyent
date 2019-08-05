@@ -193,13 +193,19 @@ topo_vertex_destroy(topo_mod_t *mod, topo_vertex_t *vtx)
 
 int
 topo_vertex_iter(topo_hdl_t *thp, topo_digraph_t *tdg,
-    int (*func)(topo_hdl_t *, topo_vertex_t *, void *), void *arg)
+    int (*func)(topo_hdl_t *, topo_vertex_t *, boolean_t, void *), void *arg)
 {
-	for (topo_vertex_t *vtx = topo_list_next(&tdg->tdg_vertices);
-	    vtx != NULL; vtx = topo_list_next(vtx)) {
-		int ret;
+	uint_t n = 0;
 
-		ret = func(thp, vtx, arg);
+	for (topo_vertex_t *vtx = topo_list_next(&tdg->tdg_vertices);
+	    vtx != NULL; vtx = topo_list_next(vtx), n++) {
+		int ret;
+		boolean_t last_vtx = B_FALSE;
+
+		if (n == (tdg->tdg_nvertices - 1))
+			last_vtx = B_TRUE;
+
+		ret = func(thp, vtx, last_vtx, arg);
 
 		switch (ret) {
 		case (TOPO_WALK_NEXT):
@@ -240,6 +246,7 @@ topo_edge_new(topo_mod_t *mod, topo_vertex_t *from, topo_vertex_t *to)
 
 	(void) pthread_mutex_lock(&tdg->tdg_lock);
 	topo_list_append(&from->tvt_outgoing, e_to);
+	from->tvt_noutgoing++;
 	topo_list_append(&to->tvt_incoming, e_from);
 	tdg->tdg_nedges++;
 	(void) pthread_mutex_unlock(&tdg->tdg_lock);
@@ -249,13 +256,19 @@ topo_edge_new(topo_mod_t *mod, topo_vertex_t *from, topo_vertex_t *to)
 
 int
 topo_edge_iter(topo_hdl_t *thp, topo_vertex_t *vtx,
-    int (*func)(topo_hdl_t *, topo_edge_t *, void *), void *arg)
+    int (*func)(topo_hdl_t *, topo_edge_t *, boolean_t, void *), void *arg)
 {
-	for (topo_edge_t *edge = topo_list_next(&vtx->tvt_outgoing);
-	    edge != NULL; edge = topo_list_next(edge)) {
-		int ret;
+	uint_t n = 0;
 
-		ret = func(thp, edge, arg);
+	for (topo_edge_t *edge = topo_list_next(&vtx->tvt_outgoing);
+	    edge != NULL; edge = topo_list_next(edge), n++) {
+		int ret;
+		boolean_t last_edge = B_FALSE;
+
+		if (n == (vtx->tvt_noutgoing - 1))
+			last_edge = B_TRUE;
+
+		ret = func(thp, edge, last_edge, arg);
 
 		switch (ret) {
 		case (TOPO_WALK_NEXT):
@@ -434,41 +447,254 @@ err:
 	    topo_hdl_errmsg(thp));
 	return (-1);
 }
-#if 0
-static int
-serialize_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, void *arg)
+
+static void
+free_nvlist_array(topo_hdl_t *thp, nvlist_t **nvlarr, uint_t nelems)
 {
-	return (0);
+	for (uint_t i = 0; i < nelems; i++) {
+		if (nvlarr[i] != NULL)
+			nvlist_free(nvlarr[i]);
+	}
+	topo_hdl_free(thp, nvlarr, nelems * sizeof (nvlist_t *));
+}
+
+
+/*
+ * This is similar to topo_prop_getprops(), in that it returns an nvlist
+ * representation of the specified node's property groups and their
+ * contained properties.  However, topo_prop_getprops() organizes the pgroups
+ * and properties as nvlists of nvlists where the nvlists do not enforce
+ * unique nvpair names.  As a result, when that's converted to JSON using
+ * nvlist_print_json(), the resulting JSON objects have duplicate keys and
+ * that's all bad.  Unfortunately, both eversholt and fmtopo depend on the
+ * current layout of the nvlist produced by topo_prop_getprops(), so rather
+ * than changing it, we make a private version here that produces an nvlist
+ * that is more amenable to conversion to JSON.
+ */
+static nvlist_t *
+get_props_nvl(topo_hdl_t *thp, tnode_t *tn)
+{
+	nvlist_t *nvl, **pgnvl = NULL;
+	uint_t npgs = 0, i;
+	topo_pgroup_t *pg;
+
+	if (topo_hdl_nvalloc(thp, &nvl, 0) != 0) {
+		(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+		return (NULL);
+	}
+
+	topo_node_lock(tn);
+
+	/*
+	 * Count the number of propgroups and then allocate an array of nvlist
+	 * pointers to hold them.
+	 */
+	for (pg = topo_list_next(&tn->tn_pgroups); pg != NULL;
+	    pg = topo_list_next(pg))
+		npgs++;
+
+	pgnvl = topo_hdl_zalloc(thp, npgs * sizeof (nvlist_t *));
+	if (pgnvl == NULL) {
+		(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+		goto err;
+	}
+
+	for (i = 0, pg = topo_list_next(&tn->tn_pgroups); pg != NULL;
+	    i++, pg = topo_list_next(pg)) {
+
+		nvlist_t **pvnvl;
+		topo_proplist_t *pvl;
+		uint_t nprops = 0, j;
+
+		if (topo_hdl_nvalloc(thp, &pgnvl[i], 0) != 0) {
+			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+			goto err;
+		}
+
+		if (nvlist_add_string(pgnvl[i], TOPO_PROP_GROUP_NAME,
+		    pg->tpg_info->tpi_name) != 0 ||
+		    nvlist_add_string(pgnvl[i], TOPO_PROP_GROUP_NSTAB,
+		    topo_stability2name(pg->tpg_info->tpi_namestab)) != 0 ||
+		    nvlist_add_string(pgnvl[i], TOPO_PROP_GROUP_DSTAB,
+		    topo_stability2name(pg->tpg_info->tpi_datastab)) != 0 ||
+		    nvlist_add_int32(pgnvl[i], TOPO_PROP_GROUP_VERSION,
+		    pg->tpg_info->tpi_version) != 0) {
+			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+			goto err;
+		}
+
+		/*
+		 * Count the number of properties in this propgroup and then
+		 * allocate an array of nvlist nvlist pointers to hold them.
+		 */
+		for (pvl = topo_list_next(&pg->tpg_pvals); pvl != NULL;
+		    pvl = topo_list_next(pvl))
+			nprops++;
+
+		pvnvl = topo_hdl_zalloc(thp, nprops * sizeof (nvlist_t *));
+		if (pvnvl == NULL) {
+			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+			goto err;
+		}
+
+		for (j = 0, pvl = topo_list_next(&pg->tpg_pvals);
+		    pvl != NULL; j++, pvl = topo_list_next(pvl)) {
+
+			topo_propval_t *pv = pvl->tp_pval;
+
+			if (topo_hdl_nvdup(thp, pv->tp_val, &pvnvl[j]) != 0) {
+				(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+				free_nvlist_array(thp, pvnvl, nprops);
+				goto err;
+			}
+		}
+		if (nvlist_add_nvlist_array(pgnvl[i], "property-values", pvnvl,
+		    nprops) != 0) {
+			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+			free_nvlist_array(thp, pvnvl, nprops);
+			goto err;
+		}
+		free_nvlist_array(thp, pvnvl, nprops);
+	}
+	if (nvlist_add_nvlist_array(nvl, "property-groups", pgnvl, npgs) !=
+	    0) {
+		(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+		goto err;
+	}
+
+	free_nvlist_array(thp, pgnvl, npgs);
+	topo_node_unlock(tn);
+	return (nvl);
+
+err:
+	topo_node_unlock(tn);
+	free_nvlist_array(thp, pgnvl, npgs);
+	nvlist_free(nvl);
+	return (NULL);
+}
+
+static int
+serialize_edge(topo_hdl_t *thp, topo_edge_t *edge, boolean_t last_edge,
+    void *arg)
+{
+	nvlist_t *fmri = NULL;
+	char *fmristr;
+	int err;
+	tnode_t *tn;
+	FILE *fp = (FILE *)arg;
+
+	tn = topo_vertex_node(edge->tve_vertex);
+	if (topo_node_resource(tn, &fmri, &err) != 0 ||
+	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
+		nvlist_free(fmri);
+		return (TOPO_WALK_ERR);
+	}
+
+	nvlist_free(fmri);
+	if (last_edge)
+		(void) fprintf(fp, "\"%s\"", fmristr);
+	else
+		(void) fprintf(fp, "\"%s\",", fmristr);
+
+	topo_hdl_strfree(thp, fmristr);
+	return (TOPO_WALK_NEXT);
+}
+
+static int
+serialize_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx,
+    void *arg)
+{
+	nvlist_t *fmri = NULL, *props;
+	char *fmristr;
+	tnode_t *tn;
+	int err;
+	FILE *fp = (FILE *)arg;
+
+	tn = topo_vertex_node(vtx);
+	if (topo_node_resource(tn, &fmri, &err) != 0 ||
+	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
+		nvlist_free(fmri);
+		return (TOPO_WALK_ERR);
+	}
+
+	nvlist_free(fmri);
+	(void) fprintf(fp, "{ \"fmri\": \"%s\",", fmristr);
+	topo_hdl_strfree(thp, fmristr);
+
+	if ((props = get_props_nvl(thp, tn)) == NULL) {
+		(void) fprintf(fp, "failed to get props on %s=%" PRIx64
+		    "\n", topo_node_name(tn), topo_node_instance(tn));
+		return (TOPO_WALK_ERR);
+	}
+	(void) fprintf(fp, "\"properties\": ");
+	if (nvlist_print_json(fp, props) < 0) {
+		nvlist_free(props);
+		return (TOPO_WALK_ERR);
+	}
+	nvlist_free(props);
+
+	if (vtx->tvt_noutgoing != 0) {
+		(void) fprintf(fp, ", \"outgoing-edges\": [ ");
+		if (topo_edge_iter(thp, vtx, serialize_edge, fp) != 0) {
+			(void) fprintf(fp, "\nfailed to iterate edges on %s=%"
+			    PRIx64 "\n", topo_node_name(tn),
+			    topo_node_instance(tn));
+			return (TOPO_WALK_ERR);
+		}
+		(void) fprintf(fp, " ]");
+	}
+
+	if (last_vtx)
+		(void) fprintf(fp, "}\n");
+	else
+		(void) fprintf(fp, "},\n");
+
+	return (TOPO_WALK_NEXT);
 }
 
 /*
  * This function takes a pointer to a topo_digraph_t and serializes it by
- * encoding the adjeacency list as a JSON object`that takes the following
- * form:
+ * encoding the adjacency list as a JSON object`that has the following
+ * schema:
  *
  * {
  *   vertices: [
  *     {
- *       "fmri": {...}.
- *       "propgroups": [
- *           { "name": string, "properties": [
- *               { "name": string, "type": string, "value": {...} },
+ *       "fmri": String.
+ *       "properties": { "property-groups": [
+ *           {
+ *             "property-group-name": String,
+ *             "property-group-name-stability": String,
+ *             "property-group-data-stability": String,
+ *             "property-group-version": Number,
+ *             "property-values": [
+ *               {
+ *                 "property-name": String,
+ *                 "property-type": Number,
+ *                 "property-value": String|Number|{Object}
+ *               },
  *               . . .
  *              ]
  *           },
  *           . . .
  *       ],
- *       "incoming": [ { fmri: {...} }, ... ],
- *       "outgoing": [ { fmri: {...} }, ... ]
+ *       "outgoing": [ String, ... ]
  *     },
  *     . . .
  *   ]
  * }
  *
  */
-void
+int
 topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
 {
+	(void) fprintf(fp, "{ \"vertices\": [");
 
+	if (topo_vertex_iter(thp, tdg, serialize_vertex, fp) != 0) {
+		(void) fprintf(fp, "\nfailed to iterate vertices\n");
+		return (-1);
+	}
+
+	(void) fprintf(fp, "] }\n");
+	return (0);
 }
-#endif

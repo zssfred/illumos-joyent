@@ -17,7 +17,7 @@
 #define	EXIT_USAGE	2
 
 static const char *pname;
-static const char optstr[] = "djR:V";
+static const char optstr[] = "CdjR:V";
 
 static void
 usage()
@@ -33,10 +33,25 @@ struct sastopo_vertex {
 struct cb_arg {
 	topo_list_t ini_list;
 	topo_list_t tgt_list;
+	boolean_t verbose;
 };
 
 static void
-print_vertex(topo_hdl_t *thp, topo_vertex_t *vtx)
+print_node_props(tnode_t *tn)
+{
+	int err;
+	nvlist_t *props;
+
+	if ((props = topo_prop_getprops(tn, &err)) == NULL) {
+		(void) fprintf(stderr, "failed to get props on %s=%" PRIx64
+		    "\n", topo_node_name(tn), topo_node_instance(tn));
+		return;
+	}
+	/* XXX - need to add code to print props */
+}
+
+static void
+print_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, struct cb_arg *cbarg)
 {
 	tnode_t *tn;
 	nvlist_t *fmri = NULL;
@@ -53,6 +68,8 @@ print_vertex(topo_hdl_t *thp, topo_vertex_t *vtx)
 		goto out;
 	}
 	(void) printf("%s\n", fmristr);
+	if (cbarg->verbose)
+		print_node_props(tn);
 out:
 	topo_hdl_strfree(thp, fmristr);
 	nvlist_free(fmri);
@@ -65,13 +82,14 @@ print_path(topo_path_t *path)
 }
 
 static int
-vertex_cb(topo_hdl_t *thp, topo_vertex_t *vtx, void *arg)
+vertex_cb(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx,
+    void *arg)
 {
 	struct cb_arg *cbarg = arg;
 	tnode_t *tn = topo_vertex_node(vtx);
 	struct sastopo_vertex *sasvtx;
 
-	print_vertex(thp, vtx);
+	print_vertex(thp, vtx, cbarg);
 
 	if (strcmp(topo_node_name(tn), TOPO_VTX_INITIATOR) != 0 &&
 	    strcmp(topo_node_name(tn), TOPO_VTX_TARGET) != 0) {
@@ -97,7 +115,7 @@ main(int argc, char *argv[])
 	topo_hdl_t *thp = NULL;
 	topo_digraph_t *tdg;
 	char c, *root = "/";
-	boolean_t debug = B_FALSE, json = B_FALSE, verbose = B_FALSE;
+	boolean_t debug = B_FALSE, json = B_FALSE;
 	int err, status = EXIT_FAILURE;
 	struct cb_arg cbarg = { 0 };
 	struct sastopo_vertex *ini, *tgt;
@@ -107,15 +125,21 @@ main(int argc, char *argv[])
 	while (optind < argc) {
 		while ((c = getopt(argc, argv, optstr)) != -1) {
 			switch (c) {
+			case 'C':
+				(void) atexit(abort);
+				break;
 			case 'd':
 				debug = B_TRUE;
+				break;
 			case 'j':
 				json = B_TRUE;
+				break;
 			case 'R':
 				root = optarg;
 				break;
 			case 'V':
-				verbose = B_TRUE;
+				cbarg.verbose = B_TRUE;
+				break;
 			default:
 				usage();
 				return (EXIT_USAGE);
@@ -148,6 +172,17 @@ main(int argc, char *argv[])
 	 */
 	if ((tdg = topo_digraph_get(thp, FM_FMRI_SCHEME_SAS)) == NULL) {
 		(void) fprintf(stderr, "failed to find sas scheme digraph\n");
+		goto out;
+	}
+
+	/*
+	 * If -j was passed then we're just going to dump a JSON version of the
+	 * digraph and then exit.
+	 */
+	if (json) {
+		if (topo_digraph_serialize(thp, tdg, stdout) == 0)
+			status = EXIT_SUCCESS;
+
 		goto out;
 	}
 

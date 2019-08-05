@@ -240,8 +240,14 @@ static const topo_pgroup_info_t auth_pgroup = {
 	1
 };
 
+struct sas_phy_info {
+	uint32_t	start_phy;
+	uint32_t	end_phy;
+};
+
 static topo_vertex_t *
-sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst)
+sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst,
+    struct sas_phy_info *phyinfo)
 {
 	topo_vertex_t *vtx;
 	tnode_t *tn;
@@ -266,35 +272,56 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	}
 
 	if ((vtx = topo_vertex_new(mod, name, inst)) == NULL) {
+		/* errno set */
 		topo_mod_dprintf(mod, "failed to create vertex: "
 		    "%s=%" PRIx64 "", name, inst);
 		return (NULL);
 	}
 	tn = topo_vertex_node(vtx);
 
-	/*
-	 * XXX - for expander ports, need code to add FM_FMRI_SAS_START_PHY
-	 *	and FM_FMRI_SAS_START_PHY nvpairs to auth nvlist
-	 */
 	if (topo_mod_nvalloc(mod, &auth, NV_UNIQUE_NAME) != 0 ||
 	    nvlist_add_string(auth, FM_FMRI_SAS_TYPE,
 	    FM_FMRI_SAS_TYPE_PATHNODE) != 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
 		goto err;
+	}
+	if (strcmp(name, TOPO_VTX_PORT) == 0 && phyinfo != NULL) {
+		/*
+		 * if (phyinfo == NULL) {
+		 *	goto err;
+		 * }
+		 */
+		if (nvlist_add_uint32(auth, FM_FMRI_SAS_START_PHY,
+		    phyinfo->start_phy) != 0 ||
+		    nvlist_add_uint32(auth, FM_FMRI_SAS_END_PHY,
+		    phyinfo->end_phy) != 0) {
+			(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+			topo_mod_dprintf(mod, "failed to construct auth for "
+			    "node: %s=%" PRIx64, name, inst);
+			goto err;
+		}
 	}
 	if ((fmri = topo_mod_sasfmri(mod, FM_SAS_SCHEME_VERSION, name, inst,
 	    auth)) == NULL) {
+		/* errno set */
 		topo_mod_dprintf(mod, "failed to construct FMRI for "
 		    "%s=%" PRIx64 ": %s", name, inst, topo_strerror(err));
 		goto err;
 	}
 	if (topo_pgroup_create(tn, &pgi, &err) != 0) {
+		(void) topo_mod_seterrno(mod, err);
 		topo_mod_dprintf(mod, "failed to create %s propgroup on "
 		    "%s=%" PRIx64 ": %s", pgi.tpi_name, name, inst,
 		    topo_strerror(err));
+		goto err;
 	}
 	if (topo_pgroup_create(tn, &protocol_pgroup, &err) < 0 ||
 	    topo_prop_set_fmri(tn, TOPO_PGROUP_PROTOCOL, TOPO_PROP_RESOURCE,
 	    TOPO_PROP_IMMUTABLE, fmri, &err) < 0) {
+		(void) topo_mod_seterrno(mod, err);
+		topo_mod_dprintf(mod, "failed to create %s propgroup on "
+		    "%s=%" PRIx64 ": %s", TOPO_PGROUP_PROTOCOL, name, inst,
+		    topo_strerror(err));
 		goto err;
 	}
 
@@ -330,12 +357,13 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 	uint64_t tg3_addr = 0xDEADBEED;
 	uint64_t exp2_addr = 0xDEADBEEF;
+	struct sas_phy_info phyinfo;
 
 	/*
 	 * Create vertices for an initiator and one outgoing port
 	 */
-	if ((ini = sas_create_vertex(mod, TOPO_VTX_INITIATOR, ini_addr)) ==
-	    NULL)
+	if ((ini = sas_create_vertex(mod, TOPO_VTX_INITIATOR, ini_addr,
+	    NULL)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(ini);
@@ -353,7 +381,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		return (-1);
 	}
 
-	if ((ini_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr)) == NULL)
+	phyinfo.start_phy = 0;
+	phyinfo.end_phy = 7;
+	if ((ini_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(ini_p1);
@@ -371,8 +402,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, ini, ini_p1) != 0)
 		return (-1);
 
-	if ((exp_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 0;
+	phyinfo.end_phy = 7;
+	if ((exp_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(exp_in1);
@@ -389,8 +422,8 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, ini_p1, exp_in1) != 0)
 		return (-1);
 
-	if ((exp = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp_addr)) ==
-	    NULL)
+	if ((exp = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp_addr,
+	    NULL)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(exp);
@@ -404,8 +437,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp_in1, exp) != 0)
 		return (-1);
 
-	if ((exp_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg1_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 8;
+	phyinfo.end_phy = 8;
+	if ((exp_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(exp_out1);
@@ -422,8 +457,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp, exp_out1) != 0)
 		return (-1);
 
-	if ((tgt1_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg1_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 0;
+	phyinfo.end_phy = 0;
+	if ((tgt1_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg1_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(tgt1_p1);
@@ -440,7 +477,8 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp_out1, tgt1_p1) != 0)
 		return (-1);
 
-	if ((tgt1 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg1_addr)) == NULL)
+	if ((tgt1 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg1_addr,
+	    NULL)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(tgt1);
@@ -458,8 +496,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, tgt1_p1, tgt1) != 0)
 		return (-1);
 
-	if ((exp_out2 = sas_create_vertex(mod, TOPO_VTX_PORT, tg2_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 9;
+	phyinfo.end_phy = 9;
+	if ((exp_out2 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(exp_out2);
@@ -476,8 +516,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp, exp_out2) != 0)
 		return (-1);
 
-	if ((tgt2_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg2_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 0;
+	phyinfo.end_phy = 0;
+	if ((tgt2_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg2_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(tgt2_p1);
@@ -494,7 +536,8 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp_out2, tgt2_p1) != 0)
 		return (-1);
 
-	if ((tgt2 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg2_addr)) == NULL)
+	if ((tgt2 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg2_addr,
+	    NULL)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(tgt2);
@@ -513,8 +556,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		return (-1);
 
 	/* Attach to second expander with one target device */
-	if ((exp_out3 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 10;
+	phyinfo.end_phy = 17;
+	if ((exp_out3 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(exp_out3);
@@ -531,8 +576,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp, exp_out3) != 0)
 		return (-1);
 
-	if ((exp2_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp2_addr)) ==
-	    NULL) {
+	phyinfo.start_phy = 0;
+	phyinfo.end_phy = 7;
+	if ((exp2_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp2_addr,
+	    &phyinfo)) == NULL) {
 		return (-1);
 	}
 
@@ -550,8 +597,8 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp_out3, exp2_in1) != 0)
 		return (-1);
 
-	if ((exp2 = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp2_addr)) ==
-	    NULL)
+	if ((exp2 = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp2_addr,
+	    NULL)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(exp2);
@@ -565,8 +612,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp2_in1, exp2) != 0)
 		return (-1);
 
-	if ((exp2_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 8;
+	phyinfo.end_phy = 8;
+	if ((exp2_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp2_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(exp2_out1);
@@ -583,8 +632,10 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp2, exp2_out1) != 0)
 		return (-1);
 
-	if ((tgt3_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr)) ==
-	    NULL)
+	phyinfo.start_phy = 0;
+	phyinfo.end_phy = 0;
+	if ((tgt3_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr,
+	    &phyinfo)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(tgt3_p1);
@@ -601,7 +652,8 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (topo_edge_new(mod, exp2_out1, tgt3_p1) != 0)
 		return (-1);
 
-	if ((tgt3 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg3_addr)) == NULL)
+	if ((tgt3 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg3_addr,
+	    NULL)) == NULL)
 		return (-1);
 
 	tn = topo_vertex_node(tgt3);
@@ -708,7 +760,7 @@ sas_port_vtx_create(topo_mod_t *mod, topo_list_t *search_list,
 	}
 
 	if ((dev_vtx = sas_create_vertex(mod, vtx_type,
-	    dev_info->si_local_wwn)) == NULL) {
+	    dev_info->si_local_wwn, NULL)) == NULL) {
 		ret = -1;
 		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
 		goto done;
@@ -817,8 +869,8 @@ sas_hba_port_discover(topo_mod_t *mod, topo_list_t *search_list,
 		 */
 
 		/* XXX: One vertex per hba, or per HBA port? */
-		if ((hba = sas_create_vertex(mod,
-		    TOPO_VTX_INITIATOR, hba_info->si_local_wwn)) == NULL) {
+		if ((hba = sas_create_vertex(mod, TOPO_VTX_INITIATOR,
+		    hba_info->si_local_wwn, NULL)) == NULL) {
 			ret = -1;
 			topo_mod_dprintf(mod, "failed to create vertex\n");
 			topo_mod_free(mod, hba_info, sizeof (sas_info_t));
@@ -851,7 +903,8 @@ done:
 }
 
 static int
-sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
+sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, boolean_t last_vtx,
+    void *arg)
 {
 	sas_info_t *info = topo_node_getspecific(vtx->tvt_node);
 	sas_dg_iter_arg_t *iter_arg = (sas_dg_iter_arg_t *)arg;
@@ -895,12 +948,13 @@ sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, void *arg)
 			topo_vertex_t *u_port_vtx, *port_vtx;
 
 			if ((u_port_vtx = sas_create_vertex(iter_arg->sas_mod,
-			    TOPO_VTX_PORT, upstream_info->si_local_wwn)) ==
-			    NULL) {
+			    TOPO_VTX_PORT, upstream_info->si_local_wwn,
+			    NULL)) == NULL) {
 				return (TOPO_WALK_ERR);
 			}
 			if ((port_vtx = sas_create_vertex(iter_arg->sas_mod,
-			    TOPO_VTX_PORT, info->si_local_wwn)) == NULL) {
+			    TOPO_VTX_PORT, info->si_local_wwn, NULL)) ==
+			    NULL) {
 				return (TOPO_WALK_ERR);
 			}
 
@@ -1111,12 +1165,24 @@ fmri_bufsz(nvlist_t *nvl)
 	uint_t nelem;
 	char *type;
 	ssize_t bufsz = 0;
+	uint32_t start_phy = UINT32_MAX, end_phy = UINT32_MAX;
 
 	if (nvlist_lookup_nvlist(nvl, FM_FMRI_AUTHORITY, &auth) != 0 ||
 	    nvlist_lookup_string(auth, FM_FMRI_SAS_TYPE, &type) != 0)
 		return (0);
 
-	bufsz += snprintf(NULL, 0, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
+	(void) nvlist_lookup_uint32(auth, FM_FMRI_SAS_START_PHY, &start_phy);
+	(void) nvlist_lookup_uint32(auth, FM_FMRI_SAS_END_PHY, &end_phy);
+
+	if (start_phy != UINT32_MAX && end_phy != UINT32_MAX) {
+		bufsz += snprintf(NULL, 0, "sas://%s=%s:%s=%u:%s=%u",
+		    FM_FMRI_SAS_TYPE, type, FM_FMRI_SAS_START_PHY, start_phy,
+		    FM_FMRI_SAS_END_PHY, end_phy);
+	} else {
+		bufsz += snprintf(NULL, 0, "sas://%s=%s", FM_FMRI_SAS_TYPE,
+		    type);
+	}
+
 	if (nvlist_lookup_nvlist_array(nvl, FM_FMRI_SAS_PATH, &paths,
 	    &nelem) != 0) {
 		return (0);
@@ -1148,6 +1214,7 @@ sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	uint_t nelem;
 	ssize_t bufsz, end = 0;
 	char *buf, *type;
+	uint32_t start_phy = UINT32_MAX, end_phy = UINT32_MAX;
 
 	if (version > TOPO_METH_NVL2STR_VERSION)
 		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
@@ -1175,9 +1242,16 @@ sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	 */
 	(void) nvlist_lookup_nvlist(in, FM_FMRI_AUTHORITY, &auth);
 	(void) nvlist_lookup_string(auth, FM_FMRI_SAS_TYPE, &type);
+	(void) nvlist_lookup_uint32(auth, FM_FMRI_SAS_START_PHY, &start_phy);
+	(void) nvlist_lookup_uint32(auth, FM_FMRI_SAS_END_PHY, &end_phy);
 	(void) nvlist_lookup_nvlist_array(in, FM_FMRI_SAS_PATH, &paths,
 	    &nelem);
-	end += sprintf(buf, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
+	if (start_phy != UINT32_MAX && end_phy != UINT32_MAX)
+		end += sprintf(buf, "sas://%s=%s:%s=%u:%s=%u",
+		    FM_FMRI_SAS_TYPE, type, FM_FMRI_SAS_START_PHY, start_phy,
+		    FM_FMRI_SAS_END_PHY, end_phy);
+	else
+		end += sprintf(buf, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
 
 	for (uint_t i = 0; i < nelem; i++) {
 		char *sasname;
