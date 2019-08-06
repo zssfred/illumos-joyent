@@ -23,6 +23,9 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+/*
+ * Copyright 2019 Joyent, Inc.
+ */
 
 #include <sun_sas.h>
 
@@ -131,9 +134,9 @@ Sun_sasScsiInquiry(HBA_HANDLE handle, HBA_WWN portWWN, HBA_WWN targetPortWWN,
 	 * By verifying this information here, we will take a big performance
 	 * hit.  This check will be done later only if the Inquiry ioctl fails
 	 */
-	if (hba_ptr->device_path == NULL) {
+	if (strlen(hba_ptr->device_path) == 0) {
 		log(LOG_DEBUG, ROUTINE,
-		    "HBA handle had NULL device path. \
+		    "HBA handle had empty device path. \
 		    Unable to send SCSI cmd");
 		unlock(&open_handles_lock);
 		unlock(&all_hbas_lock);

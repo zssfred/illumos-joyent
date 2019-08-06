@@ -23,6 +23,7 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
+ * Copyright 2019 Joyent, Inc.
  */
 
 #include	<sun_sas.h>
@@ -228,6 +229,7 @@ get_attached_devices_info(di_node_t node, struct sun_sas_port *port_ptr)
 	char			    *devpath, link[MAXNAMELEN];
 	char			    fullpath[MAXPATHLEN+1];
 	char			    minorname[MAXNAMELEN+1];
+	char			    *os_dev_name;
 	struct ScsiEntryList	    *mapping_ptr;
 	HBA_WWN			    SASAddress, AttachedSASAddress;
 	struct sun_sas_port	    *disco_port_ptr;
@@ -488,9 +490,9 @@ get_attached_devices_info(di_node_t node, struct sun_sas_port *port_ptr)
 		}
 
 		/* SMP device was handled already */
-		if (disco_port_ptr->port_attributes.OSDeviceName[0] == '\0') {
-		/* indentation change due to ctysle check on sizeof. */
-		size = sizeof (disco_port_ptr->port_attributes.OSDeviceName);
+		os_dev_name = disco_port_ptr->port_attributes.OSDeviceName;
+		if (os_dev_name[0] == '\0') {
+			size = sizeof (os_dev_name);
 			(void) strlcpy(disco_port_ptr->port_attributes.
 			    OSDeviceName, fullpath, size);
 		}
@@ -651,6 +653,7 @@ get_attached_paths_info(di_path_t path, struct sun_sas_port *port_ptr)
 	char			    *pathdevpath = NULL;
 	char			    fullpath[MAXPATHLEN+1];
 	char			    minorname[MAXNAMELEN+1];
+	char			    *os_dev_name;
 	struct ScsiEntryList	    *mapping_ptr;
 	HBA_WWN			    SASAddress, AttachedSASAddress;
 	struct sun_sas_port	    *disco_port_ptr;
@@ -904,12 +907,11 @@ get_attached_paths_info(di_path_t path, struct sun_sas_port *port_ptr)
 			    SASPort->PortProtocol = HBA_SASPORTPROTOCOL_SSP;
 		}
 
-		if (disco_port_ptr->port_attributes.OSDeviceName[0] == '\0') {
-		/* indentation change due to ctysle check on sizeof. */
-		size = sizeof (disco_port_ptr->port_attributes.OSDeviceName);
+		os_dev_name = disco_port_ptr->port_attributes.OSDeviceName;
+		if (os_dev_name == '\0') {
+			size = sizeof (os_dev_name);
 			if (pathdevpath != NULL) {
-				(void) strlcpy(disco_port_ptr->port_attributes.
-				    OSDeviceName, pathdevpath, size);
+				(void) strlcpy(os_dev_name, pathdevpath, size);
 			}
 		}
 

@@ -71,19 +71,17 @@ Sun_sasGetDiscoveredPortAttributes(HBA_HANDLE handle,
 
 
 	if (hba_ptr->first_port == NULL) {
-	    /* This is probably an internal failure of the library */
-	    if (hba_ptr->device_path) {
-		log(LOG_DEBUG, ROUTINE,
-		    "Internal failure:  Adapter %s contains no port data",
-		    hba_ptr->device_path);
-	    } else {
-		log(LOG_DEBUG, ROUTINE,
-		    "Internal failure:  Adapter at index %d contains no port "
-		    "data", hba_ptr->index);
-	    }
-	    unlock(&open_handles_lock);
-	    unlock(&all_hbas_lock);
-	    return (HBA_STATUS_ERROR);
+		/* This is probably an internal failure of the library */
+		if (strlen(hba_ptr->device_path) > 0) {
+			log(LOG_DEBUG, ROUTINE, "Internal failure:  Adapter %s"
+			    " contains no port data", hba_ptr->device_path);
+		} else {
+			log(LOG_DEBUG, ROUTINE, "Internal failure:  Adapter at"
+			    " index %d contains no port data", hba_ptr->index);
+		}
+		unlock(&open_handles_lock);
+		unlock(&all_hbas_lock);
+		return (HBA_STATUS_ERROR);
 	}
 
 	for (hba_port_ptr = hba_ptr->first_port;
@@ -105,11 +103,11 @@ Sun_sasGetDiscoveredPortAttributes(HBA_HANDLE handle,
 	/* check to make sure there are devices attached to this port */
 	if (hba_port_ptr->first_attached_port != NULL) {
 		for (hba_disco_port = hba_port_ptr->first_attached_port;
-			hba_disco_port != NULL;
-			hba_disco_port = hba_disco_port->next) {
-		    if (hba_disco_port->index == discoveredport) {
-			break;
-		    }
+		    hba_disco_port != NULL;
+		    hba_disco_port = hba_disco_port->next) {
+			if (hba_disco_port->index == discoveredport) {
+				break;
+			}
 		}
 		if (hba_disco_port == NULL) {
 			log(LOG_DEBUG, ROUTINE,
@@ -118,16 +116,17 @@ Sun_sasGetDiscoveredPortAttributes(HBA_HANDLE handle,
 			    discoveredport, port, handle);
 			ret = HBA_STATUS_ERROR_ILLEGAL_INDEX;
 		} else {
-		    attributes->PortType =
-			hba_disco_port->port_attributes.PortType;
-		    attributes->PortState =
-			hba_disco_port->port_attributes.PortState;
-		    (void) strlcpy(attributes->OSDeviceName,
-			hba_disco_port->port_attributes.OSDeviceName,
-			sizeof (attributes->OSDeviceName));
-		    (void) memcpy(attributes->PortSpecificAttribute.SASPort,
-			hba_disco_port->port_attributes.PortSpecificAttribute.
-			SASPort, sizeof (struct SMHBA_SAS_Port));
+			attributes->PortType =
+			    hba_disco_port->port_attributes.PortType;
+			attributes->PortState =
+			    hba_disco_port->port_attributes.PortState;
+			(void) strlcpy(attributes->OSDeviceName,
+			    hba_disco_port->port_attributes.OSDeviceName,
+			    sizeof (attributes->OSDeviceName));
+			(void) memcpy(attributes->PortSpecificAttribute.SASPort,
+			    hba_disco_port->port_attributes.\
+		            PortSpecificAttribute.SASPort,
+			    sizeof (struct SMHBA_SAS_Port));
 		}
 	} else {
 		/* No ports, so we can't possibly return anything */

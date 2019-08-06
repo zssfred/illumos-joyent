@@ -56,7 +56,7 @@ find_matching_hba(di_node_t node, void *arg)
 		    devpath);
 
 		if ((strstr(fulldevpath, wa->devpath)) != NULL) {
-				*wa->flag = B_TRUE;
+			*wa->flag = B_TRUE;
 			/* Found a node. No need to walk any more. */
 			di_devfs_path_free(devpath);
 			return (DI_WALK_TERMINATE);

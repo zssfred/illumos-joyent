@@ -133,9 +133,9 @@ Sun_sasSendSMPPassThru(HBA_HANDLE handle, HBA_WWN hbaPortWWN,
 	 * hit.  This check will be done later only if the Inquiry ioctl fails
 	 */
 
-	if (hba_ptr->device_path == NULL) {
+	if (strlen(hba_ptr->device_path) == 0) {
 		log(LOG_DEBUG, ROUTINE,
-		    "HBA handle had NULL device path.\
+		    "HBA handle had empty device path.\
 		    Unable to send SCSI cmd");
 		unlock(&all_hbas_lock);
 		return (HBA_STATUS_ERROR);
