@@ -233,13 +233,6 @@ static topo_pgroup_info_t protocol_pgroup = {
 	1
 };
 
-static const topo_pgroup_info_t auth_pgroup = {
-	FM_FMRI_AUTHORITY,
-	TOPO_STABILITY_PRIVATE,
-	TOPO_STABILITY_PRIVATE,
-	1
-};
-
 struct sas_phy_info {
 	uint32_t	start_phy;
 	uint32_t	end_phy;
@@ -404,7 +397,7 @@ fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 	phyinfo.start_phy = 0;
 	phyinfo.end_phy = 7;
-	if ((exp_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr,
+	if ((exp_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
 	    &phyinfo)) == NULL)
 		return (-1);
 
@@ -1178,6 +1171,9 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		return (-1);
 	}
 
+	if (getenv("TOPO_SASNOENUM"))
+		return (0);
+
 	if (getenv("SAS_FAKE_ENUM"))
 		return (fake_enum(mod, rnode, name, min, max, notused1,
 		    notused2));
@@ -1396,9 +1392,9 @@ static int
 sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
-	char *fmristr, *tmp, *lastpair;
-	char *sasname, *path_start;
-	nvlist_t *fmri = NULL, **sas_path = NULL;
+	char *fmristr, *tmp = NULL, *lastpair;
+	char *sasname, *auth_field, *path_start;
+	nvlist_t *fmri = NULL, *auth = NULL, **sas_path = NULL;
 	uint_t npairs = 0, i = 0, fmrilen, path_offset;
 
 	if (version > TOPO_METH_STR2NVL_VERSION)
@@ -1423,9 +1419,6 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	}
 
 	/*
-	 * Count the number of "=" chars after the "sas:///" portion of the
-	 * FMRI to determine how big the sas-path array needs to be.
-	 *
 	 * We need to make a copy of the fmri string because strtok will
 	 * modify it.  We can't use topo_mod_strdup/strfree because
 	 * topo_mod_strfree will end up leaking part of the string because
@@ -1442,7 +1435,7 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	(void) strncpy(tmp, fmristr, fmrilen);
 
 	/*
-	 * Find the "/" after the authority portion of the FMRI.
+	 * Find the offset of the "/" after the authority portion of the FMRI.
 	 */
 	if ((path_start = strchr(tmp + 6, '/')) == NULL) {
 		(void) topo_mod_seterrno(mod, EMOD_FMRI_MALFORM);
@@ -1451,11 +1444,13 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	}
 	path_offset = path_start - tmp;
 
+	/*
+	 * Count the number of "=" chars after the "sas:///" portion of the
+	 * FMRI to determine how big the sas-path array needs to be.
+	 */
 	(void) strtok_r(tmp + path_offset, "=", &lastpair);
 	while (strtok_r(NULL, "=", &lastpair) != NULL)
 		npairs++;
-
-	topo_mod_free(mod, tmp, fmrilen + 1);
 
 	if ((sas_path = topo_mod_zalloc(mod, npairs * sizeof (nvlist_t *))) ==
 	    NULL) {
@@ -1463,7 +1458,50 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		goto err;
 	}
 
-	sasname = fmristr + path_offset;
+	/*
+	 * Build the auth nvlist
+	 */
+	if (topo_mod_nvalloc(mod, &auth, NV_UNIQUE_NAME) != 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+
+	(void) strncpy(tmp, fmristr, fmrilen);
+	auth_field = tmp + 6;
+
+	sasname = fmristr + path_offset + 1;
+
+	while (auth_field < (tmp + path_offset)) {
+		char *end, *auth_val;
+		uint32_t phy;
+
+		if ((end = strchr(auth_field, '=')) == NULL) {
+			(void) topo_mod_seterrno(mod, EMOD_FMRI_MALFORM);
+			goto err;
+		}
+		*end = '\0';
+		auth_val = end + 1;
+
+		if ((end = strchr(auth_val, ':')) == NULL &&
+		    (end = strchr(auth_val, '/')) == NULL) {
+			(void) topo_mod_seterrno(mod, EMOD_FMRI_MALFORM);
+			goto err;
+		}
+		*end = '\0';
+
+		if (strcmp(auth_field, FM_FMRI_SAS_TYPE) == 0) {
+			(void) nvlist_add_string(auth, auth_field,
+			    auth_val);
+		} else if (strcmp(auth_field, FM_FMRI_SAS_START_PHY) == 0 ||
+		    strcmp(auth_field, FM_FMRI_SAS_END_PHY) == 0) {
+
+			phy = atoi(auth_val);
+			(void) nvlist_add_uint32(auth, auth_field, phy);
+		}
+		auth_field = end + 1;
+	}
+	(void) nvlist_add_nvlist(fmri, FM_FMRI_AUTHORITY, auth);
+
 	while (i < npairs) {
 		nvlist_t *pathcomp;
 		uint64_t sasaddr;
@@ -1478,7 +1516,6 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 			goto err;
 		}
 		*end = '\0';
-
 		addrstr = end + 1;
 
 		/*
@@ -1525,6 +1562,7 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	}
 	*out = fmri;
 
+	topo_mod_free(mod, tmp, fmrilen + 1);
 	return (0);
 err:
 	topo_mod_dprintf(mod, "%s failed: %s", __func__,
@@ -1536,6 +1574,7 @@ err:
 		topo_mod_free(mod, sas_path, npairs * sizeof (nvlist_t *));
 	}
 	nvlist_free(fmri);
+	topo_mod_free(mod, tmp, fmrilen + 1);
 	return (-1);
 }
 

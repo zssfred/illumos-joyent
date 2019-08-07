@@ -33,6 +33,23 @@
 extern "C" {
 #endif
 
+/*
+ * List of property names used when serializing a topo_digraph_t to JSON.
+ * When deserializing a JSON representation of a topo_digraph_t, the JSON is
+ * first converted to an nvlist representation and then that nvlist is
+ * processed to produce a topo_digraph_t.  These property names are also
+ * used as the nvpair names in that intermidiate nvlist.
+ */
+#define	TDG_FMRI	"fmri"
+#define	TDG_FMRI_SCHEME	"fmri-scheme"
+#define	TDG_NAME	"name"
+#define	TDG_INSTANCE	"instance"
+#define	TDG_PROPS	"properties"
+#define	TDG_PGROUPS	"property-groups"
+#define	TDG_PVALS	"property-values"
+#define	TDG_OUT_EDGES	"outgoing-edges"
+#define	TDG_VERTICES	"vertices"
+
 struct topo_digraph
 {
 	topo_list_t	tdg_list;		/* next/prev pointers */

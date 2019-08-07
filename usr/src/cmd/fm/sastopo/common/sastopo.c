@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <libnvpair.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <fm/libtopo.h>
 #include <fm/topo_list.h>
 #include <fm/topo_sas.h>
@@ -17,12 +21,13 @@
 #define	EXIT_USAGE	2
 
 static const char *pname;
-static const char optstr[] = "CdjR:V";
+static const char optstr[] = "Cdf:R:Vx";
 
 static void
 usage()
 {
-	(void) fprintf(stderr, "usage: %s [-d][-j][-V][-R root]\n\n", pname);
+	(void) fprintf(stderr, "usage:\n %s [-d][-x][-V][-R root]\n"
+	    "or\n %s [-d][-R root] -f <xml>\n\n", pname, pname);
 }
 
 struct sastopo_vertex {
@@ -114,9 +119,10 @@ main(int argc, char *argv[])
 {
 	topo_hdl_t *thp = NULL;
 	topo_digraph_t *tdg;
-	char c, *root = "/";
-	boolean_t debug = B_FALSE, json = B_FALSE;
-	int err, status = EXIT_FAILURE;
+	char c, *root = "/", *xml_in = NULL, *buf;
+	boolean_t debug = B_FALSE, xml_out = B_FALSE;
+	int err, fd, status = EXIT_FAILURE;
+	struct stat statbuf = { 0 };
 	struct cb_arg cbarg = { 0 };
 	struct sastopo_vertex *ini, *tgt;
 
@@ -131,14 +137,17 @@ main(int argc, char *argv[])
 			case 'd':
 				debug = B_TRUE;
 				break;
-			case 'j':
-				json = B_TRUE;
+			case 'f':
+				xml_in = optarg;
 				break;
 			case 'R':
 				root = optarg;
 				break;
 			case 'V':
 				cbarg.verbose = B_TRUE;
+				break;
+			case 'x':
+				xml_out = B_TRUE;
 				break;
 			default:
 				usage();
@@ -150,6 +159,19 @@ main(int argc, char *argv[])
 	if (debug) {
 		if (putenv("TOPOSASDEBUG=1") != 0) {
 			(void) fprintf(stderr, "Failed to set debug mode: "
+			    "%s\n", strerror(errno));
+			goto out;
+		}
+	}
+	/*
+	 * If we're loading in a serialized snapshot, then we need to tell the
+	 * sas module not to construct a snapshot.  The tmo_enum entry
+	 * point in the sas module will check for this environment variable
+	 * and if found it will skip enuemrating the actual SAS fabric.
+	 */
+	if (xml_in != NULL) {
+		if (putenv("TOPO_SASNOENUM=1") != 0) {
+			(void) fprintf(stderr, "Failed to set xml_in mode: "
 			    "%s\n", strerror(errno));
 			goto out;
 		}
@@ -167,11 +189,46 @@ main(int argc, char *argv[])
 		    topo_strerror(err));
 		goto out;
 	}
+
 	/*
-	 * Get a pointer to the "sas" scheme digraph
+	 * Either get a pointer to a rehydrated "sas" scheme digraph or get a
+	 * pointer to the live "sas" scheme digraph.
 	 */
-	if ((tdg = topo_digraph_get(thp, FM_FMRI_SCHEME_SAS)) == NULL) {
-		(void) fprintf(stderr, "failed to find sas scheme digraph\n");
+	if (xml_in != NULL) {
+		if ((fd = open(xml_in, O_RDONLY)) < 0) {
+			(void) fprintf(stderr, "failed to open %s (%s)\n",
+			    xml_in, strerror(errno));
+			goto out;
+		}
+		if (fstat(fd, &statbuf) != 0) {
+			(void) fprintf(stderr, "failed to stat %s (%s)\n",
+			    xml_in, strerror(errno));
+			(void) close(fd);
+			goto out;
+		}
+		if ((buf = malloc(statbuf.st_size)) == NULL) {
+			(void) fprintf(stderr, "failed to alloc read buffer: "
+			    "(%s)\n", strerror(errno));
+			(void) close(fd);
+			goto out;
+		}
+		if (read(fd, buf, statbuf.st_size) != statbuf.st_size) {
+			(void) fprintf(stderr, "failed to read file: "
+			    "(%s)\n", strerror(errno));
+			(void) close(fd);
+			free(buf);
+			goto out;
+		}
+		(void) close(fd);
+
+		tdg = topo_digraph_load(thp, buf, statbuf.st_size);
+		free(buf);
+	} else {
+		tdg = topo_digraph_get(thp, FM_FMRI_SCHEME_SAS);
+	}
+
+	if (tdg == NULL) {
+		(void) fprintf(stderr, "failed to get sas scheme digraph\n");
 		goto out;
 	}
 
@@ -179,9 +236,12 @@ main(int argc, char *argv[])
 	 * If -j was passed then we're just going to dump a JSON version of the
 	 * digraph and then exit.
 	 */
-	if (json) {
+	if (xml_out) {
 		if (topo_digraph_serialize(thp, tdg, stdout) == 0)
 			status = EXIT_SUCCESS;
+		else
+			(void) fprintf(stderr, "failed to serialize "
+			    "topology\n");
 
 		goto out;
 	}
@@ -227,7 +287,7 @@ main(int argc, char *argv[])
 				}
 				continue;
 			}
-			for (int i = 0; i < np; i++)
+			for (uint_t i = 0; i < np; i++)
 				print_path(paths[i]);
 
 			topo_hdl_free(thp, paths, np * sizeof (topo_path_t *));
