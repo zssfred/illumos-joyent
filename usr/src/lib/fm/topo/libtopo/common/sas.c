@@ -138,7 +138,7 @@
  * sas://type=pathnode:start_phy=0:end_phy=7/port=500304801861347f
  *
  * Overview of SAS Topology Generation
- * ===================================
+ * -----------------------------------
  * The SAS topology is iterated using this high-level logic:
  *
  * 1) Each HBA is discovered.
@@ -688,6 +688,7 @@ typedef struct sas_info {
 	uint64_t		si_local_wwn;
 	uint64_t		si_att_wwn;
 	boolean_t		si_is_hba;
+	HBA_UINT8		si_phy_ident;
 } sas_info_t;
 
 typedef struct sas_search_node {
@@ -712,8 +713,8 @@ sas_port_vtx_create(topo_mod_t *mod, topo_list_t *search_list,
 {
 	SMHBA_SAS_PORT *si_port;
 
-	topo_vertex_t *dev_vtx;
-	sas_info_t *dev_info;
+	topo_vertex_t *dev_vtx, *port_vtx;
+	sas_info_t *dev_info = NULL;
 
 	const char *vtx_type;
 	int ret = 0;
@@ -726,9 +727,10 @@ sas_port_vtx_create(topo_mod_t *mod, topo_list_t *search_list,
 	    search_node->ssn_hba_port, search_node->ssn_disc_port,
 	    &dev_info->si_port_attrs)) != HBA_STATUS_OK) {
 
-		topo_mod_dprintf(mod, "failed to get disc port si_port_attrs"
-		    " for port %d:%d (%d)\n", search_node->ssn_hba_port,
+		topo_mod_dprintf(mod, "failed to get disc port attrs for port "
+		    "%d:%d (%d)\n", search_node->ssn_hba_port,
 		    search_node->ssn_disc_port, ret);
+		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
 		goto done;
 	}
 
@@ -736,6 +738,7 @@ sas_port_vtx_create(topo_mod_t *mod, topo_list_t *search_list,
 	if (dev_info->si_port_attrs.PortState != HBA_PORTSTATE_ONLINE) {
 		topo_mod_dprintf(mod, "Port %d not online\n",
 		    search_node->ssn_disc_port);
+		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
 		return (0);
 	}
 
@@ -752,21 +755,40 @@ sas_port_vtx_create(topo_mod_t *mod, topo_list_t *search_list,
 		vtx_type = TOPO_VTX_TARGET;
 		break;
 	default:
-		topo_mod_dprintf(mod, "unrecognized port type:"
-		    "%d\n", dev_info->si_port_attrs.PortType);
+		topo_mod_dprintf(mod, "unrecognized port type: %d\n",
+		    dev_info->si_port_attrs.PortType);
 		ret = -1;
 		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
 		goto done;
 	}
 
-	if ((dev_vtx = sas_create_vertex(mod, vtx_type,
+	/*
+	 * XXX: What about a phy with two logical phys? Should we rather have
+	 * one vertex for the end-device and two port vertices? Or is it fine
+	 * to have two port vertices and two end-device vertices?
+	 */
+	if ((dev_vtx = sas_create_vertex(mod, vtx_type, dev_info->si_local_wwn,
+	    NULL)) == NULL) {
+
+		ret = -1;
+		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
+		goto done;
+	}
+
+	if ((port_vtx = sas_create_vertex(mod, TOPO_VTX_PORT,
 	    dev_info->si_local_wwn, NULL)) == NULL) {
+
 		ret = -1;
 		topo_mod_free(mod, dev_info, sizeof (sas_info_t));
 		goto done;
 	}
 
-	topo_node_setspecific(dev_vtx->tvt_node, dev_info);
+	if (topo_edge_new(mod, port_vtx, dev_vtx) != 0) {
+		ret = -1;
+		goto done;
+	}
+
+	topo_node_setspecific(topo_vertex_node(port_vtx), dev_info);
 
 done:
 	return (ret);
@@ -783,6 +805,10 @@ done:
  * are generally things that the HBA is connected to (e.g. disks, expanders).
  * Each discovered port is added to search_list to be investigated in a later
  * step (sas_port_vtx_create).
+ *
+ * According to SPL-4 Annex J a number of phys can share a WWN, but in doing so
+ * they become separate ports, each in a different SAS domain. libsmhbaapi
+ * already handles this for us and presents the phys as individual ports.
  */
 static int
 sas_hba_port_discover(topo_mod_t *mod, topo_list_t *search_list,
@@ -832,13 +858,14 @@ sas_hba_port_discover(topo_mod_t *mod, topo_list_t *search_list,
 		goto done;
 	}
 
+	topo_vertex_t *hba = NULL;
 	for (i = 0; i < num_ports; i++) {
 		SMHBA_PORTATTRIBUTES *attrs;
 		SMHBA_SAS_PORT *si_port;
 		HBA_UINT32 num_disc_ports;
 
-		topo_vertex_t *hba;
-		sas_info_t *hba_info;
+		topo_vertex_t *hba_port = NULL;
+		sas_info_t *hba_info = NULL;
 
 		hba_info = topo_mod_zalloc(mod, sizeof (sas_info_t));
 		hba_info->si_port_attrs.PortSpecificAttribute.SASPort =
@@ -868,32 +895,61 @@ sas_hba_port_discover(topo_mod_t *mod, topo_list_t *search_list,
 		 * if (attrs->PortState != HBA_PORTSTATE_ONLINE)
 		 */
 
-		/* XXX: One vertex per hba, or per HBA port? */
-		if ((hba = sas_create_vertex(mod, TOPO_VTX_INITIATOR,
+		/*
+		 * A singular local WWN is shared by all HBA ports, but
+		 * the attached WWN is different between ports. We should have
+		 * one initiator vtx per HBA, with multiple port vtxs.
+		 *
+		 * Unfortunately we don't know the HBA's local WWN until we
+		 * start looking at port attributes. That's why this is here
+		 * and not outside this HBA port loop.
+		 */
+		if (hba == NULL) {
+			if ((hba = sas_create_vertex(mod, TOPO_VTX_INITIATOR,
+			    hba_info->si_local_wwn, NULL)) == NULL) {
+				ret = -1;
+				topo_mod_dprintf(mod,
+				    "failed to create vertex\n");
+				topo_mod_free(mod, hba_info,
+				    sizeof (sas_info_t));
+				goto done;
+			}
+		}
+
+		if ((hba_port = sas_create_vertex(mod, TOPO_VTX_PORT,
 		    hba_info->si_local_wwn, NULL)) == NULL) {
 			ret = -1;
 			topo_mod_dprintf(mod, "failed to create vertex\n");
 			topo_mod_free(mod, hba_info, sizeof (sas_info_t));
 			goto done;
 		}
-		topo_node_setspecific(hba->tvt_node, hba_info);
 
+		if (topo_edge_new(mod, hba, hba_port) != 0) {
+			ret = -1;
+			topo_mod_dprintf(mod, "failed to create hba edge\n");
+			topo_vertex_destroy(mod, hba_port);
+			topo_mod_free(mod, hba_info, sizeof (sas_info_t));
+			goto done;
+		}
+
+		topo_node_setspecific(topo_vertex_node(hba_port), hba_info);
+
+		/*
+		 * Create a little metadata for each discovered port behind this
+		 * HBA port. These discovered ports are later iterated through
+		 * to construct the rest of the SAS topology.
+		 */
 		num_disc_ports = si_port->NumberofDiscoveredPorts;
 		for (j = 0; j < num_disc_ports; j++) {
 			sas_search_node_t *search_node;
 			search_node = topo_mod_zalloc(mod,
 			    sizeof (sas_search_node_t));
 
-			/* XXX unique per HBA or per port? */
 			search_node->ssn_hba_index = hba_index;
 			search_node->ssn_hba_port = i;
 			search_node->ssn_disc_port = j;
 			search_node->ssn_hdl = handle;
 
-			/*
-			 * Store the discovered port so we can enumerate it
-			 * later.
-			 */
 			topo_list_append(search_list, search_node);
 		}
 	}
@@ -902,101 +958,155 @@ done:
 	return (ret);
 }
 
+/*
+ * Create edges between vertices, and create additional ports as necessary.
+ *
+ * sas_digraph_link implements is a vertex iterator function, and is kicked off
+ * at the end of sas_topo_search. Up to this point all of the device vertices,
+ * and known device ports should be created. Initial edges were created between
+ * devices and their known ports.
+ *
+ * Now we need to create edges between device ports (e.g. create the edge from
+ * an HBA port to an expander port).
+ *
+ * This function will perform a single layer of recursion. sas_topo_search
+ * iterates over the vertices in the digraph once. The only thing done in
+ * sas_digraph_link during this iteration is to recurse when an HBA or expander
+ * is encountered in the vertex list.
+ *
+ * On the recursive entries, the arg->sas_vtx member is populated with a port
+ * vertex for either an expander or HBA device. During this iteration all of the
+ * vertices in the digraph are checked for a link to the arg->sas_vtx vertex. If
+ * links are detected then edges are created between the vertices.
+ *
+ * There is some special logic for expanders, which is noted in the comments
+ * below. The number of times that the vertex list is completely scanned through
+ * sas_digraph_link is 1 + N where N is the sum of HBAs and expanders in the
+ * SAS topology.
+ */
 static int
-sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx, boolean_t last_vtx,
+sas_digraph_link(topo_hdl_t *hdl, topo_vertex_t *vtx0, boolean_t last_vtx,
     void *arg)
 {
-	sas_info_t *info = topo_node_getspecific(vtx->tvt_node);
+	sas_info_t *vtx0_info = topo_node_getspecific(topo_vertex_node(vtx0));
 	sas_dg_iter_arg_t *iter_arg = (sas_dg_iter_arg_t *)arg;
+	topo_vertex_t *vtx1, *expd_port, *expd_vtx;
+	topo_edge_t *expd_edge;
+	sas_info_t *vtx1_info;
 
-	if (info == NULL)
+	if (vtx0_info == NULL)
 		return (TOPO_WALK_NEXT);
 
-	if (iter_arg->sas_vtx != NULL) {
-		topo_vertex_t *u_vtx;
-
-		u_vtx = (topo_vertex_t *)iter_arg->sas_vtx;
-		sas_info_t *upstream_info =
-		    topo_node_getspecific(u_vtx->tvt_node);
-
+	if (iter_arg->sas_vtx == NULL) {
 		/*
-		 * If this vertex's local port is the downstream vertex's
-		 * attached port are the same, then these two vertices are
-		 * connected.
-		 *
-		 * The special case is HBA links. The HBA reports its attached
-		 * SAS addr as the downstream device's addr. This is the
-		 * opposite of every other device's addressing scheme.
-		 *
-		 * This only makes edges between HBAs and other devices when
-		 * the _upstream_ device is an HBA. This prevents the code from
-		 * creating circular links, or a link to every HBA port.
+		 * We didn't receive an upstream vertex to process. This will be
+		 * the case until we find something that things 'plug in' to,
+		 * namely an expander or HBA. Once we find an expander or HBA
+		 * we iterate over the vertices again (a nested iteration). In
+		 * the nested iterations we look for all vertices that are
+		 * attached to the given HBA/expander vertex.
 		 */
-		if ((info->si_local_wwn == upstream_info->si_att_wwn &&
-		    upstream_info->si_is_hba) || (upstream_info->si_local_wwn ==
-		    info->si_att_wwn && !info->si_is_hba &&
-		    !upstream_info->si_is_hba)) {
-			/*
-			 * Case: 'upstream' is an HBA attached to an expander or
-			 * disk.
-			 *
-			 * OR
-			 *
-			 * Case: Everything else. E.g. upstream is expander and
-			 * vtx is a disk or another expander.
-			 */
-			topo_vertex_t *u_port_vtx, *port_vtx;
+		if (vtx0_info->si_is_hba || vtx0_info->si_port_attrs.PortType ==
+		    HBA_PORTTYPE_SASEXPANDER) {
 
-			if ((u_port_vtx = sas_create_vertex(iter_arg->sas_mod,
-			    TOPO_VTX_PORT, upstream_info->si_local_wwn,
-			    NULL)) == NULL) {
-				return (TOPO_WALK_ERR);
-			}
-			if ((port_vtx = sas_create_vertex(iter_arg->sas_mod,
-			    TOPO_VTX_PORT, info->si_local_wwn, NULL)) ==
-			    NULL) {
+			sas_dg_iter_arg_t sub_arg;
+			sub_arg.sas_mod = iter_arg->sas_mod;
+			sub_arg.sas_vtx = vtx0;
+			topo_digraph_t *dgp;
+
+			if ((dgp = topo_digraph_get(hdl, FM_FMRI_SCHEME_SAS))
+			    == NULL) {
 				return (TOPO_WALK_ERR);
 			}
 
-			if (topo_edge_new(iter_arg->sas_mod, port_vtx, vtx)
-			    != 0)
-				return (TOPO_WALK_ERR);
-
-			if (topo_edge_new(iter_arg->sas_mod, u_vtx, u_port_vtx)
-			    != 0)
-				return (TOPO_WALK_ERR);
-
-			if (topo_edge_new(iter_arg->sas_mod, u_port_vtx,
-			    port_vtx) != 0)
-				return (TOPO_WALK_ERR);
-
-		} else if (info->si_is_hba) {
-			/*
-			 * Case: Device is an HBA. We already created links in
-			 * the previous case.
-			 */
+			return (topo_vertex_iter(hdl, dgp, sas_digraph_link,
+			    &sub_arg));
 		}
+
 		return (TOPO_WALK_NEXT);
 	}
+
+	vtx1 = (topo_vertex_t *)iter_arg->sas_vtx;
 
 	/*
-	 * Expanders and HBAs contain WWNs that targets and expanders list
-	 * as their attached WWNs.
+	 * Only handle port vertices since that's the point at which things
+	 * connect.
 	 */
-	if (info->si_is_hba || info->si_port_attrs.PortType ==
-	    HBA_PORTTYPE_SASEXPANDER) {
-
-		sas_dg_iter_arg_t sub_arg;
-		sub_arg.sas_mod = iter_arg->sas_mod;
-		sub_arg.sas_vtx = vtx;
-		topo_digraph_t *dgp;
-
-		if ((dgp = topo_digraph_get(hdl, FM_FMRI_SCHEME_SAS)) == NULL)
-			return (TOPO_WALK_ERR);
-
-		return (topo_vertex_iter(hdl, dgp, sas_digraph_link, &sub_arg));
+	if (strcmp(topo_vertex_node(vtx1)->tn_name, TOPO_VTX_PORT)) {
+		return (TOPO_WALK_NEXT);
 	}
 
+	vtx1_info = topo_node_getspecific(topo_vertex_node(vtx1));
+
+	/*
+	 * If this vertex's local port is the downstream vertex's
+	 * attached port are the same, then these two vertices are
+	 * connected.
+	 *
+	 * The special case is HBA links. The HBA reports its attached
+	 * SAS addr as the downstream device's addr. This is the
+	 * opposite of every other device's addressing scheme.
+	 *
+	 * This only makes edges between HBAs and other devices when
+	 * the _upstream_ device is an HBA. This prevents the code from
+	 * creating circular links, or a link to every HBA port.
+	 */
+	if ((vtx1_info->si_is_hba && vtx1_info->si_att_wwn ==
+	    vtx0_info->si_local_wwn) || (vtx0_info->si_att_wwn ==
+	    vtx1_info->si_local_wwn && !vtx0_info->si_is_hba &&
+	    !vtx1_info->si_is_hba)) {
+		/*
+		 * vtx1 is an HBA and vtx0 is attached to the HBA, or
+		 * vtx0 and vtx1 are attached and neither is an HBA.
+		 */
+		if (vtx1_info->si_port_attrs.PortType ==
+		    HBA_PORTTYPE_SASEXPANDER) {
+			/*
+			 * vtx1 is an expander, so we need to create an
+			 * intermediate port that vtx0 attaches to.
+			 *
+			 * Unfortunately libsmhbaapi doesn't give us information
+			 * about how many things are connected to anything, so
+			 * we have to do some juggling as we discover target and
+			 * expander links here.
+			 */
+			/*
+			 * XXX copy in vxt0's phy information once we have that
+			 * wired up.
+			 */
+			if ((expd_port = sas_create_vertex(iter_arg->sas_mod,
+			    TOPO_VTX_PORT, vtx1_info->si_local_wwn, NULL))
+			    == NULL) {
+				return (TOPO_WALK_ERR);
+			}
+
+			/*
+			 * The expander's upstream port is only connected to the
+			 * expander on the outgoing side.
+			 */
+			expd_edge = topo_list_next(&vtx1->tvt_outgoing);
+			expd_vtx = expd_edge->tve_vertex;
+
+			if (expd_vtx == NULL) {
+				topo_vertex_destroy(iter_arg->sas_mod,
+				    expd_port);
+				return (TOPO_WALK_ERR);
+			}
+
+			if (topo_edge_new(iter_arg->sas_mod, expd_vtx,
+			    expd_port) != 0) {
+
+				topo_vertex_destroy(iter_arg->sas_mod,
+				    expd_port);
+				return (TOPO_WALK_ERR);
+			}
+
+			vtx1 = expd_port;
+		}
+		if (topo_edge_new(iter_arg->sas_mod, vtx1, vtx0) != 0)
+			return (TOPO_WALK_ERR);
+
+	}
 	return (TOPO_WALK_NEXT);
 }
 
@@ -1004,8 +1114,8 @@ static void
 sas_topo_search(topo_mod_t *mod, topo_list_t *search_list)
 {
 	sas_search_node_t *search_node, *tmp;
-
 	tmp = NULL;
+	sas_dg_iter_arg_t arg;
 
 	/*
 	 * Iterate over the search list until there's nothing left.
@@ -1045,7 +1155,6 @@ sas_topo_search(topo_mod_t *mod, topo_list_t *search_list)
 	if (tmp != NULL)
 		topo_mod_free(mod, tmp, sizeof (sas_search_node_t));
 
-	sas_dg_iter_arg_t arg;
 	bzero(&arg, sizeof (sas_dg_iter_arg_t));
 	arg.sas_mod = mod;
 	arg.sas_vtx = NULL;
@@ -1076,6 +1185,7 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	HBA_STATUS status;
 	HBA_UINT32 num_adapters, i;
 	topo_list_t *search_list;
+	int ret = 0;
 
 	if ((search_list = topo_mod_zalloc(mod, sizeof (topo_list_t))) == NULL)
 		return (-1);
@@ -1087,7 +1197,8 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	num_adapters = HBA_GetNumberOfAdapters();
 	if (num_adapters == 0) {
 		// XXX still try to iterate the stuff in /dev/smp/ ?
-		return (-1);
+		ret = -1;
+		goto out;
 	}
 
 	/*
@@ -1099,7 +1210,7 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		sas_search_node_t *search_node;
 		if ((search_node = topo_mod_zalloc(mod,
 		    sizeof (sas_search_node_t))) == NULL) {
-			return (-1);
+			goto out;
 		}
 		search_node->ssn_hba_index = i;
 
@@ -1109,8 +1220,9 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	/* Do the work of mapping the SAS topology. */
 	sas_topo_search(mod, search_list);
 
+out:
 	(void) HBA_FreeLibrary();
-	return (0);
+	return (ret);
 }
 
 static void
