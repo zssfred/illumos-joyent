@@ -43,9 +43,9 @@ SYMBOL_VERSION SUNWprivate {
     global:
 	topo_close;
 	topo_debug_set;
+	topo_digraph_deserialize;
 	topo_digraph_destroy;
 	topo_digraph_get;
-	topo_digraph_load;
 	topo_digraph_new;
 	topo_digraph_paths;
 	topo_digraph_serialize;

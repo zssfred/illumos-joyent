@@ -221,7 +221,7 @@ main(int argc, char *argv[])
 		}
 		(void) close(fd);
 
-		tdg = topo_digraph_load(thp, buf, statbuf.st_size);
+		tdg = topo_digraph_deserialize(thp, buf, statbuf.st_size);
 		free(buf);
 	} else {
 		tdg = topo_digraph_get(thp, FM_FMRI_SCHEME_SAS);
