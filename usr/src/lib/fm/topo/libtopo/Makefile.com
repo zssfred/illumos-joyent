@@ -45,6 +45,7 @@ LIBSRCS = \
 	topo_alloc.c \
 	topo_builtin.c \
 	topo_digraph.c \
+	topo_digraph_xml.c \
 	topo_error.c \
 	topo_file.c \
 	topo_fmri.c \
