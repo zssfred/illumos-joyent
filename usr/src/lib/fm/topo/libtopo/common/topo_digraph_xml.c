@@ -149,8 +149,8 @@ serialize_edge(topo_hdl_t *thp, topo_edge_t *edge, boolean_t last_edge,
 	}
 	nvlist_free(fmri);
 
-	(void) fprintf(fp, "%s<%s %s='%s' />\n", TDG_XML_PAD4, TDG_XML_NVPAIR,
-	    TDG_XML_VALUE, fmristr);
+	(void) fprintf(fp, "%s<%s %s='%s' />\n", TDG_XML_PAD4, TDG_XML_EDGE,
+	    TDG_XML_FMRI, fmristr);
 	topo_hdl_strfree(thp, fmristr);
 
 	return (TOPO_WALK_NEXT);
@@ -433,12 +433,6 @@ serialize_pgroups(topo_hdl_t *thp, FILE *fp, tnode_t *tn)
 		(void) fprintf(fp, "%s<%s>\n", TDG_XML_PAD4, TDG_XML_NVLIST);
 		tdg_xml_nvstring(fp, TDG_XML_PAD4, TOPO_PROP_GROUP_NAME,
 		    pg->tpg_info->tpi_name);
-		tdg_xml_nvstring(fp, TDG_XML_PAD4, TOPO_PROP_GROUP_DSTAB,
-		    topo_stability2name(pg->tpg_info->tpi_datastab));
-		tdg_xml_nvstring(fp, TDG_XML_PAD4, TOPO_PROP_GROUP_NSTAB,
-		    topo_stability2name(pg->tpg_info->tpi_namestab));
-		tdg_xml_nvuint32(fp, TDG_XML_PAD4, TOPO_PROP_GROUP_VERSION,
-		    pg->tpg_info->tpi_version);
 
 		for (pvl = topo_list_next(&pg->tpg_pvals); pvl != NULL;
 		    pvl = topo_list_next(pvl))
@@ -496,23 +490,21 @@ serialize_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx,
 		nvlist_free(fmri);
 		return (TOPO_WALK_ERR);
 	}
-
 	nvlist_free(fmri);
 
-	(void) fprintf(fp, "%s<%s>\n", TDG_XML_PAD2, TDG_XML_NVLIST);
-	tdg_xml_nvstring(fp, TDG_XML_PAD2, TDG_XML_FMRI, fmristr);
-	topo_hdl_strfree(thp, fmristr);
+	(void) fprintf(fp, "<%s %s='%s' %s='%" PRIx64 "' %s='%s'>\n",
+	    TDG_XML_VERTEX, TDG_XML_NAME, topo_node_name(tn),
+	    TDG_XML_INSTANCE, topo_node_instance(tn),
+	    TDG_XML_FMRI, fmristr);
 
-	tdg_xml_nvstring(fp, TDG_XML_PAD2, TDG_XML_NAME, topo_node_name(tn));
-	tdg_xml_nvuint64(fp, TDG_XML_PAD2, TDG_XML_INSTANCE,
-	    topo_node_instance(tn));
+	topo_hdl_strfree(thp, fmristr);
 
 	if (serialize_pgroups(thp, fp, tn) != 0)
 		return (TOPO_WALK_ERR);
 
 	if (vtx->tvt_noutgoing != 0) {
-		tdg_xml_nvarray(fp, TDG_XML_PAD2, TDG_XML_OUTEDGES,
-		    TDG_XML_STRING_ARR, vtx->tvt_noutgoing);
+		(void) fprintf(fp, "%s<%s %s='%u'>\n", TDG_XML_PAD2,
+		    TDG_XML_OUTEDGES, TDG_XML_NELEM, vtx->tvt_noutgoing);
 
 		if (topo_edge_iter(thp, vtx, serialize_edge, fp) != 0) {
 			(void) fprintf(fp, "\nfailed to iterate edges on %s=%"
@@ -520,50 +512,53 @@ serialize_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx,
 			    topo_node_instance(tn));
 			return (TOPO_WALK_ERR);
 		}
-		(void) fprintf(fp, "%s</%s> <!-- %s -->\n", TDG_XML_PAD2,
-		    TDG_XML_NVPAIR, TDG_XML_OUTEDGES);
+		(void) fprintf(fp, "%s</%s>\n", TDG_XML_PAD2,
+		    TDG_XML_OUTEDGES);
 	}
-	(void) fprintf(fp, "%s</%s>\n\n", TDG_XML_PAD2, TDG_XML_NVLIST);
+	(void) fprintf(fp, "</%s>\n\n", TDG_XML_VERTEX);
 
 	return (TOPO_WALK_NEXT);
 }
 
 /*
- * This function takes a topo_digraph_t and serializes in an XML schema which
- * describes an nvlist representation of a directed graph topology.  The nvlist
- * has the following schema:
+ * This function takes a topo_digraph_t and serializes in to  XML schema.  The
+ * resulting XML uses the following schema:
  *
- * vertices: nvlist-array
- *     fmri: string
- *     name: string
- *     instance: uint64
- *     property-groups: nvlist-array
- *         property-group-name: string
- *         property-group-name-stability: string
- *         property-group-data-stability: string
- *         property-group-version: uint32
- *         property-values: nvlist-array
- *           . . .
- *     outgoing-edges: string-array
+ * <fmri-scheme name='string' />
+ * <vertices nelem: 'uint' >
+ *     <vertex name='string' instance='uint64' fmri='string'>
+ *         <nvpair name='property-groups' type='nvlist-array' nelem='uint'>
+ *             <nvlist>
+ *                 <nvpair . . ./>
+ *                 . . .
+ *             </nvlist>
+ *             . . .
+ *         </nvpair>
+ *         <outgoing-edges nelem='uint'>
+ *             <edge fmri='string' />
+ *             . . .
+ *         </outgoing-edges>
+ *     </vertex>
  *     . . .
+ * </vertices>
  */
 int
 topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
 {
 	(void) fprintf(fp, "<?xml version=\"1.0\"?>\n");
-	(void) fprintf(fp, "<%s>\n", TDG_XML_NVLIST);
 
-	tdg_xml_nvarray(fp, "", TDG_XML_VERTICES, TDG_XML_NVLIST_ARR,
-	    tdg->tdg_nvertices);
+	(void) fprintf(fp, "<%s %s='%s' />\n", TDG_XML_SCHEME,
+	    TDG_XML_NAME, tdg->tdg_scheme);
+
+	(void) fprintf(fp, "<%s %s='%u'>\n", TDG_XML_VERTICES,
+	    TDG_XML_NELEM, tdg->tdg_nvertices);
 
 	if (topo_vertex_iter(thp, tdg, serialize_vertex, fp) != 0) {
 		(void) fprintf(fp, "\nfailed to iterate vertices\n");
 		return (-1);
 	}
 
-	(void) fprintf(fp, "</%s> <!-- %s -->\n", TDG_XML_NVPAIR,
-	    TDG_XML_VERTICES);
-	(void) fprintf(fp, "</%s>\n", TDG_XML_NVLIST);
+	(void) fprintf(fp, "</%s>\n", TDG_XML_VERTICES);
 
 	return (0);
 }

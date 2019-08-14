@@ -40,6 +40,7 @@ extern "C" {
  * processed to produce a topo_digraph_t.  These property names are also
  * used as the nvpair names in that intermediate nvlist.
  */
+#define	TDG_XML_EDGE		"edge"
 #define	TDG_XML_FMRI		"fmri"
 #define	TDG_XML_SCHEME		"fmri-scheme"
 #define	TDG_XML_NAME		"name"
@@ -67,6 +68,7 @@ extern "C" {
 #define	TDG_XML_UINT64		"uint64"
 #define	TDG_XML_UINT64_ARR	"uint64-array"
 #define	TDG_XML_VALUE		"value"
+#define	TDG_XML_VERTEX		"vertex"
 #define	TDG_XML_VERTICES	"vertices"
 
 #define	TDG_XML_PAD2		"  "
