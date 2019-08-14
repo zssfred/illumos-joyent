@@ -46,16 +46,16 @@
  */
 
 /* Initializes the tree to an empty state. */
-void	init_config(void);
-void	finish_config(void);
+void	config_init(void);
+void	config_finish(void);
 
-const char *get_config_value(const char *path);
-void	set_config_value(const char *path, const char *value);
+const char *config_get_value(const char *path);
+void	config_set_value(const char *path, const char *value);
 
 /* Convenience wrappers for boolean variables. */
-boolean_t get_config_bool(const char *path);
-void	set_config_bool(const char *path, boolean_t value);
+boolean_t config_get_bool(const char *path);
+void	config_set_bool(const char *path, boolean_t value);
 
-void	dump_config(boolean_t);
+void	config_dump(boolean_t);
 
 #endif /* !__CONFIG_H__ */

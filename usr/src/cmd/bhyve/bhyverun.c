@@ -286,10 +286,10 @@ topology_parse(const char *opt)
 	char *cp, *str;
 
 	if (*opt == '\0') {
-		set_config_value("sockets", "1");
-		set_config_value("cores", "1");
-		set_config_value("threads", "1");
-		set_config_value("cpus", "1");
+		config_set_value("sockets", "1");
+		config_set_value("cores", "1");
+		config_set_value("threads", "1");
+		config_set_value("cpus", "1");
 		return (0);
 	}
 
@@ -299,21 +299,21 @@ topology_parse(const char *opt)
 
 	while ((cp = strsep(&str, ",")) != NULL) {
 		if (strncmp(cp, "cpus=", strlen("cpus=")) == 0)
-			set_config_value("cpus", cp + strlen("cpus="));
+			config_set_value("cpus", cp + strlen("cpus="));
 		else if (strncmp(cp, "sockets=", strlen("sockets=")) == 0)
-			set_config_value("sockets", cp + strlen("sockets="));
+			config_set_value("sockets", cp + strlen("sockets="));
 		else if (strncmp(cp, "cores=", strlen("cores=")) == 0)
-			set_config_value("cores", cp + strlen("cores="));
+			config_set_value("cores", cp + strlen("cores="));
 		else if (strncmp(cp, "threads=", strlen("threads=")) == 0)
-			set_config_value("threads", cp + strlen("threads="));
+			config_set_value("threads", cp + strlen("threads="));
 #ifdef notyet  /* Do not expose this until vmm.ko implements it */
 		else if (strncmp(cp, "maxcpus=", strlen("maxcpus=")) == 0)
-			set_config_value("maxcpus", cp + strlen("maxcpus="));
+			config_set_value("maxcpus", cp + strlen("maxcpus="));
 #endif
 		else if (strchr(cp, '=') != NULL)
 			goto out;
 		else
-			set_config_value("cpus", cp);
+			config_set_value("cpus", cp);
 	}
 	free(str);
 	return (0);
@@ -351,7 +351,7 @@ calc_topolopgy(void)
 	bool explicit_cpus;
 	uint64_t ncpus;
 
-	value = get_config_value("cpus");
+	value = config_get_value("cpus");
 	if (value != NULL) {
 		guest_ncpus = parse_int_value("cpus", value, 1, UINT16_MAX);
 		explicit_cpus = true;
@@ -359,17 +359,17 @@ calc_topolopgy(void)
 		guest_ncpus = 1;
 		explicit_cpus = false;
 	}
-	value = get_config_value("cores");
+	value = config_get_value("cores");
 	if (value != NULL)
 		cores = parse_int_value("cores", value, 1, UINT16_MAX);
 	else
 		cores = 1;
-	value = get_config_value("threads");
+	value = config_get_value("threads");
 	if (value != NULL)
 		threads = parse_int_value("threads", value, 1, UINT16_MAX);
 	else
 		threads = 1;
-	value = get_config_value("sockets");
+	value = config_get_value("sockets");
 	if (value != NULL)
 		sockets = parse_int_value("sockets", value, 1, UINT16_MAX);
 	else
@@ -457,7 +457,7 @@ pincpu_parse(const char *opt)
 	}
 
 	snprintf(key, sizeof(key), "vcpu.%d.cpuset", vcpu);
-	value = get_config_value(key);
+	value = config_get_value(key);
 
 	if (asprintf(&newval, "%s%s%d", value != NULL ? value : "",
 	    value != NULL ? "," : "", pcpu) == -1) {
@@ -465,7 +465,7 @@ pincpu_parse(const char *opt)
 		return (-1);
 	}
 
-	set_config_value(key, newval);
+	config_set_value(key, newval);
 	free(newval);
 	return (0);
 }
@@ -525,7 +525,7 @@ build_vcpumaps(void)
 
 	for (vcpu = 0; vcpu < guest_ncpus; vcpu++) {
 		snprintf(key, sizeof(key), "vcpu.%d.cpuset", vcpu);
-		value = get_config_value(key);
+		value = config_get_value(key);
 		if (value == NULL)
 			continue;
 		vcpumap[vcpu] = malloc(sizeof(cpuset_t));
@@ -562,7 +562,7 @@ int
 fbsdrun_virtio_msix(void)
 {
 
-	return (get_config_bool("virtio.msix"));
+	return (config_get_bool("virtio.msix"));
 }
 
 static void *
@@ -701,7 +701,7 @@ vmexit_rdmsr(struct vmctx *ctx, struct vm_exit *vme, int *pvcpu)
 	if (error != 0) {
 		fprintf(stderr, "rdmsr to register %#x on vcpu %d\n",
 		    vme->u.msr.code, *pvcpu);
-		if (get_config_bool("x86.strict_msr")) {
+		if (config_get_bool("hvm.x86.strict_msr")) {
 			vm_inject_gp(ctx, *pvcpu);
 			return (VMEXIT_CONTINUE);
 		}
@@ -727,7 +727,7 @@ vmexit_wrmsr(struct vmctx *ctx, struct vm_exit *vme, int *pvcpu)
 	if (error != 0) {
 		fprintf(stderr, "wrmsr to register %#x(%#lx) on vcpu %d\n",
 		    vme->u.msr.code, vme->u.msr.wval, *pvcpu);
-		if (get_config_bool("x86.strict_msr")) {
+		if (config_get_bool("hvm.x86.strict_msr")) {
 			vm_inject_gp(ctx, *pvcpu);
 			return (VMEXIT_CONTINUE);
 		}
@@ -1032,7 +1032,7 @@ fbsdrun_set_capabilities(struct vmctx *ctx, int cpu)
 {
 	int err, tmp;
 
-	if (get_config_bool("hvm.vmexit_on_hlt")) {
+	if (config_get_bool("hvm.x86.vmexit_on_hlt")) {
 		err = vm_get_capability(ctx, cpu, VM_CAP_HALT_EXIT, &tmp);
 		if (err < 0) {
 			fprintf(stderr, "VM exit on HLT not supported\n");
@@ -1043,7 +1043,7 @@ fbsdrun_set_capabilities(struct vmctx *ctx, int cpu)
 			handler[VM_EXITCODE_HLT] = vmexit_hlt;
 	}
 
-	if (get_config_bool("hvm.vmexit_on_pause")) {
+	if (config_get_bool("hvm.x86.vmexit_on_pause")) {
 		/*
 		 * pause exit support required for this mode
 		 */
@@ -1058,7 +1058,7 @@ fbsdrun_set_capabilities(struct vmctx *ctx, int cpu)
 			handler[VM_EXITCODE_PAUSE] = vmexit_pause;
         }
 
-	if (get_config_bool("x86.x2apic"))
+	if (config_get_bool("x86.x2apic"))
 		err = vm_set_x2apic_state(ctx, cpu, X2APIC_ENABLED);
 	else
 		err = vm_set_x2apic_state(ctx, cpu, X2APIC_DISABLED);
@@ -1182,7 +1182,7 @@ parse_config_option(const char *option)
 	path = strndup(option, value - option);
 	if (path == NULL)
 		err(4, "Failed to allocate memory");
-	set_config_value(path, value + 1);
+	config_set_value(path, value + 1);
 	return (true);
 }
 
@@ -1219,25 +1219,25 @@ set_defaults(void)
 {
 
 	/* default is xAPIC */
-	set_config_bool("x86.x2apic", false);
-	set_config_bool("x86.acpi_tables", false);
-	set_config_bool("x86.strict_io", false);
-	set_config_bool("x86.strict_msr", true);
-	set_config_bool("x86.mptable", true);
+	config_set_bool("x86.x2apic", false);
+	config_set_bool("x86.acpi_tables", false);
+	config_set_bool("hvm.x86.strict_io", false);
+	config_set_bool("hvm.x86.strict_msr", true);
+	config_set_bool("x86.mptable", true);
 
-	set_config_bool("bvmconsole", false);
-	set_config_bool("gdb.wait", false);
+	config_set_bool("bvmconsole", false);
+	config_set_bool("gdb.wait", false);
 
-	set_config_bool("memory.guest_in_core", false);
-	set_config_value("memory.size", "256M");
-	set_config_bool("memory.wired", false);
+	config_set_bool("memory.guest_in_core", false);
+	config_set_value("memory.size", "256M");
+	config_set_bool("memory.wired", false);
 
-	set_config_bool("rtc.use_localtime", true);
+	config_set_bool("rtc.use_localtime", true);
 
-	set_config_bool("virtio.msix", true);
+	config_set_bool("virtio.msix", true);
 
-	set_config_bool("hvm.vmexit_on_hlt", false);
-	set_config_bool("hvm.vmexit_on_pause", false);
+	config_set_bool("hvm.x86.vmexit_on_hlt", false);
+	config_set_bool("hvm.x86.vmexit_on_pause", false);
 }
 
 static void
@@ -1256,13 +1256,13 @@ parse_args(int argc, char *argv[])
 	while ((c = getopt(argc, argv, optstr)) != -1) {
 		switch (c) {
 		case 'a':
-			set_config_bool("x86.x2apic", false);
+			config_set_bool("x86.x2apic", false);
 			break;
 		case 'A':
-			set_config_bool("x86.acpi_tables", true);
+			config_set_bool("x86.acpi_tables", true);
 			break;
 		case 'b':
-			set_config_bool("bvmconsole", true);
+			config_set_bool("bvmconsole", true);
 			break;
 		case 'B':
 			if (smbios_parse(optarg) != 0) {
@@ -1272,7 +1272,7 @@ parse_args(int argc, char *argv[])
 			break;
 #ifndef	__FreeBSD__
 		case 'd':
-			set_config_bool("hvm.suspend_at_boot", true);
+			config_set_bool("hvm.suspend_at_boot", true);
 			break;
 #else
 		case 'p':
@@ -1289,20 +1289,20 @@ parse_args(int argc, char *argv[])
 			}
 			break;
 		case 'C':
-			set_config_bool("memory.guest_in_core", true);
+			config_set_bool("memory.guest_in_core", true);
 			break;
 		case 'f':
 			parse_simple_config_file(optarg);
 			break;
 		case 'g':
-			set_config_value("bvmdebug.port", optarg);
+			config_set_value("bvmdebug.port", optarg);
 			break;
 		case 'G':
 			if (optarg[0] == 'w') {
-				set_config_bool("gdb.wait", true);
+				config_set_bool("gdb.wait", true);
 				optarg++;
 			}
-			set_config_value("gdb.port", optarg);
+			config_set_value("gdb.port", optarg);
 			break;
 		case 'l':
 			if (strncmp(optarg, "help", strlen(optarg)) == 0) {
@@ -1322,17 +1322,17 @@ parse_args(int argc, char *argv[])
 			else
 				break;
 		case 'S':
-			set_config_bool("memory.wired", true);
+			config_set_bool("memory.wired", true);
 			break;
                 case 'm':
-			set_config_value("memory.size", optarg);
+			config_set_value("memory.size", optarg);
 			break;
 		case 'o':
 			if (!parse_config_option(optarg))
 				errx(EX_USAGE, "invalid configuration option '%s'", optarg);
 			break;
 		case 'H':
-			set_config_bool("hvm.vmexit_on_hlt", true);
+			config_set_bool("hvm.x86.vmexit_on_hlt", true);
 			break;
 		case 'I':
 			/*
@@ -1344,28 +1344,28 @@ parse_args(int argc, char *argv[])
 			 */
 			break;
 		case 'P':
-			set_config_bool("hvm.vmexit_on_pause", true);
+			config_set_bool("hvm.x86.vmexit_on_pause", true);
 			break;
 		case 'e':
-			set_config_bool("x86.strict_io", true);
+			config_set_bool("hvm.x86.strict_io", true);
 			break;
 		case 'u':
-			set_config_bool("rtc.use_localtime", false);
+			config_set_bool("rtc.use_localtime", false);
 			break;
 		case 'U':
-			set_config_value("uuid", optarg);
+			config_set_value("uuid", optarg);
 			break;
 		case 'w':
-			set_config_bool("x86.strict_msr", false);
+			config_set_bool("hvm.x86.strict_msr", false);
 			break;
 		case 'W':
-			set_config_bool("virtio.msix", false);
+			config_set_bool("virtio.msix", false);
 			break;
 		case 'x':
-			set_config_bool("x86.x2apic", true);
+			config_set_bool("x86.x2apic", true);
 			break;
 		case 'Y':
-			set_config_bool("x86.mptable", false);
+			config_set_bool("x86.mptable", false);
 			break;
 		case 'h':
 			usage(0);
@@ -1380,7 +1380,7 @@ parse_args(int argc, char *argv[])
 		usage(1);
 
 	if (argc == 1)
-		set_config_value("name", argv[0]);
+		config_set_value("name", argv[0]);
 }
 
 int
@@ -1393,19 +1393,19 @@ main(int argc, char *argv[])
 	size_t memsize;
 	const char *value, *vmname;
 
-	init_config();
+	config_init();
 	set_defaults();
 
 	parse_args(argc, argv);
-	finish_config();
+	config_finish();
 
-	vmname = get_config_value("name");
+	vmname = config_get_value("name");
 	if (vmname == NULL)
 		usage(1);
 
 #if 1
-	if (get_config_value("config.dump")) {
-		dump_config(get_config_value("config.dump_expand") != NULL);
+	if (config_get_value("config.dump")) {
+		config_dump(config_get_value("config.dump_expand") != NULL);
 		exit(1);
 	}
 #endif
@@ -1415,7 +1415,7 @@ main(int argc, char *argv[])
 	build_vcpumaps();
 #endif
 
-	value = get_config_value("memory.size");
+	value = config_get_value("memory.size");
 	error = vm_parse_memsize(value, &memsize);
 	if (error)
 		errx(EX_USAGE, "invalid memsize '%s'", value);
@@ -1432,9 +1432,9 @@ main(int argc, char *argv[])
 	fbsdrun_set_capabilities(ctx, BSP);
 
 	memflags = 0;
-	if (get_config_bool("memory.wired"))
+	if (config_get_bool("memory.wired"))
 		memflags |= VM_MEM_F_WIRED;
-	if (get_config_bool("memory.guest_in_core"))
+	if (config_get_bool("memory.guest_in_core"))
 		memflags |= VM_MEM_F_INCORE;
 	vm_set_memflags(ctx, memflags);
 #ifdef	__FreeBSD__
@@ -1479,15 +1479,15 @@ main(int argc, char *argv[])
 		exit(4);
 	}
 
-	value = get_config_value("bvmdebug.port");
+	value = config_get_value("bvmdebug.port");
 	if (value != NULL)
 		init_dbgport(atoi(value));
 
-	value = get_config_value("gdb.port");
+	value = config_get_value("gdb.port");
 	if (value != NULL)
-		init_gdb(ctx, atoi(value), get_config_bool("gdb.wait"));
+		init_gdb(ctx, atoi(value), config_get_bool("gdb.wait"));
 
-	if (get_config_bool("bvmconsole"))
+	if (config_get_bool("bvmconsole"))
 		init_bvmcons();
 
 	vga_init(1);
@@ -1508,7 +1508,7 @@ main(int argc, char *argv[])
 	/*
  	 * build the guest tables, MP etc.
 	 */
-	if (get_config_bool("x86.mptable")) {
+	if (config_get_bool("x86.mptable")) {
 		error = mptable_build(ctx, guest_ncpus);
 		if (error) {
 			perror("error to build the guest tables");
@@ -1519,7 +1519,7 @@ main(int argc, char *argv[])
 	error = smbios_build(ctx);
 	assert(error == 0);
 
-	if (get_config_bool("x86.acpi_tables")) {
+	if (config_get_bool("x86.acpi_tables")) {
 		error = acpi_build(ctx, guest_ncpus);
 		assert(error == 0);
 	}
@@ -1564,7 +1564,7 @@ main(int argc, char *argv[])
 	fbsdrun_addcpu(ctx, BSP, BSP, rip);
 #else
 	fbsdrun_addcpu(ctx, BSP, BSP, rip,
-	    get_config_bool("hvm.suspend_at_boot"));
+	    config_get_bool("hvm.suspend_at_boot"));
 
 	mark_provisioned();
 #endif

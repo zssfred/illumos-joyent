@@ -591,7 +591,7 @@ smbios_type1_initializer(struct smbios_structure *template_entry,
 	    curaddr, endaddr, n, size);
 	type1 = (struct smbios_table_type1 *)curaddr;
 
-	guest_uuid_str = get_config_value("uuid");
+	guest_uuid_str = config_get_value("uuid");
 	if (guest_uuid_str != NULL) {
 		uuid_t		uuid;
 		uint32_t	status;
@@ -616,7 +616,7 @@ smbios_type1_initializer(struct smbios_structure *template_entry,
 			return (-1);
 
 		MD5Init(&mdctx);
-		vmname = get_config_value("name");
+		vmname = config_get_value("name");
 		MD5Update(&mdctx, vmname, strlen(vmname));
 		MD5Update(&mdctx, hostname, sizeof(hostname));
 		MD5Final(digest, &mdctx);
@@ -853,7 +853,7 @@ smbios_parse(const char *opts)
 	char *token;
 	char *end;
 	long type;
-	const char *guest_uuid_str = get_config_value("uuid");
+	const char *guest_uuid_str = config_get_value("uuid");
 
 	struct {
 		const char *key;

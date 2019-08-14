@@ -65,8 +65,8 @@ typedef struct config_node {
 	const char	*cn_value_expanded;
 } config_node_t;
 
-static const char *expand_config_value(config_node_t *, uint_t);
-static config_node_t *find_config_path(const char *, avl_index_t *);
+static const char *config_expand_value(config_node_t *, uint_t);
+static config_node_t *config_find_path(const char *, avl_index_t *);
 
 static int
 config_node_compare(const void *a, const void *b)
@@ -84,7 +84,7 @@ config_node_compare(const void *a, const void *b)
 }
 
 void
-init_config(void)
+config_init(void)
 {
 	VERIFY0(pthread_mutex_init(&config_lock, NULL));
 	avl_create(&config_tree, config_node_compare, sizeof (config_node_t),
@@ -93,7 +93,7 @@ init_config(void)
 }
 
 void
-finish_config(void)
+config_finish(void)
 {
 	pthread_mutex_lock(&config_lock);
 	VERIFY(!config_finished);
@@ -102,7 +102,7 @@ finish_config(void)
 }
 
 static size_t
-process_config_value(const char *orig, char *buf, size_t buflen, uint_t depth)
+config_process_value(const char *orig, char *buf, size_t buflen, uint_t depth)
 {
 	const char *vp;
 	size_t len = 0;
@@ -143,7 +143,7 @@ process_config_value(const char *orig, char *buf, size_t buflen, uint_t depth)
 				errx(4, "Failed to allocate memory");
 			}
 			strlcpy(namebuf, vp, namelen);
-			cn = find_config_path(namebuf, NULL);
+			cn = config_find_path(namebuf, NULL);
 			free(namebuf);
 			/* subtract length for name and %() delimiters */
 			len -= namelen + 2;
@@ -152,7 +152,7 @@ process_config_value(const char *orig, char *buf, size_t buflen, uint_t depth)
 
 			namelen = strlen(vp);
 			/* use the rest of the value as the key */
-			cn = find_config_path(vp, NULL);
+			cn = config_find_path(vp, NULL);
 			/* subtract length for name and % delimiter */
 			len -= namelen + 1;
 		}
@@ -161,7 +161,7 @@ process_config_value(const char *orig, char *buf, size_t buflen, uint_t depth)
 			size_t reflen;
 			const char *ref;
 
-			ref = expand_config_value(cn, depth + 1);
+			ref = config_expand_value(cn, depth + 1);
 			reflen = strlen(ref);
 			len += reflen;
 			if (buf != NULL && buflen >= reflen) {
@@ -181,7 +181,7 @@ process_config_value(const char *orig, char *buf, size_t buflen, uint_t depth)
 }
 
 static const char *
-expand_config_value(config_node_t *cn, uint_t depth)
+config_expand_value(config_node_t *cn, uint_t depth)
 {
 	const char *result = NULL;
 	char *buf;
@@ -217,7 +217,7 @@ expand_config_value(config_node_t *cn, uint_t depth)
 		goto done;
 	}
 
-	len = process_config_value(cn->cn_value_raw, NULL, 0, depth);
+	len = config_process_value(cn->cn_value_raw, NULL, 0, depth);
 	if (len == 0) {
 		/* Special case where expansion evaluates to empty */
 		cn->cn_flags = CF_EXPANDED;
@@ -227,7 +227,7 @@ expand_config_value(config_node_t *cn, uint_t depth)
 	}
 
 	buf = malloc(len);
-	done_len = process_config_value(cn->cn_value_raw, buf, len, depth);
+	done_len = config_process_value(cn->cn_value_raw, buf, len, depth);
 	VERIFY3U(len, ==, done_len);
 
 	cn->cn_flags = CF_EXPANDED;
@@ -242,19 +242,19 @@ done:
 }
 
 const char *
-get_config_value(const char *path)
+config_get_value(const char *path)
 {
 	config_node_t *cn;
 
-	cn = find_config_path(path, NULL);
+	cn = config_find_path(path, NULL);
 	if (cn != NULL) {
-		return (expand_config_value(cn, 0));
+		return (config_expand_value(cn, 0));
 	}
 	return (NULL);
 }
 
 static config_node_t *
-find_config_path(const char *path, avl_index_t *idx)
+config_find_path(const char *path, avl_index_t *idx)
 {
 	config_node_t search;
 
@@ -263,7 +263,7 @@ find_config_path(const char *path, avl_index_t *idx)
 }
 
 static config_node_t *
-set_config_raw(const char *path, const char *value)
+config_set_raw(const char *path, const char *value)
 {
 	config_node_t *cn;
 	avl_index_t idx;
@@ -271,7 +271,7 @@ set_config_raw(const char *path, const char *value)
 	ASSERT(pthread_mutex_isowned_np(&config_lock));
 	VERIFY(!config_finished);
 
-	cn = find_config_path(path, &idx);
+	cn = config_find_path(path, &idx);
 
 	if (cn != NULL) {
 		/* overwrite node */
@@ -309,31 +309,31 @@ alloc_err:
 }
 
 void
-set_config_value(const char *path, const char *value)
+config_set_value(const char *path, const char *value)
 {
 	pthread_mutex_lock(&config_lock);
-	(void) set_config_raw(path, value);
+	(void) config_set_raw(path, value);
 	pthread_mutex_unlock(&config_lock);
 }
 
 void
-set_config_bool(const char *path, boolean_t value)
+config_set_bool(const char *path, boolean_t value)
 {
 	config_node_t *cn;
 
 	pthread_mutex_lock(&config_lock);
-	cn = set_config_raw(path, value ? "true" : "false");
+	cn = config_set_raw(path, value ? "true" : "false");
 	cn->cn_bool = value;
 	cn->cn_flags |= CF_BOOL_CHECKED;
 	pthread_mutex_unlock(&config_lock);
 }
 
 boolean_t
-get_config_bool(const char *path)
+config_get_bool(const char *path)
 {
 	config_node_t *cn;
 
-	cn = find_config_path(path, NULL);
+	cn = config_find_path(path, NULL);
 	if (cn == NULL) {
 		/* XXX: strictness? */
 		return (B_FALSE);
@@ -346,7 +346,7 @@ get_config_bool(const char *path)
 		boolean_t valid = B_FALSE;
 		boolean_t bval = B_FALSE;
 
-		value = expand_config_value(cn, 0);
+		value = config_expand_value(cn, 0);
 		if (strcasecmp(value, "true") == 0 ||
 		    strcasecmp(value, "on") == 0 ||
 		    strcasecmp(value, "yes") == 0 ||
@@ -375,7 +375,7 @@ get_config_bool(const char *path)
 }
 
 void
-dump_config(boolean_t do_expand)
+config_dump(boolean_t do_expand)
 {
 	avl_tree_t *tree = &config_tree;
 	config_node_t *cn;
@@ -384,7 +384,7 @@ dump_config(boolean_t do_expand)
 		const char *value;
 
 		if (do_expand) {
-			value = expand_config_value(cn, 0);
+			value = config_expand_value(cn, 0);
 		} else {
 			value = cn->cn_value_raw;
 		}

@@ -2389,7 +2389,7 @@ e82545_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	 */
 	if (!mac_provided) {
 		snprintf(nstr, sizeof(nstr), "%d-%d-%s", pi->pi_slot,
-		    pi->pi_func, get_config_value("name"));
+		    pi->pi_func, config_get_value("name"));
 
 		MD5Init(&mdctx);
 		MD5Update(&mdctx, nstr, strlen(nstr));
