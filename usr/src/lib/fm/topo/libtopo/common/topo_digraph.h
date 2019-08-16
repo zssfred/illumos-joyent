@@ -51,6 +51,7 @@ struct topo_vertex
 	tnode_t		*tvt_node;
 	topo_list_t	tvt_incoming;
 	topo_list_t	tvt_outgoing;
+	uint_t		tvt_nincoming;		/* total num incoming edges */
 	uint_t		tvt_noutgoing;		/* total num outgoing edges */
 };
 

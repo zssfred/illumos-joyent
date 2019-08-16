@@ -245,6 +245,7 @@ topo_edge_new(topo_mod_t *mod, topo_vertex_t *from, topo_vertex_t *to)
 	topo_list_append(&from->tvt_outgoing, e_to);
 	from->tvt_noutgoing++;
 	topo_list_append(&to->tvt_incoming, e_from);
+	to->tvt_nincoming++;
 	tdg->tdg_nedges++;
 	(void) pthread_mutex_unlock(&tdg->tdg_lock);
 
