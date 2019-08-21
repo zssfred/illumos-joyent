@@ -932,9 +932,9 @@ struct zsd_entry {
 #define	ZONE_SPECIALPID(x)	 ((x) == 0 || (x) == 1)
 
 /*
- * A root vnode of the current zone.
+ * The root vnode of the current zone.
  */
-#define	ZONE_ROOTVP()	(curproc->p_zone->zone_rootvp)
+#define	ZONE_ROOTVP()	(curzone->zone_rootvp)
 
 /*
  * Zone-safe version of thread_create() to be used when the caller wants to
