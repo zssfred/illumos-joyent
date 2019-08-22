@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2014 Igor Kozhukhov <ikozhukhov@gmail.com>.
- * Copyright 2018 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  * Copyright 2019 Nexenta Systems, Inc. All rights reserved.
  */
 
@@ -53,6 +53,7 @@
 #include <sys/nvpair.h>
 #include <sys/list.h>
 #include <sys/loadavg.h>
+#include <sys/vnode.h>
 #endif	/* _KERNEL */
 
 #ifdef	__cplusplus
@@ -935,6 +936,14 @@ struct zsd_entry {
  * The root vnode of the current zone.
  */
 #define	ZONE_ROOTVP()	(curzone->zone_rootvp)
+
+/*
+ * Since a zone's root isn't necessarily an actual filesystem boundary
+ * (i.e. VROOT may not be set on zone->zone_rootvp) we need to not assume it.
+ * This macro helps in checking if a vnode is the current zone's rootvp.
+ * NOTE:  Using the VN_ prefix, even though it's defined here in zone.h.
+ */
+#define	VN_IS_CURZONEROOT(vp)	(VN_CMP(vp, ZONE_ROOTVP()))
 
 /*
  * Zone-safe version of thread_create() to be used when the caller wants to
