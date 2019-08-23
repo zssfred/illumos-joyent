@@ -71,10 +71,6 @@ extern "C" {
 #define	TDG_XML_VERTEX		"vertex"
 #define	TDG_XML_VERTICES	"vertices"
 
-#define	TDG_XML_PAD2		"  "
-#define	TDG_XML_PAD4		"    "
-#define	TDG_XML_PAD6		"      "
-
 #ifdef __cplusplus
 }
 #endif
