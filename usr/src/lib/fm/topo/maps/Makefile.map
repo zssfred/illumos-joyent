@@ -22,7 +22,8 @@
 #
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-# Copyright (c) 2013, Joyent, Inc. All rights reserved.
+#
+# Copyright 2019 Joyent, Inc.
 #
 
 .KEEP_STATE:
@@ -37,6 +38,11 @@ include ../../../../Makefile.lib
 DTDSRC = $(DTDFILE:%=../common/%)
 DTDTARG = $(DTDFILE:%=%)
 ROOTDTDTARG = $(DTDTARG:%=$(ROOT)/usr/share/lib/xml/dtd/%)
+
+DIGRAPH_DTD = digraph-topology.dtd.1
+DIGRAPH_DTD_SRC = ../common/$(DIGRAPH_DTD)
+ROOT_DTD_DIR=$(ROOT)/usr/share/lib/xml/dtd
+ROOT_DIGRAPH_DTD=$(ROOT_DTD_DIR)/$(DIGRAPH_DTD)
 
 common_ROOTTOPOROOT = $(ROOT)/usr/lib/fm/topo/$(MODCLASS)
 arch_ROOTTOPOROOT = $(ROOT)/usr/platform/$(ARCH)/lib/fm/topo/$(MODCLASS)
@@ -92,4 +98,7 @@ $($(CLASS)_ROOTTOPOROOT)/%: %
 $(ROOTDTDTARG): $$(@D)
 	$(RM) $@; $(INS) -s -m 0444 -f $(@D) $(DTDSRC)
 
-install: all $(ROOTDTDTARG) $(ROOTTOPOROOT) $(ROOTTOPOMAPS)
+$(ROOT_DIGRAPH_DTD): $(DIGRAPH_DTD_SRC)
+	$(RM) $@; $(INS) -s -m 0444 -f $(ROOT_DTD_DIR) $(DIGRAPH_DTD_SRC)
+
+install: all $(ROOTDTDTARG) $(ROOT_DIGRAPH_DTD) $(ROOTTOPOROOT) $(ROOTTOPOMAPS)

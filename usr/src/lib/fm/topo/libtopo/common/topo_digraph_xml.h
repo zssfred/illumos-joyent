@@ -31,6 +31,8 @@
 extern "C" {
 #endif
 
+#define	TDG_DTD		"/usr/share/lib/xml/dtd/digraph-topology.dtd.1"
+
 /*
  * List of attribute names and values used when serializing a topo_digraph_t
  * to XML.
