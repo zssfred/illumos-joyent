@@ -16,7 +16,7 @@
 /*
  * XXX add comment
  */
-
+#include <libxml/parser.h>
 #include <libtopo.h>
 
 #include <topo_digraph.h>
@@ -24,6 +24,8 @@
 
 #define	__STDC_FORMAT_MACROS
 #include <inttypes.h>
+
+extern int xmlattr_to_int(topo_mod_t *, xmlNodePtr, const char *, uint64_t *);
 
 static void
 tdg_xml_nvstring(FILE *fp, uint_t pad, const char *name, const char *value)
@@ -91,8 +93,8 @@ tdg_xml_nvint32(FILE *fp, uint_t pad, const char *name, const int32_t value)
 static void
 tdg_xml_nvuint64(FILE *fp, uint_t pad, const char *name, const uint64_t value)
 {
-	(void) fprintf(fp, "%*s<%s %s='%s' %s='%s' %s='%" PRIx64 "' />\n", pad,
-	    "", TDG_XML_NVPAIR, TDG_XML_NAME, name, TDG_XML_TYPE,
+	(void) fprintf(fp, "%*s<%s %s='%s' %s='%s' %s='0x%" PRIx64 "' />\n",
+	    pad, "", TDG_XML_NVPAIR, TDG_XML_NAME, name, TDG_XML_TYPE,
 	    TDG_XML_UINT64, TDG_XML_VALUE, value);
 }
 
@@ -333,7 +335,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 			tdg_xml_nvarray(fp, pad, pname, TDG_XML_UINT64_ARR,
 			    nelems);
 			for (uint_t i; i < nelems; i++) {
-				(void) fprintf(fp, "%*s<%s %s='%" PRIx64
+				(void) fprintf(fp, "%*s<%s %s='0x%" PRIx64
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
 			}
@@ -440,15 +442,19 @@ serialize_pgroups(topo_hdl_t *thp, FILE *fp, tnode_t *tn)
 			nvpair_t *nvp;
 
 			(void) fprintf(fp, "%*s<%s>\n", 8, "", TDG_XML_NVLIST);
-			tdg_xml_nvstring(fp, 10, TDG_XML_NAME, pv->tp_name);
-			tdg_xml_nvuint32(fp, 10, TDG_XML_TYPE, pv->tp_type);
+			tdg_xml_nvstring(fp, 10, TDG_XML_PROP_NAME,
+			    pv->tp_name);
+			tdg_xml_nvuint32(fp, 10, TDG_XML_PROP_TYPE,
+			    pv->tp_type);
 
 			if (nvlist_lookup_nvpair(pv->tp_val, TOPO_PROP_VAL_VAL,
 			    &nvp) != 0 ||
-			    serialize_nvpair(fp, 10, pv->tp_name, nvp) != 0) {
+			    serialize_nvpair(fp, 10, TDG_XML_PROP_VALUE,
+			    nvp) != 0) {
 				return (-1);
 			}
-			(void) fprintf(fp, "%*s</%s>\n", 8, "", TDG_XML_NVLIST);
+			(void) fprintf(fp, "%*s</%s>\n", 8, "",
+			    TDG_XML_NVLIST);
 		}
 
 		(void) fprintf(fp, "%*s</%s> <!-- %s -->\n", 6, "",
@@ -479,7 +485,7 @@ serialize_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx,
 	}
 	nvlist_free(fmri);
 
-	(void) fprintf(fp, "<%s %s='%s' %s='%" PRIx64 "' %s='%s'>\n",
+	(void) fprintf(fp, "<%s %s='%s' %s='0x%" PRIx64 "' %s='%s'>\n",
 	    TDG_XML_VERTEX, TDG_XML_NAME, topo_node_name(tn),
 	    TDG_XML_INSTANCE, topo_node_instance(tn),
 	    TDG_XML_FMRI, fmristr);
@@ -532,11 +538,9 @@ int
 topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
 {
 	(void) fprintf(fp, "<?xml version=\"1.0\"?>\n");
-	(void) fprintf(fp, "<!DOCTYPE topology SYSTEM \"%s\">", TDG_DTD);
-	(void) fprintf(fp, "<topo_digraph>\n");
-	(void) fprintf(fp, "<%s %s='%s' />\n", TDG_XML_SCHEME,
-	    TDG_XML_NAME, tdg->tdg_scheme);
-
+	(void) fprintf(fp, "<!DOCTYPE topology SYSTEM \"%s\">\n", TDG_DTD);
+	(void) fprintf(fp, "<%s %s='%s'>\n", TDG_XML_TOPO_DIGRAPH,
+	    TDG_XML_SCHEME, tdg->tdg_scheme);
 	(void) fprintf(fp, "<%s %s='%u'>\n", TDG_XML_VERTICES,
 	    TDG_XML_NELEM, tdg->tdg_nvertices);
 
@@ -546,20 +550,534 @@ topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
 	}
 
 	(void) fprintf(fp, "</%s>\n", TDG_XML_VERTICES);
-	(void) fprintf(fp, "</topo_digraph>\n");
+	(void) fprintf(fp, "</%s>\n", TDG_XML_TOPO_DIGRAPH);
 
 	return (0);
 }
 
+static xmlNodePtr
+get_child_by_name(xmlNodePtr xn, xmlChar *name)
+{
+	for (xmlNodePtr cn = xn->xmlChildrenNode; cn != NULL; cn = cn->next)
+		if (xmlStrcmp(cn->name, name) == 0)
+			return (cn);
+
+	return (NULL);
+}
+
+static void
+dump_xml_node(topo_hdl_t *thp, xmlNodePtr xn)
+{
+	topo_dprintf(thp, TOPO_DBG_XML, "node: %s", (char *)xn->name);
+	for (xmlAttrPtr attr = xn->properties; attr != NULL; attr = attr->next)
+		topo_dprintf(thp, TOPO_DBG_XML, "attribute: %s",
+		    (char *)attr->name);
+
+	for (xmlNodePtr cn = xn->xmlChildrenNode; cn != NULL; cn = cn->next)
+		topo_dprintf(thp, TOPO_DBG_XML, "\tchild node: %s",
+		    (char *)cn->name);
+}
+
+struct edge_cb_arg {
+	char		*from_fmri;
+	char		*to_fmri;
+	topo_vertex_t	*from_vtx;
+	topo_vertex_t	*to_vtx;
+};
+
+static int
+edge_cb(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx, void *arg)
+{
+	struct edge_cb_arg *cbarg = arg;
+	tnode_t *tn;
+	nvlist_t *fmri = NULL;
+	char *fmristr = NULL;
+	int err;
+
+	tn = topo_vertex_node(vtx);
+	if (topo_node_resource(tn, &fmri, &err) != 0 ||
+	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
+		topo_dprintf(thp, TOPO_DBG_XML, "failed to convert FMRI for "
+		    "%s=%" PRIx64 " to a string\n", topo_node_name(tn),
+		    topo_node_instance(tn));
+		if (thp->th_debug & TOPO_DBG_XML)
+			nvlist_print(stdout, fmri);
+		nvlist_free(fmri);
+		return (TOPO_WALK_ERR);
+	}
+
+	if (strcmp(fmristr, cbarg->from_fmri) == 0)
+		cbarg->from_vtx = vtx;
+	else if (strcmp(fmristr, cbarg->to_fmri) == 0)
+		cbarg->to_vtx = vtx;
+
+	topo_hdl_strfree(thp, fmristr);
+	if (cbarg->from_vtx != NULL && cbarg->to_vtx != NULL)
+		return (TOPO_WALK_TERMINATE);
+	else
+		return (TOPO_WALK_NEXT);
+}
+
+static int
+deserialize_edges(topo_hdl_t *thp, topo_mod_t *mod, topo_digraph_t *tdg,
+    xmlChar *from_fmri, xmlNodePtr xn)
+{
+	struct edge_cb_arg cbarg = { 0 };
+
+	cbarg.from_fmri = (char *)from_fmri;
+
+	for (xmlNodePtr cn = xn->xmlChildrenNode; cn != NULL;
+	    cn = cn->next) {
+		xmlChar *fmri;
+
+		if (xmlStrcmp(cn->name, (xmlChar *)TDG_XML_EDGE) != 0)
+			continue;
+
+		if ((fmri = xmlGetProp(cn, (xmlChar *)TDG_XML_FMRI)) == NULL) {
+			topo_dprintf(thp, TOPO_DBG_XML,
+			    "error parsing %s element", (char *)cn->name);
+			dump_xml_node(thp, cn);
+			return (-1);
+		}
+		cbarg.to_fmri = (char *)fmri;
+
+		if (topo_vertex_iter(mod->tm_hdl, tdg, edge_cb, &cbarg) != 0) {
+			xmlFree(fmri);
+			return (-1);
+		}
+		xmlFree(fmri);
+
+		if (cbarg.from_vtx == NULL || cbarg.to_vtx == NULL) {
+			return (-1);
+		}
+		if (topo_edge_new(mod, cbarg.from_vtx, cbarg.to_vtx) != 0) {
+			return (-1);
+		}
+	}
+
+	return (0);
+}
+
+static int
+add_edges(topo_hdl_t *thp, topo_mod_t *mod, topo_digraph_t *tdg,
+    xmlNodePtr xn)
+{
+	int ret = -1;
+	nvlist_t *props = NULL;
+	xmlChar *name = NULL, *fmri = NULL;
+	xmlNodePtr cn;
+	uint64_t inst;
+
+	if ((name = xmlGetProp(xn, (xmlChar *)TDG_XML_NAME)) == NULL ||
+	    (fmri = xmlGetProp(xn, (xmlChar *)TDG_XML_FMRI)) == NULL ||
+	    xmlattr_to_int(mod, xn, TDG_XML_INSTANCE, &inst) != 0) {
+		goto fail;
+	}
+
+	if ((cn = get_child_by_name(xn, (xmlChar *)TDG_XML_OUTEDGES)) !=
+	    NULL) {
+		if (deserialize_edges(thp, mod, tdg, fmri, cn) != 0)
+			goto fail;
+	}
+	ret = 0;
+
+fail:
+	if (ret != 0) {
+		topo_dprintf(thp, TOPO_DBG_XML, "%s: error parsing %s element",
+		    __func__, TDG_XML_VERTEX);
+		dump_xml_node(thp, xn);
+	}
+	nvlist_free(props);
+	if (name != NULL)
+		xmlFree(name);
+	if (fmri != NULL)
+		xmlFree(fmri);
+
+	return (ret);
+}
+
+static topo_pgroup_info_t pginfo = {
+	NULL,
+	TOPO_STABILITY_PRIVATE,
+	TOPO_STABILITY_PRIVATE,
+	1
+};
+
+static int
+add_props(topo_hdl_t *thp, topo_vertex_t *vtx, nvlist_t *pgroups)
+{
+	tnode_t *tn;
+	nvlist_t **pgs;
+	uint_t npgs = 0;
+
+	tn = topo_vertex_node(vtx);
+	if (nvlist_lookup_nvlist_array(pgroups, TDG_XML_PGROUPS, &pgs,
+	    &npgs) != 0) {
+		goto fail;
+	}
+
+	for (uint_t i = 0; i < npgs; i++) {
+		char *pgname;
+		nvlist_t **props;
+		uint_t nprops;
+		int err;
+
+		if (nvlist_lookup_string(pgs[i], TDG_XML_PGROUP_NAME,
+		    &pgname) != 0 ||
+		    nvlist_lookup_nvlist_array(pgs[i], TDG_XML_PVALS, &props,
+		    &nprops) != 0) {
+			goto fail;
+		}
+		pginfo.tpi_name = pgname;
+
+		if (topo_pgroup_create(tn, &pginfo, &err) != 0) {
+			topo_dprintf(thp, TOPO_DBG_XML, "failed to create "
+			    "pgroup: %s", pgname);
+			goto fail;
+		}
+		for (uint_t j = 0; j < nprops; j++) {
+			if (topo_prop_setprop(tn, pgname, props[j],
+			    TOPO_PROP_IMMUTABLE, props[j], &err) != 0) {
+				topo_dprintf(thp, TOPO_DBG_XML, "failed to "
+				    "set properties in pgroup: %s", pgname);
+				goto fail;
+			}
+		}
+	}
+	return (0);
+fail:
+	topo_dprintf(thp, TOPO_DBG_XML, "%s: error decoding properties for "
+	    "%s=%" PRIx64, __func__, topo_node_name(tn),
+	    topo_node_instance(tn));
+	if (thp->th_debug & TOPO_DBG_XML)
+		nvlist_print(stdout, pgroups);
+
+	return (-1);
+}
+
+static void
+free_nvlist_array(topo_hdl_t *thp, nvlist_t **nvlarr, uint_t nelems)
+{
+	for (uint_t i = 0; i < nelems; i++) {
+		if (nvlarr[i] != NULL)
+			nvlist_free(nvlarr[i]);
+	}
+	topo_hdl_free(thp, nvlarr, nelems * sizeof (nvlist_t *));
+}
+
 /*
- * This function takes a buffer containing XML data describing an nvlist
- * representation of a directed graph topology.  This data is deserialized back
- * to an nvlist and that nvlist is then processed to rehydrate the original
- * directed graph.
+ * Recursive function for parsing nvpair XML elements, which can contain
+ * nested nvlist and nvpair elements.
+ */
+static int
+deserialize_nvpair(topo_hdl_t *thp, topo_mod_t *mod, nvlist_t *nvl,
+    xmlNodePtr xn)
+{
+	int ret = -1;
+	xmlChar *name = NULL, *type = NULL, *sval = NULL;
+	uint64_t val;
+
+	if ((name = xmlGetProp(xn, (xmlChar *)TDG_XML_NAME)) == NULL ||
+	    (type = xmlGetProp(xn, (xmlChar *)TDG_XML_TYPE)) == NULL) {
+		goto fail;
+	}
+
+	if (xmlStrcmp(type, (xmlChar *)TDG_XML_NVLIST) == 0) {
+		nvlist_t *cnvl = NULL;
+
+		if (topo_hdl_nvalloc(thp, &cnvl, NV_UNIQUE_NAME) != 0 ||
+		    nvlist_add_nvlist(nvl, (char *)name, cnvl) != 0)
+			goto fail;
+
+		for (xmlNodePtr cn = xn->xmlChildrenNode;
+		    cn != NULL; cn = cn->next) {
+
+			if (xmlStrcmp(cn->name, (xmlChar *)TDG_XML_NVLIST) != 0)
+				continue;
+
+			for (xmlNodePtr gcn = cn->xmlChildrenNode;
+			    gcn != NULL; gcn = gcn->next) {
+
+				if (xmlStrcmp(gcn->name,
+				    (xmlChar *)TDG_XML_NVPAIR) != 0)
+					continue;
+				if (deserialize_nvpair(thp, mod, cnvl, gcn) !=
+				    0) {
+					nvlist_free(cnvl);
+					goto fail;
+				}
+			}
+			if (nvlist_add_nvlist(nvl, (char *)name, cnvl) != 0) {
+				nvlist_free(cnvl);
+				goto fail;
+			}
+			nvlist_free(cnvl);
+			break;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_INT8) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_int8(nvl, (char *)name, (int8_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_INT16) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_int16(nvl, (char *)name, (int16_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_INT32) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_int32(nvl, (char *)name, (int32_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_INT64) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_int64(nvl, (char *)name, (int64_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_UINT8) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_uint8(nvl, (char *)name, (uint8_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_UINT16) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_uint16(nvl, (char *)name, (uint16_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_UINT32) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_uint32(nvl, (char *)name, (uint32_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_UINT64) == 0) {
+		if (xmlattr_to_int(mod, xn, TDG_XML_VALUE, &val) != 0 ||
+		    nvlist_add_uint64(nvl, (char *)name, (uint64_t)val) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_STRING) == 0) {
+		if ((sval = xmlGetProp(xn, (xmlChar *)TDG_XML_VALUE)) == NULL ||
+		    nvlist_add_string(nvl, (char *)name, (char *)sval) != 0) {
+			goto fail;
+		}
+	} else if (xmlStrcmp(type, (xmlChar *)TDG_XML_NVLIST_ARR) == 0) {
+		uint64_t nelem;
+		nvlist_t **nvlarr = NULL;
+		uint_t i = 0;
+
+		if (xmlattr_to_int(mod, xn, TDG_XML_NELEM, &nelem) != 0) {
+			goto fail;
+		}
+		if ((nvlarr = topo_hdl_zalloc(thp,
+		    (nelem * sizeof (nvlist_t *)))) == NULL) {
+			goto fail;
+		}
+
+		for (xmlNodePtr cn = xn->xmlChildrenNode; cn != NULL;
+		    cn = cn->next) {
+			if (xmlStrcmp(cn->name, (xmlChar *)TDG_XML_NVLIST) != 0)
+				continue;
+
+			if (topo_hdl_nvalloc(thp, &nvlarr[i],
+			    NV_UNIQUE_NAME) != 0) {
+				free_nvlist_array(thp, nvlarr, nelem);
+				goto fail;
+			}
+
+			for (xmlNodePtr gcn = cn->xmlChildrenNode;
+			    gcn != NULL; gcn = gcn->next) {
+				if (xmlStrcmp(gcn->name,
+				    (xmlChar *)TDG_XML_NVPAIR) != 0)
+					continue;
+				if (deserialize_nvpair(thp, mod, nvlarr[i],
+				    gcn) != 0) {
+					free_nvlist_array(thp, nvlarr, nelem);
+					goto fail;
+				}
+			}
+			i++;
+		}
+		if (nvlist_add_nvlist_array(nvl, (char *)name, nvlarr,
+		    nelem) != 0) {
+			free_nvlist_array(thp, nvlarr, nelem);
+			goto fail;
+		}
+		free_nvlist_array(thp, nvlarr, nelem);
+	}
+	ret = 0;
+fail:
+	if (ret != 0) {
+		topo_dprintf(thp, TOPO_DBG_XML, "%s: error parsing %s "
+		    "element: name: %s, type: %s, nvl: %p", __func__, xn->name,
+		    (name != NULL) ? (char *)name : "MISSING!",
+		    (type != NULL) ? (char *)type : "MISSING!", nvl);
+		dump_xml_node(thp, xn);
+	}
+	if (name != NULL)
+		xmlFree(name);
+	if (type != NULL)
+		xmlFree(type);
+	if (sval != NULL)
+		xmlFree(sval);
+
+	return (ret);
+}
+
+static int
+deserialize_vertex(topo_hdl_t *thp, topo_mod_t *mod, topo_digraph_t *tdg,
+    xmlNodePtr xn)
+{
+	int ret = -1;
+	topo_vertex_t *vtx;
+	nvlist_t *props = NULL;
+	xmlChar *name = NULL, *fmri = NULL;
+	uint64_t inst;
+
+	if ((name = xmlGetProp(xn, (xmlChar *)TDG_XML_NAME)) == NULL ||
+	    (fmri = xmlGetProp(xn, (xmlChar *)TDG_XML_FMRI)) == NULL ||
+	    xmlattr_to_int(mod, xn, TDG_XML_INSTANCE, &inst) != 0) {
+		goto fail;
+	}
+
+	if ((vtx = topo_vertex_new(mod, (char *)name, inst)) == NULL) {
+		goto fail;
+	}
+
+	for (xmlNodePtr cn = xn->xmlChildrenNode; cn != NULL; cn = cn->next) {
+		if (xmlStrcmp(cn->name, (xmlChar *)TDG_XML_NVPAIR) == 0) {
+			if (topo_hdl_nvalloc(thp, &props, NV_UNIQUE_NAME) != 0)
+				goto fail;
+			if (deserialize_nvpair(thp, mod, props, cn) != 0 ||
+			    add_props(thp, vtx, props) != 0)
+				goto fail;
+		}
+	}
+	ret = 0;
+
+fail:
+	if (ret != 0) {
+		topo_dprintf(thp, TOPO_DBG_XML, "%s: error parsing %s element",
+		    __func__, TDG_XML_VERTEX);
+		dump_xml_node(thp, xn);
+	}
+	nvlist_free(props);
+	if (name != NULL)
+		xmlFree(name);
+	if (fmri != NULL)
+		xmlFree(fmri);
+
+	return (ret);
+}
+
+/*
+ * This function takes a buffer containing XML data describing a directed graph
+ * topology.  This data is parsed to the original directed graph is rehydrated.
+ *
+ * On success, a pointer to a topo_digraph_t representing the graph is
+ * returned.  The caller is responsible for destroying the graph via a call to
+ * topo_digraph_destroy()
+ *
+ * On failure, NULL is returned.
  */
 topo_digraph_t *
 topo_digraph_deserialize(topo_hdl_t *thp, const char *xml, size_t sz)
 {
-	/* XXX - need to implement */
-	return (NULL);
+	xmlDocPtr doc;
+	xmlDtdPtr dtd = NULL;
+	xmlNodePtr root, vertices;
+	xmlChar *scheme = NULL;
+	topo_mod_t *mod;
+	topo_digraph_t *tdg, *ret = NULL;
+
+	if ((doc = xmlReadMemory(xml, sz, "nobase.xml", NULL, 0)) == NULL) {
+		topo_dprintf(thp, TOPO_DBG_XML, "Failed to parse XML");
+		return (NULL);
+	}
+
+	/*
+	 * As a sanity check, extract the DTD from the XML and verify it
+	 * matches the DTD a digraph topology.
+	 */
+	if ((dtd = xmlGetIntSubset(doc)) == NULL) {
+		topo_dprintf(thp, TOPO_DBG_XML,  "document has no DTD.\n");
+		goto fail;
+	}
+
+	if (strcmp((const char *)dtd->SystemID, TDG_DTD) != 0) {
+		topo_dprintf(thp, TOPO_DBG_XML, "unexpected DTD: %s",
+		    dtd->SystemID);
+		goto fail;
+	}
+
+	/*
+	 * Verify the root element is what we're expecting and then grab the
+	 * FMRI scheme from its attributes.
+	 */
+	if ((root = xmlDocGetRootElement(doc)) == NULL) {
+		topo_dprintf(thp, TOPO_DBG_XML, "document is empty.\n");
+		goto fail;
+	}
+
+	if (xmlStrcmp(root->name, (xmlChar *)TDG_XML_TOPO_DIGRAPH) != 0 ||
+	    (scheme = xmlGetProp(root, (xmlChar *)TDG_XML_SCHEME)) ==
+	    NULL) {
+		topo_dprintf(thp, TOPO_DBG_XML,
+		    "failed to parse %s element", TDG_XML_TOPO_DIGRAPH);
+		goto fail;
+	}
+
+	/*
+	 * Load the topo module associated with this FMRI scheme and then get a
+	 * pointer to it's empty digraph.
+	 */
+	if ((mod = topo_mod_lookup(thp, (const char *)scheme, 1)) == NULL) {
+		topo_dprintf(thp, TOPO_DBG_XML, "failed to load %s module",
+		    scheme);
+		goto fail;
+	}
+	if ((tdg = topo_digraph_get(mod->tm_hdl, mod->tm_info->tmi_scheme)) ==
+	    NULL) {
+		topo_dprintf(thp, TOPO_DBG_XML, "unsupported FMRI scheme: %s",
+		    scheme);
+		goto fail;
+	}
+
+	/*
+	 * Iterate through the vertex XML elements to reconstruct the graph
+	 */
+	vertices = get_child_by_name(root, (xmlChar *)TDG_XML_VERTICES);
+	if (vertices == NULL ||
+	    xmlStrcmp(vertices->name, (xmlChar *)TDG_XML_VERTICES) != 0) {
+		topo_dprintf(thp, TOPO_DBG_XML, "failed to parse %s element",
+		    TDG_XML_VERTICES);
+		dump_xml_node(thp, root);
+		goto fail;
+	}
+
+	for (xmlNodePtr xn = vertices->xmlChildrenNode; xn != NULL;
+	    xn = xn->next) {
+		if (xmlStrcmp(xn->name, (xmlChar *)TDG_XML_VERTEX) != 0)
+			continue;
+		if (deserialize_vertex(thp, mod, tdg, xn) != 0)
+			goto fail;
+	}
+
+	/*
+	 * Now that all of the vertices have been created, go back through
+	 * the vertex XML elements and add the edges.
+	 */
+	for (xmlNodePtr xn = vertices->xmlChildrenNode; xn != NULL;
+	    xn = xn->next) {
+		if (xmlStrcmp(xn->name, (xmlChar *)TDG_XML_VERTEX) != 0)
+			continue;
+		if (add_edges(thp, mod, tdg, xn) != 0)
+			goto fail;
+	}
+	ret = tdg;
+
+fail:
+	if (scheme != NULL)
+		xmlFree(scheme);
+
+	xmlFreeDoc(doc);
+	return (ret);
 }

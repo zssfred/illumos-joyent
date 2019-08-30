@@ -16,16 +16,16 @@
  DTD for Directed Graph based topologies
 -->
 
-<!ELEMENT fmri-scheme>
+<!ELEMENT topo-digraph (vertices) >
 
-<!ATTLIST fmri-scheme
-    name		CDATA #REQUIRED
+<!ATTLIST topo-digraph
+	scheme		CDATA #REQUIRED
 >
 
 <!ELEMENT vertices>
 
 <!ATTLIST vertices
-    nelem		CDATA #REQUIRED
+    	nelem		CDATA #REQUIRED
 >
 
 <!ELEMENT vertex (nvpair*, outgoing-edges?) >

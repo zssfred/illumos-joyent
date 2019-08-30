@@ -58,10 +58,15 @@ extern "C" {
 #define	TDG_XML_INT64		"int64"
 #define	TDG_XML_INT64_ARR	"int64-array"
 #define	TDG_XML_PGROUPS		"property-groups"
+#define	TDG_XML_PGROUP_NAME	"property-group-name"
+#define	TDG_XML_PROP_NAME	TOPO_PROP_VAL_NAME
+#define	TDG_XML_PROP_TYPE	TOPO_PROP_VAL_TYPE
+#define	TDG_XML_PROP_VALUE	TOPO_PROP_VAL_VAL
 #define	TDG_XML_PVALS		"property-values"
 #define	TDG_XML_OUTEDGES	"outgoing-edges"
 #define	TDG_XML_STRING		"string"
 #define	TDG_XML_STRING_ARR	"string-array"
+#define	TDG_XML_TOPO_DIGRAPH	"topo-digraph"
 #define	TDG_XML_TYPE		"type"
 #define	TDG_XML_UINT8		"uint8"
 #define	TDG_XML_UINT16		"uint16"
