@@ -10,7 +10,7 @@
 #
 
 #
-# Copyright 2018, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 I) Introduction
@@ -18,6 +18,9 @@ I) Introduction
 The procedure to run the illumos tests under SmartOS is unlike that for
 other distributions because of the zone-centric nature of the distribution,
 and because there is no built-in package management for the global zone.
+
+XXX timf: talk about how to install the smartos-tests package and run
+the wrapper that installs the prerequisites and runs the tests.
 
 This Readme assumes you will run the tests in the global zone, as root.
 Although it is possible to run some of the tests within a non-global zone, as a

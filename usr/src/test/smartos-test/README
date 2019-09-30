@@ -1,0 +1,28 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+
+#
+# Copyright 2019 Joyent. Inc.
+#
+
+Strictly speaking, this is not a set of tests. Rather, it is a wrapper that
+automates most (but not all, in the case of zfs-test configuration!) of the
+setup from $SRC/test/Readme.smartos.
+
+Specifically, the script here will:
+
+* setup loopback mounts for any files from the smartos "tests-[stamp].tgz"
+  file that need to be installed to a normally read-only location
+* configure pkgsrc
+* install required test packages
+* execute tests that should all pass
+
+Over time, we will add to the set of tests that are executed.
