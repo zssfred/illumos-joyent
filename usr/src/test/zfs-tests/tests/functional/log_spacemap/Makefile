@@ -8,24 +8,14 @@
 # source.  A copy of the CDDL is also available via the Internet at
 # http://www.illumos.org/license/CDDL.
 #
+
 #
-# Copyright 2014, OmniTI Computer Consulting, Inc. All rights reserved.
-# Copyright 2016 RackTop Systems.
+# Copyright 2019 Joyent, Inc.
 #
 
-MODULE = Pg
+include $(SRC)/Makefile.master
 
-include $(SRC)/cmd/perl/Makefile.perl
+ROOTOPTPKG = $(ROOT)/opt/zfs-tests
+TARGETDIR = $(ROOTOPTPKG)/tests/functional/log_spacemap
 
-# Install module into arch independent directory
-ROOTPERLMODDIR = $(ROOTPERLDIR)/lib/Sun/Solaris
-
-include $(SRC)/cmd/perl/Makefile.targ
-
-.KEEP_STATE:
-
-all: $(PERLMOD)
-
-install: $(ROOTPERLMOD)
-
-clean clobber:
+include $(SRC)/test/zfs-tests/Makefile.com
