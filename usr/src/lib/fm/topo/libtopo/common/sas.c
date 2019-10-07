@@ -697,7 +697,7 @@ typedef struct sas_vtx {
 	topo_vertex_t	*tds_vtx;
 } sas_vtx_t;
 
-/* Finds vertices matching th given tn_instance and tn_name. */
+/* Finds vertices matching the given tn_instance and tn_name. */
 int
 sas_vtx_match(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last,
     void *arg)
@@ -726,6 +726,7 @@ sas_find_connected_vtx(topo_mod_t *mod, uint64_t att_wwn, uint64_t search_wwn,
 	search.inst = search_wwn;
 	search.name = vtx_type;
 	search.result_list = vtx_list;
+	sas_vtx_t *res;
 
 	uint_t nfound = 0;
 
@@ -764,9 +765,12 @@ sas_find_connected_vtx(topo_mod_t *mod, uint64_t att_wwn, uint64_t search_wwn,
 	}
 
 	/* Clean up all the garbage used by the search routine. */
-	for (sas_vtx_t *res = topo_list_next(vtx_list);
-	    res != NULL; res = topo_list_next(res)) {
-		topo_mod_free(mod, res, sizeof (sas_vtx_t));
+	res = topo_list_next(vtx_list);
+	while (res != NULL) {
+		sas_vtx_t *tmp = res;
+
+		res = topo_list_next(res);
+		topo_mod_free(mod, tmp, sizeof (sas_vtx_t));
 	}
 	topo_mod_free(mod, vtx_list, sizeof (topo_list_t));
 
@@ -810,11 +814,14 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 
 	if (smp_exec(axn, tgt) != 0) {
 		ret = -1;
+		smp_action_free(axn);
 		goto done;
 	}
 
 	smp_action_get_response(axn, &result, (void **) &smp_resp,
 	    &smp_resp_len);
+	smp_action_free(axn);
+
 	if (result != SMP_RES_FUNCTION_ACCEPTED) {
 		ret = -1;
 		goto done;
@@ -823,7 +830,6 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 	report_resp = (smp_report_general_resp_t *)smp_resp;
 	num_phys = report_resp->srgr_number_of_phys;
 	expd_addr = ntohll(report_resp->srgr_enclosure_logical_identifier);
-	smp_action_free(axn);
 
 	phyinfo.start_phy = 0;
 	phyinfo.end_phy = (phyinfo.start_phy + num_phys) - (num_phys - 1);
@@ -852,11 +858,14 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 
 		if (smp_exec(axn, tgt) != 0) {
 			topo_mod_dprintf(mod, "smp_exec failed\n");
+			smp_action_free(axn);
 			goto done;
 		}
 
 		smp_action_get_response(axn, &result, (void **) &smp_resp,
 		    &smp_resp_len);
+		smp_action_free(axn);
+
 		disc_resp = (smp_discover_resp_t *)smp_resp;
 		if (result != SMP_RES_FUNCTION_ACCEPTED &&
 		    result != SMP_RES_PHY_VACANT) {
@@ -1028,12 +1037,9 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 			wide_port_phys.end_phy =
 			    disc_resp->sdr_phy_identifier;
 		}
-
-		smp_action_free(axn);
 	}
 
 done:
-	smp_action_free(axn);
 	smp_close(tgt);
 	topo_mod_free(mod, tdef, sizeof (smp_target_def_t));
 	return (ret);
@@ -1055,6 +1061,7 @@ sas_connect_hba(topo_hdl_t *hdl, topo_edge_t *edge, boolean_t last, void* arg)
 	topo_vertex_t *expd_port_vtx = NULL;
 	topo_vertex_t *expd_vtx = NULL;
 	sas_port_t *expd_port = NULL;
+	sas_vtx_t *vtx;
 
 	topo_list_t *vtx_list = topo_mod_zalloc(
 	    iter->sas_mod, sizeof (topo_list_t));
@@ -1109,11 +1116,15 @@ sas_connect_hba(topo_hdl_t *hdl, topo_edge_t *edge, boolean_t last, void* arg)
 	}
 
 out:
-	for (sas_vtx_t *vtx = topo_list_next(vtx_list); vtx != NULL;
-	    vtx = topo_list_next(vtx)) {
-		topo_mod_free(iter->sas_mod, vtx, sizeof (sas_vtx_t));
+	vtx = topo_list_next(vtx_list);
+	while (vtx != NULL) {
+		sas_vtx_t *tmp = vtx;
+
+		vtx = topo_list_next(vtx);
+		topo_mod_free(iter->sas_mod, tmp, sizeof (sas_vtx_t));
 	}
 	topo_mod_free(iter->sas_mod, vtx_list, sizeof (topo_list_t));
+
 	return (TOPO_WALK_NEXT);
 }
 
@@ -1127,6 +1138,7 @@ sas_expd_interconnect(topo_hdl_t *hdl, topo_vertex_t *vtx,
 	    iter->sas_mod, sizeof (topo_list_t));
 	sas_port_t *port = topo_node_getspecific(node);
 	topo_vertex_t *port_vtx = NULL;
+	sas_vtx_t *disc_vtx;
 
 	uint_t nfound = sas_find_connected_vtx(iter->sas_mod, node->tn_instance,
 	    port->sp_att_wwn, TOPO_VTX_PORT, list);
@@ -1150,11 +1162,15 @@ sas_expd_interconnect(topo_hdl_t *hdl, topo_vertex_t *vtx,
 	}
 
 out:
-	for (sas_vtx_t *disc_vtx = topo_list_next(list); disc_vtx != NULL;
-	    disc_vtx = topo_list_next(disc_vtx)) {
-		topo_mod_free(iter->sas_mod, disc_vtx, sizeof (sas_vtx_t));
+	disc_vtx = topo_list_next(list);
+	while (disc_vtx) {
+		sas_vtx_t *tmp = disc_vtx;
+
+		disc_vtx = topo_list_next(disc_vtx);
+		topo_mod_free(iter->sas_mod, tmp, sizeof (sas_vtx_t));
 	}
 	topo_mod_free(iter->sas_mod, list, sizeof (topo_list_t));
+
 	return (ret);
 }
 
@@ -1170,6 +1186,7 @@ sas_connect_expd(topo_hdl_t *hdl, topo_vertex_t *vtx, sas_topo_iter_t *iter)
 	tnode_t *node = topo_vertex_node(vtx);
 	topo_vertex_t *expd_vtx = NULL;
 	sas_port_t *disc_expd = NULL;
+	sas_vtx_t *disc_vtx;
 
 	topo_list_t *list = topo_mod_zalloc(
 	    iter->sas_mod, sizeof (topo_list_t));
@@ -1206,11 +1223,15 @@ sas_connect_expd(topo_hdl_t *hdl, topo_vertex_t *vtx, sas_topo_iter_t *iter)
 	}
 
 out:
-	for (sas_vtx_t *disc_vtx = topo_list_next(list); disc_vtx != NULL;
-	    disc_vtx = topo_list_next(disc_vtx)) {
-		topo_mod_free(iter->sas_mod, disc_vtx, sizeof (sas_vtx_t));
+	disc_vtx = topo_list_next(list);
+	while (disc_vtx) {
+		sas_vtx_t *tmp = disc_vtx;
+
+		disc_vtx = topo_list_next(disc_vtx);
+		topo_mod_free(iter->sas_mod, tmp, sizeof (sas_vtx_t));
 	}
 	topo_mod_free(iter->sas_mod, list, sizeof (topo_list_t));
+
 	return (ret);
 }
 
@@ -1278,7 +1299,7 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	di_node_t root;
 	di_node_t smp;
 	const char *smp_path = NULL;
-	sas_port_t *sas_hba_port = NULL;
+	sas_port_t *sas_hba_port = NULL, *expd_port, *hba_port;
 	topo_list_t *expd_list = topo_mod_zalloc(mod, sizeof (topo_list_t));
 	topo_list_t *hba_list = topo_mod_zalloc(mod, sizeof (topo_list_t));
 
@@ -1530,22 +1551,24 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	topo_mod_dprintf(mod, "done\n");
 
 done:
-	if (expd_list) {
-		for (sas_port_t *expd_port = topo_list_next(expd_list);
-		    expd_port != NULL;
-		    expd_port = topo_list_next(expd_port)) {
-			topo_mod_free(mod, expd_port, sizeof (sas_port_t));
-		}
-		topo_mod_free(mod, expd_list, sizeof (topo_list_t));
+	expd_port = topo_list_next(expd_list);
+	while (expd_port != NULL) {
+		sas_port_t *tmp = expd_port;
+
+		expd_port = topo_list_next(expd_port);
+		topo_mod_free(mod, tmp, sizeof (sas_port_t));
 	}
-	if (hba_list) {
-		for (sas_port_t *hba_port = topo_list_next(hba_list);
-		    hba_port != NULL;
-		    hba_port = topo_list_next(hba_port)) {
-			topo_mod_free(mod, hba_port, sizeof (sas_port_t));
-		}
-		topo_mod_free(mod, hba_list, sizeof (topo_list_t));
+	topo_mod_free(mod, expd_list, sizeof (topo_list_t));
+
+	hba_port = topo_list_next(hba_list);
+	while (hba_port != NULL) {
+		sas_port_t *tmp = hba_port;
+
+		hba_port = topo_list_next(hba_port);
+		topo_mod_free(mod, tmp, sizeof (sas_port_t));
 	}
+	topo_mod_free(mod, hba_list, sizeof (topo_list_t));
+
 	(void) HBA_FreeLibrary();
 	return (ret);
 }
