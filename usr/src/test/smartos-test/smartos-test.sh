@@ -175,7 +175,7 @@ function add_loopback_mounts {
         log_must tar -xzf $test_archive -C $lofs_home ./usr
         # keep /usr read-only in an attempt to preserve smartos behaviour
         # unless specifically asked to
-        if [[ "$MOUNT_USR_RW" = "true" ]]; then
+        if [[ "$mount_usr_rw" = "true" ]]; then
             mount_opts="-o rw"
         else
             mount_opts="-o ro"
@@ -295,7 +295,7 @@ function usage {
     echo "  -w       when mounting the lofs /usr, make it writable"
 }
 
-MOUNT_USR_RW=false
+mount_usr_rw=false
 skip_version_check=false
 do_configure=false
 do_execute=false
@@ -323,7 +323,7 @@ while getopts "cefrwh" opt; do
             exit 2
             ;;
         w)
-            MOUNT_USR_RW=true
+            mount_usr_rw=true
             ;;
         *)
             log "unknown argument ${opt}"

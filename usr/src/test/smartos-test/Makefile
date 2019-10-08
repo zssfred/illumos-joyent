@@ -28,7 +28,7 @@ $(ROOTPROGS) :=	FILEMODE = 0555
 ROOTFILES=	$(FILES:%=$(ROOTOPTPKG)/%)
 $(ROOTFILES) := FILEMODE = 0444
 
-all lint clean clobber:
+all clean clobber:
 
 install:	$(ROOTPROGS) $(ROOTFILES)
 
