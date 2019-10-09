@@ -1661,7 +1661,7 @@ fmri_bufsz(nvlist_t *nvl)
 		bufsz += snprintf(NULL, 0, "/%s=%" PRIx64 "", sasname,
 		    sasaddr);
 	}
-	return (bufsz);
+	return (bufsz + 1);
 }
 
 static int
@@ -1707,11 +1707,12 @@ sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	(void) nvlist_lookup_nvlist_array(in, FM_FMRI_SAS_PATH, &paths,
 	    &nelem);
 	if (start_phy != UINT32_MAX && end_phy != UINT32_MAX)
-		end += sprintf(buf, "sas://%s=%s:%s=%u:%s=%u",
+		end += snprintf(buf, bufsz, "sas://%s=%s:%s=%u:%s=%u",
 		    FM_FMRI_SAS_TYPE, type, FM_FMRI_SAS_START_PHY, start_phy,
 		    FM_FMRI_SAS_END_PHY, end_phy);
 	else
-		end += sprintf(buf, "sas://%s=%s", FM_FMRI_SAS_TYPE, type);
+		end += snprintf(buf, bufsz, "sas://%s=%s", FM_FMRI_SAS_TYPE,
+		    type);
 
 	for (uint_t i = 0; i < nelem; i++) {
 		char *sasname;
@@ -1721,8 +1722,8 @@ sas_fmri_nvl2str(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		    &sasname);
 		(void) nvlist_lookup_uint64(paths[i], FM_FMRI_SAS_ADDR,
 		    &sasaddr);
-		end += sprintf(buf + end, "/%s=%" PRIx64 "", sasname,
-		    sasaddr);
+		end += snprintf(buf + end, (bufsz - end), "/%s=%" PRIx64 "",
+		    sasname, sasaddr);
 	}
 
 	if (topo_mod_nvalloc(mod, &outnvl, NV_UNIQUE_NAME) != 0) {
