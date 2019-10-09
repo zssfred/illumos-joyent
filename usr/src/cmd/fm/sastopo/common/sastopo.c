@@ -17,6 +17,8 @@
 #include <fm/topo_list.h>
 #include <fm/topo_sas.h>
 #include <sys/fm/protocol.h>
+#include <topo_prop.h>
+#include <topo_tree.h>
 
 #define	EXIT_USAGE	2
 
@@ -41,18 +43,243 @@ struct cb_arg {
 	boolean_t verbose;
 };
 
-static void
-print_node_props(tnode_t *tn)
+static int
+print_prop_val(topo_hdl_t *thp, nvpair_t *nvp)
 {
-	int err;
-	nvlist_t *props;
+	data_type_t type = nvpair_type(nvp);
 
-	if ((props = topo_prop_getprops(tn, &err)) == NULL) {
-		(void) fprintf(stderr, "failed to get props on %s=%" PRIx64
-		    "\n", topo_node_name(tn), topo_node_instance(tn));
-		return;
+	switch (type) {
+		case DATA_TYPE_INT8: {
+			int8_t val;
+
+			if (nvpair_value_int8(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10u\n", val);
+			break;
+		}
+		case DATA_TYPE_UINT8: {
+			uint8_t val;
+
+			if (nvpair_value_uint8(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10u\n", val);
+			break;
+		}
+		case DATA_TYPE_INT16: {
+			int16_t val;
+
+			if (nvpair_value_int16(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10u\n", val);
+			break;
+		}
+		case DATA_TYPE_UINT16: {
+			uint16_t val;
+
+			if (nvpair_value_uint16(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10u\n", val);
+			break;
+		}
+		case DATA_TYPE_INT32: {
+			int32_t val;
+
+			if (nvpair_value_int32(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10u\n", val);
+			break;
+		}
+		case DATA_TYPE_UINT32: {
+			uint32_t val;
+
+			if (nvpair_value_uint32(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10d\n", val);
+			break;
+		}
+		case DATA_TYPE_INT64: {
+			int64_t val;
+
+			if (nvpair_value_int64(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10" PRIi64 "\n", val);
+			break;
+		}
+		case DATA_TYPE_UINT64: {
+			uint64_t val;
+
+			if (nvpair_value_uint64(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("0x%-10" PRIx64 "\n", val);
+			break;
+		}
+		case DATA_TYPE_DOUBLE: {
+			double val;
+
+			if (nvpair_value_double(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10lf\n", val);
+			break;
+		}
+		case DATA_TYPE_STRING: {
+			char *val;
+
+			if (nvpair_value_string(nvp, &val) != 0)
+				return (-1);
+
+			(void) printf("%-10s\n", val);
+			break;
+		}
+		case DATA_TYPE_NVLIST: {
+			nvlist_t *nvl;
+			int err;
+			char *fmri;
+
+			if (nvpair_value_nvlist(nvp, &nvl) != 0)
+				return (-1);
+
+			if (topo_fmri_nvl2str(thp, nvl, &fmri, &err) != 0) {
+				nvlist_print(stdout, nvl);
+				break;
+			}
+			(void) printf("%10s\n", fmri);
+			topo_hdl_strfree(thp, fmri);
+			break;
+		}
+		case DATA_TYPE_INT32_ARRAY: {
+			uint_t nelem;
+			int32_t *val;
+
+			if (nvpair_value_int32_array(nvp, &val, &nelem) != 0)
+				return (-1);
+
+			(void) printf(" [ ");
+			for (uint_t i = 0; i < nelem; i++)
+				(void) printf("%d ", val[i]);
+
+			(void) printf("]\n");
+
+			break;
+		}
+		case DATA_TYPE_UINT32_ARRAY: {
+			uint_t nelem;
+			uint32_t *val;
+
+			if (nvpair_value_uint32_array(nvp, &val, &nelem) != 0)
+				return (-1);
+
+			(void) printf(" [ ");
+			for (uint_t i = 0; i < nelem; i++)
+				(void) printf("%u ", val[i]);
+			(void) printf("]\n");
+			break;
+		}
+		case DATA_TYPE_INT64_ARRAY: {
+			uint_t nelem;
+			int64_t *val;
+
+			if (nvpair_value_int64_array(nvp, &val, &nelem) != 0)
+				return (-1);
+
+			(void) printf(" [ ");
+			for (uint_t i = 0; i < nelem; i++)
+				(void) printf("%" PRIi64 " ", val[i]);
+			(void) printf("]");
+
+			break;
+		}
+		case DATA_TYPE_UINT64_ARRAY: {
+			uint_t nelem;
+			uint64_t *val;
+
+			if (nvpair_value_uint64_array(nvp, &val, &nelem) != 0)
+				return (-1);
+
+			(void) printf(" [ ");
+			for (uint_t i = 0; i < nelem; i++)
+				(void) printf("0x%" PRIx64 " ", val[i]);
+			(void) printf("]");
+
+			break;
+		}
+		case DATA_TYPE_STRING_ARRAY: {
+			uint_t nelem;
+			char **val;
+
+			if (nvpair_value_string_array(nvp, &val, &nelem) != 0)
+				return (-1);
+
+			(void) printf(" [ ");
+			for (uint_t i = 0; i < nelem; i++)
+				(void) printf("\"%s\" ", val[i]);
+			(void) printf("]");
+
+			break;
+		}
+		default:
+			(void) fprintf(stderr, "Invalid nvpair data type: %d\n",
+			    type);
+			return (-1);
 	}
-	/* XXX - need to add code to print props */
+	return (0);
+}
+
+static void
+print_node_props(topo_hdl_t *thp, tnode_t *tn)
+{
+	topo_pgroup_t *pg;
+
+	for (pg = topo_list_next(&tn->tn_pgroups); pg != NULL;
+	    pg = topo_list_next(pg)) {
+
+		topo_proplist_t *pvl;
+
+		(void) printf("  %-8s: %s\n",  "group", pg->tpg_info->tpi_name);
+
+		for (pvl = topo_list_next(&pg->tpg_pvals); pvl != NULL;
+		    pvl = topo_list_next(pvl)) {
+
+			topo_propval_t *pv = pvl->tp_pval;
+			char *tstr;
+			nvpair_t *nvp;
+
+			switch (pv->tp_type) {
+			case TOPO_TYPE_BOOLEAN: tstr = "boolean"; break;
+			case TOPO_TYPE_INT32: tstr = "int32"; break;
+			case TOPO_TYPE_UINT32: tstr = "uint32"; break;
+			case TOPO_TYPE_INT64: tstr = "int64"; break;
+			case TOPO_TYPE_UINT64: tstr = "uint64"; break;
+			case TOPO_TYPE_DOUBLE: tstr = "double"; break;
+			case TOPO_TYPE_STRING: tstr = "string"; break;
+			case TOPO_TYPE_FMRI: tstr = "fmri"; break;
+			case TOPO_TYPE_INT32_ARRAY: tstr = "int32[]"; break;
+			case TOPO_TYPE_UINT32_ARRAY: tstr = "uint32[]"; break;
+			case TOPO_TYPE_INT64_ARRAY: tstr = "int64[]"; break;
+			case TOPO_TYPE_UINT64_ARRAY: tstr = "uint64[]"; break;
+			case TOPO_TYPE_STRING_ARRAY: tstr = "string[]"; break;
+			case TOPO_TYPE_FMRI_ARRAY: tstr = "fmri[]"; break;
+			default: tstr = "unknown type";
+			}
+
+			(void) printf("    %-20s %-10s", pv->tp_name, tstr);
+
+			if (nvlist_lookup_nvpair(pv->tp_val, TOPO_PROP_VAL_VAL,
+			    &nvp) != 0 || print_prop_val(thp, nvp) != 0) {
+				(void) printf("failed to print value!\n");
+				return;
+			}
+		}
+	}
+	(void) printf("\n");
 }
 
 static void
@@ -74,7 +301,7 @@ print_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, struct cb_arg *cbarg)
 	}
 	(void) printf("%s\n", fmristr);
 	if (cbarg->verbose)
-		print_node_props(tn);
+		print_node_props(thp, tn);
 out:
 	topo_hdl_strfree(thp, fmristr);
 	nvlist_free(fmri);

@@ -25,7 +25,7 @@ ROOTLIBFMD = $(ROOT)/usr/lib/fm/fmd
 ROOTPROG = $(ROOTLIBFMD)/$(PROG)
 
 $(NOT_RELEASE_BUILD)CPPFLAGS += -DDEBUG
-CPPFLAGS += -I. -I../common
+CPPFLAGS += -I. -I../common -I$(SRC)/lib/fm/topo/libtopo/common
 CFLAGS += $(CTF_FLAGS) $(CCVERBOSE) $(XSTRCONST) $(CSTD_GNU99)
 LDLIBS += -L$(ROOT)/usr/lib/fm -ltopo -lnvpair
 LDFLAGS += -R/usr/lib/fm
