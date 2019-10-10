@@ -44,107 +44,72 @@ struct cb_arg {
 };
 
 static int
-print_prop_val(topo_hdl_t *thp, nvpair_t *nvp)
+print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
+    const char *pgname)
 {
-	data_type_t type = nvpair_type(nvp);
+	topo_type_t type = pv->tp_type;
+	const char *pname = pv->tp_name;
+	int err;
 
 	switch (type) {
-		case DATA_TYPE_INT8: {
-			int8_t val;
-
-			if (nvpair_value_int8(nvp, &val) != 0)
-				return (-1);
-
-			(void) printf("%-10u\n", val);
-			break;
-		}
-		case DATA_TYPE_UINT8: {
-			uint8_t val;
-
-			if (nvpair_value_uint8(nvp, &val) != 0)
-				return (-1);
-
-			(void) printf("%-10u\n", val);
-			break;
-		}
-		case DATA_TYPE_INT16: {
-			int16_t val;
-
-			if (nvpair_value_int16(nvp, &val) != 0)
-				return (-1);
-
-			(void) printf("%-10u\n", val);
-			break;
-		}
-		case DATA_TYPE_UINT16: {
-			uint16_t val;
-
-			if (nvpair_value_uint16(nvp, &val) != 0)
-				return (-1);
-
-			(void) printf("%-10u\n", val);
-			break;
-		}
-		case DATA_TYPE_INT32: {
+		case TOPO_TYPE_INT32: {
 			int32_t val;
 
-			if (nvpair_value_int32(nvp, &val) != 0)
+			if (topo_prop_get_int32(tn, pgname, pname, &val, &err)
+			    != 0)
 				return (-1);
 
 			(void) printf("%-10u\n", val);
 			break;
 		}
-		case DATA_TYPE_UINT32: {
+		case TOPO_TYPE_UINT32: {
 			uint32_t val;
 
-			if (nvpair_value_uint32(nvp, &val) != 0)
+			if (topo_prop_get_uint32(tn, pgname, pname, &val, &err)
+			    != 0)
 				return (-1);
 
 			(void) printf("%-10d\n", val);
 			break;
 		}
-		case DATA_TYPE_INT64: {
+		case TOPO_TYPE_INT64: {
 			int64_t val;
 
-			if (nvpair_value_int64(nvp, &val) != 0)
+			if (topo_prop_get_int64(tn, pgname, pname, &val, &err)
+			    != 0)
 				return (-1);
 
 			(void) printf("%-10" PRIi64 "\n", val);
 			break;
 		}
-		case DATA_TYPE_UINT64: {
+		case TOPO_TYPE_UINT64: {
 			uint64_t val;
 
-			if (nvpair_value_uint64(nvp, &val) != 0)
+			if (topo_prop_get_uint64(tn, pgname, pname, &val, &err)
+			    != 0) {
+				(void) printf("%s", topo_strerror(err));
 				return (-1);
+			}
 
 			(void) printf("0x%-10" PRIx64 "\n", val);
 			break;
 		}
-		case DATA_TYPE_DOUBLE: {
-			double val;
-
-			if (nvpair_value_double(nvp, &val) != 0)
-				return (-1);
-
-			(void) printf("%-10lf\n", val);
-			break;
-		}
-		case DATA_TYPE_STRING: {
+		case TOPO_TYPE_STRING: {
 			char *val;
 
-			if (nvpair_value_string(nvp, &val) != 0)
+			if (topo_prop_get_string(tn, pgname, pname, &val, &err)
+			    != 0)
 				return (-1);
 
 			(void) printf("%-10s\n", val);
 			break;
 		}
-		case DATA_TYPE_NVLIST: {
+		case TOPO_TYPE_FMRI: {
 			nvlist_t *nvl;
-			int err;
 			char *fmri;
 
-			if (nvpair_value_nvlist(nvp, &nvl) != 0)
+			if (topo_prop_get_fmri(tn, pgname, pname, &nvl, &err)
+			    != 0)
 				return (-1);
 
 			if (topo_fmri_nvl2str(thp, nvl, &fmri, &err) != 0) {
@@ -155,11 +120,12 @@ print_prop_val(topo_hdl_t *thp, nvpair_t *nvp)
 			topo_hdl_strfree(thp, fmri);
 			break;
 		}
-		case DATA_TYPE_INT32_ARRAY: {
+		case TOPO_TYPE_INT32_ARRAY: {
 			uint_t nelem;
 			int32_t *val;
 
-			if (nvpair_value_int32_array(nvp, &val, &nelem) != 0)
+			if (topo_prop_get_int32_array(tn, pgname, pname, &val,
+			    &nelem, &err) != 0)
 				return (-1);
 
 			(void) printf(" [ ");
@@ -170,11 +136,12 @@ print_prop_val(topo_hdl_t *thp, nvpair_t *nvp)
 
 			break;
 		}
-		case DATA_TYPE_UINT32_ARRAY: {
+		case TOPO_TYPE_UINT32_ARRAY: {
 			uint_t nelem;
 			uint32_t *val;
 
-			if (nvpair_value_uint32_array(nvp, &val, &nelem) != 0)
+			if (topo_prop_get_uint32_array(tn, pgname, pname, &val,
+			    &nelem, &err) != 0)
 				return (-1);
 
 			(void) printf(" [ ");
@@ -183,11 +150,12 @@ print_prop_val(topo_hdl_t *thp, nvpair_t *nvp)
 			(void) printf("]\n");
 			break;
 		}
-		case DATA_TYPE_INT64_ARRAY: {
+		case TOPO_TYPE_INT64_ARRAY: {
 			uint_t nelem;
 			int64_t *val;
 
-			if (nvpair_value_int64_array(nvp, &val, &nelem) != 0)
+			if (topo_prop_get_int64_array(tn, pgname, pname, &val,
+			    &nelem, &err) != 0)
 				return (-1);
 
 			(void) printf(" [ ");
@@ -197,11 +165,12 @@ print_prop_val(topo_hdl_t *thp, nvpair_t *nvp)
 
 			break;
 		}
-		case DATA_TYPE_UINT64_ARRAY: {
+		case TOPO_TYPE_UINT64_ARRAY: {
 			uint_t nelem;
 			uint64_t *val;
 
-			if (nvpair_value_uint64_array(nvp, &val, &nelem) != 0)
+			if (topo_prop_get_uint64_array(tn, pgname, pname, &val,
+			    &nelem, &err) != 0)
 				return (-1);
 
 			(void) printf(" [ ");
@@ -211,11 +180,12 @@ print_prop_val(topo_hdl_t *thp, nvpair_t *nvp)
 
 			break;
 		}
-		case DATA_TYPE_STRING_ARRAY: {
+		case TOPO_TYPE_STRING_ARRAY: {
 			uint_t nelem;
 			char **val;
 
-			if (nvpair_value_string_array(nvp, &val, &nelem) != 0)
+			if (topo_prop_get_string_array(tn, pgname, pname, &val,
+			    &nelem, &err) != 0)
 				return (-1);
 
 			(void) printf(" [ ");
@@ -250,7 +220,6 @@ print_node_props(topo_hdl_t *thp, tnode_t *tn)
 
 			topo_propval_t *pv = pvl->tp_pval;
 			char *tstr;
-			nvpair_t *nvp;
 
 			switch (pv->tp_type) {
 			case TOPO_TYPE_BOOLEAN: tstr = "boolean"; break;
@@ -272,9 +241,9 @@ print_node_props(topo_hdl_t *thp, tnode_t *tn)
 
 			(void) printf("    %-20s %-10s", pv->tp_name, tstr);
 
-			if (nvlist_lookup_nvpair(pv->tp_val, TOPO_PROP_VAL_VAL,
-			    &nvp) != 0 || print_prop_val(thp, nvp) != 0) {
-				(void) printf("failed to print value!\n");
+			if (print_prop_val(thp, tn, pv, pg->tpg_info->tpi_name)
+			    != 0) {
+				(void) printf("failed to get prop val!\n");
 				return;
 			}
 		}

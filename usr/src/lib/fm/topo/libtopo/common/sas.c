@@ -25,7 +25,14 @@
  * Typically this is a SAS host-bus adapter (HBA) which can be built onto the
  * system board or be part of a PCIe add-in card.
  *
- * XXX - add description of initiator node properties
+ *   initiator properties
+ *   --------------------
+ *   Initiator nodes are populated with the following public properties.
+ *   - manufacturer
+ *   - model name
+ *   - devfs name
+ *   - hc fmri
+ *   - XXX TODO: serial number
  *
  * port
  * ----
@@ -46,17 +53,17 @@
  * be connected to an expander.  Disk/SSD targets can be connected to an
  * expander or directly attached (via a narrow port) to an initiator.
  *
- * XXX - add description of target node properties
+ *   target properties
+ *   -----------------
+ *   Target nodes are populated with the following public properties.
+ *   - manufacturer
+ *   - model name
+ *   - serial number
+ *   - hc fmri
  *
  * XXX - It'd be really cool if we could check for a ZFS pool config and
  * try to match the target to a leaf vdev and include the zfs-scheme FMRI of
  * that vdev as a property on this node.
- *
- * XXX - Similarly, for disks/ssd's it'd be cool if we could a match the
- * target to a disk node in the hc-scheme topology and also add the
- * hc-scheme FMRI of that disk as a property on this node.  This one would
- * have to be a dynamic (propmethod) property because we'd need to walk
- * the hc-schem tree, which may not have been built when we're enumerating.
  *
  * expander
  * --------
@@ -166,31 +173,44 @@
 
 #include <smhbaapi.h>
 #include <scsi/libsmp.h>
+#include <sys/libdevid.h> /* for scsi_wwnstr_to_wwn */
 
 #include <libdevinfo.h>
 
+/* Methods for the root sas topo node. */
 static int sas_fmri_nvl2str(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_fmri_str2nvl(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_fmri_create(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
+
+/* Methods for child sas topo nodes. */
 static int sas_dev_fmri(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_hc_fmri(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
+static int sas_device_props_set(topo_mod_t *, tnode_t *, topo_version_t,
+    nvlist_t *, nvlist_t **);
 
-static const topo_method_t sas_methods[] = {
+static const topo_method_t sas_root_methods[] = {
 	{ TOPO_METH_NVL2STR, TOPO_METH_NVL2STR_DESC, TOPO_METH_NVL2STR_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_fmri_nvl2str },
 	{ TOPO_METH_STR2NVL, TOPO_METH_STR2NVL_DESC, TOPO_METH_STR2NVL_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_fmri_str2nvl },
 	{ TOPO_METH_FMRI, TOPO_METH_FMRI_DESC, TOPO_METH_FMRI_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_fmri_create },
+	{ NULL }
+};
+
+static const topo_method_t sas_child_methods[] = {
 	{ TOPO_METH_SAS2DEV, TOPO_METH_SAS2DEV_DESC, TOPO_METH_SAS2DEV_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_dev_fmri },
 	{ TOPO_METH_SAS2HC, TOPO_METH_SAS2HC_DESC, TOPO_METH_SAS2HC_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_hc_fmri },
+	{ TOPO_METH_SAS_DEV_PROP, TOPO_METH_SAS_DEV_PROP_DESC,
+	    TOPO_METH_SAS_DEV_PROP_VERSION, TOPO_STABILITY_INTERNAL,
+	    sas_device_props_set },
 	{ NULL }
 };
 
@@ -240,6 +260,118 @@ struct sas_phy_info {
 	uint32_t	start_phy;
 	uint32_t	end_phy;
 };
+
+/*
+ * Some hardware information like manufacturer, serial number, etc. are not
+ * available via SMP or libsmhbaapi. This data is provided by the HC module,
+ * however. The HC module does not have its tree constructed when this sas
+ * module runs, so we need to register callbacks for these properties.
+ *
+ * The callbacks will look up the device specific properties in the HC tree
+ * and copy them alongside the sas topo node.
+ */
+int
+sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
+{
+	int ret = 0;
+
+	if (topo_method_register(mod, tn, sas_child_methods) != 0) {
+		topo_mod_dprintf(mod, "failed to register fmri"
+		    "methods for %s=%" PRIx64, topo_node_name(tn),
+		    topo_node_instance(tn));
+		goto done;
+	}
+
+	int err;
+	nvlist_t *nvl = NULL;
+	(void) topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME);
+
+	if (strcmp(pgname, TOPO_PGROUP_TARGET) == 0) {
+		fnvlist_add_string(nvl, "pname", TOPO_PROP_TARGET_FMRI);
+
+		if (topo_prop_method_register(tn, pgname, TOPO_PROP_TARGET_FMRI,
+		    TOPO_TYPE_STRING, TOPO_METH_SAS2HC, nvl, &err) != 0) {
+			topo_mod_dprintf(mod, "Failed to set "
+			    "up hc fmri cb on %s=%" PRIx64 " (%s)",
+			    topo_node_name(tn),
+			    topo_node_instance(tn),
+			    topo_strerror(err));
+			ret = -1;
+			goto done;
+		}
+
+		const char *props[] = {
+		    TOPO_PROP_TARGET_MANUF,
+		    TOPO_PROP_TARGET_MODEL,
+		    TOPO_PROP_TARGET_SERIAL,
+		    TOPO_PROP_TARGET_LABEL
+		};
+
+		for (int i = 0; i < sizeof (props) / sizeof (props[0]); i++) {
+			fnvlist_remove(nvl, "pname");
+			fnvlist_add_string(nvl, "pname", props[i]);
+
+			if (topo_prop_method_register(tn, pgname,
+			    props[i], TOPO_TYPE_STRING,
+			    TOPO_METH_SAS_DEV_PROP, nvl, &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to set "
+				    "up prop cb on %s=%" PRIx64 " (%s)",
+				    topo_node_name(tn),
+				    topo_node_instance(tn),
+				    topo_strerror(err));
+				ret = -1;
+				goto done;
+			}
+		}
+
+	} else if (strcmp(pgname, TOPO_PGROUP_INITIATOR) == 0) {
+		fnvlist_add_string(nvl, "pname", TOPO_PROP_INITIATOR_FMRI);
+
+		if (topo_prop_method_register(tn, pgname,
+		    TOPO_PROP_INITIATOR_FMRI,
+		    TOPO_TYPE_STRING, TOPO_METH_SAS2HC, nvl, &err) != 0) {
+			topo_mod_dprintf(mod, "Failed to set "
+			    "hc fmri cb on %s=%" PRIx64 " (%s)",
+			    topo_node_name(tn),
+			    topo_node_instance(tn),
+			    topo_strerror(err));
+			ret = -1;
+			goto done;
+		}
+
+		const char *props[] = {
+		    TOPO_PROP_INITIATOR_MANUF,
+		    TOPO_PROP_INITIATOR_MODEL,
+		    TOPO_PROP_INITIATOR_LABEL
+			/*
+			 * XXX: TOPO_PROP_INITIATOR_SERIAL
+			 */
+		};
+
+		for (int i = 0; i < sizeof (props) / sizeof (props[0]); i++) {
+			fnvlist_remove(nvl, "pname");
+			fnvlist_add_string(nvl, "pname", props[i]);
+
+			if (topo_prop_method_register(tn, pgname, props[i],
+			    TOPO_TYPE_STRING, TOPO_METH_SAS_DEV_PROP, nvl, &err)
+			    != 0) {
+				topo_mod_dprintf(mod, "Failed to set "
+				    "up prop cb on %s=%" PRIx64 " (%s)",
+				    topo_node_name(tn),
+				    topo_node_instance(tn),
+				    topo_strerror(err));
+				ret = -1;
+				goto done;
+			}
+		}
+	}
+	nvlist_free(nvl);
+
+	goto done;
+done:
+	return (ret);
+}
+
 
 static topo_vertex_t *
 sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst,
@@ -319,6 +451,20 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst,
 		    "%s=%" PRIx64 ": %s", TOPO_PGROUP_PROTOCOL, name, inst,
 		    topo_strerror(err));
 		goto err;
+	}
+
+	/*
+	 * Make sure the appropriate methods to retrieve FMRIs and dynamic
+	 * properties are configured for each node that corresponds to a
+	 * hardware component.
+	 */
+	if (strcmp(name, TOPO_VTX_TARGET) == 0 ||
+	    strcmp(name, TOPO_VTX_INITIATOR) == 0) {
+		if (sas_prop_method_register(mod, tn, pgi.tpi_name) != 0) {
+			topo_mod_dprintf(mod, "failed to register property "
+			    "methods for %s=%" PRIx64, name, inst);
+			goto err;
+		}
 	}
 
 	return (vtx);
@@ -798,6 +944,8 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 	topo_vertex_t *expd_vtx = NULL;
 	struct sas_phy_info phyinfo;
 	sas_port_t *port_info = NULL;
+	tnode_t *tn = NULL;
+	int err;
 
 	tdef = (smp_target_def_t *)topo_mod_zalloc(mod,
 	    sizeof (smp_target_def_t));
@@ -841,7 +989,19 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 	port_info = topo_mod_zalloc(mod, sizeof (sas_port_t));
 	port_info->sp_vtx = expd_vtx;
 	port_info->sp_is_expander = B_TRUE;
-	topo_node_setspecific(topo_vertex_node(expd_vtx), port_info);
+
+	tn = topo_vertex_node(expd_vtx);
+	topo_node_setspecific(tn, port_info);
+
+	/* XXX get the /dev/smp/XYZ path instead of the /devices path? */
+	if (topo_prop_set_string(tn, TOPO_PGROUP_EXPANDER,
+	    TOPO_PROP_EXPANDER_DEVFSNAME, TOPO_PROP_IMMUTABLE,
+	    smp_path, &err) != 0) {
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
+		    topo_node_name(tn), topo_node_instance(tn));
+		ret = -1;
+		goto done;
+	}
 
 	boolean_t wide_port_discovery = B_FALSE;
 	uint64_t wide_port_att_wwn;
@@ -881,11 +1041,17 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 		    (disc_resp->sdr_attached_ssp_target ||
 		    disc_resp->sdr_attached_stp_target) &&
 		    disc_resp->sdr_connector_type == 0x20 &&
-		    !disc_resp->sdr_attached_smp_target) {
+		    !disc_resp->sdr_attached_smp_target &&
+		    !disc_resp->sdr_attached_smp_initiator) {
 			/*
 			 * 0x20 == expander backplane receptacle.
 			 * XXX We should use ses_sasconn_type_t enum from
 			 * ses2.h. Acceptable values (as of SES-3): 0x20 - 0x2F.
+			 *
+			 * XXX sdr_attached_smp_initiator is B_TRUE for SMP
+			 * devices. We should map these too, but for now ignore
+			 * them. They likely need their own (empty?) property
+			 * group.
 			 */
 
 			/*
@@ -910,9 +1076,27 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 					goto done;
 				}
 				topo_list_append(expd_list, expd_port);
-				topo_node_setspecific(
-				    topo_vertex_node(expd_port->sp_vtx),
-				    expd_port);
+				tn = topo_vertex_node(expd_port->sp_vtx);
+				topo_node_setspecific(tn, expd_port);
+				if (topo_prop_set_uint64(tn,
+				    TOPO_PGROUP_SASPORT,
+				    TOPO_PROP_SASPORT_LOCAL_ADDR,
+				    TOPO_PROP_IMMUTABLE,
+				    expd_addr, &err) != 0 ||
+				    topo_prop_set_uint64(tn,
+				    TOPO_PGROUP_SASPORT,
+				    TOPO_PROP_SASPORT_ATTACH_ADDR,
+				    TOPO_PROP_IMMUTABLE,
+				    expd_port->sp_att_wwn, &err) != 0) {
+					topo_mod_dprintf(mod,
+					    "Failed to set props on "
+					    "%s=%" PRIx64 " (%s)",
+					    topo_node_name(tn),
+					    topo_node_instance(tn),
+					    topo_strerror(err));
+					ret = -1;
+					goto done;
+				}
 			}
 			topo_vertex_t *ex_pt_vtx, *port_vtx, *tgt_vtx;
 
@@ -922,6 +1106,21 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 			if ((ex_pt_vtx = sas_create_vertex(mod, TOPO_VTX_PORT,
 			    ntohll(disc_resp->sdr_sas_addr),
 			    &phyinfo)) == NULL) {
+				ret = -1;
+				goto done;
+			}
+
+			tn = topo_vertex_node(ex_pt_vtx);
+			if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+			    ntohll(disc_resp->sdr_sas_addr), &err) != 0 ||
+			    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+			    ntohll(disc_resp->sdr_attached_sas_addr),
+			    &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to set props on "
+				    "%s=%" PRIx64,
+				    topo_node_name(tn), topo_node_instance(tn));
 				ret = -1;
 				goto done;
 			}
@@ -944,6 +1143,22 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 			    ntohll(disc_resp->sdr_attached_sas_addr),
 			    &phyinfo)) == NULL) {
 				topo_vertex_destroy(mod, ex_pt_vtx);
+				ret = -1;
+				goto done;
+			}
+
+			tn = topo_vertex_node(port_vtx);
+			if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+			    ntohll(disc_resp->sdr_attached_sas_addr), &err)
+			    != 0 ||
+			    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+			    ntohll(disc_resp->sdr_sas_addr), &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to set props on "
+				    "%s=%" PRIx64 " (%s)",
+				    topo_node_name(tn), topo_node_instance(tn),
+				    topo_strerror(err));
 				ret = -1;
 				goto done;
 			}
@@ -972,6 +1187,9 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 				ret = -1;
 				goto done;
 			}
+
+			tn = topo_vertex_node(tgt_vtx);
+
 		} else if (disc_resp->sdr_attached_device_type
 		    == SMP_DEV_EXPANDER ||
 		    (disc_resp->sdr_attached_ssp_initiator ||
@@ -1019,10 +1237,28 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 					ret = -1;
 					goto done;
 				}
-				topo_node_setspecific(
-				    topo_vertex_node(expd_port->sp_vtx),
-				    expd_port);
 				topo_list_append(expd_list, expd_port);
+				tn = topo_vertex_node(expd_port->sp_vtx);
+				topo_node_setspecific(tn, expd_port);
+				if (topo_prop_set_uint64(tn,
+				    TOPO_PGROUP_SASPORT,
+				    TOPO_PROP_SASPORT_LOCAL_ADDR,
+				    TOPO_PROP_IMMUTABLE,
+				    expd_addr, &err) != 0 ||
+				    topo_prop_set_uint64(tn,
+				    TOPO_PGROUP_SASPORT,
+				    TOPO_PROP_SASPORT_ATTACH_ADDR,
+				    TOPO_PROP_IMMUTABLE,
+				    expd_port->sp_att_wwn, &err) != 0) {
+					topo_mod_dprintf(mod,
+					    "Failed to set props on "
+					    "%s=%" PRIx64 " (%s)",
+					    topo_node_name(tn),
+					    topo_node_instance(tn),
+					    topo_strerror(err));
+					ret = -1;
+					goto done;
+				}
 			}
 
 			if (!wide_port_discovery) {
@@ -1281,7 +1517,7 @@ static int
 sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
     topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
 {
-	if (topo_method_register(mod, rnode, sas_methods) != 0) {
+	if (topo_method_register(mod, rnode, sas_root_methods) != 0) {
 		topo_mod_dprintf(mod, "failed to register scheme methods");
 		/* errno set */
 		return (-1);
@@ -1305,13 +1541,13 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 	/* Begin by discovering all HBAs and their immediate ports. */
 	HBA_HANDLE handle;
-	SMHBA_ADAPTERATTRIBUTES attrs;
+	SMHBA_ADAPTERATTRIBUTES ad_attrs;
 	HBA_UINT32 num_ports, num_adapters;
 	char aname[256];
 	uint64_t hba_wwn;
 
 	if ((ret = HBA_LoadLibrary()) != HBA_STATUS_OK) {
-		return (ret);
+		goto done;
 	}
 
 	num_adapters = HBA_GetNumberOfAdapters();
@@ -1332,7 +1568,7 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 			goto done;
 		}
 
-		if ((ret = SMHBA_GetAdapterAttributes(handle, &attrs)) !=
+		if ((ret = SMHBA_GetAdapterAttributes(handle, &ad_attrs)) !=
 		    HBA_STATUS_OK) {
 			topo_mod_dprintf(mod, "failed to get adapter attrs\n");
 			goto done;
@@ -1349,6 +1585,8 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 			SMHBA_SAS_PHY phy_attrs;
 			HBA_UINT32 num_phys;
 			struct sas_phy_info phyinfo;
+			tnode_t *tn;
+			int err;
 
 			topo_vertex_t *hba_port = NULL;
 
@@ -1368,50 +1606,6 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 			}
 			hba_wwn = wwn_to_uint64(sas_port->LocalSASAddress);
 			num_phys = sas_port->NumberofPhys;
-
-			/* Calculate the beginning and end phys for this port */
-			for (int k = 0; k < num_phys; k++) {
-				if ((ret = SMHBA_GetSASPhyAttributes(handle,
-				    j, k, &phy_attrs)) != HBA_STATUS_OK) {
-					topo_mod_free(mod, attrs,
-					    sizeof (SMHBA_PORTATTRIBUTES));
-					topo_mod_free(mod, sas_port,
-					    sizeof (SMHBA_SAS_PORT));
-					goto done;
-				}
-
-				if (k == 0) {
-					phyinfo.start_phy =
-					    phy_attrs.PhyIdentifier;
-					continue;
-				}
-				phyinfo.end_phy = phy_attrs.PhyIdentifier;
-			}
-
-			if ((hba_port = sas_create_vertex(mod, TOPO_VTX_PORT,
-			    hba_wwn, &phyinfo)) == NULL) {
-				topo_mod_free(mod, attrs,
-				    sizeof (SMHBA_PORTATTRIBUTES));
-				topo_mod_free(mod, sas_port,
-				    sizeof (SMHBA_SAS_PORT));
-				ret = -1;
-				goto done;
-			}
-
-			/*
-			 * Record that we created a unique port for this HBA.
-			 * This will be referenced later if there are expanders
-			 * in the topology.
-			 */
-			sas_hba_port = topo_mod_zalloc(mod,
-			    sizeof (sas_port_t));
-			sas_hba_port->sp_att_wwn = wwn_to_uint64(
-			    sas_port->AttachedSASAddress);
-			sas_hba_port->sp_vtx = hba_port;
-			topo_list_append(hba_list, sas_hba_port);
-
-			topo_node_setspecific(
-			    topo_vertex_node(hba_port), sas_hba_port);
 
 			/*
 			 * Only create one logical initiator vertex for all
@@ -1433,17 +1627,101 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 					ret = -1;
 					goto done;
 				}
-			}
 
-			if (topo_edge_new(mod, initiator, hba_port) != 0) {
+				/*
+				 * Set the devfs name for this initiator so we
+				 * can use it to correlate with hc topo nodes
+				 * later to retrieve info like dev manufacturer.
+				 *
+				 * The info we get from libsmhbaapi w.r.t.
+				 * manufacturer, serial number, model, etc.
+				 * appears to be inaccurate, so we'll defer to
+				 * consulting the hc module later.
+				 */
+				tn = topo_vertex_node(initiator);
+				if (topo_prop_set_string(tn,
+				    TOPO_PGROUP_INITIATOR,
+				    TOPO_PROP_INITIATOR_DEVFSNAME,
+				    TOPO_PROP_IMMUTABLE,
+				    ad_attrs.HBASymbolicName, &err) != 0) {
 					topo_mod_free(mod, attrs,
 					    sizeof (SMHBA_PORTATTRIBUTES));
 					topo_mod_free(mod, sas_port,
 					    sizeof (SMHBA_SAS_PORT));
-					topo_vertex_destroy(mod, initiator);
-					topo_vertex_destroy(mod, hba_port);
 					ret = -1;
 					goto done;
+				}
+			}
+
+
+			/* Calculate the beginning and end phys for this port */
+			for (int k = 0; k < num_phys; k++) {
+				if ((ret = SMHBA_GetSASPhyAttributes(handle,
+				    j, k, &phy_attrs)) != HBA_STATUS_OK) {
+					topo_mod_free(mod, attrs,
+					    sizeof (SMHBA_PORTATTRIBUTES));
+					topo_mod_free(mod, sas_port,
+					    sizeof (SMHBA_SAS_PORT));
+					goto done;
+				}
+
+				if (k == 0) {
+					phyinfo.start_phy =
+					    phy_attrs.PhyIdentifier;
+				}
+				phyinfo.end_phy = phy_attrs.PhyIdentifier;
+			}
+
+			if ((hba_port = sas_create_vertex(mod, TOPO_VTX_PORT,
+			    hba_wwn, &phyinfo)) == NULL) {
+				topo_mod_free(mod, attrs,
+				    sizeof (SMHBA_PORTATTRIBUTES));
+				topo_mod_free(mod, sas_port,
+				    sizeof (SMHBA_SAS_PORT));
+				ret = -1;
+				goto done;
+			}
+
+			tn = topo_vertex_node(hba_port);
+			if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+			    hba_wwn, &err) != 0 ||
+			    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+			    wwn_to_uint64(sas_port->AttachedSASAddress),
+			    &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to set "
+				    "props on %s=%" PRIx64 " (%s)",
+				    topo_node_name(tn),
+				    topo_node_instance(tn),
+				    topo_strerror(err));
+				ret = -1;
+				goto done;
+			}
+
+			/*
+			 * Record that we created a unique port for this HBA.
+			 * This will be referenced later if there are expanders
+			 * in the topology.
+			 */
+			sas_hba_port = topo_mod_zalloc(mod,
+			    sizeof (sas_port_t));
+			sas_hba_port->sp_att_wwn = wwn_to_uint64(
+			    sas_port->AttachedSASAddress);
+			sas_hba_port->sp_vtx = hba_port;
+
+			topo_list_append(hba_list, sas_hba_port);
+			topo_node_setspecific(tn, sas_hba_port);
+
+			if (topo_edge_new(mod, initiator, hba_port) != 0) {
+				topo_mod_free(mod, attrs,
+				    sizeof (SMHBA_PORTATTRIBUTES));
+				topo_mod_free(mod, sas_port,
+				    sizeof (SMHBA_SAS_PORT));
+				topo_vertex_destroy(mod, initiator);
+				topo_vertex_destroy(mod, hba_port);
+				ret = -1;
+				goto done;
 			}
 
 			if (attrs->PortType == HBA_PORTTYPE_SASDEVICE) {
@@ -1477,6 +1755,29 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 					ret = -1;
 					goto done;
 				}
+
+				tn = topo_vertex_node(dev_port);
+				if (topo_prop_set_uint64(tn,
+				    TOPO_PGROUP_SASPORT,
+				    TOPO_PROP_SASPORT_LOCAL_ADDR,
+				    TOPO_PROP_IMMUTABLE,
+				    wwn_to_uint64(sas_port->AttachedSASAddress),
+				    &err) != 0 ||
+				    topo_prop_set_uint64(tn,
+				    TOPO_PGROUP_SASPORT,
+				    TOPO_PROP_SASPORT_ATTACH_ADDR,
+				    TOPO_PROP_IMMUTABLE,
+				    hba_wwn,
+				    &err) != 0) {
+					topo_mod_dprintf(mod, "Failed to set "
+					    "props on %s=%" PRIx64 " (%s)",
+					    topo_node_name(tn),
+					    topo_node_instance(tn),
+					    topo_strerror(err));
+					ret = -1;
+					goto done;
+				}
+
 				if ((dev = sas_create_vertex(mod,
 				    TOPO_VTX_TARGET,
 				    wwn_to_uint64(sas_port->AttachedSASAddress),
@@ -1488,6 +1789,8 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 					ret = -1;
 					goto done;
 				}
+
+				tn = topo_vertex_node(dev);
 				if (topo_edge_new(mod, hba_port, dev_port)
 				    != 0) {
 					topo_vertex_destroy(mod, initiator);
@@ -1543,13 +1846,9 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	    topo_digraph_get(mod->tm_hdl, FM_FMRI_SCHEME_SAS),
 	    sas_vtx_iter, &iter);
 
-	topo_mod_dprintf(mod, "final pass\n");
 	(void) topo_vertex_iter(mod->tm_hdl,
 	    topo_digraph_get(mod->tm_hdl, FM_FMRI_SCHEME_SAS),
 	    sas_vtx_final_pass, &iter);
-
-	topo_mod_dprintf(mod, "done\n");
-
 done:
 	expd_port = topo_list_next(expd_list);
 	while (expd_port != NULL) {
@@ -1579,11 +1878,14 @@ sas_release(topo_mod_t *mod, tnode_t *node)
 	topo_method_unregister_all(mod, node);
 }
 
-/*
- * XXX still need to implement the two methods below
- */
+typedef struct sas_topo_cbarg {
+	topo_mod_t *st_mod;
+	tnode_t *st_node;
+	void *st_ret;
+} sas_topo_cbarg_t;
 
 /*
+ * XXX still need to implement this.
  * This is a prop method that returns the dev-scheme FMRI of the component.
  * This should be registered on the underlying nodes for initiator, expander
  * and target vertices.
@@ -1599,13 +1901,132 @@ sas_dev_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 }
 
 /*
+ * Called for every node in the hc tree. This function determines if the given
+ * hc node corresponds to the sas node in arg->st_node. If the two nodes refer
+ * to the same device then we retrieve the resource string and copy it into
+ * the sas node's property group.
+ *
+ * The hc resource is later used to associate other hc properties, like serial
+ * number, device manufacturer, etc. with sas nodes.
+ */
+int
+hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
+{
+	sas_topo_cbarg_t *cbarg = (sas_topo_cbarg_t *)arg;
+	tnode_t *sas_node = cbarg->st_node;
+	int err = 0;
+	nvlist_t *fmri = NULL;
+	char *fmristr = NULL;
+	tnode_t *targ_node = NULL;
+	topo_mod_t *mod = cbarg->st_mod;
+
+	if (strcmp(topo_node_name(node), PCIEX_FUNCTION) == 0 &&
+	    strcmp(topo_node_name(sas_node), TOPO_VTX_INITIATOR) == 0) {
+		char *sas_devfsn = NULL;
+		char *hc_devfsn = NULL;
+
+		if (topo_prop_get_string(sas_node, TOPO_PGROUP_INITIATOR,
+		    TOPO_PROP_INITIATOR_DEVFSNAME, &sas_devfsn, &err) != 0) {
+			topo_mod_dprintf(mod, "failed to find"
+			    " devfsname (%s)", topo_strerror(err));
+			goto done;
+		}
+
+		if (topo_prop_get_fmri(node, TOPO_PGROUP_IO,
+		    TOPO_IO_MODULE, &fmri, &err) != 0 ||
+		    topo_prop_get_string(node, TOPO_PGROUP_IO,
+		    TOPO_IO_DEV, &hc_devfsn, &err) != 0) {
+			topo_mod_dprintf(mod, "failed to get IO props"
+			    " (%s)", topo_strerror(err));
+			goto done;
+		}
+
+		/*
+		 * Match sas and hc topo nodes based on the discovered
+		 * OS device names.
+		 *
+		 * The libsmhbaapi reported device name includes the leading
+		 * '/devices' string. The hc device name doesn't include this,
+		 * so we advance the pointer a bit to make the comparison.
+		 */
+		sas_devfsn += strlen("/devices");
+		if (strcmp(sas_devfsn, hc_devfsn) != 0) {
+			goto done;
+		}
+
+		/*
+		 * We expect initiators to be using the mpt_sas driver.
+		 * This won't work for non-mpt_sas topologies, but
+		 * by this point those topos have already been
+		 * ignored.
+		 */
+		(void) nvlist_lookup_string(fmri, FM_FMRI_MOD_NAME,
+		    &fmristr);
+		if (strcmp(fmristr, "mpt_sas") != 0) {
+			goto done;
+		}
+
+		targ_node = node;
+
+	} else if (strcmp(topo_node_name(node), DISK) == 0 &&
+	    strcmp(topo_node_name(sas_node), TOPO_VTX_TARGET) == 0) {
+
+		char *ldisk;
+		uint64_t wwn;
+		if (topo_prop_get_string(node, TOPO_PGROUP_STORAGE,
+		    "logical-disk", &ldisk, &err) != 0) { /* XXX fix string */
+			topo_mod_dprintf(mod, "failed to get devid (%s)",
+			    topo_strerror(err));
+			goto done;
+		}
+		/*
+		 * We get a logical-disk name that looks like this: c0tWWNd0
+		 *
+		 * We want to compare the middle WWN part to the sas node's WWN.
+		 * Once we pull the middle bit out we convert it to a uint64 so
+		 * comparison is easier.
+		 */
+		ldisk = strchr(ldisk, 't');
+		ldisk++;
+		ldisk = strtok(ldisk, "d");
+
+		(void) scsi_wwnstr_to_wwn(ldisk, &wwn);
+		if (wwn == topo_node_instance(sas_node)) {
+			targ_node = node;
+		} else if ((wwn - 0x2) == topo_node_instance(sas_node)) {
+			/*
+			 * XXX magma machine reports WWNs that are off-by-2.
+			 * We should figure out why that is.
+			 */
+			targ_node = node;
+		}
+	}
+
+	if (targ_node == NULL) {
+		goto done;
+	}
+
+	if (topo_node_resource(targ_node, &fmri, &err) != 0 ||
+	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
+		topo_mod_dprintf(mod, "failed to get"
+		    "resource string (%s)", topo_strerror(err));
+		goto done;
+	}
+	cbarg->st_ret = fmristr;
+	return (TOPO_WALK_TERMINATE);
+
+done:
+	return (TOPO_WALK_NEXT);
+}
+
+/*
  * This is a prop method that returns the hc-scheme FMRI of the corresponding
  * component in the hc-scheme topology.  This should be registered on the
  * underlying nodes for initiator and non-SMP target vertices.
  *
  * For initiators this would be the corresponding pciexfn node.
- * For disk/ssd targets, this would be thew corresponding disk node.  For SES
- * targets, this would be the corresonding ses-enclosure node.  SMP targets
+ * For disk/ssd targets, this would be the corresponding disk node.  For SES
+ * targets, this would be the corresponding ses-enclosure node.  SMP targets
  * are not represented in the hc-scheme topology.
  */
 static int
@@ -1615,7 +2036,146 @@ sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	if (version > TOPO_METH_FMRI_VERSION)
 		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
 
-	return (-1);
+	topo_hdl_t *thp = mod->tm_hdl;
+	topo_walk_t *twp = NULL;
+	sas_topo_cbarg_t cbarg = {
+		.st_mod = mod,
+		.st_node = node
+	};
+	int err;
+	nvlist_t *result = NULL;
+	const char *pname = NULL;
+
+	if ((twp = topo_walk_init(thp, "hc", hc_iter_cb, &cbarg, &err))
+	    == NULL) {
+		topo_mod_dprintf(mod, "failed to init topo walker: %s",
+		    topo_strerror(err));
+		goto out;
+	}
+	if (topo_walk_step(twp, TOPO_WALK_CHILD) == TOPO_WALK_ERR) {
+		topo_mod_dprintf(mod, "topo walker error");
+		topo_walk_fini(twp);
+		goto out;
+	}
+	topo_walk_fini(twp);
+
+	if (cbarg.st_ret == NULL) {
+		err = -1;
+		goto out;
+	}
+
+	(void) topo_mod_nvalloc(mod, &result, NV_UNIQUE_NAME);
+	if (strcmp(topo_node_name(node), TOPO_VTX_INITIATOR) == 0) {
+		pname = TOPO_PROP_INITIATOR_FMRI;
+	} else {
+		pname = TOPO_PROP_TARGET_FMRI;
+	}
+
+	fnvlist_add_string(result, TOPO_PROP_VAL_NAME, pname);
+	fnvlist_add_uint32(result, TOPO_PROP_VAL_TYPE, TOPO_TYPE_STRING);
+	fnvlist_add_string(result, TOPO_PROP_VAL_VAL, strdup(cbarg.st_ret));
+	*out = result;
+
+out:
+	return (err);
+}
+
+/*
+ * This is the entrypoint for gathering stats from other modules.
+ *
+ * This will first look up the hc scheme fmri. The hc fmri is then used to look
+ * up various other properties that are relevant to the sas devices.
+ */
+static int
+sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+    nvlist_t *in, nvlist_t **out)
+{
+	if (version > TOPO_METH_FMRI_VERSION)
+		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
+
+	topo_hdl_t *thp = mod->tm_hdl;
+	const char *pgroup = NULL;
+	const char *pname = NULL;
+	const char *fmri_pname = NULL;
+	char *val = NULL;
+	nvlist_t *nvl = NULL;
+	nvlist_t *pnvl = NULL;
+	const char *targ_group = NULL;
+	const char *targ_prop = NULL;
+	int err;
+
+	nvl = fnvlist_lookup_nvlist(in, TOPO_PROP_ARGS);
+	pname = fnvlist_lookup_string(nvl, "pname");
+
+	if (strcmp(topo_node_name(node), TOPO_VTX_INITIATOR) == 0) {
+		pgroup = TOPO_PGROUP_INITIATOR;
+		fmri_pname = TOPO_PROP_INITIATOR_FMRI;
+		if (strcmp(pname, TOPO_PROP_INITIATOR_MANUF) == 0) {
+			targ_group = TOPO_PGROUP_PCI;
+			targ_prop = TOPO_PCI_VENDNM;
+		} else if (strcmp(pname, TOPO_PROP_INITIATOR_MODEL) == 0) {
+			targ_group = TOPO_PGROUP_PCI;
+			targ_prop = TOPO_PCI_DEVNM;
+		} else if (strcmp(pname, TOPO_PROP_INITIATOR_LABEL) == 0) {
+			targ_group = TOPO_PGROUP_PROTOCOL;
+			targ_prop = TOPO_PROP_LABEL;
+		}
+	} else if (strcmp(topo_node_name(node), TOPO_VTX_TARGET) == 0) {
+		pgroup = TOPO_PGROUP_TARGET;
+		fmri_pname = TOPO_PROP_TARGET_FMRI;
+		if (strcmp(pname, TOPO_PROP_TARGET_MANUF) == 0) {
+			targ_group = TOPO_PGROUP_STORAGE;
+			targ_prop = TOPO_STORAGE_MANUFACTURER;
+		} else if (strcmp(pname, TOPO_PROP_TARGET_MODEL) == 0) {
+			targ_group = TOPO_PGROUP_STORAGE;
+			targ_prop = TOPO_STORAGE_MODEL;
+		} else if (strcmp(pname, TOPO_PROP_TARGET_SERIAL) == 0) {
+			targ_group = TOPO_PGROUP_STORAGE;
+			targ_prop = "serial-number";
+			/*
+			 * XXX TOPO_STORAGE_SERIAL_NUM;
+			 * from ../modules/common/disk/disk.h
+			 */
+		} else if (strcmp(pname, TOPO_PROP_TARGET_LABEL) == 0) {
+			targ_group = TOPO_PGROUP_PROTOCOL;
+			targ_prop = TOPO_PROP_LABEL;
+		}
+	}
+
+	if (topo_prop_get_string(node, pgroup, fmri_pname, &val, &err) != 0) {
+		topo_mod_dprintf(mod, "failed to get fmri for %s=%" PRIx64
+		    " (%s)", topo_node_name(node), topo_node_instance(node),
+		    topo_strerror(err));
+		goto done;
+	}
+
+	if (topo_fmri_str2nvl(thp, val, &nvl, &err) != 0) {
+		topo_mod_dprintf(mod, "fmri_str2nvl failed for %s=%" PRIx64
+		    " (%s)", topo_node_name(node), topo_node_instance(node),
+		    topo_strerror(err));
+		goto done;
+	}
+
+	(void) topo_mod_nvalloc(mod, &pnvl, NV_UNIQUE_NAME);
+	if (topo_fmri_getprop(thp, nvl, targ_group, targ_prop, NULL,
+	    &pnvl, &err) != 0) {
+		topo_mod_dprintf(mod, "getprop failed for %s=%" PRIx64
+		    " (%s)",
+		    topo_node_name(node), topo_node_instance(node),
+		    topo_strerror(err));
+		goto done;
+	}
+
+	/*
+	 * We re-use the nvlist that we got back from topo_fmri_getprop since
+	 * it already has the value and type information we're looking for.
+	 */
+	fnvlist_remove(pnvl, TOPO_PROP_VAL_NAME);
+	fnvlist_add_string(pnvl, TOPO_PROP_VAL_NAME, pname);
+	*out = pnvl;
+
+done:
+	return (err);
 }
 
 static ssize_t

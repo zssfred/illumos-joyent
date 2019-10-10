@@ -29,10 +29,13 @@ extern "C" {
 #define	TOPO_PROP_EXPANDER_DEVFSNAME	"devfs-name"
 
 #define	TOPO_PGROUP_INITIATOR		"initiator-properties"
+#define	TOPO_PROP_INITIATOR_DEVFSNAME	"devfs-name"
 #define	TOPO_PROP_INITIATOR_MANUF	"manufacturer"
 #define	TOPO_PROP_INITIATOR_MODEL	"model"
 #define	TOPO_PROP_INITIATOR_SERIAL	"serial"
-	
+#define	TOPO_PROP_INITIATOR_FMRI	"hc-fmri"
+#define	TOPO_PROP_INITIATOR_LABEL	"label"
+
 #define	TOPO_PGROUP_SASPORT		"port-properties"
 #define	TOPO_PROP_SASPORT_LOCAL_ADDR	"local-sas-address"
 #define	TOPO_PROP_SASPORT_ATTACH_ADDR	"attached-sas-address"
@@ -41,6 +44,9 @@ extern "C" {
 #define	TOPO_PGROUP_TARGET		"target-properties"
 #define	TOPO_PROP_TARGET_MANUF		"manufacturer"
 #define	TOPO_PROP_TARGET_MODEL		"model"
+#define	TOPO_PROP_TARGET_SERIAL		"serial"
+#define	TOPO_PROP_TARGET_FMRI		"hc-fmri"
+#define	TOPO_PROP_TARGET_LABEL		"label"
 
 #ifdef	__cplusplus
 }

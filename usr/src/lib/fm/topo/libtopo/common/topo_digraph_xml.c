@@ -124,31 +124,6 @@ tdg_xml_nvarray(FILE *fp, uint_t pad, const char *name, const char *type,
 }
 
 static int
-serialize_edge(topo_hdl_t *thp, topo_edge_t *edge, boolean_t last_edge,
-    void *arg)
-{
-	nvlist_t *fmri = NULL;
-	char *fmristr;
-	int err;
-	tnode_t *tn;
-	FILE *fp = (FILE *)arg;
-
-	tn = topo_vertex_node(edge->tve_vertex);
-	if (topo_node_resource(tn, &fmri, &err) != 0 ||
-	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
-		nvlist_free(fmri);
-		return (TOPO_WALK_ERR);
-	}
-	nvlist_free(fmri);
-
-	(void) fprintf(fp, "%*s<%s %s='%s' />\n", 4, "", TDG_XML_EDGE,
-	    TDG_XML_FMRI, fmristr);
-	topo_hdl_strfree(thp, fmristr);
-
-	return (TOPO_WALK_NEXT);
-}
-
-static int
 serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 {
 	data_type_t type = nvpair_type(nvp);
@@ -405,6 +380,211 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 }
 
 static int
+serialize_edge(topo_hdl_t *thp, topo_edge_t *edge, boolean_t last_edge,
+    void *arg)
+{
+	nvlist_t *fmri = NULL;
+	char *fmristr;
+	int err;
+	tnode_t *tn;
+	FILE *fp = (FILE *)arg;
+
+	tn = topo_vertex_node(edge->tve_vertex);
+	if (topo_node_resource(tn, &fmri, &err) != 0 ||
+	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
+		nvlist_free(fmri);
+		return (TOPO_WALK_ERR);
+	}
+	nvlist_free(fmri);
+
+	(void) fprintf(fp, "%*s<%s %s='%s' />\n", 4, "", TDG_XML_EDGE,
+	    TDG_XML_FMRI, fmristr);
+	topo_hdl_strfree(thp, fmristr);
+
+	return (TOPO_WALK_NEXT);
+}
+
+/*
+ * Some node property values aren't available unless we go through the libtopo
+ * API's topo_prop_get_* routines. We do that here to make sure the nodes have
+ * all of their properties populated, then we vector off to type-specific
+ * XML serialization functions.
+ */
+static int
+serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
+    const char *pgname)
+{
+	topo_type_t type = pv->tp_type;
+	const char *pname = pv->tp_name;
+	int err;
+	char *name = TDG_XML_PROP_VALUE;
+
+	switch (type) {
+		case TOPO_TYPE_INT32: {
+			int32_t val;
+
+			if (topo_prop_get_int32(tn, pgname, pname, &val,
+			    &err) != 0)
+				return (-1);
+
+			tdg_xml_nvint32(fp, pad, name, val);
+			break;
+		}
+		case TOPO_TYPE_UINT32: {
+			uint32_t val;
+
+			if (topo_prop_get_uint32(tn, pgname, pname, &val,
+			    &err) != 0)
+				return (-1);
+
+			tdg_xml_nvuint32(fp, pad, name, val);
+			break;
+		}
+		case TOPO_TYPE_INT64: {
+			int64_t val;
+
+			if (topo_prop_get_int64(tn, pgname, pname, &val,
+			    &err) != 0)
+				return (-1);
+
+			tdg_xml_nvint64(fp, pad, name, val);
+			break;
+		}
+		case TOPO_TYPE_UINT64: {
+			uint64_t val;
+
+			if (topo_prop_get_uint64(tn, pgname, pname, &val,
+			    &err) != 0)
+				return (-1);
+
+			tdg_xml_nvuint64(fp, pad, name, val);
+			break;
+		}
+		case TOPO_TYPE_STRING: {
+			char *val;
+
+			if (topo_prop_get_string(tn, pgname, pname, &val,
+			    &err) != 0)
+				return (-1);
+
+			tdg_xml_nvstring(fp, pad, name, val);
+			break;
+		}
+		case TOPO_TYPE_FMRI: {
+			nvlist_t *nvl;
+			nvpair_t *elem = NULL;
+
+			if (topo_prop_get_fmri(tn, pgname, pname, &nvl,
+			    &err) != 0)
+				return (-1);
+
+			tdg_xml_nvlist(fp, pad, name);
+
+			(void) fprintf(fp, "%*s<%s>\n", (pad + 2), "",
+			    TDG_XML_NVLIST);
+
+			while ((elem = nvlist_next_nvpair(nvl, elem)) != NULL) {
+				char *nvname = nvpair_name(elem);
+
+				if (serialize_nvpair(fp, (pad + 4), nvname,
+				    elem) != 0) {
+					return (-1);
+				}
+			}
+
+			(void) fprintf(fp, "%*s</%s>\n", (pad + 2), "",
+			    TDG_XML_NVLIST);
+			(void) fprintf(fp, "%*s</%s> <!-- %s -->\n", pad, "",
+			    TDG_XML_NVPAIR, name);
+			break;
+		}
+		case TOPO_TYPE_INT32_ARRAY: {
+			uint_t nelems;
+			int32_t *val;
+
+			if (topo_prop_get_int32_array(tn, pgname, pname, &val,
+			    &nelems, &err) != 0)
+				return (-1);
+
+			tdg_xml_nvarray(fp, pad, name, TDG_XML_INT32_ARR,
+			    nelems);
+			for (uint_t i; i < nelems; i++) {
+				(void) fprintf(fp, "%*s<%s %s='%d' />\n",
+				    (pad + 2), "", TDG_XML_NVPAIR,
+				    TDG_XML_VALUE, val[i]);
+			}
+			(void) fprintf(fp, "%*s</%s>\n", (pad + 2), "",
+			    TDG_XML_NVPAIR);
+
+			break;
+		}
+		case TOPO_TYPE_UINT32_ARRAY: {
+			uint_t nelems;
+			uint32_t *val;
+
+			if (topo_prop_get_uint32_array(tn, pgname, pname, &val,
+			    &nelems, &err) != 0)
+				return (-1);
+
+			tdg_xml_nvarray(fp, pad, name, TDG_XML_UINT32_ARR,
+			    nelems);
+			for (uint_t i; i < nelems; i++) {
+				(void) fprintf(fp, "%*s<%s %s='%u' />\n",
+				    (pad + 2), "", TDG_XML_NVPAIR,
+				    TDG_XML_VALUE, val[i]);
+			}
+			(void) fprintf(fp, "%s  </%s>\n", pad, TDG_XML_NVPAIR);
+			break;
+		}
+		case TOPO_TYPE_INT64_ARRAY: {
+			uint_t nelems;
+			int64_t *val;
+
+			if (topo_prop_get_int64_array(tn, pgname, pname, &val,
+			    &nelems, &err) != 0)
+				return (-1);
+
+			tdg_xml_nvarray(fp, pad, name, TDG_XML_INT64_ARR,
+			    nelems);
+			for (uint_t i; i < nelems; i++) {
+				(void) fprintf(fp, "%*s<%s %s='%" PRIi64
+				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
+				    TDG_XML_VALUE, val[i]);
+			}
+			(void) fprintf(fp, "%*s</%s>\n", (pad + 2), "",
+			    TDG_XML_NVPAIR);
+
+			break;
+		}
+		case TOPO_TYPE_UINT64_ARRAY: {
+			uint_t nelems;
+			uint64_t *val;
+
+			if (topo_prop_get_uint64_array(tn, pgname, pname, &val,
+			    &nelems, &err) != 0)
+				return (-1);
+
+			tdg_xml_nvarray(fp, pad, name, TDG_XML_UINT64_ARR,
+			    nelems);
+			for (uint_t i; i < nelems; i++) {
+				(void) fprintf(fp, "%*s<%s %s='0x%" PRIx64
+				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
+				    TDG_XML_VALUE, val[i]);
+			}
+			(void) fprintf(fp, "%*s</%s>\n", (pad + 2),
+			    TDG_XML_NVPAIR);
+
+			break;
+		}
+		default:
+			(void) fprintf(fp, "Invalid nvpair data type: %d\n",
+			    type);
+			return (-1);
+	}
+	return (0);
+}
+
+static int
 serialize_pgroups(topo_hdl_t *thp, FILE *fp, tnode_t *tn)
 {
 	topo_pgroup_t *pg;
@@ -439,7 +619,6 @@ serialize_pgroups(topo_hdl_t *thp, FILE *fp, tnode_t *tn)
 		    pvl = topo_list_next(pvl)) {
 
 			topo_propval_t *pv = pvl->tp_pval;
-			nvpair_t *nvp;
 
 			(void) fprintf(fp, "%*s<%s>\n", 8, "", TDG_XML_NVLIST);
 			tdg_xml_nvstring(fp, 10, TDG_XML_PROP_NAME,
@@ -447,10 +626,8 @@ serialize_pgroups(topo_hdl_t *thp, FILE *fp, tnode_t *tn)
 			tdg_xml_nvuint32(fp, 10, TDG_XML_PROP_TYPE,
 			    pv->tp_type);
 
-			if (nvlist_lookup_nvpair(pv->tp_val, TOPO_PROP_VAL_VAL,
-			    &nvp) != 0 ||
-			    serialize_nvpair(fp, 10, TDG_XML_PROP_VALUE,
-			    nvp) != 0) {
+			if (serialize_property(fp, 10, tn, pv,
+			    pg->tpg_info->tpi_name) != 0) {
 				return (-1);
 			}
 			(void) fprintf(fp, "%*s</%s>\n", 8, "",

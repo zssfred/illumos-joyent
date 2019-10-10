@@ -33,6 +33,10 @@ extern void sas_fini(topo_mod_t *);
 #define	TOPO_METH_SAS2HC_DESC		"compute hc-scheme FMRI"
 #define	TOPO_METH_SAS2HC_VERSION	0
 
+#define	TOPO_METH_SAS_DEV_PROP		"sas_device_props_set"
+#define	TOPO_METH_SAS_DEV_PROP_DESC	"retrieve device properties"
+#define	TOPO_METH_SAS_DEV_PROP_VERSION	0
+
 #ifdef	__cplusplus
 }
 #endif
