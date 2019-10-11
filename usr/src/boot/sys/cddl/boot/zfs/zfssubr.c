@@ -24,6 +24,7 @@
  */
 
 #include <sys/cdefs.h>
+#include <lz4.h>
 
 static uint64_t zfs_crc64_table[256];
 
@@ -34,11 +35,6 @@ static uint64_t zfs_crc64_table[256];
 #define	ASSERT3P(x, y, z)	((void)0)
 #define	ASSERT0(x)		((void)0)
 #define	ASSERT(x)		((void)0)
-
-#define	panic(...)	do {						\
-	printf(__VA_ARGS__);						\
-	for (;;) ;							\
-} while (0)
 
 #define	kmem_alloc(size, flag)	zfs_alloc((size))
 #define	kmem_free(ptr, size)	zfs_free((ptr), (size))
@@ -54,16 +50,19 @@ zfs_init_crc(void)
 	 * function).
 	 */
 	if (zfs_crc64_table[128] != ZFS_CRC64_POLY) {
-		memset(zfs_crc64_table, 0, sizeof(zfs_crc64_table));
-		for (i = 0; i < 256; i++)
-			for (ct = zfs_crc64_table + i, *ct = i, j = 8; j > 0; j--)
-				*ct = (*ct >> 1) ^ (-(*ct & 1) & ZFS_CRC64_POLY);
+		memset(zfs_crc64_table, 0, sizeof (zfs_crc64_table));
+		for (i = 0; i < 256; i++) {
+			ct = zfs_crc64_table + i;
+			for (*ct = i, j = 8; j > 0; j--)
+				*ct = (*ct >> 1) ^
+				    (-(*ct & 1) & ZFS_CRC64_POLY);
+		}
 	}
 }
 
 static void
-zio_checksum_off(const void *buf, uint64_t size,
-    const void *ctx_template, zio_cksum_t *zcp)
+zio_checksum_off(const void *buf __unused, uint64_t size __unused,
+    const void *ctx_template __unused, zio_cksum_t *zcp)
 {
 	ZIO_SET_CHECKSUM(zcp, 0, 0, 0, 0);
 }
@@ -165,7 +164,6 @@ typedef struct zio_compress_info {
 
 #include "lzjb.c"
 #include "zle.c"
-#include "lz4.c"
 
 /*
  * Compression vectors.
@@ -288,7 +286,7 @@ zio_checksum_verify(const spa_t *spa, const blkptr_t *bp, void *data)
 		return (EINVAL);
 
 	if (spa != NULL) {
-		zio_checksum_template_init(checksum, (spa_t *) spa);
+		zio_checksum_template_init(checksum, (spa_t *)spa);
 		ctx = spa->spa_cksum_tmpls[checksum];
 	}
 
@@ -336,7 +334,7 @@ zio_checksum_verify(const spa_t *spa, const blkptr_t *bp, void *data)
 
 static int
 zio_decompress_data(int cpfunc, void *src, uint64_t srcsize,
-	void *dest, uint64_t destsize)
+    void *dest, uint64_t destsize)
 {
 	zio_compress_info_t *ci;
 
@@ -843,7 +841,7 @@ vdev_raidz_generate_parity(raidz_map_t *rm)
 /* END CSTYLED */
 
 static void
-vdev_raidz_matrix_init(raidz_map_t *rm, int n, int nmap, int *map,
+vdev_raidz_matrix_init(raidz_map_t *rm __unused, int n, int nmap, int *map,
     uint8_t **rows)
 {
 	int i, j;
@@ -1338,7 +1336,7 @@ vdev_child(vdev_t *pvd, uint64_t devidx)
  */
 static int
 raidz_checksum_verify(const spa_t *spa, const blkptr_t *bp, void *data,
-    uint64_t size)
+    uint64_t size __unused)
 {
 
 	return (zio_checksum_verify(spa, bp, data));
@@ -1391,7 +1389,8 @@ raidz_parity_verify(raidz_map_t *rm)
  */
 static int
 vdev_raidz_combrec(const spa_t *spa, raidz_map_t *rm, const blkptr_t *bp,
-    void *data, off_t offset, uint64_t bytes, int total_errors, int data_errors)
+    void *data, off_t offset __unused, uint64_t bytes, int total_errors,
+    int data_errors)
 {
 	raidz_col_t *rc;
 	void *orig[VDEV_RAIDZ_MAXPARITY];
@@ -1640,8 +1639,11 @@ reconstruct:
 	 * any errors.
 	 */
 	if (total_errors <= rm->rm_firstdatacol - parity_untried) {
+		int rv;
+
 		if (data_errors == 0) {
-			if (raidz_checksum_verify(vd->spa, bp, data, bytes) == 0) {
+			rv = raidz_checksum_verify(vd->spa, bp, data, bytes);
+			if (rv == 0) {
 				/*
 				 * If we read parity information (unnecessarily
 				 * as it happens since no reconstruction was
@@ -1686,7 +1688,8 @@ reconstruct:
 
 			code = vdev_raidz_reconstruct(rm, tgts, n);
 
-			if (raidz_checksum_verify(vd->spa, bp, data, bytes) == 0) {
+			rv = raidz_checksum_verify(vd->spa, bp, data, bytes);
+			if (rv == 0) {
 				/*
 				 * If we read more parity disks than were used
 				 * for reconstruction, confirm that the other
@@ -1761,7 +1764,7 @@ reconstruct:
 		error = EIO;
 	} else if (total_errors < rm->rm_firstdatacol &&
 	    (code = vdev_raidz_combrec(vd->spa, rm, bp, data, offset, bytes,
-	     total_errors, data_errors)) != 0) {
+	    total_errors, data_errors)) != 0) {
 		/*
 		 * If we didn't use all the available parity for the
 		 * combinatorial reconstruction, verify that the remaining

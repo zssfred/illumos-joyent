@@ -379,6 +379,7 @@ mptsas_access_config_page(mptsas_t *mpt, uint8_t action, uint8_t page_type,
 	 * Check if the header request completed without timing out
 	 */
 	if (cmd->cmd_flags & CFLAG_TIMEOUT) {
+		config_flags |= MPTSAS_CMD_TIMEOUT;
 		mptsas_log(mpt, CE_WARN, "config header request timeout");
 		rval = DDI_FAILURE;
 		goto page_done;
@@ -521,6 +522,7 @@ mptsas_access_config_page(mptsas_t *mpt, uint8_t action, uint8_t page_type,
 	 * Check if the request completed without timing out
 	 */
 	if (cmd->cmd_flags & CFLAG_TIMEOUT) {
+		config_flags |= MPTSAS_CMD_TIMEOUT;
 		mptsas_log(mpt, CE_WARN, "config page request timeout");
 		rval = DDI_FAILURE;
 		goto page_done;

@@ -182,6 +182,14 @@ typedef enum {
 	ZFS_PROP_USERQUOTA,
 	ZFS_PROP_GROUPUSED,
 	ZFS_PROP_GROUPQUOTA,
+	ZFS_PROP_USEROBJUSED,
+	ZFS_PROP_USEROBJQUOTA,
+	ZFS_PROP_GROUPOBJUSED,
+	ZFS_PROP_GROUPOBJQUOTA,
+	ZFS_PROP_PROJECTUSED,
+	ZFS_PROP_PROJECTQUOTA,
+	ZFS_PROP_PROJECTOBJUSED,
+	ZFS_PROP_PROJECTOBJQUOTA,
 	ZFS_NUM_USERQUOTA_PROPS
 } zfs_userquota_prop_t;
 
@@ -225,6 +233,8 @@ typedef enum {
 	ZPOOL_PROP_TNAME,
 	ZPOOL_PROP_MAXDNODESIZE,
 	ZPOOL_PROP_MULTIHOST,
+	ZPOOL_PROP_ASHIFT,
+	ZPOOL_PROP_AUTOTRIM,
 	ZPOOL_NUM_PROPS
 } zpool_prop_t;
 
@@ -637,6 +647,7 @@ typedef struct zpool_load_policy {
 #define	ZPOOL_CONFIG_CACHEFILE		"cachefile"	/* not stored on disk */
 #define	ZPOOL_CONFIG_MMP_STATE		"mmp_state"	/* not stored on disk */
 #define	ZPOOL_CONFIG_MMP_TXG		"mmp_txg"	/* not stored on disk */
+#define	ZPOOL_CONFIG_MMP_SEQ		"mmp_seq"	/* not stored on disk */
 #define	ZPOOL_CONFIG_MMP_HOSTNAME	"mmp_hostname"	/* not stored on disk */
 #define	ZPOOL_CONFIG_MMP_HOSTID		"mmp_hostid"	/* not stored on disk */
 #define	ZPOOL_CONFIG_ALLOCATION_BIAS	"alloc_bias"	/* not stored on disk */
@@ -685,6 +696,8 @@ typedef struct zpool_load_policy {
 	"com.delphix:obsolete_counts_are_precise"
 #define	VDEV_TOP_ZAP_POOL_CHECKPOINT_SM \
 	"com.delphix:pool_checkpoint_sm"
+#define	VDEV_TOP_ZAP_MS_UNFLUSHED_PHYS_TXGS \
+	"com.delphix:ms_unflushed_phys_txgs"
 
 #define	VDEV_TOP_ZAP_ALLOCATION_BIAS \
 	"org.zfsonlinux:allocation_bias"
@@ -694,12 +707,27 @@ typedef struct zpool_load_policy {
 #define	VDEV_ALLOC_BIAS_SPECIAL		"special"
 #define	VDEV_ALLOC_BIAS_DEDUP		"dedup"
 
+/* vdev initialize state */
 #define	VDEV_LEAF_ZAP_INITIALIZE_LAST_OFFSET	\
 	"com.delphix:next_offset_to_initialize"
 #define	VDEV_LEAF_ZAP_INITIALIZE_STATE	\
 	"com.delphix:vdev_initialize_state"
 #define	VDEV_LEAF_ZAP_INITIALIZE_ACTION_TIME	\
 	"com.delphix:vdev_initialize_action_time"
+
+/* vdev TRIM state */
+#define	VDEV_LEAF_ZAP_TRIM_LAST_OFFSET	\
+	"org.zfsonlinux:next_offset_to_trim"
+#define	VDEV_LEAF_ZAP_TRIM_STATE	\
+	"org.zfsonlinux:vdev_trim_state"
+#define	VDEV_LEAF_ZAP_TRIM_ACTION_TIME	\
+	"org.zfsonlinux:vdev_trim_action_time"
+#define	VDEV_LEAF_ZAP_TRIM_RATE		\
+	"org.zfsonlinux:vdev_trim_rate"
+#define	VDEV_LEAF_ZAP_TRIM_PARTIAL	\
+	"org.zfsonlinux:vdev_trim_partial"
+#define	VDEV_LEAF_ZAP_TRIM_SECURE	\
+	"org.zfsonlinux:vdev_trim_secure"
 
 /*
  * This is needed in userland to report the minimum necessary device size.
@@ -760,7 +788,8 @@ typedef enum vdev_aux {
 	VDEV_AUX_EXTERNAL,	/* external diagnosis			*/
 	VDEV_AUX_SPLIT_POOL,	/* vdev was split off into another pool	*/
 	VDEV_AUX_ACTIVE,	/* vdev active on a different host	*/
-	VDEV_AUX_CHILDREN_OFFLINE /* all children are offline		*/
+	VDEV_AUX_CHILDREN_OFFLINE, /* all children are offline		*/
+	VDEV_AUX_BAD_ASHIFT	/* vdev ashift is invalid		*/
 } vdev_aux_t;
 
 /*
@@ -813,11 +842,21 @@ typedef enum pool_scrub_cmd {
  * Initialize functions.
  */
 typedef enum pool_initialize_func {
-	POOL_INITIALIZE_DO,
+	POOL_INITIALIZE_START,
 	POOL_INITIALIZE_CANCEL,
 	POOL_INITIALIZE_SUSPEND,
 	POOL_INITIALIZE_FUNCS
 } pool_initialize_func_t;
+
+/*
+ * TRIM functions.
+ */
+typedef enum pool_trim_func {
+	POOL_TRIM_START,
+	POOL_TRIM_CANCEL,
+	POOL_TRIM_SUSPEND,
+	POOL_TRIM_FUNCS
+} pool_trim_func_t;
 
 /*
  * ZIO types.  Needed to interpret vdev statistics below.
@@ -829,6 +868,7 @@ typedef enum zio_type {
 	ZIO_TYPE_FREE,
 	ZIO_TYPE_CLAIM,
 	ZIO_TYPE_IOCTL,
+	ZIO_TYPE_TRIM,
 	ZIO_TYPES
 } zio_type_t;
 
@@ -918,10 +958,24 @@ typedef enum {
 	VDEV_INITIALIZE_COMPLETE
 } vdev_initializing_state_t;
 
+typedef enum {
+	VDEV_TRIM_NONE,
+	VDEV_TRIM_ACTIVE,
+	VDEV_TRIM_CANCELED,
+	VDEV_TRIM_SUSPENDED,
+	VDEV_TRIM_COMPLETE,
+} vdev_trim_state_t;
+
 /*
  * Vdev statistics.  Note: all fields should be 64-bit because this
- * is passed between kernel and userland as an nvlist uint64 array.
+ * is passed between kernel and user land as an nvlist uint64 array.
+ *
+ * The vs_ops[] and vs_bytes[] arrays must always be an array size of 6 in
+ * order to keep subsequent members at their known fixed offsets.  When
+ * adding a new field it must be added to the end the structure.
  */
+#define	VS_ZIO_TYPES	6
+
 typedef struct vdev_stat {
 	hrtime_t	vs_timestamp;		/* time since vdev load	*/
 	uint64_t	vs_state;		/* vdev state		*/
@@ -931,8 +985,8 @@ typedef struct vdev_stat {
 	uint64_t	vs_dspace;		/* deflated capacity	*/
 	uint64_t	vs_rsize;		/* replaceable dev size */
 	uint64_t	vs_esize;		/* expandable dev size */
-	uint64_t	vs_ops[ZIO_TYPES];	/* operation count	*/
-	uint64_t	vs_bytes[ZIO_TYPES];	/* bytes read/written	*/
+	uint64_t	vs_ops[VS_ZIO_TYPES];	/* operation count	*/
+	uint64_t	vs_bytes[VS_ZIO_TYPES];	/* bytes read/written	*/
 	uint64_t	vs_read_errors;		/* read errors		*/
 	uint64_t	vs_write_errors;	/* write errors		*/
 	uint64_t	vs_checksum_errors;	/* checksum errors	*/
@@ -947,6 +1001,12 @@ typedef struct vdev_stat {
 	uint64_t	vs_initialize_action_time; /* time_t */
 	uint64_t	vs_checkpoint_space;    /* checkpoint-consumed space */
 	uint64_t	vs_resilver_deferred;	/* resilver deferred	*/
+	uint64_t	vs_trim_errors;		/* trimming errors	*/
+	uint64_t	vs_trim_notsup;		/* supported by device */
+	uint64_t	vs_trim_bytes_done;	/* bytes trimmed */
+	uint64_t	vs_trim_bytes_est;	/* total bytes to trim */
+	uint64_t	vs_trim_state;		/* vdev_trim_state_t */
+	uint64_t	vs_trim_action_time;	/* time_t */
 } vdev_stat_t;
 
 /*
@@ -1078,6 +1138,7 @@ typedef enum zfs_ioc {
 	ZFS_IOC_LOAD_KEY,
 	ZFS_IOC_UNLOAD_KEY,
 	ZFS_IOC_CHANGE_KEY,
+	ZFS_IOC_POOL_TRIM,
 	ZFS_IOC_LAST
 } zfs_ioc_t;
 
@@ -1168,6 +1229,14 @@ enum zio_encrypt {
  * history log.
  */
 #define	ZPOOL_HIDDEN_ARGS	"hidden_args"
+
+/*
+ * The following are names used when invoking ZFS_IOC_POOL_TRIM.
+ */
+#define	ZPOOL_TRIM_COMMAND		"trim_command"
+#define	ZPOOL_TRIM_VDEVS		"trim_vdevs"
+#define	ZPOOL_TRIM_RATE			"trim_rate"
+#define	ZPOOL_TRIM_SECURE		"trim_secure"
 
 /*
  * Flags for ZFS_IOC_VDEV_SET_STATE

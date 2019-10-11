@@ -31,12 +31,18 @@
 #include <sys/refcount.h>
 #include <sys/vdev_disk.h>
 #include <sys/vdev_impl.h>
+#include <sys/vdev_trim.h>
 #include <sys/abd.h>
 #include <sys/fs/zfs.h>
 #include <sys/zio.h>
 #include <sys/sunldi.h>
 #include <sys/efi_partition.h>
 #include <sys/fm/fs/zfs.h>
+
+/*
+ * Tunable to enable TRIM, which is temporarily disabled by default.
+ */
+uint_t zfs_no_trim = 1;
 
 /*
  * Tunable parameter for debugging or performance analysis. Setting this
@@ -296,11 +302,10 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	} dks;
 	struct dk_minfo_ext *dkmext = &dks.ude;
 	struct dk_minfo *dkm = &dks.ud;
-	int error;
+	int error, can_free;
 	dev_t dev;
 	int otyp;
 	boolean_t validate_devid = B_FALSE;
-	ddi_devid_t devid;
 	uint64_t capacity = 0, blksz = 0, pbsize;
 
 	/*
@@ -404,9 +409,20 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		/*
 		 * Compare the devid to the stored value.
 		 */
-		if (error == 0 && vd->vdev_devid != NULL &&
-		    ldi_get_devid(dvd->vd_lh, &devid) == 0) {
-			if (ddi_devid_compare(devid, dvd->vd_devid) != 0) {
+		if (error == 0 && vd->vdev_devid != NULL) {
+			ddi_devid_t devid = NULL;
+
+			if (ldi_get_devid(dvd->vd_lh, &devid) != 0) {
+				/*
+				 * We expected a devid on this device but it no
+				 * longer appears to have one.  The validation
+				 * step may need to remove it from the
+				 * configuration.
+				 */
+				validate_devid = B_TRUE;
+
+			} else if (ddi_devid_compare(devid, dvd->vd_devid) !=
+			    0) {
 				/*
 				 * A mismatch here is unexpected, log it.
 				 */
@@ -425,7 +441,10 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 				    kcred);
 				dvd->vd_lh = NULL;
 			}
-			ddi_devid_free(devid);
+
+			if (devid != NULL) {
+				ddi_devid_free(devid);
+			}
 		}
 
 		/*
@@ -455,26 +474,27 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	 * as reliable as the devid, this will give us something, and the higher
 	 * level vdev validation will prevent us from opening the wrong device.
 	 */
-	if (error) {
-		if (vd->vdev_devid != NULL)
-			validate_devid = B_TRUE;
+	if (error != 0) {
+		validate_devid = B_TRUE;
 
 		if (vd->vdev_physpath != NULL &&
-		    (dev = ddi_pathname_to_dev_t(vd->vdev_physpath)) != NODEV)
+		    (dev = ddi_pathname_to_dev_t(vd->vdev_physpath)) != NODEV) {
 			error = ldi_open_by_dev(&dev, OTYP_BLK, spa_mode(spa),
 			    kcred, &dvd->vd_lh, zfs_li);
+		}
 
 		/*
 		 * Note that we don't support the legacy auto-wholedisk support
 		 * as above.  This hasn't been used in a very long time and we
 		 * don't need to propagate its oddities to this edge condition.
 		 */
-		if (error && vd->vdev_path != NULL)
+		if (error != 0 && vd->vdev_path != NULL) {
 			error = ldi_open_by_name(vd->vdev_path, spa_mode(spa),
 			    kcred, &dvd->vd_lh, zfs_li);
+		}
 	}
 
-	if (error) {
+	if (error != 0) {
 		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
 		vdev_dbgmsg(vd, "vdev_disk_open: failed to open [error=%d]",
 		    error);
@@ -485,22 +505,100 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	 * Now that the device has been successfully opened, update the devid
 	 * if necessary.
 	 */
-	if (validate_devid && spa_writeable(spa) &&
-	    ldi_get_devid(dvd->vd_lh, &devid) == 0) {
-		if (ddi_devid_compare(devid, dvd->vd_devid) != 0) {
-			char *vd_devid;
+	if (validate_devid) {
+		ddi_devid_t devid = NULL;
+		char *minorname = NULL;
+		char *vd_devid = NULL;
+		boolean_t remove = B_FALSE, update = B_FALSE;
 
-			vd_devid = ddi_devid_str_encode(devid, dvd->vd_minor);
-			vdev_dbgmsg(vd, "vdev_disk_open: update devid from "
-			    "'%s' to '%s'", vd->vdev_devid, vd_devid);
-			cmn_err(CE_NOTE, "vdev_disk_open %s: update devid "
-			    "from '%s' to '%s'", vd->vdev_path != NULL ?
-			    vd->vdev_path : "?", vd->vdev_devid, vd_devid);
-			spa_strfree(vd->vdev_devid);
-			vd->vdev_devid = spa_strdup(vd_devid);
-			ddi_devid_str_free(vd_devid);
+		/*
+		 * Get the current devid and minor name for the device we
+		 * opened.
+		 */
+		if (ldi_get_devid(dvd->vd_lh, &devid) != 0 ||
+		    ldi_get_minor_name(dvd->vd_lh, &minorname) != 0) {
+			/*
+			 * If we are unable to get the devid or the minor name
+			 * for the device, we need to remove them from the
+			 * configuration to prevent potential inconsistencies.
+			 */
+			if (dvd->vd_minor != NULL || dvd->vd_devid != NULL ||
+			    vd->vdev_devid != NULL) {
+				/*
+				 * We only need to remove the devid if one
+				 * exists.
+				 */
+				remove = B_TRUE;
+			}
+
+		} else if (dvd->vd_devid == NULL || dvd->vd_minor == NULL) {
+			/*
+			 * There was previously no devid at all so we need to
+			 * add one.
+			 */
+			update = B_TRUE;
+
+		} else if (ddi_devid_compare(devid, dvd->vd_devid) != 0 ||
+		    strcmp(minorname, dvd->vd_minor) != 0) {
+			/*
+			 * The devid or minor name on file does not match the
+			 * one from the opened device.
+			 */
+			update = B_TRUE;
 		}
-		ddi_devid_free(devid);
+
+		if (update) {
+			/*
+			 * Render the new devid and minor name as a string for
+			 * logging and to store in the vdev configuration.
+			 */
+			vd_devid = ddi_devid_str_encode(devid, minorname);
+		}
+
+		if (update || remove) {
+			vdev_dbgmsg(vd, "vdev_disk_open: update devid from "
+			    "'%s' to '%s'",
+			    vd->vdev_devid != NULL ? vd->vdev_devid : "<none>",
+			    vd_devid != NULL ? vd_devid : "<none>");
+			cmn_err(CE_NOTE, "vdev_disk_open %s: update devid "
+			    "from '%s' to '%s'",
+			    vd->vdev_path != NULL ? vd->vdev_path : "?",
+			    vd->vdev_devid != NULL ? vd->vdev_devid : "<none>",
+			    vd_devid != NULL ? vd_devid : "<none>");
+
+			/*
+			 * Remove and free any existing values.
+			 */
+			if (dvd->vd_minor != NULL) {
+				ddi_devid_str_free(dvd->vd_minor);
+				dvd->vd_minor = NULL;
+			}
+			if (dvd->vd_devid != NULL) {
+				ddi_devid_free(dvd->vd_devid);
+				dvd->vd_devid = NULL;
+			}
+			if (vd->vdev_devid != NULL) {
+				spa_strfree(vd->vdev_devid);
+				vd->vdev_devid = NULL;
+			}
+		}
+
+		if (update) {
+			/*
+			 * Install the new values.
+			 */
+			vd->vdev_devid = vd_devid;
+			dvd->vd_minor = minorname;
+			dvd->vd_devid = devid;
+
+		} else {
+			if (devid != NULL) {
+				ddi_devid_free(devid);
+			}
+			if (minorname != NULL) {
+				kmem_free(minorname, strlen(minorname) + 1);
+			}
+		}
 	}
 
 	/*
@@ -549,6 +647,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		(void) ldi_ev_register_callbacks(dvd->vd_lh, ecookie,
 		    &vdev_disk_dgrd_callb, (void *) vd, &lcb->lcb_id);
 	}
+
 skip_open:
 	/*
 	 * Determine the actual size of the device.
@@ -613,6 +712,19 @@ skip_open:
 	 * try again.
 	 */
 	vd->vdev_nowritecache = B_FALSE;
+
+	if (ldi_ioctl(dvd->vd_lh, DKIOC_CANFREE, (intptr_t)&can_free, FKIOCTL,
+	    kcred, NULL) == 0 && can_free == 1) {
+		vd->vdev_has_trim = B_TRUE;
+	} else {
+		vd->vdev_has_trim = B_FALSE;
+	}
+
+	if (zfs_no_trim == 1)
+		vd->vdev_has_trim = B_FALSE;
+
+	/* Currently only supported for ZoL. */
+	vd->vdev_has_securetrim = B_FALSE;
 
 	/* Inform the ZIO pipeline that we are non-rotational */
 	vd->vdev_nonrot = B_FALSE;
@@ -773,6 +885,7 @@ vdev_disk_io_start(zio_t *zio)
 {
 	vdev_t *vd = zio->io_vd;
 	vdev_disk_t *dvd = vd->vdev_tsd;
+	unsigned long trim_flags = 0;
 	vdev_buf_t *vb;
 	struct dk_callback *dkc;
 	buf_t *bp;
@@ -788,7 +901,8 @@ vdev_disk_io_start(zio_t *zio)
 		return;
 	}
 
-	if (zio->io_type == ZIO_TYPE_IOCTL) {
+	switch (zio->io_type) {
+	case ZIO_TYPE_IOCTL:
 		/* XXPOLICY */
 		if (!vdev_readable(vd)) {
 			zio->io_error = SET_ERROR(ENXIO);
@@ -836,6 +950,37 @@ vdev_disk_io_start(zio_t *zio)
 		}
 
 		zio_execute(zio);
+		return;
+
+	case ZIO_TYPE_TRIM:
+		if (zfs_no_trim == 1 || !vd->vdev_has_trim) {
+			zio->io_error = SET_ERROR(ENOTSUP);
+			zio_execute(zio);
+			return;
+		}
+		/* Currently only supported on ZoL. */
+		ASSERT0(zio->io_trim_flags & ZIO_TRIM_SECURE);
+
+		/* dkioc_free_list_t is already declared to hold one entry */
+		dkioc_free_list_t dfl;
+		dfl.dfl_flags = 0;
+		dfl.dfl_num_exts = 1;
+		dfl.dfl_offset = 0;
+		dfl.dfl_exts[0].dfle_start = zio->io_offset;
+		dfl.dfl_exts[0].dfle_length = zio->io_size;
+
+		zio->io_error = ldi_ioctl(dvd->vd_lh, DKIOCFREE,
+		    (uintptr_t)&dfl, FKIOCTL, kcred, NULL);
+
+		if (zio->io_error == ENOTSUP || zio->io_error == ENOTTY) {
+			/*
+			 * The device must have changed and now TRIM is
+			 * no longer supported.
+			 */
+			vd->vdev_has_trim = B_FALSE;
+		}
+
+		zio_interrupt(zio);
 		return;
 	}
 

@@ -36,11 +36,11 @@ include		$(SRC)/cmd/sgs/Makefile.com
 
 SRCDIR =	../common
 
-CPPFLAGS +=	-I$(SRCBASE)/lib/libc/inc
+CPPFLAGS +=	-I$(SRC)/lib/libc/inc
 DYNFLAGS +=	$(VERSREF)
-LDLIBS +=	$(CONVLIBDIR) $(CONV_LIB) -lc
+LDLIBS +=	$(CONVLIBDIR) -lconv -lc
 
-CERRWARN +=	-_gcc=-Wno-uninitialized
+CERRWARN +=	$(CNOWARN_UNINIT)
 
 BLTDEFS=	msg.h
 BLTDATA=	msg.c

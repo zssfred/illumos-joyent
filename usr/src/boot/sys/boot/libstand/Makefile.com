@@ -26,7 +26,16 @@ $(LIBRARY): $(SRCS) $(OBJS)
 include $(SASRC)/Makefile.inc
 include $(ZFSSRC)/Makefile.inc
 
+LIBCSRC=	$(SRC)/lib/libc
+OBJS +=		explicit_bzero.o
+
 CPPFLAGS +=	-I$(SRC)/uts/common
+
+# needs work
+printf.o := SMOFF += 64bit_shift
+
+# too hairy
+_inflate.o := SMATCH=off
 
 # 64-bit smatch false positive :/
 SMOFF += uninitialized
@@ -56,4 +65,10 @@ x86:
 	$(COMPILE.c) $<
 
 %.o:	$(ZLIB)/%.c
+	$(COMPILE.c) $<
+
+%.o:	$(LZ4)/%.c
+	$(COMPILE.c) $<
+
+%.o:	$(LIBCSRC)/port/gen/%.c
 	$(COMPILE.c) $<

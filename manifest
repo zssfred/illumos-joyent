@@ -268,6 +268,7 @@ f etc/bash/bash_completion 0644 root sys
 d etc/bash/bash_completion.d 0755 root sys
 f etc/bash/bash_completion.d/dladm 0644 root sys
 f etc/bash/bash_completion.d/zones 0644 root sys
+f etc/bash/bash_completion.d/zone_alias 0644 root sys
 d etc/brand 0755 root sys
 d etc/certs 0755 root sys
 d etc/cron.d 0755 root sys
@@ -517,6 +518,7 @@ f etc/security/device_policy 0644 root sys
 f etc/security/exec_attr 0644 root sys
 d etc/security/exec_attr.d 0755 root sys
 f etc/security/exec_attr.d/SUNWcs 0644 root sys
+f etc/security/exec_attr.d/SUNWsmbfs 0644 root sys
 f etc/security/extra_privs 0644 root sys
 f etc/security/kmfpolicy.xml 0644 root bin
 d etc/security/lib 0755 root sys
@@ -562,6 +564,8 @@ f etc/user_attr 0644 root sys
 d etc/user_attr.d 0755 root sys
 f etc/user_attr.d/SUNWcs 0644 root sys
 s etc/utmpx=../var/adm/utmpx
+d etc/versions 0755 root sys
+f etc/versions/build 0644 root other
 f etc/vfstab 0644 root sys
 s etc/wtmpx=../var/adm/wtmpx
 d etc/xdg 0755 root sys
@@ -578,6 +582,11 @@ f etc/zshrc 0644 root bin
 d kernel 0755 root sys
 d kernel/amd64 0755 root sys
 f kernel/amd64/genunix 0755 root sys
+d kernel/cc 0755 root sys
+d kernel/cc/amd64 0755 root sys
+f kernel/cc/amd64/cc_cubic 0755 root sys
+f kernel/cc/amd64/cc_newreno 0755 root sys
+f kernel/cc/amd64/cc_sunreno 0755 root sys
 d kernel/crypto 0755 root sys
 d kernel/crypto/amd64 0755 root sys
 f kernel/crypto/amd64/aes 0755 root sys
@@ -1060,6 +1069,7 @@ f kernel/misc/amd64/acpica 0755 root sys
 f kernel/misc/amd64/bignum 0755 root sys
 f kernel/misc/amd64/bootdev 0755 root sys
 f kernel/misc/amd64/busra 0755 root sys
+f kernel/misc/amd64/cc 0755 root sys
 f kernel/misc/amd64/cmlb 0755 root sys
 f kernel/misc/amd64/consconfig 0755 root sys
 f kernel/misc/amd64/ctf 0755 root sys
@@ -1749,6 +1759,7 @@ f lib/svc/manifest/system/svc/global.xml 0444 root sys
 f lib/svc/manifest/system/svc/restarter.xml 0444 root sys
 f lib/svc/manifest/system/sysevent.xml 0444 root sys
 f lib/svc/manifest/system/system-log.xml 0444 root sys
+f lib/svc/manifest/system/update-man-index.xml 0444 root sys
 f lib/svc/manifest/system/utmp.xml 0444 root sys
 f lib/svc/manifest/system/vtdaemon.xml 0444 root sys
 f lib/svc/manifest/system/zones.xml 0444 root sys
@@ -1845,6 +1856,7 @@ f lib/svc/method/svc-zones 0555 root sys
 f lib/svc/method/sysidtool-net 0555 root bin
 f lib/svc/method/sysidtool-system 0555 root bin
 f lib/svc/method/system-log 0555 root bin
+f lib/svc/method/update-man-index 0555 root bin
 f lib/svc/method/vtdaemon 0555 root bin
 f lib/svc/method/yp 0555 root bin
 d lib/svc/monitor 0755 root bin
@@ -4335,6 +4347,7 @@ f usr/include/sys/libc_kernel.h 0644 root bin
 f usr/include/sys/libdevid.h 0644 root bin
 f usr/include/sys/limits.h 0644 root bin
 f usr/include/sys/link.h 0644 root bin
+f usr/include/sys/linker_set.h 0644 root bin
 f usr/include/sys/list.h 0644 root bin
 f usr/include/sys/list_impl.h 0644 root bin
 f usr/include/sys/llc1.h 0644 root bin
@@ -6994,6 +7007,14 @@ d usr/lib/locale/C/LC_MONETARY 0755 root bin
 d usr/lib/locale/C/LC_NUMERIC 0755 root bin
 d usr/lib/locale/C/LC_TIME 0755 root bin
 f usr/lib/locale/C/LC_TIME/SUNW_OST_OSCMD.po 0644 root bin
+d usr/lib/locale/C.UTF-8 0755 root bin
+d usr/lib/locale/C.UTF-8/LC_COLLATE 0755 root bin
+d usr/lib/locale/C.UTF-8/LC_CTYPE 0755 root bin
+f usr/lib/locale/C.UTF-8/LC_CTYPE/LCL_DATA 0444 root bin
+d usr/lib/locale/C.UTF-8/LC_MESSAGES 0755 root bin
+d usr/lib/locale/C.UTF-8/LC_MONETARY 0755 root bin
+d usr/lib/locale/C.UTF-8/LC_NUMERIC 0755 root bin
+d usr/lib/locale/C.UTF-8/LC_TIME 0755 root bin
 s usr/lib/locale/POSIX=C
 d usr/lib/locale/af_ZA.UTF-8 0755 root bin
 d usr/lib/locale/af_ZA.UTF-8/LC_COLLATE 0755 root bin
@@ -13919,6 +13940,7 @@ f usr/share/man/man3c/readdir.3c 0444 root bin
 s usr/share/man/man3c/readdir_r.3c=readdir.3c
 s usr/share/man/man3c/realloc.3c=malloc.3c
 s usr/share/man/man3c/reallocarray.3c=malloc.3c
+s usr/share/man/man3c/reallocf.3c=malloc.3c
 f usr/share/man/man3c/realpath.3c 0444 root bin
 f usr/share/man/man3c/reboot.3c 0444 root bin
 s usr/share/man/man3c/recallocarray.3c=malloc.3c
@@ -16453,6 +16475,8 @@ f usr/share/man/man3m/lround.3m 0444 root bin
 f usr/share/man/man3m/matherr.3m 0444 root bin
 f usr/share/man/man3m/modf.3m 0444 root bin
 f usr/share/man/man3m/nan.3m 0444 root bin
+s usr/share/man/man3m/nanf.3m=nan.3m
+s usr/share/man/man3m/nanl.3m=nan.3m
 f usr/share/man/man3m/nearbyint.3m 0444 root bin
 f usr/share/man/man3m/nextafter.3m 0444 root bin
 f usr/share/man/man3m/pow.3m 0444 root bin
@@ -19326,7 +19350,6 @@ f usr/share/man/man7d/ticlts.7d 0444 root bin
 s usr/share/man/man7d/ticots.7d=ticlts.7d
 s usr/share/man/man7d/ticotsord.7d=ticlts.7d
 f usr/share/man/man7d/tty.7d 0444 root bin
-f usr/share/man/man7d/ttymux.7d 0444 root bin
 f usr/share/man/man7d/tzmon.7d 0444 root bin
 f usr/share/man/man7d/ufm.7d 0444 root bin
 f usr/share/man/man7d/ugen.7d 0444 root bin

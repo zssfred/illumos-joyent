@@ -11,6 +11,7 @@
 
 #
 # Copyright 2016 Toomas Soome <tsoome@me.com>
+# Copyright 2019 Joyent, Inc.
 #
 
 #
@@ -85,6 +86,9 @@ _bzlib.o _crctable.o _decompress.o _huffman.o _randtable.o bzipfs.o \
 := CFLAGS += -DBZ_LOADER -DBZ_NO_STDIO -DBZ_NO_COMPRESS
 SRCS +=	libstand_bzlib_private.h
 
+# too hairy
+_inflate.o := SMATCH=off
+
 SRCS +=	_bzlib.c _crctable.c _decompress.c _huffman.c _randtable.c
 OBJS +=	_bzlib.o _crctable.o _decompress.o _huffman.o _randtable.o
 CLEANFILES +=	_bzlib.c _crctable.c _decompress.c _huffman.c _randtable.c
@@ -158,6 +162,11 @@ libstand_gzguts.h: $(ZLIB)/gzguts.h
 	    $^ > $@
 
 CLEANFILES += libstand_zutil.h libstand_gzguts.h
+
+# lz4 decompression functionality
+lz4.o := CPPFLAGS += -I$(LZ4)
+SRCS += $(LZ4)/lz4.c
+OBJS += lz4.o
 
 # io routines
 SRCS +=	$(SASRC)/closeall.c $(SASRC)/dev.c \

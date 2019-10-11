@@ -25,7 +25,7 @@
  * Portions Copyright 2011 Martin Matuska
  * Copyright 2015, OmniTI Computer Consulting, Inc. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
- * Copyright (c) 2014, 2016 Joyent, Inc. All rights reserved.
+ * Copyright 2019 Joyent, Inc.
  * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
@@ -193,6 +193,7 @@
 #include <sys/vdev_removal.h>
 #include <sys/vdev_impl.h>
 #include <sys/vdev_initialize.h>
+#include <sys/vdev_trim.h>
 #include <sys/dsl_crypt.h>
 
 #include "zfs_namecheck.h"
@@ -248,9 +249,18 @@ static const char *userquota_perms[] = {
 	ZFS_DELEG_PERM_USERQUOTA,
 	ZFS_DELEG_PERM_GROUPUSED,
 	ZFS_DELEG_PERM_GROUPQUOTA,
+	ZFS_DELEG_PERM_USEROBJUSED,
+	ZFS_DELEG_PERM_USEROBJQUOTA,
+	ZFS_DELEG_PERM_GROUPOBJUSED,
+	ZFS_DELEG_PERM_GROUPOBJQUOTA,
+	ZFS_DELEG_PERM_PROJECTUSED,
+	ZFS_DELEG_PERM_PROJECTQUOTA,
+	ZFS_DELEG_PERM_PROJECTOBJUSED,
+	ZFS_DELEG_PERM_PROJECTOBJQUOTA,
 };
 
 static int zfs_ioc_userspace_upgrade(zfs_cmd_t *zc);
+static int zfs_ioc_id_quota_upgrade(zfs_cmd_t *zc);
 static int zfs_check_settable(const char *name, nvpair_t *property,
     cred_t *cr);
 static int zfs_check_clearable(char *dataset, nvlist_t *props,
@@ -1209,13 +1219,19 @@ zfs_secpolicy_userspace_one(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
 		 * themself, allow it.
 		 */
 		if (zc->zc_objset_type == ZFS_PROP_USERUSED ||
-		    zc->zc_objset_type == ZFS_PROP_USERQUOTA) {
+		    zc->zc_objset_type == ZFS_PROP_USERQUOTA ||
+		    zc->zc_objset_type == ZFS_PROP_USEROBJUSED ||
+		    zc->zc_objset_type == ZFS_PROP_USEROBJQUOTA) {
 			if (zc->zc_guid == crgetuid(cr))
 				return (0);
-		} else {
+		} else if (zc->zc_objset_type == ZFS_PROP_GROUPUSED ||
+		    zc->zc_objset_type == ZFS_PROP_GROUPQUOTA ||
+		    zc->zc_objset_type == ZFS_PROP_GROUPOBJUSED ||
+		    zc->zc_objset_type == ZFS_PROP_GROUPOBJQUOTA) {
 			if (groupmember(zc->zc_guid, cr))
 				return (0);
 		}
+		/* else is for project quota/used */
 	}
 
 	return (zfs_secpolicy_write_perms(zc->zc_name,
@@ -1478,7 +1494,7 @@ zfsvfs_hold(const char *name, void *tag, zfsvfs_t **zfvp, boolean_t writer)
 	int error = 0;
 
 	if (getzfsvfs(name, zfvp) != 0)
-		error = zfsvfs_create(name, zfvp);
+		error = zfsvfs_create(name, B_FALSE, zfvp);
 	if (error == 0) {
 		rrm_enter(&(*zfvp)->z_teardown_lock, (writer) ? RW_WRITER :
 		    RW_READER, tag);
@@ -2178,7 +2194,7 @@ zfs_ioc_objset_stats(zfs_cmd_t *zc)
 	boolean_t cachedpropsonly = B_FALSE;
 	int error;
 
-	if (zc->zc_nvlist_src != NULL &&
+	if (zc->zc_nvlist_src != (uintptr_t)NULL &&
 	    (error = get_nvlist(zc->zc_nvlist_src, zc->zc_nvlist_src_size,
 	    zc->zc_iflags, &nvl) != 0))
 		return (error);
@@ -2390,7 +2406,7 @@ zfs_ioc_snapshot_list_next(zfs_cmd_t *zc)
 	boolean_t cachedpropsonly = B_FALSE;
 	int error;
 
-	if (zc->zc_nvlist_src != NULL &&
+	if (zc->zc_nvlist_src != (uintptr_t)NULL &&
 	    (error = get_nvlist(zc->zc_nvlist_src, zc->zc_nvlist_src_size,
 	    zc->zc_iflags, &nvl) != 0))
 		return (error);
@@ -2587,6 +2603,7 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 			zc = kmem_zalloc(sizeof (zfs_cmd_t), KM_SLEEP);
 			(void) strcpy(zc->zc_name, dsname);
 			(void) zfs_ioc_userspace_upgrade(zc);
+			(void) zfs_ioc_id_quota_upgrade(zc);
 			kmem_free(zc, sizeof (zfs_cmd_t));
 		}
 		break;
@@ -3865,72 +3882,146 @@ zfs_ioc_destroy(zfs_cmd_t *zc)
 
 /*
  * innvl: {
- *     vdevs: {
- *         guid 1, guid 2, ...
+ *     "initialize_command" -> POOL_INITIALIZE_{CANCEL|START|SUSPEND} (uint64)
+ *     "initialize_vdevs": { -> guids to initialize (nvlist)
+ *         "vdev_path_1": vdev_guid_1, (uint64),
+ *         "vdev_path_2": vdev_guid_2, (uint64),
+ *         ...
  *     },
- *     func: POOL_INITIALIZE_{CANCEL|DO|SUSPEND}
  * }
  *
  * outnvl: {
- *     [func: EINVAL (if provided command type didn't make sense)],
- *     [vdevs: {
- *         guid1: errno, (see function body for possible errnos)
+ *     "initialize_vdevs": { -> initialization errors (nvlist)
+ *         "vdev_path_1": errno, see function body for possible errnos (uint64)
+ *         "vdev_path_2": errno, ... (uint64)
  *         ...
- *     }]
+ *     }
  * }
  *
+ * EINVAL is returned for an unknown command or if any of the provided vdev
+ * guids have be specified with a type other than uint64.
  */
 static int
 zfs_ioc_pool_initialize(const char *poolname, nvlist_t *innvl, nvlist_t *outnvl)
 {
-	spa_t *spa;
-	int error;
-
-	error = spa_open(poolname, &spa, FTAG);
-	if (error != 0)
-		return (error);
-
 	uint64_t cmd_type;
 	if (nvlist_lookup_uint64(innvl, ZPOOL_INITIALIZE_COMMAND,
 	    &cmd_type) != 0) {
-		spa_close(spa, FTAG);
 		return (SET_ERROR(EINVAL));
 	}
+
 	if (!(cmd_type == POOL_INITIALIZE_CANCEL ||
-	    cmd_type == POOL_INITIALIZE_DO ||
+	    cmd_type == POOL_INITIALIZE_START ||
 	    cmd_type == POOL_INITIALIZE_SUSPEND)) {
-		spa_close(spa, FTAG);
 		return (SET_ERROR(EINVAL));
 	}
 
 	nvlist_t *vdev_guids;
 	if (nvlist_lookup_nvlist(innvl, ZPOOL_INITIALIZE_VDEVS,
 	    &vdev_guids) != 0) {
-		spa_close(spa, FTAG);
 		return (SET_ERROR(EINVAL));
 	}
 
-	nvlist_t *vdev_errlist = fnvlist_alloc();
-	int total_errors = 0;
-
 	for (nvpair_t *pair = nvlist_next_nvpair(vdev_guids, NULL);
 	    pair != NULL; pair = nvlist_next_nvpair(vdev_guids, pair)) {
-		uint64_t vdev_guid = fnvpair_value_uint64(pair);
-
-		error = spa_vdev_initialize(spa, vdev_guid, cmd_type);
-		if (error != 0) {
-			char guid_as_str[MAXNAMELEN];
-
-			(void) snprintf(guid_as_str, sizeof (guid_as_str),
-			    "%llu", (unsigned long long)vdev_guid);
-			fnvlist_add_int64(vdev_errlist, guid_as_str, error);
-			total_errors++;
+		uint64_t vdev_guid;
+		if (nvpair_value_uint64(pair, &vdev_guid) != 0) {
+			return (SET_ERROR(EINVAL));
 		}
 	}
+
+	spa_t *spa;
+	int error = spa_open(poolname, &spa, FTAG);
+	if (error != 0)
+		return (error);
+
+	nvlist_t *vdev_errlist = fnvlist_alloc();
+	int total_errors = spa_vdev_initialize(spa, vdev_guids, cmd_type,
+	    vdev_errlist);
+
 	if (fnvlist_size(vdev_errlist) > 0) {
 		fnvlist_add_nvlist(outnvl, ZPOOL_INITIALIZE_VDEVS,
 		    vdev_errlist);
 	}
+	fnvlist_free(vdev_errlist);
+
+	spa_close(spa, FTAG);
+	return (total_errors > 0 ? EINVAL : 0);
+}
+
+/*
+ * innvl: {
+ *     "trim_command" -> POOL_TRIM_{CANCEL|START|SUSPEND} (uint64)
+ *     "trim_vdevs": { -> guids to TRIM (nvlist)
+ *         "vdev_path_1": vdev_guid_1, (uint64),
+ *         "vdev_path_2": vdev_guid_2, (uint64),
+ *         ...
+ *     },
+ *     "trim_rate" -> Target TRIM rate in bytes/sec.
+ *     "trim_secure" -> Set to request a secure TRIM.
+ * }
+ *
+ * outnvl: {
+ *     "trim_vdevs": { -> TRIM errors (nvlist)
+ *         "vdev_path_1": errno, see function body for possible errnos (uint64)
+ *         "vdev_path_2": errno, ... (uint64)
+ *         ...
+ *     }
+ * }
+ *
+ * EINVAL is returned for an unknown command or if any of the provided vdev
+ * guids have be specified with a type other than uint64.
+ */
+
+static int
+zfs_ioc_pool_trim(const char *poolname, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	uint64_t cmd_type;
+	if (nvlist_lookup_uint64(innvl, ZPOOL_TRIM_COMMAND, &cmd_type) != 0)
+		return (SET_ERROR(EINVAL));
+
+	if (!(cmd_type == POOL_TRIM_CANCEL ||
+	    cmd_type == POOL_TRIM_START ||
+	    cmd_type == POOL_TRIM_SUSPEND)) {
+		return (SET_ERROR(EINVAL));
+	}
+
+	nvlist_t *vdev_guids;
+	if (nvlist_lookup_nvlist(innvl, ZPOOL_TRIM_VDEVS, &vdev_guids) != 0)
+		return (SET_ERROR(EINVAL));
+
+	for (nvpair_t *pair = nvlist_next_nvpair(vdev_guids, NULL);
+	    pair != NULL; pair = nvlist_next_nvpair(vdev_guids, pair)) {
+		uint64_t vdev_guid;
+		if (nvpair_value_uint64(pair, &vdev_guid) != 0) {
+			return (SET_ERROR(EINVAL));
+		}
+	}
+
+	/* Optional, defaults to maximum rate when not provided */
+	uint64_t rate;
+	if (nvlist_lookup_uint64(innvl, ZPOOL_TRIM_RATE, &rate) != 0)
+		rate = 0;
+
+	/* Optional, defaults to standard TRIM when not provided */
+	boolean_t secure;
+	if (nvlist_lookup_boolean_value(innvl, ZPOOL_TRIM_SECURE,
+	    &secure) != 0) {
+		secure = B_FALSE;
+	}
+
+	spa_t *spa;
+	int error = spa_open(poolname, &spa, FTAG);
+	if (error != 0)
+		return (error);
+
+	nvlist_t *vdev_errlist = fnvlist_alloc();
+	int total_errors = spa_vdev_trim(spa, vdev_guids, cmd_type,
+	    rate, !!zfs_trim_metaslab_skip, secure, vdev_errlist);
+
+	if (fnvlist_size(vdev_errlist) > 0)
+		fnvlist_add_nvlist(outnvl, ZPOOL_TRIM_VDEVS, vdev_errlist);
+
 	fnvlist_free(vdev_errlist);
 
 	spa_close(spa, FTAG);
@@ -4081,15 +4172,35 @@ zfs_check_settable(const char *dsname, nvpair_t *pair, cred_t *cr)
 			    zfs_userquota_prop_prefixes[ZFS_PROP_USERQUOTA];
 			const char *gq_prefix =
 			    zfs_userquota_prop_prefixes[ZFS_PROP_GROUPQUOTA];
+			const char *uiq_prefix =
+			    zfs_userquota_prop_prefixes[ZFS_PROP_USEROBJQUOTA];
+			const char *giq_prefix =
+			    zfs_userquota_prop_prefixes[ZFS_PROP_GROUPOBJQUOTA];
+			const char *pq_prefix =
+			    zfs_userquota_prop_prefixes[ZFS_PROP_PROJECTQUOTA];
+			const char *piq_prefix = zfs_userquota_prop_prefixes[\
+			    ZFS_PROP_PROJECTOBJQUOTA];
 
 			if (strncmp(propname, uq_prefix,
 			    strlen(uq_prefix)) == 0) {
 				perm = ZFS_DELEG_PERM_USERQUOTA;
+			} else if (strncmp(propname, uiq_prefix,
+			    strlen(uiq_prefix)) == 0) {
+				perm = ZFS_DELEG_PERM_USEROBJQUOTA;
 			} else if (strncmp(propname, gq_prefix,
 			    strlen(gq_prefix)) == 0) {
 				perm = ZFS_DELEG_PERM_GROUPQUOTA;
+			} else if (strncmp(propname, giq_prefix,
+			    strlen(giq_prefix)) == 0) {
+				perm = ZFS_DELEG_PERM_GROUPOBJQUOTA;
+			} else if (strncmp(propname, pq_prefix,
+			    strlen(pq_prefix)) == 0) {
+				perm = ZFS_DELEG_PERM_PROJECTQUOTA;
+			} else if (strncmp(propname, piq_prefix,
+			    strlen(piq_prefix)) == 0) {
+				perm = ZFS_DELEG_PERM_PROJECTOBJQUOTA;
 			} else {
-				/* USERUSED and GROUPUSED are read-only */
+				/* {USER|GROUP|PROJECT}USED are read-only */
 				return (SET_ERROR(EINVAL));
 			}
 
@@ -5282,7 +5393,7 @@ zfs_ioc_promote(zfs_cmd_t *zc)
 }
 
 /*
- * Retrieve a single {user|group}{used|quota}@... property.
+ * Retrieve a single {user|group|project}{used|quota}@... property.
  *
  * inputs:
  * zc_name	name of filesystem
@@ -5396,6 +5507,49 @@ zfs_ioc_userspace_upgrade(zfs_cmd_t *zc)
 		error = dmu_objset_userspace_upgrade(os);
 		dmu_objset_rele_flags(os, B_TRUE, FTAG);
 	}
+
+	return (error);
+}
+
+/*
+ * inputs:
+ * zc_name		name of filesystem
+ *
+ * outputs:
+ * none
+ */
+static int
+zfs_ioc_id_quota_upgrade(zfs_cmd_t *zc)
+{
+	objset_t *os;
+	int error;
+
+	error = dmu_objset_hold(zc->zc_name, FTAG, &os);
+	if (error != 0)
+		return (error);
+
+	dsl_dataset_long_hold(dmu_objset_ds(os), FTAG);
+	dsl_pool_rele(dmu_objset_pool(os), FTAG);
+
+	if (dmu_objset_userobjspace_upgradable(os) ||
+	    dmu_objset_projectquota_upgradable(os)) {
+		mutex_enter(&os->os_upgrade_lock);
+		if (os->os_upgrade_id == 0) {
+			/* clear potential error code and retry */
+			os->os_upgrade_status = 0;
+			mutex_exit(&os->os_upgrade_lock);
+
+			dmu_objset_id_quota_upgrade(os);
+		} else {
+			mutex_exit(&os->os_upgrade_lock);
+		}
+
+		taskq_wait_id(os->os_spa->spa_upgrade_taskq, os->os_upgrade_id);
+		error = os->os_upgrade_status;
+	}
+
+	dsl_dataset_long_rele(dmu_objset_ds(os), FTAG);
+	dsl_dataset_rele(dmu_objset_ds(os), FTAG);
 
 	return (error);
 }
@@ -6465,6 +6619,10 @@ zfs_ioctl_init(void)
 
 	zfs_ioctl_register("initialize", ZFS_IOC_POOL_INITIALIZE,
 	    zfs_ioc_pool_initialize, zfs_secpolicy_config, POOL_NAME,
+	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE);
+
+	zfs_ioctl_register("trim", ZFS_IOC_POOL_TRIM,
+	    zfs_ioc_pool_trim, zfs_secpolicy_config, POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE);
 
 	zfs_ioctl_register("sync", ZFS_IOC_POOL_SYNC,

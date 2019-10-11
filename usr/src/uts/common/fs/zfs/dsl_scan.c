@@ -23,7 +23,7 @@
  * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
  * Copyright 2016 Gary Mills
  * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
- * Copyright 2017 Joyent, Inc.
+ * Copyright 2019 Joyent, Inc.
  * Copyright (c) 2017 Datto Inc.
  */
 
@@ -957,13 +957,15 @@ dsl_scan_done(dsl_scan_t *scn, boolean_t complete, dmu_tx_t *tx)
 		 * will find the drives that need to be resilvered
 		 * when the machine reboots and start the resilver then.
 		 */
-		boolean_t resilver_needed =
-		    dsl_scan_clear_deferred(spa->spa_root_vdev, tx);
-		if (resilver_needed) {
-			spa_history_log_internal(spa,
-			    "starting deferred resilver", tx,
-			    "errors=%llu", spa_get_errlog_size(spa));
-			spa_async_request(spa, SPA_ASYNC_RESILVER);
+		if (spa_feature_is_enabled(spa, SPA_FEATURE_RESILVER_DEFER)) {
+			boolean_t resilver_needed =
+			    dsl_scan_clear_deferred(spa->spa_root_vdev, tx);
+			if (resilver_needed) {
+				spa_history_log_internal(spa,
+				    "starting deferred resilver", tx,
+				    "errors=%llu", spa_get_errlog_size(spa));
+				spa_async_request(spa, SPA_ASYNC_RESILVER);
+			}
 		}
 	}
 
@@ -1826,11 +1828,15 @@ dsl_scan_recurse(dsl_scan_t *scn, dsl_dataset_t *ds, dmu_objset_type_t ostype,
 
 		if (OBJSET_BUF_HAS_USERUSED(buf)) {
 			/*
-			 * We also always visit user/group accounting
+			 * We also always visit user/group/project accounting
 			 * objects, and never skip them, even if we are
 			 * suspending.  This is necessary so that the space
 			 * deltas from this txg get integrated.
 			 */
+			if (OBJSET_BUF_HAS_PROJECTUSED(buf))
+				dsl_scan_visitdnode(scn, ds, osp->os_type,
+				    &osp->os_projectused_dnode,
+				    DMU_PROJECTUSED_OBJECT, tx);
 			dsl_scan_visitdnode(scn, ds, osp->os_type,
 			    &osp->os_groupused_dnode,
 			    DMU_GROUPUSED_OBJECT, tx);
