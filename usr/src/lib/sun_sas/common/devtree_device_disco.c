@@ -908,7 +908,7 @@ get_attached_paths_info(di_path_t path, struct sun_sas_port *port_ptr)
 		}
 
 		os_dev_name = disco_port_ptr->port_attributes.OSDeviceName;
-		if (os_dev_name == '\0') {
+		if (os_dev_name[0] == '\0') {
 			size = sizeof (os_dev_name);
 			if (pathdevpath != NULL) {
 				(void) strlcpy(os_dev_name, pathdevpath, size);

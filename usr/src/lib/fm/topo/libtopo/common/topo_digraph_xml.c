@@ -16,6 +16,8 @@
 /*
  * XXX add comment
  */
+#include <time.h>
+#include <sys/utsname.h>
 #include <libxml/parser.h>
 #include <libtopo.h>
 
@@ -714,10 +716,22 @@ serialize_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx,
 int
 topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
 {
+	struct utsname uts = { 0 };
+	time_t utc_time;
+	char tstamp[25];
+
+	(void) uname(&uts);
+
+	(void) time(&utc_time);
+	(void) strftime(tstamp, sizeof (tstamp), "%Y-%m-%dT%H:%M:%SZ",
+	    gmtime(&utc_time));
+
 	(void) fprintf(fp, "<?xml version=\"1.0\"?>\n");
 	(void) fprintf(fp, "<!DOCTYPE topology SYSTEM \"%s\">\n", TDG_DTD);
-	(void) fprintf(fp, "<%s %s='%s'>\n", TDG_XML_TOPO_DIGRAPH,
-	    TDG_XML_SCHEME, tdg->tdg_scheme);
+	(void) fprintf(fp, "<%s %s='%s' %s='%s' %s='%s' %s='%s'>\n",
+	    TDG_XML_TOPO_DIGRAPH, TDG_XML_SCHEME, tdg->tdg_scheme,
+		TDG_XML_NODENAME, uts.nodename, TDG_XML_OSVERSION, uts.version,
+		TDG_XML_TSTAMP, tstamp);
 	(void) fprintf(fp, "<%s %s='%u'>\n", TDG_XML_VERTICES,
 	    TDG_XML_NELEM, tdg->tdg_nvertices);
 
@@ -1172,7 +1186,7 @@ topo_digraph_deserialize(topo_hdl_t *thp, const char *xml, size_t sz)
 
 	/*
 	 * As a sanity check, extract the DTD from the XML and verify it
-	 * matches the DTD a digraph topology.
+	 * matches the DTD for a digraph topology.
 	 */
 	if ((dtd = xmlGetIntSubset(doc)) == NULL) {
 		topo_dprintf(thp, TOPO_DBG_XML,  "document has no DTD.\n");
@@ -1204,7 +1218,7 @@ topo_digraph_deserialize(topo_hdl_t *thp, const char *xml, size_t sz)
 
 	/*
 	 * Load the topo module associated with this FMRI scheme and then get a
-	 * pointer to it's empty digraph.
+	 * pointer to its empty digraph.
 	 */
 	if ((mod = topo_mod_lookup(thp, (const char *)scheme, 1)) == NULL) {
 		topo_dprintf(thp, TOPO_DBG_XML, "failed to load %s module",
