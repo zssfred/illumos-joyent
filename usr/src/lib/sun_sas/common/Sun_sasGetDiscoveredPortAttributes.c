@@ -23,6 +23,9 @@
  * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+/*
+ * Copyright 2019 Joyent, Inc.
+ */
 
 #include    <sun_sas.h>
 
@@ -31,8 +34,9 @@
  */
 HBA_STATUS
 Sun_sasGetDiscoveredPortAttributes(HBA_HANDLE handle,
-	    HBA_UINT32 port, HBA_UINT32 discoveredport,
-	    SMHBA_PORTATTRIBUTES *attributes) {
+    HBA_UINT32 port, HBA_UINT32 discoveredport,
+    SMHBA_PORTATTRIBUTES *attributes)
+{
 	const char		ROUTINE[] =
 	    "Sun_sasGetDiscoveredPortAttributes";
 	HBA_STATUS		status;
@@ -42,10 +46,10 @@ Sun_sasGetDiscoveredPortAttributes(HBA_HANDLE handle,
 	int			index;
 
 	if (attributes == NULL) {
-	    log(LOG_DEBUG, ROUTINE,
-		"NULL attributes argument. Handle %08lx, port %d, "
-		"discovered port %d", handle, port, discoveredport);
-	    return (HBA_STATUS_ERROR_ARG);
+		log(LOG_DEBUG, ROUTINE,
+		    "NULL attributes argument. Handle %08lx, port %d, "
+		    "discovered port %d", handle, port, discoveredport);
+		return (HBA_STATUS_ERROR_ARG);
 	}
 
 	lock(&all_hbas_lock);
@@ -53,26 +57,25 @@ Sun_sasGetDiscoveredPortAttributes(HBA_HANDLE handle,
 	lock(&open_handles_lock);
 	hba_ptr = RetrieveHandle(index);
 	if (hba_ptr == NULL) {
-	    log(LOG_DEBUG, ROUTINE,
-		"Invalid handle %08lx.", handle);
-	    unlock(&open_handles_lock);
-	    unlock(&all_hbas_lock);
-	    return (HBA_STATUS_ERROR_INVALID_HANDLE);
+		log(LOG_DEBUG, ROUTINE, "Invalid handle %08lx.", handle);
+		unlock(&open_handles_lock);
+		unlock(&all_hbas_lock);
+		return (HBA_STATUS_ERROR_INVALID_HANDLE);
 	}
 
 	/* Check for stale data */
 	status = verifyAdapter(hba_ptr);
 	if (status != HBA_STATUS_OK) {
-	    log(LOG_DEBUG, ROUTINE, "Verify Adapter failed");
-	    unlock(&open_handles_lock);
-	    unlock(&all_hbas_lock);
-	    return (status);
+		log(LOG_DEBUG, ROUTINE, "Verify Adapter failed");
+		unlock(&open_handles_lock);
+		unlock(&all_hbas_lock);
+		return (status);
 	}
 
 
 	if (hba_ptr->first_port == NULL) {
 		/* This is probably an internal failure of the library */
-		if (strlen(hba_ptr->device_path) > 0) {
+		if (hba_ptr->device_path[0] != '\0') {
 			log(LOG_DEBUG, ROUTINE, "Internal failure:  Adapter %s"
 			    " contains no port data", hba_ptr->device_path);
 		} else {
@@ -125,7 +128,7 @@ Sun_sasGetDiscoveredPortAttributes(HBA_HANDLE handle,
 			    sizeof (attributes->OSDeviceName));
 			(void) memcpy(attributes->PortSpecificAttribute.SASPort,
 			    hba_disco_port->port_attributes.\
-		            PortSpecificAttribute.SASPort,
+			    PortSpecificAttribute.SASPort,
 			    sizeof (struct SMHBA_SAS_Port));
 		}
 	} else {

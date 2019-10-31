@@ -129,7 +129,7 @@ Sun_sasGetPhyStatistics(HBA_HANDLE handle, HBA_UINT32 port, HBA_UINT32 phy,
 
 
 	/* First, we need the deivce path to locate the devinfo node. */
-	(void *) strlcpy(path, hba_port_ptr->device_path,
+	(void) strlcpy(path, hba_port_ptr->device_path,
 	    sizeof (path));
 	charptr = strrchr(path, ':');
 	if (charptr) {

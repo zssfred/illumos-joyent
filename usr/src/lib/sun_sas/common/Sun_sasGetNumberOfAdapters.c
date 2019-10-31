@@ -34,7 +34,7 @@
  * current number of HBAs, even if this changes
  */
 HBA_UINT32
-Sun_sasGetNumberOfAdapters()
+Sun_sasGetNumberOfAdapters(void)
 {
 	int count;
 	struct sun_sas_hba	*hba_ptr;

@@ -51,7 +51,11 @@ Sun_sasGetAdapterName(HBA_UINT32 index, char *name)
 	for (hba_ptr = global_hba_head; hba_ptr != NULL;
 	    hba_ptr = hba_ptr->next) {
 		if (hba_ptr->index == index) {
-		    	/*
+			if (hba_ptr->handle_name[0] == '\0') {
+				hba_ptr = NULL;
+				break;
+			}
+			/*
 			 * Flaw in the spec!  How do we know the size of name?
 			 */
 			(void) strlcpy(name, hba_ptr->handle_name,

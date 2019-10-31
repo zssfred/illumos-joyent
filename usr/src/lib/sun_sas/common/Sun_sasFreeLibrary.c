@@ -34,9 +34,9 @@
  * to free all resources
  */
 HBA_STATUS
-Sun_sasFreeLibrary()
+Sun_sasFreeLibrary(void)
 {
-	HBA_STATUS 	status;
+	HBA_STATUS status;
 
 	lock(&all_hbas_lock);
 

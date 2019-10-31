@@ -70,9 +70,9 @@ SendScsiInquiry(const char *devpath, HBA_UINT8 cdb1, HBA_UINT8 cdb2,
  */
 HBA_STATUS
 Sun_sasScsiInquiry(HBA_HANDLE handle, HBA_WWN portWWN, HBA_WWN targetPortWWN,
-	    HBA_WWN domainPortWWN, SMHBA_SCSILUN smhbaLUN, HBA_UINT8 cdb1,
-	    HBA_UINT8 cdb2, void *responseBuffer, HBA_UINT32 *responseSize,
-	    HBA_UINT8 *scsiStatus, void *senseBuffer, HBA_UINT32 *senseSize)
+    HBA_WWN domainPortWWN, SMHBA_SCSILUN smhbaLUN, HBA_UINT8 cdb1,
+    HBA_UINT8 cdb2, void *responseBuffer, HBA_UINT32 *responseSize,
+    HBA_UINT8 *scsiStatus, void *senseBuffer, HBA_UINT32 *senseSize)
 {
 	const char		ROUTINE[] = "Sun_sasScsiInquiry";
 	HBA_STATUS		status;
@@ -134,7 +134,7 @@ Sun_sasScsiInquiry(HBA_HANDLE handle, HBA_WWN portWWN, HBA_WWN targetPortWWN,
 	 * By verifying this information here, we will take a big performance
 	 * hit.  This check will be done later only if the Inquiry ioctl fails
 	 */
-	if (strlen(hba_ptr->device_path) == 0) {
+	if (hba_ptr->device_path[0] == '\0') {
 		log(LOG_DEBUG, ROUTINE,
 		    "HBA handle had empty device path. \
 		    Unable to send SCSI cmd");

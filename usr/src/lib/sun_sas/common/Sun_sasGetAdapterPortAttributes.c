@@ -70,7 +70,7 @@ Sun_sasGetAdapterPortAttributes(HBA_HANDLE handle, HBA_UINT32 port,
 
 	if (hba_ptr->first_port == NULL) {
 		/* This is probably an internal failure of the library */
-		if (strlen(hba_ptr->device_path) > 0) {
+		if (hba_ptr->device_path[0] != '\0') {
 			log(LOG_DEBUG, ROUTINE, "Internal failure:  Adapter "
 			    "%s contains no port data", hba_ptr->device_path);
 		} else {
