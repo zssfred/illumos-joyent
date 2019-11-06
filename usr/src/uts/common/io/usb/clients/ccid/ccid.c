@@ -19,12 +19,12 @@
  * Slot Detection
  * --------------
  *
- * A CCID reader has one or more slots, each of which may or may not have a card
- * present. Some devices actually have a card that's permanently plugged in
- * while other readers allow for cards to be inserted and removed. We model all
- * CCID readers that don't have removable cards as ones that are removable, but
- * never fire any events. Removable devices are required to have an Interrupt-IN
- * pipe.
+ * A CCID reader has one or more slots, each of which may or may not have a ICC
+ * (integrated circuit card) present. Some readers actually have a card that's
+ * permanently plugged in while other readers allow for cards to be inserted and
+ * removed. We model all CCID readers that don't have removable cards as ones
+ * that are removable, but never fire any events. Readers with removable cards
+ * are required to have an Interrupt-IN pipe.
  *
  * Each slot starts in an unknown state. After attaching we always kick off a
  * discovery. When a change event comes in, that causes us to kick off a
@@ -34,8 +34,8 @@
  * initial Interrupt-IN polling to allow for the case where either the hardware
  * doesn't report it or to better handle the devices without an Interrupt-IN
  * entry. Just because we open up the Interupt-IN pipe, hardware is not
- * obligated to tell us, as the adding and removing a driver will not cause a
- * power cycle.
+ * obligated to tell us, as the detaching and reattaching of a driver will not
+ * cause a power cycle.
  *
  * The Interrupt-IN exception callback may need to restart polling. In addition,
  * we may fail to start or restart polling due to a transient issue. In cases
@@ -50,13 +50,12 @@
  * Two state flags are used to keep track of this dance: CCID_F_WORKER_REQUESTED
  * and CCID_F_WORKER_RUNNING. The first is used to indicate that discovery is
  * desired. The second is to indicate that it is actively running. When
- * discovery is requested, the caller first checks to make sure the current
- * flags. If neither flag is set, then it knows that it can kick off discovery.
- * Regardless if it can kick off the taskq, it always sets requested. Once the
- * taskq entry starts, it removes any DISCOVER_REQUESTED flags and sets
- * DISCOVER_RUNNING. If at the end of discovery, we find that another request
- * has been made, the discovery function will kick off another entry in the
- * taskq.
+ * discovery is requested, the caller first checks the current flags. If neither
+ * flag is set, then it knows that it can kick off discovery. Regardless if it
+ * can kick off the taskq, it always sets requested. Once the taskq entry
+ * starts, it removes any DISCOVER_REQUESTED flags and sets DISCOVER_RUNNING. If
+ * at the end of discovery, we find that another request has been made, the
+ * discovery function will kick off another entry in the taskq.
  *
  * The one possible problem with this model is that it means that we aren't
  * throttling the set of incoming requests with respect to taskq dispatches.
@@ -85,15 +84,53 @@
  *
  * To simplify the driver, we only support issuing a single command to a CCID
  * reader at any given time. All commands that are outstanding are queued in a
- * global list ccid_command_queue. The head of the queue is the current command
- * that we believe is outstanding to the reader or will be shortly. The command
- * is issued by sending a Bulk-OUT request with a CCID header. Once we have the
- * Bulk-OUT request acknowledged, we begin sending Bulk-IN messages to the
- * controller. Once the Bulk-IN message is acknowledged, then we complete the
- * command proceed to the next command. This is summarized in the following
- * state machine:
+ * per-device list ccid_command_queue. The head of the queue is the current
+ * command that we believe is outstanding to the reader or will be shortly. The
+ * command is issued by sending a Bulk-OUT request with a CCID header. Once we
+ * have the Bulk-OUT request acknowledged, we begin sending Bulk-IN messages to
+ * the controller. Once the Bulk-IN message is acknowledged, then we complete
+ * the command and proceed to the next command. This is summarized in the
+ * following state machine:
  *
- * XXX
+ *              +-----------------------------------------------------+
+ *              |                                                     |
+ *              |                        ccid_command_queue           |
+ *              |                    +---+---+---------+---+---+      |
+ *              v                    | h |   |         |   | t |      |
+ *  +-------------------------+      | e |   |         |   | a |      |
+ *  | ccid_command_dispatch() |<-----| a |   |   ...   |   | i |      |
+ *  +-----------+-------------+      | d |   |         |   | l |      |
+ *              |                    +---+---+---------+---+---+      |
+ *              v                                                     |
+ *  +-------------------------+      +-------------------------+      |
+ *  | usb_pipe_bulk_xfer()    |----->| ccid_dispatch_bulk_cb() |      |
+ *  | ccid_bulkout_pipe       |      +------------+------------+      |
+ *  +-------------------------+                   |                   |
+ *                                                |                   |
+ *              |                                 v                   |
+ *              |                    +-------------------------+      |
+ *              |                    | ccid_bulkin_schedule()  |      |
+ *              v                    +------------+------------+      |
+ *                                                |                   |
+ *     /--------------------\                     |                   |
+ *    /                      \                    v                   |
+ *    |  ###    CCID HW      |       +-------------------------+      |
+ *    |  ###                 |       | usb_pipe_bulk_xfer()    |      |
+ *    |                      | ----> | ccid_bulkin_pipe        |      |
+ *    |                      |       +------------+------------+      |
+ *    \                      /                    |                   |
+ *     \--------------------/                     |                   |
+ *                                                v                   |
+ *                                   +-------------------------+      |
+ *                                   | ccid_reply_bulk_cb()    |      |
+ *                                   +------------+------------+      |
+ *                                                |                   |
+ *                                                |                   |
+ *                                                v                   |
+ *                                   +-------------------------+      |
+ *                                   | ccid_command_complete() +------+
+ *                                   +-------------------------+
+ *
  *
  * APDU and TPDU Processing and Parameter Selection
  * ------------------------------------------------
@@ -103,9 +140,9 @@
  *
  * 1. Character Mode 2. TPDU Mode 3. Short APDU Mode 4. Extended APDU Mode
  *
- * Devices either support mode 1, mode 2, mode 3, or mode 3 and 4. All readers
+ * Readers either support mode 1, mode 2, mode 3, or mode 3 and 4. All readers
  * that support extended APDUs support short APDUs. At this time, we do not
- * support character mode.
+ * support character mode or TPDU mode.
  *
  * The ICC and the reader need to be in agreement in order for them to be able
  * to exchange information. The ICC indicates what it supports by replying to a
@@ -117,14 +154,14 @@
  *  o T=1
  *
  * These protocols are defined in the ISO/IEC 7816-3:2006 specification. When a
- * reader supports an APDU mode, then it does not have to worry about the
- * underlying protocol and can just send an application data unit (APDU).
- * Otherwise, the reader must take the application data (APDU) and transform it
+ * reader supports an APDU mode, then the driver does not have to worry about
+ * the underlying protocol and can just send an application data unit (APDU).
+ * Otherwise, the driver must take the application data (APDU) and transform it
  * into the form required by the corresponding protocol.
  *
  * There are several parameters that need to be negotiated to insure that the
  * protocols work correctly. To negotiate these parameters and to select a
- * protocol, the reader must construct a PPS (protocol and parameters structure)
+ * protocol, the driver must construct a PPS (protocol and parameters structure)
  * request and exchange that with the ICC. A reader may optionally take care of
  * performing this and indicates its support for this in dwFeatures member of
  * the USB class descriptor.
@@ -137,39 +174,8 @@
  * Both the negotiation and the setting of the parameters can be performed
  * automatically by the CCID reader. When the reader supports APDU exchanges,
  * then it must support some aspects of this negotiation. Because of that, we
- * never consider performing this for APDU related activity and only worry about
- * this for TPDU transfers.
- *
- * In the ATR data the device can indicate whether or not it supports
- * negotiating this information. If the hardware does not support negotiation,
- * then it likely does not support a PPS and in which case we need to program
- * the hardware with the parameters indicated by the ATR through a
- * CCID_REQUEST_SET_PARAMS command and do not need to negotiate a PPS.
- *
- * Many ICC devices support negotiation. When an ICC supporting negotiation is
- * first turned on then it enters into a default mode and uses the default
- * values while in that mode. The PPS may be used to change the protocol as well
- * as several parameters. Once the PPS has been agreed upon, this driver just
- * sends a CCID_REQUEST_SET_PARAMS command to inform the reader what is going
- * on.
- *
- * If the CCID reader supports neither of the hardware related mechanisms for a
- * PPS exchange, then we must do both of these. If hardware supports automatic
- * parameter negotiation then we do not need to send either the PPS or the
- * CCID_REQUEST_SET_PARAMS command.
- *
- * The ATR offers us what the hardware's maximum value of Di and Fi are. If the
- * reader supports higher speeds, then we will XXX
- *
- * XXX At the moment we're not adjusting any of the Di or Fi values beyond their
- * default.
- *
- * To summarize this all, the following is the flow chart we perform after
- * successfully powering on the device:
- *
- *  - If the reader supports APDU transfers, then we are done.
- *     XXX Depending on level of automation we may need to still do things.
- *  - If the reader supports XXX
+ * never consider performing this and only support readers that offer this kind
+ * of automation.
  *
  * User I/O Basics
  * ---------------
@@ -202,7 +208,7 @@
  *   4. CCID Reader state
  *
  * Of course, each level cares about the state above it. The kernel protocol
- * level state (2), cares about the User threads in I/O (1). The same is true
+ * level state (2) cares about the User threads in I/O (1). The same is true
  * with the other levels caring about the levels above it. With this in mind
  * there are three non-data path things that can go wrong:
  *
@@ -274,19 +280,14 @@
  *   notes in cleaning up in State 1. Importantly we need to _block_ on this
  *   activity.
  *
- *   Once that is done, we need to proceed to step 2. The way that this happens
- *   will depend on the protocol in use and the state that it has. For example,
- *   when performing APDU processing, this is as simple as waiting for that
- *   command to complete and/or potentially issues an abort or reset. However,
- *   for TPDU T=1 processing, we may need to issue subsequent commands to abort
- *   the state. The amount of work that we do depends on what the user
- *   configured options are when they ended the transaction. They may tell us to
- *   either reset or to keep the card in the same state.
+ *   Once that is done, we need to proceed to step 2. Since we're doing only
+ *   APDU processing, this is as simple as waiting for that command to complete
+ *   and/or potentially issues an abort or reset.
  *
- *   While this is ongoing an additional flag (XXX) will be set on the slot to
- *   make sure that we know that we can't issue new I/O or that we can't proceed
- *   to the next transaction until this phase is finished. XXX This feels rather
- *   rough.
+ *   While this is ongoing an additional flag (CCID_SLOT_F_NEED_IO_TEARDOWN)
+ *   will be set on the slot to make sure that we know that we can't issue new
+ *   I/O or that we can't proceed to the next transaction until this phase is
+ *   finished.
  *
  * Cleaning up State 3
  *
@@ -295,12 +296,10 @@
  *   finished being cleaned up. We will have to _block_ on this from the worker
  *   thread. The problem is that we have certain values such as the operations
  *   vector, the ATR data, etc. that we need to make sure are still valid while
- *   we're in the process of cleaning up state. Only once all that is done
- *   should we consider processing a new ICC insertion or dealing with other
- *   aspects of this. The one good side is that if the ICC was removed, then it
- *   should be simpler to handle all of the outstanding I/O.
- *
- *   XXX We need more details about how all this happens, etc.
+ *   we're in the process of cleaning up state. Once all that is done and the
+ *   worker thread proceeds we will consider processing a new ICC insertion.
+ *   The one good side is that if the ICC was removed, then it should be simpler
+ *   to handle all of the outstanding I/O.
  *
  * Cleaning up State 4
  *
@@ -310,83 +309,6 @@
  *   resources. Therefore, before we call detach, we need to explicitly clean up
  *   state 1; however, we then at this time leave all the remaining state to be
  *   cleaned up during detach(9E) as part of normal tear down.
- *
- *   XXX Is that really true, this seems like a lot of BS.
- */
-
-/*
- * Various XXX:
- *
- * o If hardware says that the ICC became shut down / disactivated. Should we
- * explicitly reactivate it as part of something or just make that a future
- * error?
- *  - Should we provide an ioctl to try to reactivate?
- *
- * o There is a series of edge cases that we need to handle with both read /
- *   write. These include:
- *
- *   + I/O in flight when end transaction occurs
- *       o Quiesce the I/O (may involve reset and abort) from a kernel
- *         perspective
- *       o Hand off to next transaction only when above is complete
- *       o POLLERR should signaled on the minor's pollhead
- *   + I/O in flight when ICC is removed
- *       o Quiesce the I/O from a kernel perspective
- *       o End the I/O with an ENXIO (maybe ECONNRESET?) from a user perspective
- *       o Kernel worker thread should block on kernel clean up, but not user
- *         consumption. We should not call into rx function to try and consume /
- *         clean up. It should get cleaned up by other functions.
- *       o POLLOUT is not signalled until both I/O is consumed and new ICC is
- *         present
- *       o POLLIN | POLLHUP should be signaled
- *   + I/O in flight when reader is removed
- *       o Ensure that I/O is quiesced from a kernel perspective, nothing should
- *         be queued for user
- *       o POLLERR | POLLHUP should be signaled to tell the user that this I/O
- *         is not coming back.
- *   + Blocked in read when an end transaction occurs
- *       o Quiesce the I/O (may involve reset and abort) form a kernel
- *         perspective
- *       o Signal and wake up the thread blocked in read(), it should get
- *         ECANCELED
- *       o Don't allow the transaction hand off to progress until read thread is
- *         gone
- *       o Follow all of the I/O in flight when transaction ends steps
- *   + Blocked in read when an ICC is removed
- *       o follow all I/O in flight when ICC is removed steps
- *       o Signal and wake up the thread blocked in read() to get the error set
- *         on disconnect.
- *   + Blocked in read when an reader is removed
- *       o Follow all normal I/O steps when reader removed
- *       o Signal and wake up the thread blocked in read(). It should check the
- *         DISCONNECTED, not the DETACHED flag.
- *   + Unread, but completed I/O when an end transaction occurs w/ ICC
- *       o Consume logical I/O state. Do not signal in this case
- *       o Potentially warm reset ICC
- *       o POLLERR should be raised with transaction end
- *   + Unread, but completed I/O when an end transaction occurs w/o ICC
- *       o Consume logical I/O state. Do not signal.
- *       o POLLERR should be raised with transaction end
- *   + Unread, but completed I/O when the ICC is removed
- *       o XXX This one is tricky, because we might want to reset our T=1 state
- *         on insertion of a new ICC before this is read. Ugh. Maybe we should
- *         pull out the mblk_t chain when the I/O is completed so we can
- *         disassociate this state.
- *       o Still need to signal POLLHUP, but POLLIN should already have been
- *         done
- *   + Unread, but completed I/O when the reader is removed
- *       o POLLERR | POLLHUP? should be signaled on the device
- *       o Outstanding I/O should be cleaned up as part of minor close
- *
- * o Proper POLLOUT on ICC insertion / activation
- *
- *
- *
- * o XXX We're not properly handling the case where we get a transport error,
- * say we get a time extension and we fail to schedule the next bulk request.
- * While today we'll clean up the I/O corectly, the actual ICC will still be
- * expecting us to take action. In which case we should request a reset and make
- * sure that write is blocked on that.
  */
 
 #include <sys/modctl.h>
@@ -409,7 +331,6 @@
 #include <sys/usb/clients/ccid/uccid.h>
 
 #include <atr.h>
-#include <ccid_t1.h>
 
 /*
  * Set the amount of parallelism we'll want to have from kernel threads which
@@ -433,8 +354,7 @@
 #define	CCID_BULK_NALLOCED		16
 
 /*
- * XXX This is a time in seconds for the bulk-out command to run and be
- * submitted. We'll need to evaluate this and see if it actually makes sense.
+ * This is a time in seconds for the bulk-out command to run and be submitted.
  */
 #define	CCID_BULK_OUT_TIMEOUT	5
 #define	CCID_BULK_IN_TIMEOUT	5
@@ -496,12 +416,13 @@ typedef enum ccid_minor_flags {
 	CCID_MINOR_F_HAS_EXCL		= 1 << 1,
 	CCID_MINOR_F_TXN_RESET		= 1 << 2,
 	CCID_MINOR_F_READ_WAITING	= 1 << 3,
+	CCID_MINOR_F_WRITABLE		= 1 << 4,
 } ccid_minor_flags_t;
 
 typedef struct ccid_minor {
-	ccid_minor_idx_t	cm_idx;		/* WO */ /* XXX: Whats 'WO'? */
-	cred_t			*cm_opener;	/* WO */
-	struct ccid_slot	*cm_slot;	/* WO */
+	ccid_minor_idx_t	cm_idx;		/* write-once */
+	cred_t			*cm_opener;	/* write-once */
+	struct ccid_slot	*cm_slot;	/* write-once */
 	list_node_t		cm_minor_list;
 	list_node_t		cm_excl_list;
 	kcondvar_t		cm_read_cv;
@@ -519,12 +440,13 @@ typedef enum ccid_slot_flags {
 	CCID_SLOT_F_ACTIVE		= 1 << 4,
 	CCID_SLOT_F_NEED_TXN_RESET	= 1 << 5,
 	CCID_SLOT_F_NEED_IO_TEARDOWN	= 1 << 6,
+	CCID_SLOT_F_INTR_OVERCURRENT	= 1 << 7,
 } ccid_slot_flags_t;
 
 #define	CCID_SLOT_F_INTR_MASK	(CCID_SLOT_F_CHANGED | CCID_SLOT_F_INTR_GONE | \
     CCID_SLOT_F_INTR_ADD)
 #define	CCID_SLOT_F_WORK_MASK	(CCID_SLOT_F_INTR_MASK | \
-    CCID_SLOT_F_NEED_TXN_RESET)
+    CCID_SLOT_F_NEED_TXN_RESET | CCID_SLOT_F_INTR_OVERCURRENT)
 #define	CCID_SLOT_F_NOEXCL_MASK	(CCID_SLOT_F_NEED_TXN_RESET | \
     CCID_SLOT_F_NEED_IO_TEARDOWN)
 
@@ -575,16 +497,6 @@ typedef enum ccid_io_flags {
 	 * idle and it should be safe to tear down.
 	 */
 	CCID_IO_F_DONE		= 1 << 2,
-	/*
-	 * This flag is used to indicate that a given I/O has been abandoned by
-	 * the user and that we need to clean things up before the ICC is usable
-	 * again.
-	 *
-	 * XXX Should this really be set? I'm now starting to wonder if this
-	 * would make more sense to have like we have the resetting flag.
-	 * Especially if for T=1 we issue an abort.
-	 */
-	CCID_IO_F_ABANDONED	= 1 << 3
 } ccid_io_flags_t;
 
 /*
@@ -607,7 +519,6 @@ typedef struct ccid_io {
 	struct ccid_command *ci_command;
 	int		ci_errno;
 	mblk_t		*ci_data;
-	t1_state_t	ci_t1;
 } ccid_io_t;
 
 typedef struct ccid_slot {
@@ -650,6 +561,7 @@ typedef enum ccid_flags {
 	CCID_F_DISCONNECTED	= 1 << 8
 } ccid_flags_t;
 
+#define	CCID_F_DEV_GONE_MASK	(CCID_F_DETACHING | CCID_F_DISCONNECTED)
 #define	CCID_F_WORKER_MASK	(CCID_F_WORKER_REQUESTED | \
     CCID_F_WORKER_RUNNING)
 #define	CCID_F_ICC_INIT_MASK	(CCID_F_NEEDS_PPS | CCID_F_NEEDS_PARAMS | \
@@ -717,6 +629,7 @@ typedef struct ccid_command {
 	list_node_t		cc_list_node;
 	kcondvar_t		cc_cv;
 	uint8_t			cc_mtype;
+	ccid_response_code_t	cc_rtype;
 	uint8_t			cc_slot;
 	ccid_command_state_t	cc_state;
 	ccid_command_flags_t	cc_flags;
@@ -761,18 +674,9 @@ static void ccid_command_free(ccid_command_t *);
 static int ccid_bulkin_schedule(ccid_t *);
 static void ccid_command_bcopy(ccid_command_t *, const void *, size_t);
 
-/*
- * XXX Are these needed?
- */
 static int ccid_write_apdu(ccid_t *, ccid_slot_t *);
 static void ccid_complete_apdu(ccid_t *, ccid_slot_t *, ccid_command_t *);
 static void ccid_teardown_apdu(ccid_t *, ccid_slot_t *, int);
-
-static void ccid_init_tpdu_t1(ccid_t *, ccid_slot_t *);
-static int ccid_write_tpdu_t1(ccid_t *, ccid_slot_t *);
-static void ccid_complete_tpdu_t1(ccid_t *, ccid_slot_t *, ccid_command_t *);
-static void ccid_teardown_tpdu_t1(ccid_t *, ccid_slot_t *, int);
-static void ccid_fini_tpdu_t1(ccid_t *, ccid_slot_t *);
 
 
 static int
@@ -971,11 +875,11 @@ ccid_slot_excl_rele(ccid_slot_t *slot)
 	pollwakeup(&cmp->cm_pollhead, POLLERR);
 
 	/*
-	 * If we've been asked to reset the device before handing it off,
-	 * schedule that. Otherwise, allow the next entry in the queue to get
-	 * woken up and given access to the device.
+	 * If we've been asked to reset the card before handing it off, schedule
+	 * that. Otherwise, allow the next entry in the queue to get woken up
+	 * and given access to the card.
 	 */
-	if (cmp->cm_flags & CCID_MINOR_F_TXN_RESET) {
+	if ((cmp->cm_flags & CCID_MINOR_F_TXN_RESET) != 0) {
 		slot->cs_flags |= CCID_SLOT_F_NEED_TXN_RESET;
 		ccid_worker_request(ccid);
 		cmp->cm_flags &= ~CCID_MINOR_F_TXN_RESET;
@@ -992,11 +896,11 @@ ccid_slot_excl_req(ccid_slot_t *slot, ccid_minor_t *cmp, boolean_t nosleep)
 	VERIFY(MUTEX_HELD(&slot->cs_ccid->ccid_mutex));
 
 	if (slot->cs_excl_minor == cmp) {
-		VERIFY(cmp->cm_flags & CCID_MINOR_F_HAS_EXCL);
+		VERIFY((cmp->cm_flags & CCID_MINOR_F_HAS_EXCL) != 0);
 		return (EEXIST);
 	}
 
-	if (cmp->cm_flags & CCID_MINOR_F_WAITING) {
+	if ((cmp->cm_flags & CCID_MINOR_F_WAITING) != 0) {
 		return (EINPROGRESS);
 	}
 
@@ -1023,8 +927,8 @@ ccid_slot_excl_req(ccid_slot_t *slot, ccid_minor_t *cmp, boolean_t nosleep)
 		if (cv_wait_sig(&cmp->cm_excl_cv, &slot->cs_ccid->ccid_mutex)
 		    == 0) {
 			/*
-			 * Remove ourselves from the list, but only signal the
-			 * next thread if XXX
+			 * Remove ourselves from the list and try to signal the
+			 * next thread.
 			 */
 			list_remove(&slot->cs_excl_waiters, cmp);
 			cmp->cm_flags &= ~CCID_MINOR_F_WAITING;
@@ -1041,11 +945,6 @@ ccid_slot_excl_req(ccid_slot_t *slot, ccid_minor_t *cmp, boolean_t nosleep)
 			cmp->cm_flags &= ~CCID_MINOR_F_WAITING;
 			return (ENODEV);
 		}
-
-		/*
-		 * XXX Waiting on a lock, need to reassert usability of device /
-		 * going awayness
-		 */
 	}
 
 	VERIFY0(slot->cs_flags & CCID_SLOT_F_NOEXCL_MASK);
@@ -1070,11 +969,17 @@ static void
 ccid_slot_pollin_signal(ccid_slot_t *slot)
 {
 	ccid_t *ccid = slot->cs_ccid;
-	ccid_minor_t *cmp;
+	ccid_minor_t *cmp = slot->cs_excl_minor;
+
+	if (cmp == NULL)
+		return;
 
 	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
 
-	/* XXX */
+	if ((slot->cs_io.ci_flags & CCID_IO_F_DONE) == 0)
+		return;
+
+	pollwakeup(&cmp->cm_pollhead, POLLIN | POLLRDNORM);
 }
 
 /*
@@ -1093,11 +998,20 @@ static void
 ccid_slot_pollout_signal(ccid_slot_t *slot)
 {
 	ccid_t *ccid = slot->cs_ccid;
-	ccid_minor_t *cmp;
+	ccid_minor_t *cmp = slot->cs_excl_minor;
+
+	if (cmp == NULL)
+		return;
 
 	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
 
-	/* XXX */
+	if ((slot->cs_io.ci_flags & CCID_IO_F_POLLOUT_FLAGS) != 0 ||
+	    (slot->cs_flags & CCID_SLOT_F_ACTIVE) == 0 ||
+	    (ccid->ccid_flags & CCID_F_DEV_GONE_MASK) != 0 ||
+	    (slot->cs_flags & CCID_SLOT_F_NEED_IO_TEARDOWN) != 0)
+		return;
+
+	pollwakeup(&cmp->cm_pollhead, POLLOUT);
 }
 
 static void
@@ -1109,14 +1023,11 @@ ccid_slot_io_teardown_done(ccid_slot_t *slot)
 	slot->cs_flags &= ~CCID_SLOT_F_NEED_IO_TEARDOWN;
 	cv_broadcast(&slot->cs_io.ci_cv);
 
-	/*
-	 * XXX Check if we're in a state where we should signal pollout, as we
-	 * might be.
-	 */
+	ccid_slot_pollout_signal(slot);
 }
 
 /*
- * XXX This will probably need to change when we start doing TPDU processing.
+ * This will probably need to change when we start doing TPDU processing.
  */
 static size_t
 ccid_command_resp_length(ccid_command_t *cc)
@@ -1139,15 +1050,14 @@ ccid_command_resp_length(ccid_command_t *cc)
 static uint8_t
 ccid_command_resp_param2(ccid_command_t *cc)
 {
-	uint8_t val;
 	const ccid_header_t *cch;
 
 	VERIFY3P(cc, !=, NULL);
 	VERIFY3P(cc->cc_response, !=, NULL);
 
 	cch = (ccid_header_t *)cc->cc_response->b_rptr;
-	bcopy(&cch->ch_param2, &val, sizeof (val));
-	return (val);
+
+	return (cch->ch_param2);
 }
 
 /*
@@ -1248,6 +1158,7 @@ ccid_reply_bulk_cb(usb_pipe_handle_t ph, usb_bulk_req_t *ubrp)
 {
 	size_t mlen;
 	ccid_t *ccid;
+	ccid_slot_t *slot;
 	ccid_header_t cch;
 	ccid_command_t *cc;
 
@@ -1275,6 +1186,8 @@ ccid_reply_bulk_cb(usb_pipe_handle_t ph, usb_bulk_req_t *ubrp)
 		usb_free_bulk_req(ubrp);
 		return;
 	}
+
+	slot = &ccid->ccid_slots[cc->cc_slot];
 
 	if (mlen >= sizeof (ccid_header_t)) {
 		bcopy(ubrp->bulk_data->b_rptr, &cch, sizeof (cch));
@@ -1315,15 +1228,18 @@ ccid_reply_bulk_cb(usb_pipe_handle_t ph, usb_bulk_req_t *ubrp)
 	}
 
 	/*
-	 * If the sequence number doesn't match the head of the list then we
-	 * should be very suspect of the hardware at this point. At a minimum we
-	 * should fail this command, XXX
+	 * If the sequence or slot number don't match the head of the list or
+	 * the response type is unexpected for this command then we should be
+	 * very suspect of the hardware at this point. At a minimum we should
+	 * fail this command and issue a reset.
 	 */
-	if (cch.ch_seq != cc->cc_seq) {
-		/*
-		 * XXX we should fail this command in a way to indicate that
-		 * this has happened and figure out how to clean up.
-		 */
+	if (cch.ch_seq != cc->cc_seq ||
+	    cch.ch_slot != cc->cc_slot ||
+	    cch.ch_mtype != cc->cc_rtype) {
+		ccid_command_state_transition(cc, CCID_COMMAND_CCID_ABORTED);
+		ccid_command_complete(cc);
+		slot->cs_flags |= CCID_SLOT_F_NEED_TXN_RESET;
+		ccid_worker_request(ccid);
 		mutex_exit(&ccid->ccid_mutex);
 		usb_free_bulk_req(ubrp);
 		return;
@@ -1331,12 +1247,13 @@ ccid_reply_bulk_cb(usb_pipe_handle_t ph, usb_bulk_req_t *ubrp)
 
 	/*
 	 * Check that we have all the bytes that we were told we'd have. If we
-	 * don't, simulate this as an aborted command. XXX is this the right
-	 * thing to do?
+	 * don't, simulate this as an aborted command and issue a reset.
 	 */
 	if (LE_32(cch.ch_length) + sizeof (ccid_header_t) > mlen) {
 		ccid_command_state_transition(cc, CCID_COMMAND_CCID_ABORTED);
 		ccid_command_complete(cc);
+		slot->cs_flags |= CCID_SLOT_F_NEED_TXN_RESET;
+		ccid_worker_request(ccid);
 		mutex_exit(&ccid->ccid_mutex);
 		usb_free_bulk_req(ubrp);
 		return;
@@ -1347,14 +1264,6 @@ ccid_reply_bulk_cb(usb_pipe_handle_t ph, usb_bulk_req_t *ubrp)
 	 * what the state of the command is. If the command indicates that more
 	 * time has been requested, then we need to schedule a new Bulk-IN
 	 * request.
-	 *
-	 * XXX Should we actually just always honor this and not check the
-	 * message type?
-	 *
-	 * XXX What about checking that the slot makes sense?
-	 *
-	 * XXX What about checking if the thing didn't post us all the bytes
-	 * that it said it would
 	 */
 	if (CCID_REPLY_STATUS(cch.ch_param0) == CCID_REPLY_STATUS_MORE_TIME) {
 		int ret;
@@ -1362,6 +1271,8 @@ ccid_reply_bulk_cb(usb_pipe_handle_t ph, usb_bulk_req_t *ubrp)
 		ret = ccid_bulkin_schedule(ccid);
 		if (ret != USB_SUCCESS) {
 			ccid_command_transport_error(cc, ret, USB_CR_OK);
+			slot->cs_flags |= CCID_SLOT_F_NEED_TXN_RESET;
+			ccid_worker_request(ccid);
 		}
 		mutex_exit(&ccid->ccid_mutex);
 		usb_free_bulk_req(ubrp);
@@ -1370,7 +1281,7 @@ ccid_reply_bulk_cb(usb_pipe_handle_t ph, usb_bulk_req_t *ubrp)
 
 	/*
 	 * Take the message block from the Bulk-IN request and store it on the
-	 * command. We wnat this regardless if it succeeded, failed, or we have
+	 * command. We want this regardless if it succeeded, failed, or we have
 	 * some unexpected status value.
 	 */
 	cc->cc_response = ubrp->bulk_data;
@@ -1484,7 +1395,7 @@ ccid_bulkin_schedule(ccid_t *ccid)
 		if ((ret = usb_pipe_bulk_xfer(ccid->ccid_bulkin_pipe, ubrp,
 		    0)) != USB_SUCCESS) {
 			ccid_error(ccid,
-			    "failed to schedule Bulk-In response: %d", ret);
+			    "!failed to schedule Bulk-In response: %d", ret);
 			usb_free_bulk_req(ubrp);
 			return (ret);
 		}
@@ -1508,7 +1419,7 @@ ccid_command_dispatch(ccid_t *ccid)
 	while ((cc = list_head(&ccid->ccid_command_queue)) != NULL) {
 		int ret;
 
-		if (ccid->ccid_flags & CCID_F_DETACHING)
+		if ((ccid->ccid_flags & CCID_F_DEV_GONE_MASK) != 0)
 			return;
 
 		/*
@@ -1540,7 +1451,7 @@ ccid_command_dispatch(ccid_t *ccid)
 			 * will be taken care of when the command itself is
 			 * freed.
 			 */
-			ccid_error(ccid, "Bulk pipe dispatch failed: %d\n",
+			ccid_error(ccid, "!Bulk pipe dispatch failed: %d\n",
 			    ret);
 			ccid_command_transport_error(cc, ret, USB_CR_OK);
 		}
@@ -1677,6 +1588,7 @@ ccid_command_alloc(ccid_t *ccid, ccid_slot_t *slot, boolean_t block,
 	int kmflag, usbflag;
 	ccid_command_t *cc;
 	ccid_header_t *cchead;
+	ccid_response_code_t rtype;
 
 	switch (mtype) {
 	case CCID_REQUEST_POWER_ON:
@@ -1696,6 +1608,39 @@ ccid_command_alloc(ccid_t *ccid, ccid_slot_t *slot, boolean_t block,
 	case CCID_REQUEST_SECURE:
 	case CCID_REQUEST_SET_PARAMS:
 	case CCID_REQUEST_DATA_CLOCK:
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	switch (mtype) {
+	case CCID_REQUEST_POWER_ON:
+	case CCID_REQUEST_SECURE:
+	case CCID_REQUEST_TRANSFER_BLOCK:
+		rtype = CCID_RESPONSE_DATA_BLOCK;
+		break;
+
+	case CCID_REQUEST_POWER_OFF:
+	case CCID_REQUEST_SLOT_STATUS:
+	case CCID_REQUEST_ICC_CLOCK:
+	case CCID_REQUEST_T0APDU:
+	case CCID_REQUEST_MECHANICAL:
+	case CCID_REQEUST_ABORT:
+		rtype = CCID_RESPONSE_SLOT_STATUS;
+		break;
+
+	case CCID_REQUEST_GET_PARAMS:
+	case CCID_REQUEST_RESET_PARAMS:
+	case CCID_REQUEST_SET_PARAMS:
+		rtype = CCID_RESPONSE_PARAMETERS;
+		break;
+
+	case CCID_REQUEST_ESCAPE:
+		rtype = CCID_RESPONSE_ESCAPE;
+		break;
+
+	case CCID_REQUEST_DATA_CLOCK:
+		rtype = CCID_RESPONSE_DATA_CLOCK;
 		break;
 	default:
 		return (EINVAL);
@@ -1733,6 +1678,7 @@ ccid_command_alloc(ccid_t *ccid, ccid_slot_t *slot, boolean_t block,
 	list_link_init(&cc->cc_list_node);
 	cv_init(&cc->cc_cv, NULL, CV_DRIVER, NULL);
 	cc->cc_mtype = mtype;
+	cc->cc_rtype = rtype;
 	cc->cc_slot = slot->cs_slotno;
 	cc->cc_reqlen = datasz;
 	cc->cc_ccid = ccid;
@@ -1781,7 +1727,8 @@ ccid_command_poll(ccid_t *ccid, ccid_command_t *cc)
 	VERIFY0(cc->cc_flags & CCID_COMMAND_F_USER);
 
 	mutex_enter(&ccid->ccid_mutex);
-	while (cc->cc_state < CCID_COMMAND_COMPLETE) {
+	while ((cc->cc_state < CCID_COMMAND_COMPLETE) &&
+	    (ccid->ccid_flags & CCID_F_DEV_GONE_MASK) == 0) {
 		cv_wait(&cc->cc_cv, &ccid->ccid_mutex);
 	}
 
@@ -1885,8 +1832,7 @@ ccid_command_power_on(ccid_t *ccid, ccid_slot_t *cs, ccid_class_voltage_t volt,
 	}
 
 	/*
-	 * XXX Assume slot and message type logic is being done for us. Look for
-	 * a few specific errors here:
+	 * Look for a few specific errors here:
 	 *
 	 * - ICC_MUTE via a few potential ways
 	 * - Bad voltage
@@ -1911,10 +1857,6 @@ ccid_command_power_on(ccid_t *ccid, ccid_slot_t *cs, ccid_class_voltage_t volt,
 
 		len = ccid_command_resp_length(cc);
 		if (len == 0) {
-			/*
-			 * XXX Could probably use more descriptive errors and
-			 * not errnos
-			 */
 			ret = EINVAL;
 			goto done;
 		}
@@ -1965,10 +1907,8 @@ ccid_command_get_parameters(ccid_t *ccid, ccid_slot_t *slot,
 		return (ret);
 	}
 
-	if ((ret = ccid_command_queue(ccid, cc)) != 0) {
-		ccid_command_free(cc);
-		return (ret);
-	}
+	if ((ret = ccid_command_queue(ccid, cc)) != 0)
+		goto done;
 
 	ccid_command_poll(ccid, cc);
 
@@ -2022,126 +1962,26 @@ done:
 	return (ret);
 }
 
-static int
-ccid_command_set_parameters(ccid_t *ccid, ccid_slot_t *slot,
-    atr_protocol_t protocol, void *params)
+static void
+ccid_hw_error(ccid_t *ccid, ccid_intr_hwerr_t *hwerr)
 {
-	int ret;
-	ccid_command_t *cc;
-	uint8_t prot;
-	size_t len;
-	ccid_reply_command_status_t crs;
-	ccid_reply_icc_status_t cis;
-	ccid_command_err_t cce;
+	ccid_slot_t *slot;
 
-	switch (protocol) {
-	case ATR_P_T0:
-		prot = 0;
-		len = sizeof (ccid_params_t0_t);
-		break;
-	case ATR_P_T1:
-		prot = 1;
-		len = sizeof (ccid_params_t1_t);
-		break;
-	default:
-		return (EINVAL);
-	}
+	/* Make sure the slot number is within range. */
+	if (hwerr->cih_slot >= ccid->ccid_nslots)
+		return;
 
-	if ((ret = ccid_command_alloc(ccid, slot, B_TRUE, NULL, len,
-	    CCID_REQUEST_SET_PARAMS, prot, 0, 0, &cc)) != 0) {
-		return (ret);
-	}
-	ccid_command_bcopy(cc, params, len);
-	if ((ret = ccid_command_queue(ccid, cc)) != 0) {
-		ccid_command_free(cc);
-		return (ret);
-	}
+	slot = &ccid->ccid_slots[hwerr->cih_slot];
 
-	ccid_command_poll(ccid, cc);
+	/* The only error condition defined by the spec is overcurrent. */
+	if (hwerr->cih_code != CCID_INTR_HWERR_OVERCURRENT)
+		return;
 
-	if (cc->cc_state != CCID_COMMAND_COMPLETE) {
-		ret = EIO;
-		goto done;
-	}
-
-	ccid_command_status_decode(cc, &crs, &cis, &cce);
-	if (crs != CCID_REPLY_STATUS_COMPLETE) {
-		if (cis == CCID_REPLY_ICC_MISSING) {
-			ret = ENXIO;
-		} else {
-			ccid_error(ccid, "failed to set parameters on slot %u: "
-			    "%u\n", slot->cs_slotno, cce);
-			ret = EIO;
-		}
-	} else {
-		ret = 0;
-	}
-
-done:
-	ccid_command_free(cc);
-	return (ret);
-}
-
-/*
- * Initiate a polled data transfer. This should not be used for any user I/O,
- * only for PPS and IFSD transactions while initializing the card. Generally
- * this is only used for CCID devices that support TPDU.
- */
-static int
-ccid_command_transfer(ccid_t *ccid, ccid_slot_t *slot, const void *buf,
-    size_t len, mblk_t **outp)
-{
-	int ret;
-	ccid_command_t *cc;
-	uint8_t *datap;
-	ccid_reply_command_status_t crs;
-	ccid_reply_icc_status_t cis;
-	ccid_command_err_t cce;
-
-	if (buf == NULL || len == 0 || outp == NULL)
-		return (EINVAL);
-
-	*outp = NULL;
-	if ((ret = ccid_command_alloc(ccid, slot, B_TRUE, NULL, len,
-	    CCID_REQUEST_TRANSFER_BLOCK, 0, 0, 0, &cc)) != 0) {
-		return (ret);
-	}
-
-	ccid_command_bcopy(cc, buf, len);
-
-	if ((ret = ccid_command_queue(ccid, cc)) != 0) {
-		ccid_command_free(cc);
-		return (ret);
-	}
-
-	ccid_command_poll(ccid, cc);
-
-	if (cc->cc_state != CCID_COMMAND_COMPLETE) {
-		ret = EIO;
-		goto done;
-	}
-
-	ccid_command_status_decode(cc, &crs, &cis, &cce);
-	if (crs == CCID_REPLY_STATUS_COMPLETE) {
-		mblk_t *mp;
-
-		/* Take ownership of the data from the command */
-		mp = cc->cc_response;
-		cc->cc_response = NULL;
-		mp->b_rptr += sizeof (ccid_header_t);
-		*outp = mp;
-		ret = 0;
-	} else {
-		if (cis == CCID_REPLY_ICC_MISSING) {
-			ret = ENXIO;
-		} else {
-			ret = EIO;
-		}
-	}
-
-done:
-	ccid_command_free(cc);
-	return (ret);
+	/*
+	 * The worker thread will take care of this situation.
+	 */
+	slot->cs_flags |= CCID_SLOT_F_INTR_OVERCURRENT;
+	ccid_worker_request(ccid);
 }
 
 static void
@@ -2151,6 +1991,7 @@ ccid_intr_pipe_cb(usb_pipe_handle_t ph, usb_intr_req_t *uirp)
 	size_t msglen, explen;
 	uint_t i;
 	boolean_t change;
+	ccid_intr_hwerr_t ccid_hwerr;
 	ccid_t *ccid = (ccid_t *)uirp->intr_client_private;
 
 	mp = uirp->intr_data;
@@ -2209,7 +2050,9 @@ ccid_intr_pipe_cb(usb_pipe_handle_t ph, usb_intr_req_t *uirp)
 			goto done;
 		}
 
-		/* XXX what should we do with this? */
+		bcopy(mp->b_rptr, &ccid_hwerr, sizeof (ccid_intr_hwerr_t));
+		ccid_hw_error(ccid, &ccid_hwerr);
+
 		mutex_exit(&ccid->ccid_mutex);
 		break;
 	default:
@@ -2272,6 +2115,47 @@ ccid_slot_teardown(ccid_t *ccid, ccid_slot_t *slot, boolean_t signal)
 }
 
 /*
+ * Wait for teardown of outstanding user I/O.
+ */
+static void
+ccid_slot_io_teardown(ccid_t *ccid, ccid_slot_t *slot)
+{
+	/*
+	 * If there is outstanding user I/O, then we need to go ahead and take
+	 * care of that. Once this function returns, the user I/O will have been
+	 * dealt with; however, before we can tear down things, we need to make
+	 * sure that the logical I/O has been completed.
+	 */
+	if (slot->cs_icc.icc_teardown != NULL) {
+		slot->cs_icc.icc_teardown(ccid, slot, ENXIO);
+	}
+
+	while ((slot->cs_flags & CCID_SLOT_F_NEED_IO_TEARDOWN) != 0) {
+		cv_wait(&slot->cs_io.ci_cv, &ccid->ccid_mutex);
+	}
+}
+
+/*
+ * The given CCID slot has been inactivated. Clean up.
+ */
+static void
+ccid_slot_inactive(ccid_t *ccid, ccid_slot_t *slot)
+{
+	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
+
+	slot->cs_flags &= ~CCID_SLOT_F_ACTIVE;
+
+	ccid_slot_io_teardown(ccid, slot);
+
+	/*
+	 * Now that we've finished completely waiting for the logical I/O to be
+	 * torn down, it's safe for us to proceed with the rest of the needed
+	 * tear down.
+	 */
+	ccid_slot_teardown(ccid, slot, B_TRUE);
+}
+
+/*
  * The given CCID slot has been removed. Clean up.
  */
 static void
@@ -2287,190 +2171,14 @@ ccid_slot_removed(ccid_t *ccid, ccid_slot_t *slot, boolean_t notify)
 	 * This slot is gone, mark the flags accordingly.
 	 */
 	slot->cs_flags &= ~CCID_SLOT_F_PRESENT;
-	slot->cs_flags &= ~CCID_SLOT_F_ACTIVE;
 
-	/*
-	 * If there is outstanding user I/O, then we need to go ahead and take
-	 * care of that. Once this function returns, the user I/O will have been
-	 * dealt with; however, before we can tear down things, we need to make
-	 * sure that the logical I/O has been completed.
-	 */
-	if (slot->cs_icc.icc_teardown != NULL) {
-		slot->cs_icc.icc_teardown(ccid, slot, ENXIO);
-	}
-
-	while ((slot->cs_flags & CCID_SLOT_F_NEED_IO_TEARDOWN) != 0) {
-		cv_wait(&slot->cs_io.ci_cv, &ccid->ccid_mutex);
-	}
-
-	/*
-	 * Now that we've finished completely waiting for the logical I/O to be
-	 * torn down, it's safe for us to proceed with the rest of the needed
-	 * tear down.
-	 */
-	ccid_slot_teardown(ccid, slot, B_TRUE);
-}
-
-static boolean_t
-ccid_slot_send_pps(ccid_t *ccid, ccid_slot_t *slot, atr_data_t *data,
-    uint8_t *fi, uint8_t *di, atr_protocol_t prot)
-{
-	mblk_t *mp;
-	uint_t len;
-	boolean_t changefi;
-	int ret;
-	uint8_t pps[PPS_BUFFER_MAX];
-
-	if (fi == NULL && di == NULL) {
-		len = atr_pps_generate(pps, sizeof (pps), prot, B_FALSE, 0, 0,
-		    B_FALSE, 0);
-	} else if (fi != NULL && di != NULL) {
-		len = atr_pps_generate(pps, sizeof (pps), prot, B_TRUE, *fi,
-		    *di, B_FALSE, 0);
-	} else {
-		return (B_FALSE);
-	}
-
-	if (len == 0) {
-		ccid_error(ccid, "!failed to generate pps data");
-		return (B_FALSE);
-	}
-
-	if ((ret = ccid_command_transfer(ccid, slot, pps, len, &mp)) != 0) {
-		ccid_error(ccid, "!failed to perform PPS exchange: %d", ret);
-		return (B_FALSE);
-	}
-
-	if (!atr_pps_valid(pps, sizeof (pps), mp->b_rptr, msgsize(mp))) {
-		ccid_error(ccid, "!PPS reply was invalid\n");
-		return (B_FALSE);
-	}
-
-	/*
-	 * If the proposed Fi/Di values that we sent in the PPS were not
-	 * accepted, then we need to use the default index values.
-	 */
-	if (!atr_pps_fidi_accepted(mp->b_rptr, msgsize(mp))) {
-		*fi = atr_fi_default_index();
-		*di = atr_di_default_index();
-	}
-
-	return (B_TRUE);
-}
-
-static boolean_t
-ccid_slot_params_t0_init(ccid_t *ccid, ccid_slot_t *slot, atr_data_t *data,
-    uint8_t fi, uint8_t di)
-{
-	int ret;
-	ccid_params_t0_t p;
-	atr_convention_t conv;
-	atr_clock_stop_t stop;
-
-	bzero(&p, sizeof (p));
-	conv = atr_convention(data);
-	/* XXX Macroify */
-	p.cp0_bmFindexDindex = ((fi & 0x0f) << 4) | (di & 0x0f);
-	/* B0 is set t0 0 for T=0 */
-	p.cp0_bmTCCKST0 = 0;
-	if (conv == ATR_CONVENTION_INVERSE) {
-		p.cp0_bmTCCKST0 |= CCID_P_TCCKST0_INVERSE;
-	} else {
-		p.cp0_bmTCCKST0 |= CCID_P_TCCKST0_DIRECT;
-	}
-	p.cp0_bGuardTimeT0 = atr_extra_guardtime(data);
-	p.cp0_bWaitingIntegerT0 = atr_t0_wi(data);
-	p.cp0_bClockStop = atr_clock_stop(data);
-
-	if ((ret = ccid_command_set_parameters(ccid, slot, ATR_P_T0,
-	    &p)) != 0) {
-		ccid_error(ccid, "failed to set T=0 params on slot %u: %d",
-		    slot->cs_slotno, ret);
-		return (B_FALSE);
-	}
-
-	return (B_TRUE);
-}
-
-static boolean_t
-ccid_slot_params_t1_init(ccid_t *ccid, ccid_slot_t *slot, atr_data_t *data,
-    uint8_t fi, uint8_t di)
-{
-	int ret;
-	uint8_t bwi, cwi;
-	ccid_params_t1_t p;
-	atr_convention_t conv;
-	atr_t1_checksum_t cksum;
-
-	bzero(&p, sizeof (p));
-	/* XXX Macroify */
-	conv = atr_convention(data);
-	cksum = atr_t1_checksum(data);
-	bwi = atr_t1_bwi(data);
-	cwi = atr_t1_cwi(data);
-	p.cp1_bmFindexDindex = ((fi & 0x0f) << 4) | (di & 0x0f);
-	p.cp1_bmTCCKST1 = 0x10;
-	if (cksum == ATR_T1_CHECKSUM_CRC) {
-		p.cp1_bmTCCKST1 |= 0x1;
-	}
-	if (conv == ATR_CONVENTION_INVERSE) {
-		p.cp1_bmTCCKST1 |= 0x02;
-	}
-	p.cp1_bGuardTimeT1 = atr_extra_guardtime(data);
-	p.cp1_bmWaitingIntegersT1 = ((bwi & 0x0f) << 4) | (cwi & 0x0f);
-	p.cp1_bClockStop = atr_clock_stop(data);
-	p.cp1_bIFSC = atr_t1_ifsc(data);
-
-	/*
-	 * We always set NAD to zero. NAD is used as a way to multiplex logical
-	 * connections in T=1. However, we only ever have a single writer so
-	 * this functionality is not useful. In addition, several readers don't
-	 * support non-zero NAD values.
-	 */
-	p.cp1_bNadValue = 0;
-
-	if ((ret = ccid_command_set_parameters(ccid, slot, ATR_P_T1,
-	    &p)) != 0) {
-		ccid_error(ccid, "failed to set T=1 params on slot %u: %d",
-		    slot->cs_slotno, ret);
-		return (B_FALSE);
-	}
-
-	return (B_TRUE);
-}
-
-static boolean_t
-ccid_slot_t1_ifsd(ccid_t *ccid, ccid_slot_t *slot)
-{
-	const void *buf;
-	size_t len;
-	mblk_t *mp;
-	int ret;
-	t1_validate_t t1v;
-
-	t1_ifsd(&slot->cs_io.ci_t1, ccid->ccid_class.ccd_dwMaxIFSD, &buf, &len);
-
-	if ((ret = ccid_command_transfer(ccid, slot, buf, len, &mp)) != 0) {
-		ccid_error(ccid, "!failed to perform IFSD exchange: %d", ret);
-		return (B_FALSE);
-	}
-
-	t1v = t1_ifsd_resp(&slot->cs_io.ci_t1, mp->b_rptr, MBLKL(mp));
-	freemsg(mp);
-	if (t1v != T1_VALIDATE_OK) {
-		ccid_error(ccid, "received invalid t1 response (%u): %s", t1v,
-		    t1_errmsg(&slot->cs_io.ci_t1));
-		return (B_FALSE);
-	}
-
-	return (B_TRUE);
+	ccid_slot_inactive(ccid, slot);
 }
 
 static void
 ccid_slot_setup_functions(ccid_t *ccid, ccid_slot_t *slot)
 {
-	uint_t bits = CCID_CLASS_F_TPDU_XCHG | CCID_CLASS_F_SHORT_APDU_XCHG |
-	    CCID_CLASS_F_EXT_APDU_XCHG;
+	uint_t bits = CCID_CLASS_F_SHORT_APDU_XCHG | CCID_CLASS_F_EXT_APDU_XCHG;
 
 	slot->cs_icc.icc_init = NULL;
 	slot->cs_icc.icc_tx = NULL;
@@ -2485,37 +2193,6 @@ ccid_slot_setup_functions(ccid_t *ccid, ccid_slot_t *slot)
 		slot->cs_icc.icc_complete = ccid_complete_apdu;
 		slot->cs_icc.icc_teardown = ccid_teardown_apdu;
 		break;
-	case CCID_CLASS_F_TPDU_XCHG:
-		switch (slot->cs_icc.icc_cur_protocol) {
-		case ATR_P_T1:
-			/*
-			 * At this time, we don't support the use of the CRC
-			 * checksum for CCID devices. This is mostly because we
-			 * haven't found any ICC devices that support its use.
-			 * As such, if for some reason the parameters indicate
-			 * that we're using T=1 and that we've specified the CRC
-			 * versus LRC, we need to regretfully note that we can't
-			 * perform I/O.
-			 */
-			if (atr_t1_checksum(slot->cs_icc.icc_atr_data) ==
-			    ATR_T1_CHECKSUM_CRC) {
-				ccid_error(ccid, "!ICC uses unsupported T=1 CRC"
-				    " checksum. Please report this so support "
-				    "can be added");
-				break;
-			}
-
-			slot->cs_icc.icc_init = ccid_init_tpdu_t1;
-			slot->cs_icc.icc_tx = ccid_write_tpdu_t1;
-			slot->cs_icc.icc_complete = ccid_complete_tpdu_t1;
-			slot->cs_icc.icc_teardown = ccid_teardown_tpdu_t1;
-			slot->cs_icc.icc_fini = ccid_fini_tpdu_t1;
-			break;
-		case ATR_P_T0:
-		default:
-			break;
-		}
-		break;
 	default:
 		break;
 	}
@@ -2526,37 +2203,23 @@ ccid_slot_setup_functions(ccid_t *ccid, ccid_slot_t *slot)
 	 * and determine information about the ICC and reader.
 	 */
 	if (slot->cs_icc.icc_tx == NULL) {
-		ccid_error(ccid, "CCID does not support I/O transfers to ICC");
+		ccid_error(ccid, "!CCID does not support I/O transfers to ICC");
 	}
 }
 
 /*
- * We have an ICC present in a slot. Before we can send commands to it, we
- * initialize the slot in some form or fashion. The steps that we must take
- * depend on the features that the card presents. To prepare the slot we must
- * make sure the following are set:
- *
- * - Negotiate and send the PPS (CCID_F_NEEDS_PPS)
- * - Set the CCID reader's parameters (CCID_F_NEEDS_PARAMS)
- * - Set the CCID reader's clock and data rate (CCID_F_NEEDS_DATAFREQ)
- * - Snapshot the current parameters being used for userland
- * - Set the IFSD for T=1 (CCID_F_NEEDS_IFSD)
+ * We have an ICC present in a slot. We require that the reader does all
+ * protocol and parameter related initializations for us. Just parse the ATR
+ * for our own use and use GET_PARAMS to query the parameters the reader set
+ * up for us.
  */
 static boolean_t
 ccid_slot_params_init(ccid_t *ccid, ccid_slot_t *slot, mblk_t *atr)
 {
 	int ret;
-	boolean_t neg;
 	atr_parsecode_t p;
-	atr_protocol_t sup, def, prot, usable;
+	atr_protocol_t prot;
 	atr_data_t *data;
-
-	/*
-	 * Hardware handles all initialization features. There's nothing else
-	 * that we need to do for now.
-	 */
-	if ((ccid->ccid_flags & CCID_F_ICC_INIT_MASK) == 0)
-		return (B_TRUE);
 
 	/*
 	 * Use the slot's atr data structure. This is only used when we're in
@@ -2571,214 +2234,126 @@ ccid_slot_params_init(ccid_t *ccid, ccid_slot_t *slot, mblk_t *atr)
 		return (B_FALSE);
 	}
 
-	/*
-	 * Snapshot the supported and default protocols. Snapshot whether we can
-	 * negotiate this or not.
-	 */
-	def = atr_default_protocol(data);
-	sup = atr_supported_protocols(data);
-	neg = atr_params_negotiable(data);
-	usable = sup & ccid->ccid_class.ccd_dwProtocols;
-
-	/*
-	 * We need to check if the reader supports the protocols supported by
-	 * the ICC. If it does not, then we cannot use this ICC. If the reader
-	 * uses an APDU mode, then we do not enforce this restriction. This is
-	 * because some NFC readers that support APDU end up lying about the
-	 * protocols supported and the ATRs.
-	 */
-	if ((ccid->ccid_class.ccd_dwFeatures & (CCID_CLASS_F_SHORT_APDU_XCHG |
-	    CCID_CLASS_F_EXT_APDU_XCHG)) == 0 && usable == 0) {
-		ccid_error(ccid, "!reader and ICC do not support common "
-		    "protocols, reader 0x%x, ICC 0x%x\n",
-		    ccid->ccid_class.ccd_dwProtocols, sup);
-		return (B_FALSE);
-	}
-
-	/*
-	 * If we need to send a PPS or we need to send parameters to the ICC,
-	 * then we must go through and determine what the values we're sending
-	 * should be.
-	 *
-	 * If the card has automatic parameter negotiation according to various
-	 * specifications, then we don't bother trying to change the protocol
-	 * and thus we don't enter this if block.
-	 *
-	 * If we need to manually set the data and frequency, see if the ATR
-	 * logic allows us to. If not, then there's nothing that we can really
-	 * do.
-	 */
 	if ((ccid->ccid_flags & (CCID_F_NEEDS_PPS | CCID_F_NEEDS_PARAMS |
 	    CCID_F_NEEDS_DATAFREQ)) != 0) {
-		atr_data_rate_choice_t rate;
-		uint8_t fi, di;
-		boolean_t changeprot;
-
-		/*
-		 * In the future, here is where we should gather and use the
-		 * discrete data rate and clocks and make sure that we have them
-		 * (or have already done so when we first loaded the reader).
-		 */
-		if ((ccid->ccid_flags & CCID_F_NEEDS_DATAFREQ) != 0 &&
-		    (ccid->ccid_class.ccd_bNumClockSupported != 0 ||
-		    ccid->ccid_class.ccd_bNumDataRatesSupported != 0)) {
-			ccid_error(ccid, "!fetching discrete clocks and data "
-			    "rates is not supported, reader will be limited to "
-			    "the default clock and data rate");
-		}
-
-		rate = atr_data_rate(data, &ccid->ccid_class, NULL, 0, NULL);
-		switch (rate) {
-		case ATR_RATE_UNSUPPORTED:
-			ccid_error(ccid, "!cannot use Fi/Di (%u/%u) values "
-			    "for ICC", fi, di);
-			return (B_FALSE);
-		case ATR_RATE_USEDEFAULT:
-			fi = atr_fi_default_index();
-			di = atr_fi_default_index();
-			break;
-		case ATR_RATE_USEATR:
-			fi = atr_fi_index(data);
-			di = atr_di_index(data);
-			break;
-		case ATR_RATE_USEATR_SETRATE:
-			/*
-			 * This case covers the times when CCID_F_NEEDS_DATAFREQ
-			 * is set and we'd need to gather those.
-			 */
-			ccid_error(ccid, "!ccid driver does not support manual "
-			    "data rate setting for ICC, cannot activate");
-			return (B_FALSE);
-		default:
-			ccid_error(ccid, "!unsupported data rate choice: %u",
-			    rate);
-			return (B_FALSE);
-		}
-
-		/*
-		 * Determine what protocol we're going to negotiate or use to
-		 * set parameters. Prefer T=1 if present. If not negotiable, use
-		 * the default. Keep in mind, we have to consider which
-		 * protocols the CCID reader supports as well.
-		 */
-		if (neg) {
-			if (usable & ATR_P_T1)
-				prot = ATR_P_T1;
-			else
-				prot = ATR_P_T0;
-		} else {
-			prot = def;
-			if ((def & usable) == 0) {
-				ccid_error(ccid, "!ICC does not support "
-				    "negotiation and default protocol (0x%x) "
-				    "is not supported by the reader", def);
-				return (B_FALSE);
-			}
-		}
-
-		changeprot = prot != def;
-
-		/*
-		 * Determine whether or not we need to send a PPS. We need to if
-		 * we're going to change the protocol, if we need to change the
-		 * Di/Fi values or we need to change the protocol, and if the
-		 * hardware requires that we perform all this work. If we're
-		 * sending a PPS, we do not have to send a new value of Fi and
-		 * Di, but we must send a protocol.
-		 */
-		if ((ccid->ccid_flags & CCID_F_NEEDS_PPS) != 0 && neg &&
-		    (changeprot || rate != ATR_RATE_USEDEFAULT)) {
-			uint8_t *fip, *dip;
-
-			if (rate != ATR_RATE_USEDEFAULT) {
-				fip = &fi;
-				dip = &di;
-			} else {
-				fip = dip = NULL;
-			}
-			if (!ccid_slot_send_pps(ccid, slot, data, fip, dip,
-			    prot)) {
-				ccid_error(ccid,
-				    "!failed to send PPS to device");
-				return (B_FALSE);
-			}
-		}
-
-		/*
-		 * Now that we've (potentially) sent a PPS which has changed our
-		 * parameters, we need to move on and send a CCID_SET_PARAMETERS
-		 * command to make sure that the reader honors these.
-		 */
-		if ((ccid->ccid_flags & CCID_F_NEEDS_PARAMS) != 0) {
-			if (prot == ATR_P_T0) {
-				if (!ccid_slot_params_t0_init(ccid, slot, data,
-				    fi, di)) {
-					ccid_error(ccid, "!failed to send T=0 "
-					    "paramters to device");
-					return (B_FALSE);
-				}
-			} else if (prot == ATR_P_T1) {
-				if (!ccid_slot_params_t1_init(ccid, slot, data,
-				    fi, di)) {
-					ccid_error(ccid, "!failed to send T=1 "
-					    "paramters to device");
-					return (B_FALSE);
-				}
-			}
-		}
+		ccid_error(ccid, "!CCID reader does not support required "
+		    "protocol/parameter setup automation");
+		return (B_FALSE);
 	}
 
 	if ((ret = ccid_command_get_parameters(ccid, slot, &prot,
 	    &slot->cs_icc.icc_params)) != 0) {
-		ccid_error(ccid, "failed to get parameters for slot %u: %d",
+		ccid_error(ccid, "!failed to get parameters for slot %u: %d",
 		    slot->cs_slotno, ret);
 		return (B_FALSE);
 	}
 
-	/*
-	 * Now that we have the parameters locked in. Set up the ICC function
-	 * parameters and initialize the ICC engine.
-	 */
-	slot->cs_icc.icc_protocols = sup;
+	slot->cs_icc.icc_protocols = atr_supported_protocols(data);
 	slot->cs_icc.icc_cur_protocol = prot;
 
+	return (B_TRUE);
+}
+
+/*
+ * Set up the ICC function parameters and initialize the ICC engine.
+ */
+static boolean_t
+ccid_slot_prot_init(ccid_t *ccid, ccid_slot_t *slot)
+{
 	ccid_slot_setup_functions(ccid, slot);
 
 	if (slot->cs_icc.icc_init != NULL) {
 		slot->cs_icc.icc_init(ccid, slot);
 	}
 
-	/*
-	 * If we're using the T=1 protocol and operating at a TPDU level, then
-	 * we need to initialize the state machine and potentially set the IFSD.
-	 *
-	 * If the reader is using APDU exchanges with the ICC then we don't
-	 * bother trying to set the IFSD as we don't want to get in the way of
-	 * any operations it is taking.
-	 */
-	if (prot == ATR_P_T1 &&
-	    (ccid->ccid_class.ccd_dwFeatures & (CCID_CLASS_F_SHORT_APDU_XCHG |
-	    CCID_CLASS_F_EXT_APDU_XCHG)) == 0) {
-
-		/*
-		 * While it is strictly possible to drive on in the face of an
-		 * IFSD negotiation failure, that likely means that something
-		 * else is wrong and that we are better off failing to
-		 * initialize this reader.
-		 */
-		if ((ccid->ccid_flags & CCID_F_NEEDS_IFSD) != 0) {
-			if (!ccid_slot_t1_ifsd(ccid, slot)) {
-				ccid_error(ccid, "failed to initialize IFSD");
-				return (B_FALSE);
-			}
-		}
-	}
-
 	return (B_TRUE);
 }
 
+static int
+ccid_slot_power_on(ccid_t *ccid, ccid_slot_t *slot, ccid_class_voltage_t volts,
+    mblk_t **atr)
+{
+	int ret;
 
-static void
+	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
+
+	mutex_exit(&ccid->ccid_mutex);
+	if ((ret = ccid_command_power_on(ccid, slot, volts, atr))
+	    != 0) {
+		freemsg(*atr);
+
+		/*
+		 * If we got ENXIO, then we know that there is no CCID
+		 * present. This could happen for a number of reasons.
+		 * For example, we could have just started up and no
+		 * card was plugged in (we default to assuming that one
+		 * is). Also, some readers won't really tell us that
+		 * nothing is there until after the power on fails,
+		 * hence why we don't bother with doing a status check
+		 * and just try to power on.
+		 */
+		if (ret == ENXIO) {
+			mutex_enter(&ccid->ccid_mutex);
+			slot->cs_flags &= ~CCID_SLOT_F_PRESENT;
+			return (ret);
+		}
+
+		/*
+		 * If we fail to power off the card, check to make sure
+		 * it hasn't been removed.
+		 */
+		if (ccid_command_power_off(ccid, slot) == ENXIO) {
+			mutex_enter(&ccid->ccid_mutex);
+			slot->cs_flags &= ~CCID_SLOT_F_PRESENT;
+			return (ENXIO);
+		}
+
+		mutex_enter(&ccid->ccid_mutex);
+		return (ret);
+	}
+
+	if (!ccid_slot_params_init(ccid, slot, *atr)) {
+		ccid_error(ccid, "!failed to set slot paramters for ICC");
+		mutex_enter(&ccid->ccid_mutex);
+		return (ENOTSUP);
+	}
+
+	if (!ccid_slot_prot_init(ccid, slot)) {
+		ccid_error(ccid, "!failed to setup protocol for ICC");
+		mutex_enter(&ccid->ccid_mutex);
+		return (ENOTSUP);
+	}
+
+	mutex_enter(&ccid->ccid_mutex);
+	return (0);
+}
+
+static int
+ccid_slot_power_off(ccid_t *ccid, ccid_slot_t *slot)
+{
+	int ret;
+
+	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
+
+	ccid_slot_io_teardown(ccid, slot);
+
+	/*
+	 * Now that we've finished completely waiting for the logical I/O to be
+	 * torn down, try and power off the ICC.
+	 */
+	mutex_exit(&ccid->ccid_mutex);
+	ret = ccid_command_power_off(ccid, slot);
+	mutex_enter(&ccid->ccid_mutex);
+
+	if (ret != 0)
+		return (ret);
+
+	ccid_slot_inactive(ccid, slot);
+
+	return (ret);
+}
+
+static int
 ccid_slot_inserted(ccid_t *ccid, ccid_slot_t *slot)
 {
 	uint_t nvolts = 4;
@@ -2788,12 +2363,15 @@ ccid_slot_inserted(ccid_t *ccid, ccid_slot_t *slot)
 	    CCID_CLASS_VOLT_5_0, CCID_CLASS_VOLT_3_0, CCID_CLASS_VOLT_1_8 };
 
 	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
+	if ((ccid->ccid_flags & CCID_F_DEV_GONE_MASK) != 0) {
+		return (0);
+	}
+
 	if ((slot->cs_flags & CCID_SLOT_F_ACTIVE) != 0) {
-		return;
+		return (0);
 	}
 
 	slot->cs_flags |= CCID_SLOT_F_PRESENT;
-	mutex_exit(&ccid->ccid_mutex);
 
 	/*
 	 * Now, we need to activate this ccid device before we can do anything
@@ -2805,14 +2383,10 @@ ccid_slot_inserted(ccid_t *ccid, ccid_slot_t *slot)
 	 * What's less clear in the specification is if the Auto-Voltage
 	 * property is present is if we should try manual voltages or not. For
 	 * the moment we do.
-	 *
-	 * Also, don't forget to drop the lock while performing this I/O.
-	 * Nothing else should be able to access the ICC yet, as there is no
-	 * minor node present.
 	 */
 	if ((ccid->ccid_class.ccd_dwFeatures &
-	    (CCID_CLASS_F_AUTO_ICC_ACTIVATE | CCID_CLASS_F_AUTO_ICC_VOLTAGE)) ==
-	    0) {
+	    (CCID_CLASS_F_AUTO_ICC_ACTIVATE | CCID_CLASS_F_AUTO_ICC_VOLTAGE))
+	    == 0) {
 		/* Skip auto-voltage */
 		cvolt++;
 	}
@@ -2821,42 +2395,13 @@ ccid_slot_inserted(ccid_t *ccid, ccid_slot_t *slot)
 		int ret;
 
 		if (volts[cvolt] != CCID_CLASS_VOLT_AUTO &&
-		    (ccid->ccid_class.ccd_bVoltageSupport & volts[cvolt]) ==
-		    0) {
+		    (ccid->ccid_class.ccd_bVoltageSupport & volts[cvolt])
+		    == 0) {
 			continue;
 		}
 
-		if ((ret = ccid_command_power_on(ccid, slot, volts[cvolt],
-		    &atr)) != 0) {
-			freemsg(atr);
-			atr = NULL;
-
-			/*
-			 * If we got ENXIO, then we know that there is no CCID
-			 * present. This could happen for a number of reasons.
-			 * For example, we could have just started up and no
-			 * card was plugged in (we default to assuming that one
-			 * is). Also, some readers won't really tell us that
-			 * nothing is there until after the power on fails,
-			 * hence why we don't bother with doing a status check
-			 * and just try to power on.
-			 */
-			if (ret == ENXIO) {
-				mutex_enter(&ccid->ccid_mutex);
-				slot->cs_flags &= ~CCID_SLOT_F_PRESENT;
-				return;
-			}
-
-			/*
-			 * If we fail to power off the card, check to make sure
-			 * it hasn't been removed.
-			 */
-			ret = ccid_command_power_off(ccid, slot);
-			if (ret == ENXIO) {
-				mutex_enter(&ccid->ccid_mutex);
-				slot->cs_flags &= ~CCID_SLOT_F_PRESENT;
-				return;
-			}
+		if ((ret = ccid_slot_power_on(ccid, slot, volts[cvolt], &atr))
+		    != 0) {
 			continue;
 		}
 
@@ -2866,24 +2411,48 @@ ccid_slot_inserted(ccid_t *ccid, ccid_slot_t *slot)
 	if (cvolt >= nvolts) {
 		ccid_error(ccid, "!failed to activate and power on ICC, no "
 		    "supported voltages found");
-		freemsg(atr);
-		mutex_enter(&ccid->ccid_mutex);
-		return;
+		goto notsup;
 	}
-
-	if (!ccid_slot_params_init(ccid, slot, atr)) {
-		ccid_error(ccid, "!failed to set slot paramters for ICC");
-		freemsg(atr);
-		mutex_enter(&ccid->ccid_mutex);
-		ccid_slot_teardown(ccid, slot, B_FALSE);
-		return;
-	}
-
-	mutex_enter(&ccid->ccid_mutex);
 
 	slot->cs_voltage = volts[cvolt];
 	slot->cs_atr = atr;
 	slot->cs_flags |= CCID_SLOT_F_ACTIVE;
+
+	ccid_slot_pollout_signal(slot);
+
+	return (0);
+
+notsup:
+	freemsg(atr);
+	ccid_slot_teardown(ccid, slot, B_FALSE);
+	return (ENOTSUP);
+}
+
+static int
+ccid_slot_warm_reset(ccid_t *ccid, ccid_slot_t *slot)
+{
+	int ret;
+	mblk_t *atr;
+	ccid_class_voltage_t voltage;
+
+	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
+
+	ccid_slot_io_teardown(ccid, slot);
+
+	voltage = slot->cs_voltage;
+
+	ccid_slot_teardown(ccid, slot, B_FALSE);
+
+	ret = ccid_slot_power_on(ccid, slot, voltage, &atr);
+	if (ret != 0) {
+		freemsg(atr);
+		return (ret);
+	}
+
+	slot->cs_voltage = voltage;
+	slot->cs_atr = atr;
+
+	return (ret);
 }
 
 static boolean_t
@@ -2895,26 +2464,13 @@ ccid_slot_reset(ccid_t *ccid, ccid_slot_t *slot)
 	VERIFY(slot->cs_flags & CCID_SLOT_F_NEED_TXN_RESET);
 	VERIFY(ccid->ccid_flags & CCID_F_WORKER_RUNNING);
 
-	/*
-	 * If there is outstanding user I/O, then we need to go ahead and take
-	 * care of that. Once this function returns, the user I/O will have been
-	 * dealt with; however, before we can tear down things, we need to make
-	 * sure that the logical I/O has been completed.
-	 */
-	if (slot->cs_icc.icc_teardown != NULL) {
-		slot->cs_icc.icc_teardown(ccid, slot, ENXIO);
-	}
-
-	while ((slot->cs_flags & CCID_SLOT_F_NEED_IO_TEARDOWN) != 0) {
-		cv_wait(&slot->cs_io.ci_cv, &ccid->ccid_mutex);
-	}
+	if (ccid->ccid_flags & CCID_F_DEV_GONE_MASK)
+		return (B_TRUE);
 
 	/*
-	 * Now that we've finished this, try and power off the ICC.
+	 * Power off the ICC. This will wait for logical I/O if needed.
 	 */
-	mutex_exit(&ccid->ccid_mutex);
-	ret = ccid_command_power_off(ccid, slot);
-	mutex_enter(&ccid->ccid_mutex);
+	ret = ccid_slot_power_off(ccid, slot);
 
 	/*
 	 * If we failed to power off the ICC because the ICC is removed, then
@@ -2926,14 +2482,10 @@ ccid_slot_reset(ccid_t *ccid, ccid_slot_t *slot)
 	}
 
 	if (ret != 0) {
-		ccid_error(ccid, "failed to reset slot %d for next txn: %d; "
-		    "taking another lap", ret);
+		ccid_error(ccid, "!failed to reset slot %d for next txn: %d; "
+		    "taking another lap", slot->cs_slotno, ret);
 		return (B_FALSE);
 	}
-
-	slot->cs_flags &= ~CCID_SLOT_F_ACTIVE;
-
-	ccid_slot_teardown(ccid, slot, B_TRUE);
 
 	/*
 	 * Mimic a slot insertion to power this back on. Don't worry about
@@ -2960,11 +2512,6 @@ ccid_worker(void *arg)
 	mutex_enter(&ccid->ccid_mutex);
 	ccid->ccid_stats.cst_ndiscover++;
 	ccid->ccid_stats.cst_lastdiscover = gethrtime();
-	if (ccid->ccid_flags & CCID_F_DETACHING) {
-		ccid->ccid_flags &= ~CCID_F_WORKER_MASK;
-		mutex_exit(&ccid->ccid_mutex);
-		return;
-	}
 	ccid->ccid_flags |= CCID_F_WORKER_RUNNING;
 	ccid->ccid_flags &= ~CCID_F_WORKER_REQUESTED;
 
@@ -2977,6 +2524,12 @@ ccid_worker(void *arg)
 
 		VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
 
+		if ((ccid->ccid_flags & CCID_F_DEV_GONE_MASK) != 0) {
+			ccid->ccid_flags &= ~CCID_F_WORKER_MASK;
+			mutex_exit(&ccid->ccid_mutex);
+			return;
+		}
+
 		/*
 		 * Snapshot the flags before we start processing the worker. At
 		 * this time we clear out all of the change flags as we'll be
@@ -2987,26 +2540,31 @@ ccid_worker(void *arg)
 		flags = slot->cs_flags & CCID_SLOT_F_WORK_MASK;
 		slot->cs_flags &= ~CCID_SLOT_F_INTR_MASK;
 
-		if (flags & CCID_SLOT_F_CHANGED) {
+		if ((flags & CCID_SLOT_F_INTR_OVERCURRENT) != 0) {
+			ccid_slot_inactive(ccid, slot);
+		}
+
+		if ((flags & CCID_SLOT_F_CHANGED) != 0) {
 			if (flags & CCID_SLOT_F_INTR_GONE) {
 				ccid_slot_removed(ccid, slot, B_TRUE);
 			} else {
-				ccid_slot_inserted(ccid, slot);
-				if (slot->cs_flags & CCID_SLOT_F_ACTIVE) {
+				(void) ccid_slot_inserted(ccid, slot);
+				if ((slot->cs_flags & CCID_SLOT_F_ACTIVE)
+				    != 0) {
 					ccid_slot_excl_maybe_signal(slot);
 				}
 			}
 			VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
 		}
 
-		if (flags & CCID_SLOT_F_NEED_TXN_RESET) {
+		if ((flags & CCID_SLOT_F_NEED_TXN_RESET) != 0) {
 			/*
 			 * If the CCID_SLOT_F_PRESENT flag is set, then we
 			 * should attempt to power off and power on the ICC in
 			 * an attempt to reset it. If this fails, trigger
 			 * another worker that needs to operate.
 			 */
-			if (slot->cs_flags & CCID_SLOT_F_PRESENT) {
+			if ((slot->cs_flags & CCID_SLOT_F_PRESENT) != 0) {
 				if (!ccid_slot_reset(ccid, slot)) {
 					ccid_worker_request(ccid);
 					continue;
@@ -3016,8 +2574,8 @@ ccid_worker(void *arg)
 			VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
 			slot->cs_flags &= ~CCID_SLOT_F_NEED_TXN_RESET;
 			/*
-			 * XXX The signaling in all of this worker logic makes
-			 * no sense.
+			 * Try to signal the next thread waiting for exclusive
+			 * access.
 			 */
 			ccid_slot_excl_maybe_signal(slot);
 		}
@@ -3027,14 +2585,15 @@ ccid_worker(void *arg)
 	 * If we have a request to operate again, delay before we consider this,
 	 * to make sure we don't do too much work ourselves.
 	 */
-	if (ccid->ccid_flags & CCID_F_WORKER_REQUESTED) {
+	if ((ccid->ccid_flags & CCID_F_WORKER_REQUESTED) != 0) {
 		mutex_exit(&ccid->ccid_mutex);
 		delay(drv_usectohz(1000) * 10);
 		mutex_enter(&ccid->ccid_mutex);
 	}
 
 	ccid->ccid_flags &= ~CCID_F_WORKER_RUNNING;
-	if (ccid->ccid_flags & CCID_F_DETACHING) {
+	if ((ccid->ccid_flags & CCID_F_DEV_GONE_MASK) != 0) {
+		ccid->ccid_flags &= ~CCID_F_WORKER_REQUESTED;
 		mutex_exit(&ccid->ccid_mutex);
 		return;
 	}
@@ -3052,7 +2611,7 @@ ccid_worker_request(ccid_t *ccid)
 	boolean_t run;
 
 	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
-	if (ccid->ccid_flags & CCID_F_DETACHING) {
+	if ((ccid->ccid_flags & CCID_F_DEV_GONE_MASK) != 0) {
 		return;
 	}
 
@@ -3072,7 +2631,7 @@ ccid_intr_restart_timeout(void *arg)
 	ccid_t *ccid = arg;
 
 	mutex_enter(&ccid->ccid_mutex);
-	if (ccid->ccid_flags & CCID_F_DETACHING) {
+	if ((ccid->ccid_flags & CCID_F_DEV_GONE_MASK) != 0) {
 		ccid->ccid_poll_timeout = NULL;
 		mutex_exit(&ccid->ccid_mutex);
 	}
@@ -3084,7 +2643,7 @@ ccid_intr_restart_timeout(void *arg)
 /*
  * Search for the current class descriptor from the configuration cloud and
  * parse it for our use. We do this by first finding the current interface
- * descriptor and expecting it to be one of the next descriptors XXX
+ * descriptor and expecting it to be one of the next descriptors.
  */
 static boolean_t
 ccid_parse_class_desc(ccid_t *ccid)
@@ -3118,11 +2677,11 @@ ccid_parse_class_desc(ccid_t *ccid)
 		    sizeof (ccid->ccid_class))) >= tlen) {
 			return (B_TRUE);
 		}
-		ccid_error(ccid, "faild to parse CCID class descriptor from "
+		ccid_error(ccid, "!failed to parse CCID class descriptor from "
 		    "cvs %u, expected %lu bytes, received %lu", i, tlen, len);
 	}
 
-	ccid_error(ccid, "failed to find matching CCID class descriptor");
+	ccid_error(ccid, "!failed to find matching CCID class descriptor");
 	return (B_FALSE);
 }
 
@@ -3139,7 +2698,7 @@ ccid_supported(ccid_t *ccid)
 	uint16_t ver = ccid->ccid_class.ccd_bcdCCID;
 
 	if (CCID_VERSION_MAJOR(ver) != CCID_VERSION_ONE) {
-		ccid_error(ccid, "refusing to attach to CCID with unsupported "
+		ccid_error(ccid, "!refusing to attach to CCID with unsupported "
 		    "version %x.%2x", CCID_VERSION_MAJOR(ver),
 		    CCID_VERSION_MINOR(ver));
 		return (B_FALSE);
@@ -3161,7 +2720,7 @@ ccid_supported(ccid_t *ccid)
 		ccid->ccid_flags |= CCID_F_HAS_INTR;
 		break;
 	default:
-		ccid_error(ccid, "refusing to attach to CCID with unsupported "
+		ccid_error(ccid, "!refusing to attach to CCID with unsupported "
 		    "number of endpoints: %d", alt->altif_descr.bNumEndpoints);
 		return (B_FALSE);
 	}
@@ -3172,14 +2731,14 @@ ccid_supported(ccid_t *ccid)
 	 * reader accepts. While it may be tempting to try and use a larger
 	 * value such as the maximum size, the readers really don't like
 	 * receiving bulk transfers that large. However, there are also reports
-	 * of readers that will overwrite to a fixed minimum size. XXX which
-	 * devices were those and should this be a p2roundup on the order of 256
-	 * bytes maybe?
+	 * of readers that will overwrite to a fixed minimum size. Until we see
+	 * such a thing in the wild there's probably no point in trying to deal
+	 * with it here.
 	 */
 	ccid->ccid_bufsize = ccid->ccid_class.ccd_dwMaxCCIDMessageLength;
 	if (ccid->ccid_bufsize < CCID_MIN_MESSAGE_LENGTH) {
-		ccid_error(ccid, "CCID reader maximum CCID message length (%u) "
-		    "is less than minimum packet length (%u)",
+		ccid_error(ccid, "!CCID reader maximum CCID message length (%u)"
+		    " is less than minimum packet length (%u)",
 		    ccid->ccid_bufsize, CCID_MIN_MESSAGE_LENGTH);
 		return (B_FALSE);
 	}
@@ -3205,7 +2764,7 @@ ccid_supported(ccid_t *ccid)
 	/*
 	 * Check which automatic features the reader provides and which features
 	 * it does not. Missing features will require additional work before a
-	 * card can be activated. Note, this also applies to APDU based devices
+	 * card can be activated. Note, this also applies to APDU based readers
 	 * which may need to have various aspects of the device negotiated.
 	 */
 
@@ -3228,28 +2787,8 @@ ccid_supported(ccid_t *ccid)
 		ccid->ccid_flags |= CCID_F_NEEDS_DATAFREQ;
 	}
 
-	/*
-	 * XXX This should probably check on the actual support for T=1. If it
-	 * doesn't exist, we should probably ignore it.
-	 */
-	if ((feat & CCID_CLASS_F_AUTO_IFSD) == 0) {
-		ccid->ccid_flags |= CCID_F_NEEDS_IFSD;
-
-		/*
-		 * If there is no support for negotiating the IFSD, we need to
-		 * check to make sure that the IFSD that's supported is at least
-		 * the default size. If it is less than the default T=1 size,
-		 * then we should probably reject this reader for the time
-		 * being. It is possible that we could support it at a smaller
-		 * IFSD; however, ISO/IEC 7816-3:2006 recommends that it be at
-		 * least 20 bytes.
-		 */
-		if (ccid->ccid_class.ccd_dwMaxIFSD < T1_IFSD_DEFAULT) {
-			ccid_error(ccid, "CCID reader max IFSD (%d) is less "
-			    "than T=1 default", ccid->ccid_class.ccd_dwMaxIFSD,
-			    T1_IFSD_DEFAULT);
-			return (B_FALSE);
-		}
+	if ((feat & CCID_CLASS_F_TPDU_XCHG) != 0) {
+		return (B_FALSE);
 	}
 
 	return (B_TRUE);
@@ -3271,26 +2810,26 @@ ccid_open_pipes(ccid_t *ccid)
 	ep = usb_lookup_ep_data(ccid->ccid_dip, data, data->dev_curr_if, 0, 0,
 	    USB_EP_ATTR_BULK, USB_EP_DIR_IN);
 	if (ep == NULL) {
-		ccid_error(ccid, "failed to find CCID Bulk-IN endpoint");
+		ccid_error(ccid, "!failed to find CCID Bulk-IN endpoint");
 		return (B_FALSE);
 	}
 
 	if ((ret = usb_ep_xdescr_fill(USB_EP_XDESCR_CURRENT_VERSION,
 	    ccid->ccid_dip, ep, &ccid->ccid_bulkin_xdesc)) != USB_SUCCESS) {
-		ccid_error(ccid, "failed to fill Bulk-IN xdescr: %d", ret);
+		ccid_error(ccid, "!failed to fill Bulk-IN xdescr: %d", ret);
 		return (B_FALSE);
 	}
 
 	ep = usb_lookup_ep_data(ccid->ccid_dip, data, data->dev_curr_if, 0, 0,
 	    USB_EP_ATTR_BULK, USB_EP_DIR_OUT);
 	if (ep == NULL) {
-		ccid_error(ccid, "failed to find CCID Bulk-OUT endpoint");
+		ccid_error(ccid, "!failed to find CCID Bulk-OUT endpoint");
 		return (B_FALSE);
 	}
 
 	if ((ret = usb_ep_xdescr_fill(USB_EP_XDESCR_CURRENT_VERSION,
 	    ccid->ccid_dip, ep, &ccid->ccid_bulkout_xdesc)) != USB_SUCCESS) {
-		ccid_error(ccid, "failed to fill Bulk-OUT xdescr: %d", ret);
+		ccid_error(ccid, "!failed to fill Bulk-OUT xdescr: %d", ret);
 		return (B_FALSE);
 	}
 
@@ -3298,7 +2837,7 @@ ccid_open_pipes(ccid_t *ccid)
 		ep = usb_lookup_ep_data(ccid->ccid_dip, data, data->dev_curr_if,
 		    0, 0, USB_EP_ATTR_INTR, USB_EP_DIR_IN);
 		if (ep == NULL) {
-			ccid_error(ccid, "failed to find CCID Intr-IN "
+			ccid_error(ccid, "!failed to find CCID Intr-IN "
 			    "endpoint");
 			return (B_FALSE);
 		}
@@ -3306,7 +2845,7 @@ ccid_open_pipes(ccid_t *ccid)
 		if ((ret = usb_ep_xdescr_fill(USB_EP_XDESCR_CURRENT_VERSION,
 		    ccid->ccid_dip, ep, &ccid->ccid_intrin_xdesc)) !=
 		    USB_SUCCESS) {
-			ccid_error(ccid, "failed to fill Intr-OUT xdescr: %d",
+			ccid_error(ccid, "!failed to fill Intr-OUT xdescr: %d",
 			    ret);
 			return (B_FALSE);
 		}
@@ -3315,25 +2854,20 @@ ccid_open_pipes(ccid_t *ccid)
 	/*
 	 * Now open up the pipes.
 	 */
-
-	/*
-	 * First determine the maximum number of asynchronous requests. This
-	 * determines the maximum XXX: of what?
-	 */
 	bzero(&policy, sizeof (policy));
 	policy.pp_max_async_reqs = CCID_NUM_ASYNC_REQS;
 
 	if ((ret = usb_pipe_xopen(ccid->ccid_dip, &ccid->ccid_bulkin_xdesc,
 	    &policy, USB_FLAGS_SLEEP, &ccid->ccid_bulkin_pipe)) !=
 	    USB_SUCCESS) {
-		ccid_error(ccid, "failed to open Bulk-IN pipe: %d\n", ret);
+		ccid_error(ccid, "!failed to open Bulk-IN pipe: %d\n", ret);
 		return (B_FALSE);
 	}
 
 	if ((ret = usb_pipe_xopen(ccid->ccid_dip, &ccid->ccid_bulkout_xdesc,
 	    &policy, USB_FLAGS_SLEEP, &ccid->ccid_bulkout_pipe)) !=
 	    USB_SUCCESS) {
-		ccid_error(ccid, "failed to open Bulk-OUT pipe: %d\n", ret);
+		ccid_error(ccid, "!failed to open Bulk-OUT pipe: %d\n", ret);
 		usb_pipe_close(ccid->ccid_dip, ccid->ccid_bulkin_pipe,
 		    USB_FLAGS_SLEEP, NULL, NULL);
 		ccid->ccid_bulkin_pipe = NULL;
@@ -3344,7 +2878,7 @@ ccid_open_pipes(ccid_t *ccid)
 		if ((ret = usb_pipe_xopen(ccid->ccid_dip,
 		    &ccid->ccid_intrin_xdesc, &policy, USB_FLAGS_SLEEP,
 		    &ccid->ccid_intrin_pipe)) != USB_SUCCESS) {
-			ccid_error(ccid, "failed to open Intr-IN pipe: %d\n",
+			ccid_error(ccid, "!failed to open Intr-IN pipe: %d\n",
 			    ret);
 			usb_pipe_close(ccid->ccid_dip, ccid->ccid_bulkin_pipe,
 			    USB_FLAGS_SLEEP, NULL, NULL);
@@ -3448,7 +2982,7 @@ ccid_minors_init(ccid_t *ccid)
 		(void) ccid_minor_idx_alloc(&ccid->ccid_slots[i].cs_idx,
 		    B_TRUE);
 
-		(void) snprintf(buf, sizeof (buf), "slot%d", i);
+		(void) snprintf(buf, sizeof (buf), "slot%u", i);
 		if (ddi_create_minor_node(ccid->ccid_dip, buf, S_IFCHR,
 		    ccid->ccid_slots[i].cs_idx.cmi_minor,
 		    DDI_NT_CCID_ATTACHMENT_POINT, 0) != DDI_SUCCESS) {
@@ -3465,6 +2999,7 @@ ccid_intr_poll_fini(ccid_t *ccid)
 {
 	if (ccid->ccid_flags & CCID_F_HAS_INTR) {
 		timeout_id_t tid;
+
 		mutex_enter(&ccid->ccid_mutex);
 		tid = ccid->ccid_poll_timeout;
 		ccid->ccid_poll_timeout = NULL;
@@ -3492,7 +3027,7 @@ ccid_intr_poll_init(ccid_t *ccid)
 	uirp->intr_exc_cb = ccid_intr_pipe_except_cb;
 
 	mutex_enter(&ccid->ccid_mutex);
-	if (ccid->ccid_flags & CCID_F_DETACHING) {
+	if (ccid->ccid_flags & CCID_F_DEV_GONE_MASK) {
 		mutex_exit(&ccid->ccid_mutex);
 		usb_free_intr_req(uirp);
 		return;
@@ -3545,10 +3080,6 @@ ccid_disconnect_cb(dev_info_t *dip)
 		goto done;
 	VERIFY3P(dip, ==, ccid->ccid_dip);
 
-	/*
-	 * XXX We need to check this and throw errors throughout, throw out
-	 * poll, etc.
-	 */
 	mutex_enter(&ccid->ccid_mutex);
 	/*
 	 * First, set the disconnected flag. This will make sure that anyone
@@ -3577,7 +3108,7 @@ ccid_disconnect_cb(dev_info_t *dip)
 	 * sure that they don't wait there forever and make sure that anyone
 	 * polling gets a POLLHUP. We can't really distinguish between this and
 	 * an ICC being removed. It will be discovered when someone tries to do
-	 * an operation and they receive an EXDEV. We only need to do this on
+	 * an operation and they receive an ENODEV. We only need to do this on
 	 * minors that have exclusive access. Don't worry about them finishing
 	 * up, this'll be done as part of detach.
 	 */
@@ -3593,10 +3124,8 @@ ccid_disconnect_cb(dev_info_t *dip)
 	}
 
 	/*
-	 * XXX If there are outstanding commands, they should ultimately be
-	 * cleaned up as the USB commands themselves time out. It's not clear
-	 * that we need to clean them up ourselves or how all those callbacks
-	 * will function exactly.
+	 * If there are outstanding commands, they will ultimately be cleaned
+	 * up as the USB commands themselves time out.
 	 */
 	mutex_exit(&ccid->ccid_mutex);
 
@@ -3634,12 +3163,12 @@ ccid_cleanup(dev_info_t *dip)
 	ccid->ccid_flags |= CCID_F_DETACHING;
 	mutex_exit(&ccid->ccid_mutex);
 
-	if (ccid->ccid_attach & CCID_ATTACH_MINORS) {
+	if ((ccid->ccid_attach & CCID_ATTACH_MINORS) != 0) {
 		ccid_minors_fini(ccid);
 		ccid->ccid_attach &= ~CCID_ATTACH_MINORS;
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_INTR_ACTIVE) {
+	if ((ccid->ccid_attach & CCID_ATTACH_INTR_ACTIVE) != 0) {
 		ccid_intr_poll_fini(ccid);
 		ccid->ccid_attach &= ~CCID_ATTACH_INTR_ACTIVE;
 	}
@@ -3656,30 +3185,30 @@ ccid_cleanup(dev_info_t *dip)
 		mutex_exit(&ccid->ccid_mutex);
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_HOTPLUG_CB) {
+	if ((ccid->ccid_attach & CCID_ATTACH_HOTPLUG_CB) != 0) {
 		usb_unregister_event_cbs(dip, &ccid_usb_events);
 		ccid->ccid_attach &= ~CCID_ATTACH_HOTPLUG_CB;
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_SLOTS) {
+	if ((ccid->ccid_attach & CCID_ATTACH_SLOTS) != 0) {
 		ccid_slots_fini(ccid);
 		ccid->ccid_attach &= ~CCID_ATTACH_SLOTS;
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_SEQ_IDS) {
+	if ((ccid->ccid_attach & CCID_ATTACH_SEQ_IDS) != 0) {
 		id_space_destroy(ccid->ccid_seqs);
 		ccid->ccid_seqs = NULL;
 		ccid->ccid_attach &= ~CCID_ATTACH_SEQ_IDS;
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_OPEN_PIPES) {
+	if ((ccid->ccid_attach & CCID_ATTACH_OPEN_PIPES) != 0) {
 		usb_pipe_close(dip, ccid->ccid_bulkin_pipe, USB_FLAGS_SLEEP,
 		    NULL, NULL);
 		ccid->ccid_bulkin_pipe = NULL;
 		usb_pipe_close(dip, ccid->ccid_bulkout_pipe, USB_FLAGS_SLEEP,
 		    NULL, NULL);
 		ccid->ccid_bulkout_pipe = NULL;
-		if (ccid->ccid_flags & CCID_F_HAS_INTR) {
+		if ((ccid->ccid_flags & CCID_F_HAS_INTR) != 0) {
 			usb_pipe_close(dip, ccid->ccid_intrin_pipe,
 			    USB_FLAGS_SLEEP, NULL, NULL);
 			ccid->ccid_intrin_pipe = NULL;
@@ -3712,18 +3241,18 @@ ccid_cleanup(dev_info_t *dip)
 		list_destroy(&ccid->ccid_complete_queue);
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_TASKQ) {
+	if ((ccid->ccid_attach & CCID_ATTACH_TASKQ) != 0) {
 		ddi_taskq_destroy(ccid->ccid_taskq);
 		ccid->ccid_taskq = NULL;
 		ccid->ccid_attach &= ~CCID_ATTACH_TASKQ;
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_MUTEX_INIT) {
+	if ((ccid->ccid_attach & CCID_ATTACH_MUTEX_INIT) != 0) {
 		mutex_destroy(&ccid->ccid_mutex);
 		ccid->ccid_attach &= ~CCID_ATTACH_MUTEX_INIT;
 	}
 
-	if (ccid->ccid_attach & CCID_ATTACH_USB_CLIENT) {
+	if ((ccid->ccid_attach & CCID_ATTACH_USB_CLIENT) != 0) {
 		usb_client_detach(dip, ccid->ccid_dev_data);
 		ccid->ccid_dev_data = NULL;
 		ccid->ccid_attach &= ~CCID_ATTACH_USB_CLIENT;
@@ -3745,7 +3274,7 @@ ccid_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 
 	inst = ddi_get_instance(dip);
 	if (ddi_soft_state_zalloc(ccid_softstate, inst) != DDI_SUCCESS) {
-		ccid_error(NULL, "failed to allocate soft state for ccid "
+		ccid_error(NULL, "!failed to allocate soft state for ccid "
 		    "instance %d", inst);
 		return (DDI_FAILURE);
 	}
@@ -3754,14 +3283,14 @@ ccid_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	ccid->ccid_dip = dip;
 
 	if ((ret = usb_client_attach(dip, USBDRV_VERSION, 0)) != USB_SUCCESS) {
-		ccid_error(ccid, "failed to attach to usb client: %d", ret);
+		ccid_error(ccid, "!failed to attach to usb client: %d", ret);
 		goto cleanup;
 	}
 	ccid->ccid_attach |= CCID_ATTACH_USB_CLIENT;
 
 	if ((ret = usb_get_dev_data(dip, &ccid->ccid_dev_data, USB_PARSE_LVL_IF,
 	    0)) != USB_SUCCESS) {
-		ccid_error(ccid, "failed to get usb device data: %d", ret);
+		ccid_error(ccid, "!failed to get usb device data: %d", ret);
 		goto cleanup;
 	}
 
@@ -3772,7 +3301,7 @@ ccid_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	(void) snprintf(buf, sizeof (buf), "ccid%d_taskq", inst);
 	ccid->ccid_taskq = ddi_taskq_create(dip, buf, 1, TASKQ_DEFAULTPRI, 0);
 	if (ccid->ccid_taskq == NULL) {
-		ccid_error(ccid, "failed to create CCID taskq");
+		ccid_error(ccid, "!failed to create CCID taskq");
 		goto cleanup;
 	}
 	ccid->ccid_attach |= CCID_ATTACH_TASKQ;
@@ -3783,17 +3312,18 @@ ccid_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	    offsetof(ccid_command_t, cc_list_node));
 
 	if (!ccid_parse_class_desc(ccid)) {
-		ccid_error(ccid, "failed to parse CCID class descriptor");
+		ccid_error(ccid, "!failed to parse CCID class descriptor");
 		goto cleanup;
 	}
 
 	if (!ccid_supported(ccid)) {
-		ccid_error(ccid, "CCID reader is not supported, not attaching");
+		ccid_error(ccid,
+		    "!CCID reader is not supported, not attaching");
 		goto cleanup;
 	}
 
 	if (!ccid_open_pipes(ccid)) {
-		ccid_error(ccid, "failed to open CCID pipes, not attaching");
+		ccid_error(ccid, "!failed to open CCID pipes, not attaching");
 		goto cleanup;
 	}
 	ccid->ccid_attach |= CCID_ATTACH_OPEN_PIPES;
@@ -3801,19 +3331,19 @@ ccid_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	(void) snprintf(buf, sizeof (buf), "ccid%d_seqs", inst);
 	if ((ccid->ccid_seqs = id_space_create(buf, CCID_SEQ_MIN,
 	    CCID_SEQ_MAX + 1)) == NULL) {
-		ccid_error(ccid, "failed to create CCID sequence id space");
+		ccid_error(ccid, "!failed to create CCID sequence id space");
 		goto cleanup;
 	}
 	ccid->ccid_attach |= CCID_ATTACH_SEQ_IDS;
 
 	if (!ccid_slots_init(ccid)) {
-		ccid_error(ccid, "failed to initialize CCID slot structures");
+		ccid_error(ccid, "!failed to initialize CCID slot structures");
 		goto cleanup;
 	}
 	ccid->ccid_attach |= CCID_ATTACH_SLOTS;
 
 	if (usb_register_event_cbs(dip, &ccid_usb_events, 0) != USB_SUCCESS) {
-		ccid_error(ccid, "failed to register USB hotplug callbacks");
+		ccid_error(ccid, "!failed to register USB hotplug callbacks");
 		goto cleanup;
 	}
 	ccid->ccid_attach |= CCID_ATTACH_HOTPLUG_CB;
@@ -3835,7 +3365,7 @@ ccid_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
 	 * Create minor nodes for each slot.
 	 */
 	if (!ccid_minors_init(ccid)) {
-		ccid_error(ccid, "failed to create minor nodes");
+		ccid_error(ccid, "!failed to create minor nodes");
 		goto cleanup;
 	}
 	ccid->ccid_attach |= CCID_ATTACH_MINORS;
@@ -3926,7 +3456,7 @@ ccid_open(dev_t *devp, int flag, int otyp, cred_t *credp)
 	if (crgetzoneid(credp) != GLOBAL_ZONEID)
 		return (ENOENT);
 
-	if (otyp & (FNDELAY | FEXCL))
+	if ((otyp & (FNDELAY | FEXCL)) != 0)
 		return (EINVAL);
 
 	if (drv_priv(credp) != 0)
@@ -3935,8 +3465,7 @@ ccid_open(dev_t *devp, int flag, int otyp, cred_t *credp)
 	if (otyp != OTYP_CHR)
 		return (ENOTSUP);
 
-	/* XXX We should maybe reduce this for just getting the status */
-	if ((flag & (FREAD | FWRITE)) != (FREAD | FWRITE))
+	if ((flag & FREAD) != FREAD)
 		return (EINVAL);
 
 	idx = ccid_minor_find(getminor(*devp));
@@ -3953,6 +3482,14 @@ ccid_open(dev_t *devp, int flag, int otyp, cred_t *credp)
 	}
 
 	slot = idx->cmi_data.cmi_slot;
+
+	mutex_enter(&slot->cs_ccid->ccid_mutex);
+	if ((slot->cs_ccid->ccid_flags & CCID_F_DISCONNECTED) != 0) {
+		mutex_exit(&slot->cs_ccid->ccid_mutex);
+		return (ENODEV);
+	}
+	mutex_exit(&slot->cs_ccid->ccid_mutex);
+
 	cmp = kmem_zalloc(sizeof (ccid_minor_t), KM_SLEEP);
 
 	cmp->cm_idx.cmi_minor = CCID_MINOR_INVALID;
@@ -3968,6 +3505,10 @@ ccid_open(dev_t *devp, int flag, int otyp, cred_t *credp)
 	cmp->cm_opener = crdup(credp);
 	cmp->cm_slot = slot;
 	*devp = makedevice(getmajor(*devp), cmp->cm_idx.cmi_minor);
+
+	if ((flag & FWRITE) == FWRITE) {
+		cmp->cm_flags |= CCID_MINOR_F_WRITABLE;
+	}
 
 	mutex_enter(&slot->cs_ccid->ccid_mutex);
 	list_insert_tail(&slot->cs_minors, cmp);
@@ -4017,305 +3558,9 @@ ccid_user_io_done(ccid_t *ccid, ccid_slot_t *slot)
 	slot->cs_io.ci_flags |= CCID_IO_F_DONE;
 	cmp = slot->cs_excl_minor;
 	if (cmp != NULL) {
-		pollwakeup(&cmp->cm_pollhead, POLLIN | POLLRDNORM);
+		ccid_slot_pollin_signal(slot);
 		cv_signal(&cmp->cm_read_cv);
 	}
-}
-
-static void
-ccid_teardown_tpdu_t1(ccid_t *ccid, ccid_slot_t *slot, int error)
-{
-	/*
-	 * First check if there's an I/O in progress. If not, then we're done
-	 * here and there's nothing for us to really do.
-	 */
-	if ((slot->cs_io.ci_flags & CCID_IO_F_IN_PROGRESS) == 0) {
-		return;
-	}
-
-	/*
-	 * There's an outstanding I/O. The first thing we need to do is to
-	 * complete the command from a user perspective so we can disassociate
-	 * our state from it.
-	 */
-	slot->cs_io.ci_errno = error;
-	ccid_user_io_done(ccid, slot);
-
-	/*
-	 * Set the fact that the slot should block until such an I/O is
-	 * complete. We cannot do anything about outstanding T=1 behavior at
-	 * this point in time. The only thing that we can do is wait for the
-	 * next command completion and then act upon it.
-	 */
-	slot->cs_flags |= CCID_SLOT_F_NEED_IO_TEARDOWN;
-}
-
-static void
-ccid_init_tpdu_t1(ccid_t *ccid, ccid_slot_t *slot)
-{
-	t1_state_icc_init(&slot->cs_io.ci_t1, slot->cs_icc.icc_atr_data,
-	    ccid->ccid_bufsize);
-}
-
-static void
-ccid_fini_tpdu_t1(ccid_t *ccid, ccid_slot_t *slot)
-{
-	t1_state_icc_fini(&slot->cs_io.ci_t1);
-}
-
-/*
- * This is called in response to us having a command completed for a T=1 TPDU.
- * At this point we need to go through and now advance the state machine that
- * we've created and figure out what the next step is. Unlike with APDU level
- * transfers, we may need to go and send additional commands for the clients
- * APDU.
- */
-static void
-ccid_complete_tpdu_t1(ccid_t *ccid, ccid_slot_t *slot, ccid_command_t *cc)
-{
-	const void *buf;
-	size_t len;
-	mblk_t *mp;
-	int ret;
-	ccid_reply_command_status_t crs;
-	ccid_reply_icc_status_t cis;
-	t1_validate_t t1err;
-	t1_state_t *t1 = &slot->cs_io.ci_t1;
-
-	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
-	VERIFY3P(slot->cs_io.ci_command, ==, cc);
-
-	/*
-	 * XXX First check whether or not we've been asked to teardown this I/O.
-	 * The steps that we take for this teardown will depend on what's going
-	 * on with the ICC or reader. Presuming that the ICC is still present
-	 * and not being reset, we'll need to terminate this gracefully.
-	 * Otherwise, we can basically not worry about cleaning this up beyond
-	 * the logical state because the hardware is being reset or going away,
-	 * so we don't have to issue new commands.
-	 */
-	if ((slot->cs_flags & CCID_SLOT_F_NEED_IO_TEARDOWN) != 0) {
-		if ((slot->cs_flags & CCID_SLOT_F_NEED_TXN_RESET) != 0 ||
-		    (slot->cs_flags & CCID_SLOT_F_ACTIVE) == 0) {
-			/* We can just drop our state now. */
-			t1_state_cmd_fini(&slot->cs_io.ci_t1);
-			ccid_slot_io_teardown_done(slot);
-			return;
-		}
-
-		cmn_err(CE_PANIC, "implement T=1 abort logic");
-	}
-
-	/*
-	 * XXX At this time we do not properly implement the state machine that
-	 * is described by the ISO/IEC 7816-3:2006 specification. If we get
-	 * errors at a reader level or a failure to transmit the command, that
-	 * might leave the ICC in an arbitrary state. We need to handle this and
-	 * go from there. It's likely that we should treat this as a warm reset
-	 * case like everything else and basically return EIO.
-	 */
-	if (cc->cc_state > CCID_COMMAND_COMPLETE) {
-		/*
-		 * XXX Take out the system until we fix this.
-		 */
-		cmn_err(CE_PANIC,
-		    "implement cc->cc_state > CCID_COMMAND_COMPLETED case");
-	}
-
-	/*
-	 * Check the CCID command level case. If we were told the slot is going
-	 * away, mark that and notify the user that the command is done.
-	 *
-	 * XXX In terms of failure we should be looking at one of several
-	 * different things here. We should see if there was a bit error, etc.
-	 * and act accordingly per the spec.
-	 */
-	ccid_command_status_decode(cc, &crs, &cis, NULL);
-	if (crs == CCID_REPLY_STATUS_FAILED && cis == CCID_REPLY_ICC_MISSING) {
-		/*
-		 * The ICC was removed. The user will likely be notified of this
-		 * at some point soon. Keep the ccid_command_t around until they
-		 * call read for debugging purposes.
-		 */
-		slot->cs_io.ci_errno = ENXIO;
-		ccid_user_io_done(ccid, slot);
-		return;
-	} else if (crs != CCID_REPLY_STATUS_COMPLETE) {
-		/* XXX */
-		cmn_err(CE_PANIC,
-		    "implement crs != CCID_REPLY_STATUS_COMPLETE case");
-	}
-
-	/*
-	 * The system has already verified that the CCID payload length makes
-	 * sense for the message block, so we do not need to check that here as
-	 * we take ownership of the message block from the command and free the
-	 * command.
-	 */
-	mp = cc->cc_response;
-	cc->cc_response = NULL;
-	mp->b_rptr += sizeof (ccid_header_t);
-
-	slot->cs_io.ci_command = NULL;
-	ccid_command_free(cc);
-	cc = NULL;
-
-	if ((t1err = t1_reply(t1, mp)) != T1_VALIDATE_OK) {
-		ccid_error(ccid, "!Received t1 error (%u): %s", t1err,
-		    t1_errmsg(t1));
-	}
-
-	switch (t1_step(t1)) {
-	case T1_ACTION_SEND_COMMAND:
-		break;
-	case T1_ACTION_WARM_RESET:
-		/* XXX Actually issue the reset */
-		slot->cs_io.ci_errno = EIO;
-		ccid_user_io_done(ccid, slot);
-		return;
-	case T1_ACTION_DONE:
-		/*
-		 * Complete and free this I/O from a T=1 perspective. The data
-		 * will be saved for the user.
-		 */
-		slot->cs_io.ci_errno = 0;
-		slot->cs_io.ci_data =
-		    t1_state_cmd_reply_take(&slot->cs_io.ci_t1);
-		t1_state_cmd_fini(&slot->cs_io.ci_t1);
-		VERIFY3P(slot->cs_io.ci_data, !=, NULL);
-		ccid_user_io_done(ccid, slot);
-		return;
-	}
-
-	/*
-	 * We've been asked to send another command by the T=1 state machine. Do
-	 * so.
-	 */
-	t1_data(t1, &buf, &len);
-	/*
-	 * XXX Right now we're purposefully not dropping the lock across the
-	 * command allocation. I'm not sure if that's good or not. The problem
-	 * is that if we drop it, we need to make sure that the ICC state is
-	 * still good. If not, then we would need to throw this out, but it
-	 * means that the system can advance in the face of memory pressure,
-	 * which is good.
-	 *
-	 * XXX We need to actually ask the T=1 state machine for the WTX for
-	 * this block. We also may need to adjust the timeout on the USB
-	 * command.
-	 */
-	if ((ret = ccid_command_alloc(ccid, slot, B_FALSE, NULL, len,
-	    CCID_REQUEST_TRANSFER_BLOCK, 0, 0, 0,
-	    &cc)) != 0) {
-		slot->cs_io.ci_errno = ENOMEM;
-		ccid_user_io_done(ccid, slot);
-		return;
-	}
-	cc->cc_flags |= CCID_COMMAND_F_USER;
-	ccid_command_bcopy(cc, buf, len);
-
-	/*
-	 * Now, finally drop the lock to queue the command and mark that this is
-	 * our current command.
-	 *
-	 * XXX We should probably put the preparing flag here.
-	 */
-	slot->cs_io.ci_command = cc;
-	mutex_exit(&ccid->ccid_mutex);
-
-	if ((ret = ccid_command_queue(ccid, cc)) != 0) {
-		mutex_enter(&ccid->ccid_mutex);
-		/*
-		 * XXX Do we need to clean up the T=1 state here potentially? Or
-		 * can we leave it to be cleaned up by something else that next
-		 * uses it? Because we've dropped the lock, it's not clear what
-		 * we can or cannot do.
-		 *
-		 * XXX For the moment I'm going to mark this command done. This
-		 * is really getting far too complicated.
-		 */
-		slot->cs_io.ci_command = NULL;
-		ccid_command_free(cc);
-		slot->cs_io.ci_errno = ENOMEM;
-		ccid_user_io_done(ccid, slot);
-		return;
-	}
-
-	mutex_enter(&ccid->ccid_mutex);
-}
-
-static int
-ccid_write_tpdu_t1(ccid_t *ccid, ccid_slot_t *slot)
-{
-	int ret;
-	ccid_command_t *cc;
-	const void *buf;
-	size_t len;
-
-	VERIFY(MUTEX_HELD(&ccid->ccid_mutex));
-
-	/*
-	 * Initialize a new command and kick off the internal state machine.
-	 */
-	t1_state_cmd_init(&slot->cs_io.ci_t1, slot->cs_io.ci_ibuf,
-	    slot->cs_io.ci_ilen);
-
-	switch (t1_step(&slot->cs_io.ci_t1)) {
-	case T1_ACTION_SEND_COMMAND:
-		break;
-	case T1_ACTION_WARM_RESET:
-	case T1_ACTION_DONE:
-		/* XXX Figure out if this can happen. */
-		return (EIO);
-	}
-
-	t1_data(&slot->cs_io.ci_t1, &buf, &len);
-
-	/*
-	 * XXX Right now we're purposefully not dropping the lock across the
-	 * command allocation. I'm not sure if that's good or not. The problem
-	 * is that if we drop it, we need to make sure that the ICC state is
-	 * still good. If not, then we would need to throw this out, but it
-	 * means that the system can advance in the face of memory pressure,
-	 * which is good.
-	 */
-	if ((ret = ccid_command_alloc(ccid, slot, B_FALSE, NULL, len,
-	    CCID_REQUEST_TRANSFER_BLOCK, 0, 0, 0,
-	    &cc)) != 0) {
-		/* XXX Invalidate command state? */
-		return (ret);
-	}
-	cc->cc_flags |= CCID_COMMAND_F_USER;
-	ccid_command_bcopy(cc, buf, len);
-
-	/*
-	 * Before we submit this command, assign it to our internal state. We
-	 * need to do this before we submit the command. Otherwise, we could be
-	 * pathologically scheduled and not get the chance.
-	 */
-	slot->cs_io.ci_command = cc;
-
-	/*
-	 * Now, finally drop the lock to queue the command.
-	 */
-	mutex_exit(&ccid->ccid_mutex);
-
-	if ((ret = ccid_command_queue(ccid, cc)) != 0) {
-		mutex_enter(&ccid->ccid_mutex);
-		/*
-		 * XXX Do we need to clean up the T=1 state here potentially? Or
-		 * can we leave it to be cleaned up by something else that next
-		 * uses it? Becuse we've dropped the lock, it's not clear what
-		 * we can or cannot do.
-		 */
-		slot->cs_io.ci_command = NULL;
-		ccid_command_free(cc);
-		return (ret);
-	}
-
-	mutex_enter(&ccid->ccid_mutex);
-
-	return (0);
 }
 
 /*
@@ -4369,11 +3614,6 @@ ccid_complete_apdu(ccid_t *ccid, ccid_slot_t *slot, ccid_command_t *cc)
 	 * longer present, but we still have outstanding work to do in the
 	 * stack. As such, we need to go through and check if the flag was set
 	 * on the slot during teardown and if so, clean it up now.
-	 *
-	 * XXX Once this is done, we may be able to proceed with I/O depending
-	 * on what else is happening. So signal that fact or at least check.
-	 * This needs to do more than just signal on a CV, we may need to do
-	 * various POLL activities.
 	 */
 	if ((slot->cs_flags & CCID_SLOT_F_NEED_IO_TEARDOWN) != 0) {
 		ccid_command_free(cc);
@@ -4385,12 +3625,11 @@ ccid_complete_apdu(ccid_t *ccid, ccid_slot_t *slot, ccid_command_t *cc)
 	/*
 	 * Process this command and figure out what we should logically be
 	 * returning to the user.
-	 *
-	 * XXX If the command did not complete successfully, then we need to
-	 * request that the slot be reset.
 	 */
 	if (cc->cc_state != CCID_COMMAND_COMPLETE) {
 		slot->cs_io.ci_errno = EIO;
+		slot->cs_flags |= CCID_SLOT_F_NEED_TXN_RESET;
+		ccid_worker_request(ccid);
 		goto consume;
 	}
 
@@ -4407,7 +3646,7 @@ ccid_complete_apdu(ccid_t *ccid, ccid_slot_t *slot, ccid_command_t *cc)
 		slot->cs_io.ci_errno = ENXIO;
 	} else {
 		/*
-		 * XXX There are a few more semantic things we can do
+		 * There are a few more semantic things we can do
 		 * with the errors here that we're throwing out and
 		 * lumping as EIO. Oh well.
 		 */
@@ -4496,7 +3735,7 @@ ccid_read(dev_t dev, struct uio *uiop, cred_t *credp)
 	/*
 	 * First, check if we have exclusive access. If not, we're done.
 	 */
-	if (!(cmp->cm_flags & CCID_MINOR_F_HAS_EXCL)) {
+	if ((cmp->cm_flags & CCID_MINOR_F_HAS_EXCL) == 0) {
 		mutex_exit(&ccid->ccid_mutex);
 		return (EACCES);
 	}
@@ -4598,7 +3837,7 @@ ccid_read(dev_t dev, struct uio *uiop, cred_t *credp)
 
 	if (done) {
 		ccid_clear_io(&slot->cs_io);
-		/* XXX Signal next write may be able to happen at this point */
+		ccid_slot_pollout_signal(slot);
 	}
 
 	mutex_exit(&ccid->ccid_mutex);
@@ -4650,15 +3889,16 @@ ccid_write(dev_t dev, struct uio *uiop, cred_t *credp)
 	}
 
 	/*
-	 * Check if we have exclusive access and if there's a card present. If
-	 * not, both are errors.
+	 * Check that we are open for writing, have exclusive access, and
+	 * there's a card present. If not, error out.
 	 */
-	if (!(cmp->cm_flags & CCID_MINOR_F_HAS_EXCL)) {
+	if ((cmp->cm_flags & (CCID_MINOR_F_WRITABLE | CCID_MINOR_F_HAS_EXCL)) !=
+	    (CCID_MINOR_F_WRITABLE | CCID_MINOR_F_HAS_EXCL)) {
 		mutex_exit(&ccid->ccid_mutex);
 		return (EACCES);
 	}
 
-	if (!(slot->cs_flags & CCID_SLOT_F_ACTIVE)) {
+	if ((slot->cs_flags & CCID_SLOT_F_ACTIVE) == 0) {
 		mutex_exit(&ccid->ccid_mutex);
 		return (ENXIO);
 	}
@@ -4709,14 +3949,8 @@ ccid_write(dev_t dev, struct uio *uiop, cred_t *credp)
 		slot->cs_io.ci_ilen = 0;
 		bzero(slot->cs_io.ci_ibuf, sizeof (slot->cs_io.ci_ibuf));
 		slot->cs_io.ci_flags &= ~CCID_IO_F_PREPARING;
-		/*
-		 * XXX We should be checking more conditions then just this. We
-		 * don't want to signal, if for example, we're disconnected, or
-		 * we're going to end up going away, etc.
-		 */
-		if (slot->cs_excl_minor != NULL) {
-			pollwakeup(&slot->cs_excl_minor->cm_pollhead, POLLOUT);
-		}
+
+		ccid_slot_pollout_signal(slot);
 	} else {
 		slot->cs_io.ci_flags &= ~CCID_IO_F_PREPARING;
 		slot->cs_io.ci_flags |= CCID_IO_F_IN_PROGRESS;
@@ -4744,18 +3978,13 @@ ccid_ioctl_status(ccid_slot_t *slot, intptr_t arg, int mode)
 		return (EINVAL);
 
 	ucs.ucs_status = 0;
-	mutex_enter(&slot->cs_ccid->ccid_mutex);
-	if ((slot->cs_ccid->ccid_flags & CCID_F_DISCONNECTED) != 0) {
-		mutex_exit(&slot->cs_ccid->ccid_mutex);
-		return (ENODEV);
-	}
-
 	ucs.ucs_instance = ddi_get_instance(slot->cs_ccid->ccid_dip);
 	ucs.ucs_slot = slot->cs_slotno;
 
-	if (slot->cs_flags & CCID_SLOT_F_PRESENT)
+	mutex_enter(&slot->cs_ccid->ccid_mutex);
+	if ((slot->cs_flags & CCID_SLOT_F_PRESENT) != 0)
 		ucs.ucs_status |= UCCID_STATUS_F_CARD_PRESENT;
-	if (slot->cs_flags & CCID_SLOT_F_ACTIVE)
+	if ((slot->cs_flags & CCID_SLOT_F_ACTIVE) != 0)
 		ucs.ucs_status |= UCCID_STATUS_F_CARD_ACTIVE;
 
 	if (slot->cs_atr != NULL) {
@@ -4816,10 +4045,11 @@ ccid_ioctl_txn_begin(ccid_slot_t *slot, ccid_minor_t *cmp, intptr_t arg,
 	nowait = (uct.uct_flags & UCCID_TXN_DONT_BLOCK) != 0;
 
 	mutex_enter(&slot->cs_ccid->ccid_mutex);
-	if ((slot->cs_ccid->ccid_flags & CCID_F_DISCONNECTED) != 0) {
+	if ((cmp->cm_flags & CCID_MINOR_F_WRITABLE) == 0) {
 		mutex_exit(&slot->cs_ccid->ccid_mutex);
-		return (ENODEV);
+		return (EACCES);
 	}
+
 	ret = ccid_slot_excl_req(slot, cmp, nowait);
 	mutex_exit(&slot->cs_ccid->ccid_mutex);
 
@@ -4855,11 +4085,6 @@ ccid_ioctl_txn_end(ccid_slot_t *slot, ccid_minor_t *cmp, intptr_t arg, int mode)
 	}
 
 	mutex_enter(&slot->cs_ccid->ccid_mutex);
-	if ((slot->cs_ccid->ccid_flags & CCID_F_DISCONNECTED) != 0) {
-		mutex_exit(&slot->cs_ccid->ccid_mutex);
-		return (ENODEV);
-	}
-
 	if (slot->cs_excl_minor != cmp) {
 		mutex_exit(&slot->cs_ccid->ccid_mutex);
 		return (EINVAL);
@@ -4882,12 +4107,8 @@ ccid_ioctl_fionread(ccid_slot_t *slot, ccid_minor_t *cmp, intptr_t arg,
 	int data;
 
 	mutex_enter(&slot->cs_ccid->ccid_mutex);
-	if ((slot->cs_ccid->ccid_flags & CCID_F_DISCONNECTED) != 0) {
-		mutex_exit(&slot->cs_ccid->ccid_mutex);
-		return (ENODEV);
-	}
-
-	if (!(cmp->cm_flags & CCID_MINOR_F_HAS_EXCL)) {
+	if ((cmp->cm_flags & (CCID_MINOR_F_WRITABLE | CCID_MINOR_F_HAS_EXCL)) ==
+	    (CCID_MINOR_F_WRITABLE | CCID_MINOR_F_HAS_EXCL)) {
 		mutex_exit(&slot->cs_ccid->ccid_mutex);
 		return (EACCES);
 	}
@@ -4922,9 +4143,10 @@ ccid_ioctl_fionread(ccid_slot_t *slot, ccid_minor_t *cmp, intptr_t arg,
 }
 
 static int
-ccid_ioctl_icc_modify(ccid_slot_t *slot, intptr_t arg, int mode)
+ccid_ioctl_icc_modify(ccid_slot_t *slot, ccid_minor_t *cmp, intptr_t arg,
+    int mode)
 {
-	int ret;
+	int ret = 0;
 	uccid_cmd_icc_modify_t uci;
 	ccid_t *ccid;
 
@@ -4947,18 +4169,29 @@ ccid_ioctl_icc_modify(ccid_slot_t *slot, intptr_t arg, int mode)
 
 	ccid = slot->cs_ccid;
 	mutex_enter(&ccid->ccid_mutex);
-	if ((slot->cs_ccid->ccid_flags & CCID_F_DISCONNECTED) != 0) {
-		mutex_exit(&slot->cs_ccid->ccid_mutex);
-		return (ENODEV);
+	if ((cmp->cm_flags & (CCID_MINOR_F_WRITABLE | CCID_MINOR_F_HAS_EXCL)) !=
+	    (CCID_MINOR_F_WRITABLE | CCID_MINOR_F_HAS_EXCL)) {
+		mutex_exit(&ccid->ccid_mutex);
+		return (EACCES);
 	}
 
-	/*
-	 * XXX do something.
-	 */
+	switch (uci.uci_action) {
+	case UCCID_ICC_WARM_RESET:
+		ret = ccid_slot_warm_reset(ccid, slot);
+		break;
+
+	case UCCID_ICC_POWER_OFF:
+		ret = ccid_slot_power_off(ccid, slot);
+		break;
+
+	case UCCID_ICC_POWER_ON:
+		ret = ccid_slot_inserted(ccid, slot);
+		break;
+	}
 
 	mutex_exit(&ccid->ccid_mutex);
 
-	return (ENOTSUP);
+	return (ret);
 }
 
 static int
@@ -4981,6 +4214,13 @@ ccid_ioctl(dev_t dev, int cmd, intptr_t arg, int mode, cred_t *credp,
 	cmp = idx->cmi_data.cmi_user;
 	slot = cmp->cm_slot;
 
+	mutex_enter(&slot->cs_ccid->ccid_mutex);
+	if ((slot->cs_ccid->ccid_flags & CCID_F_DISCONNECTED) != 0) {
+		mutex_exit(&slot->cs_ccid->ccid_mutex);
+		return (ENODEV);
+	}
+	mutex_exit(&slot->cs_ccid->ccid_mutex);
+
 	switch (cmd) {
 	case UCCID_CMD_TXN_BEGIN:
 		return (ccid_ioctl_txn_begin(slot, cmp, arg, mode));
@@ -4991,7 +4231,7 @@ ccid_ioctl(dev_t dev, int cmd, intptr_t arg, int mode, cred_t *credp,
 	case FIONREAD:
 		return (ccid_ioctl_fionread(slot, cmp, arg, mode));
 	case UCCID_CMD_ICC_MODIFY:
-		return (ccid_ioctl_icc_modify(slot, arg, mode));
+		return (ccid_ioctl_icc_modify(slot, cmp, arg, mode));
 	default:
 		break;
 	}
@@ -5018,9 +4258,6 @@ ccid_chpoll(dev_t dev, short events, int anyyet, short *reventsp,
 		return (ENXIO);
 	}
 
-	/*
-	 * First tear down the global index entry.
-	 */
 	cmp = idx->cmi_data.cmi_user;
 	slot = cmp->cm_slot;
 	ccid = slot->cs_ccid;
@@ -5031,7 +4268,7 @@ ccid_chpoll(dev_t dev, short events, int anyyet, short *reventsp,
 		return (ENODEV);
 	}
 
-	if (!(cmp->cm_flags & CCID_MINOR_F_HAS_EXCL)) {
+	if ((cmp->cm_flags & CCID_MINOR_F_HAS_EXCL) == 0) {
 		mutex_exit(&ccid->ccid_mutex);
 		return (EACCES);
 	}
@@ -5042,15 +4279,13 @@ ccid_chpoll(dev_t dev, short events, int anyyet, short *reventsp,
 	 */
 	if ((slot->cs_io.ci_flags & CCID_IO_F_DONE) != 0) {
 		ready |= POLLIN | POLLRDNORM;
-	} else if ((slot->cs_io.ci_flags & CCID_IO_F_POLLOUT_FLAGS) == 0) {
-		/*
-		 * XXX This isn't quite true, as we need to consider other
-		 * states of the device, ICC present, etc.
-		 */
+	} else if ((slot->cs_io.ci_flags & CCID_IO_F_POLLOUT_FLAGS) == 0 &&
+	    (slot->cs_flags & CCID_SLOT_F_ACTIVE) != 0 &&
+	    slot->cs_icc.icc_tx != NULL) {
 		ready |= POLLOUT;
 	}
 
-	if (!(slot->cs_flags & CCID_SLOT_F_PRESENT)) {
+	if ((slot->cs_flags & CCID_SLOT_F_PRESENT) == 0) {
 		ready |= POLLHUP;
 	}
 

@@ -17,21 +17,13 @@ UTSBASE = ../..
 
 MODULE		= ccid
 OBJECTS		= $(CCID_OBJS:%=$(OBJS_DIR)/%)
-LINTS		= $(CCID_OBJS:%.o=$(LINTS_DIR)/%.ln)
 ROOTMODULE	= $(ROOT_DRV_DIR)/$(MODULE)
 
 include $(UTSBASE)/intel/Makefile.intel
 
 ALL_TARGET	= $(BINARY)
-LINT_TARGET	= $(MODULE).lint
 INSTALL_TARGET	= $(BINARY) $(ROOTMODULE)
 CPPFLAGS	+= -I$(SRC)/common/ccid
-
-#
-# XXX For dev
-#
-CERRWARN	+= -_gcc=-Wno-unused-function
-CERRWARN	+= -_gcc=-Wno-unused-variable
 
 LDFLAGS		+= -dy -N misc/usba
 
@@ -44,12 +36,6 @@ all:		$(ALL_DEPS)
 clean:		$(CLEAN_DEPS)
 
 clobber:	$(CLOBBER_DEPS)
-
-lint:		$(LINT_DEPS)
-
-modlintlib:	$(MODLINTLIB_DEPS)
-
-clean.lint:	$(CLEAN_LINT_DEPS)
 
 install:	$(INSTALL_DEPS)
 
