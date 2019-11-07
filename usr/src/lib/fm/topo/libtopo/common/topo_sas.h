@@ -39,7 +39,14 @@ extern "C" {
 #define	TOPO_PGROUP_SASPORT		"port-properties"
 #define	TOPO_PROP_SASPORT_LOCAL_ADDR	"local-sas-address"
 #define	TOPO_PROP_SASPORT_ATTACH_ADDR	"attached-sas-address"
-/* XXX - add props to capture link error counters per PHY */
+
+/*
+ * PHY link state error counters
+ */
+#define	TOPO_PROP_SASPORT_INV_DWORD	"invalid-dword"
+#define	TOPO_PROP_SASPORT_RUN_DISP	"running-disparity-error"
+#define	TOPO_PROP_SASPORT_LOSS_SYNC	"loss-dword-sync"
+#define	TOPO_PROP_SASPORT_RESET_PROB	"reset-problem-count"
 
 #define	TOPO_PGROUP_TARGET		"target-properties"
 #define	TOPO_PROP_TARGET_MANUF		"manufacturer"

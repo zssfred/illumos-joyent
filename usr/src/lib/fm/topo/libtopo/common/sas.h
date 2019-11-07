@@ -37,6 +37,10 @@ extern void sas_fini(topo_mod_t *);
 #define	TOPO_METH_SAS_DEV_PROP_DESC	"retrieve device properties"
 #define	TOPO_METH_SAS_DEV_PROP_VERSION	0
 
+#define	TOPO_METH_SAS_PHY_ERR		"sas_get_phy_err_counter"
+#define	TOPO_METH_SAS_PHY_ERR_DESC	"get PHY link state error counters"
+#define	TOPO_METH_SAS_PHY_ERR_VERSION	0
+
 #ifdef	__cplusplus
 }
 #endif

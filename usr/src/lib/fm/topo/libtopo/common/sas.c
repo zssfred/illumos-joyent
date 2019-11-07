@@ -192,6 +192,8 @@ static int sas_hc_fmri(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 static int sas_device_props_set(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
+static int sas_get_phy_err_counter(topo_mod_t *, tnode_t *, topo_version_t,
+    nvlist_t *, nvlist_t **);
 
 static const topo_method_t sas_root_methods[] = {
 	{ TOPO_METH_NVL2STR, TOPO_METH_NVL2STR_DESC, TOPO_METH_NVL2STR_VERSION,
@@ -203,7 +205,7 @@ static const topo_method_t sas_root_methods[] = {
 	{ NULL }
 };
 
-static const topo_method_t sas_child_methods[] = {
+static const topo_method_t sas_initiator_methods[] = {
 	{ TOPO_METH_SAS2DEV, TOPO_METH_SAS2DEV_DESC, TOPO_METH_SAS2DEV_VERSION,
 	    TOPO_STABILITY_INTERNAL, sas_dev_fmri },
 	{ TOPO_METH_SAS2HC, TOPO_METH_SAS2HC_DESC, TOPO_METH_SAS2HC_VERSION,
@@ -211,6 +213,30 @@ static const topo_method_t sas_child_methods[] = {
 	{ TOPO_METH_SAS_DEV_PROP, TOPO_METH_SAS_DEV_PROP_DESC,
 	    TOPO_METH_SAS_DEV_PROP_VERSION, TOPO_STABILITY_INTERNAL,
 	    sas_device_props_set },
+	{ NULL }
+};
+
+static const topo_method_t sas_expander_methods[] = {
+	{ TOPO_METH_SAS2DEV, TOPO_METH_SAS2DEV_DESC, TOPO_METH_SAS2DEV_VERSION,
+	    TOPO_STABILITY_INTERNAL, sas_dev_fmri },
+	{ NULL }
+};
+
+static const topo_method_t sas_target_methods[] = {
+	{ TOPO_METH_SAS2DEV, TOPO_METH_SAS2DEV_DESC, TOPO_METH_SAS2DEV_VERSION,
+	    TOPO_STABILITY_INTERNAL, sas_dev_fmri },
+	{ TOPO_METH_SAS2HC, TOPO_METH_SAS2HC_DESC, TOPO_METH_SAS2HC_VERSION,
+	    TOPO_STABILITY_INTERNAL, sas_hc_fmri },
+	{ TOPO_METH_SAS_DEV_PROP, TOPO_METH_SAS_DEV_PROP_DESC,
+	    TOPO_METH_SAS_DEV_PROP_VERSION, TOPO_STABILITY_INTERNAL,
+	    sas_device_props_set },
+	{ NULL }
+};
+
+static const topo_method_t sas_port_methods[] = {
+	{ TOPO_METH_SAS_PHY_ERR, TOPO_METH_SAS_PHY_ERR_DESC,
+	    TOPO_METH_SAS_PHY_ERR_VERSION, TOPO_STABILITY_INTERNAL,
+	    sas_get_phy_err_counter },
 	{ NULL }
 };
 
@@ -273,9 +299,19 @@ struct sas_phy_info {
 int
 sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 {
+	const topo_method_t *propmethods;
 	int ret = 0;
 
-	if (topo_method_register(mod, tn, sas_child_methods) != 0) {
+	if (strcmp(topo_node_name(tn), TOPO_VTX_INITIATOR) == 0)
+		propmethods = sas_initiator_methods;
+	else if (strcmp(topo_node_name(tn), TOPO_VTX_PORT) == 0)
+		propmethods = sas_port_methods;
+	else if (strcmp(topo_node_name(tn), TOPO_VTX_EXPANDER) == 0)
+		propmethods = sas_expander_methods;
+	else if (strcmp(topo_node_name(tn), TOPO_VTX_TARGET) == 0)
+		propmethods = sas_target_methods;
+
+	if (topo_method_register(mod, tn, propmethods) != 0) {
 		topo_mod_dprintf(mod, "failed to register fmri"
 		    "methods for %s=%" PRIx64, topo_node_name(tn),
 		    topo_node_instance(tn));
@@ -458,13 +494,10 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst,
 	 * properties are configured for each node that corresponds to a
 	 * hardware component.
 	 */
-	if (strcmp(name, TOPO_VTX_TARGET) == 0 ||
-	    strcmp(name, TOPO_VTX_INITIATOR) == 0) {
-		if (sas_prop_method_register(mod, tn, pgi.tpi_name) != 0) {
-			topo_mod_dprintf(mod, "failed to register property "
-			    "methods for %s=%" PRIx64, name, inst);
-			goto err;
-		}
+	if (sas_prop_method_register(mod, tn, pgi.tpi_name) != 0) {
+		topo_mod_dprintf(mod, "failed to register property "
+		    "methods for %s=%" PRIx64, name, inst);
+		goto err;
 	}
 
 	return (vtx);
@@ -2178,4 +2211,11 @@ err:
 	nvlist_free(pathcomp);
 	nvlist_free(fmri);
 	return (-1);
+}
+
+static int
+sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+    nvlist_t *in, nvlist_t **out)
+{
+	return (0);
 }
