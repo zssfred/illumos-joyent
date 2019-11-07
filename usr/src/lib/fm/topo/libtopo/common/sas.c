@@ -474,348 +474,6 @@ err:
 	return (NULL);
 }
 
-static int
-fake_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
-    topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
-{
-	/*
-	 * XXX - this code simply hardcodes a minimal topology in order to
-	 * facilitate early unit testing of the topo_digraph code.  This
-	 * will be replaced by proper code that will discover and dynamically
-	 * enumerate the SAS fabric(s).
-	 */
-	topo_vertex_t *ini, *ini_p1, *exp_in1, *exp, *exp_out1, *exp_out2,
-	    *tgt1_p1, *tgt2_p1, *tgt1, *tgt2;
-
-	topo_vertex_t *exp_out3, *tgt3_p1, *tgt3, *exp2, *exp2_in1, *exp2_out1;
-
-	tnode_t *tn;
-	int err;
-
-	uint64_t ini_addr = 0x5003048023567a00;
-	uint64_t exp_addr = 0x500304801861347f;
-	uint64_t tg1_addr = 0x5000cca2531b1025;
-	uint64_t tg2_addr = 0x5000cca2531a41b9;
-
-	uint64_t tg3_addr = 0xDEADBEED;
-	uint64_t exp2_addr = 0xDEADBEEF;
-	struct sas_phy_info phyinfo;
-
-	/*
-	 * Create vertices for an initiator and one outgoing port
-	 */
-	if ((ini = sas_create_vertex(mod, TOPO_VTX_INITIATOR, ini_addr,
-	    NULL)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(ini);
-	if (topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
-	    TOPO_PROP_INITIATOR_MANUF, TOPO_PROP_IMMUTABLE, "LSI",
-	    &err) != 0 ||
-	    topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
-	    TOPO_PROP_INITIATOR_MODEL, TOPO_PROP_IMMUTABLE, "LSI3008-IT",
-	    &err) != 0 ||
-	    topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
-	    TOPO_PROP_INITIATOR_SERIAL, TOPO_PROP_IMMUTABLE, "LSI23098420374",
-	    &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-
-	phyinfo.start_phy = 0;
-	phyinfo.end_phy = 7;
-	if ((ini_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, ini_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(ini_p1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5003048023567a00, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-
-	if (topo_edge_new(mod, ini, ini_p1) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 0;
-	phyinfo.end_phy = 7;
-	if ((exp_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(exp_in1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5003048023567a00, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, ini_p1, exp_in1) != 0)
-		return (-1);
-
-	if ((exp = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp_addr,
-	    NULL)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(exp);
-	if (topo_prop_set_string(tn, TOPO_PGROUP_EXPANDER,
-	    TOPO_PROP_EXPANDER_DEVFSNAME, TOPO_PROP_IMMUTABLE,
-	    "/dev/smp/expd0", &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp_in1, exp) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 8;
-	phyinfo.end_phy = 8;
-	if ((exp_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(exp_out1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5000cca2531a41b9, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp, exp_out1) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 0;
-	phyinfo.end_phy = 0;
-	if ((tgt1_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg1_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(tgt1_p1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5000cca2531a41b9, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp_out1, tgt1_p1) != 0)
-		return (-1);
-
-	if ((tgt1 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg1_addr,
-	    NULL)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(tgt1);
-	if (topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
-	    TOPO_PROP_TARGET_MANUF, TOPO_PROP_IMMUTABLE, "HGST",
-	    &err) != 0 ||
-	    topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
-	    TOPO_PROP_TARGET_MODEL, TOPO_PROP_IMMUTABLE, "HUH721212AL4200",
-	    &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-
-	if (topo_edge_new(mod, tgt1_p1, tgt1) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 9;
-	phyinfo.end_phy = 9;
-	if ((exp_out2 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(exp_out2);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5000cca2531b1025, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp, exp_out2) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 0;
-	phyinfo.end_phy = 0;
-	if ((tgt2_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg2_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(tgt2_p1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5000cca2531b1025, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp_out2, tgt2_p1) != 0)
-		return (-1);
-
-	if ((tgt2 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg2_addr,
-	    NULL)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(tgt2);
-	if (topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
-	    TOPO_PROP_TARGET_MANUF, TOPO_PROP_IMMUTABLE, "HGST",
-	    &err) != 0 ||
-	    topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
-	    TOPO_PROP_TARGET_MODEL, TOPO_PROP_IMMUTABLE, "HUH721212AL4200",
-	    &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-
-	if (topo_edge_new(mod, tgt2_p1, tgt2) != 0)
-		return (-1);
-
-	/* Attach to second expander with one target device */
-	phyinfo.start_phy = 10;
-	phyinfo.end_phy = 17;
-	if ((exp_out3 = sas_create_vertex(mod, TOPO_VTX_PORT, exp_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(exp_out3);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801e84c7ff, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp, exp_out3) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 0;
-	phyinfo.end_phy = 7;
-	if ((exp2_in1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp2_addr,
-	    &phyinfo)) == NULL) {
-		return (-1);
-	}
-
-	tn = topo_vertex_node(exp2_in1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801e84c7ff, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801861347f, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp_out3, exp2_in1) != 0)
-		return (-1);
-
-	if ((exp2 = sas_create_vertex(mod, TOPO_VTX_EXPANDER, exp2_addr,
-	    NULL)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(exp2);
-	if (topo_prop_set_string(tn, TOPO_PGROUP_EXPANDER,
-	    TOPO_PROP_EXPANDER_DEVFSNAME, TOPO_PROP_IMMUTABLE,
-	    "/dev/smp/expd1", &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp2_in1, exp2) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 8;
-	phyinfo.end_phy = 8;
-	if ((exp2_out1 = sas_create_vertex(mod, TOPO_VTX_PORT, exp2_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(exp2_out1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801e84c7ff, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5000cca2530f9c55, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp2, exp2_out1) != 0)
-		return (-1);
-
-	phyinfo.start_phy = 0;
-	phyinfo.end_phy = 0;
-	if ((tgt3_p1 = sas_create_vertex(mod, TOPO_VTX_PORT, tg3_addr,
-	    &phyinfo)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(tgt3_p1);
-	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x5000cca2530f9c55, &err) != 0 ||
-	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    0x500304801e84c7ff, &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-	if (topo_edge_new(mod, exp2_out1, tgt3_p1) != 0)
-		return (-1);
-
-	if ((tgt3 = sas_create_vertex(mod, TOPO_VTX_TARGET, tg3_addr,
-	    NULL)) == NULL)
-		return (-1);
-
-	tn = topo_vertex_node(tgt3);
-	if (topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
-	    TOPO_PROP_TARGET_MANUF, TOPO_PROP_IMMUTABLE, "HGST",
-	    &err) != 0 ||
-	    topo_prop_set_string(tn, TOPO_PGROUP_TARGET,
-	    TOPO_PROP_TARGET_MODEL, TOPO_PROP_IMMUTABLE, "HUH721212AL4200",
-	    &err) != 0) {
-		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64,
-		    topo_node_name(tn), topo_node_instance(tn));
-		return (-1);
-	}
-
-	if (topo_edge_new(mod, tgt3_p1, tgt3) != 0)
-		return (-1);
-
-	return (0);
-}
-
 static uint64_t
 wwn_to_uint64(HBA_WWN wwn)
 {
@@ -1513,6 +1171,198 @@ sas_vtx_iter(topo_hdl_t *hdl, topo_vertex_t *vtx, boolean_t last, void *arg)
 	return (TOPO_WALK_NEXT);
 }
 
+typedef struct sas_hba_enum {
+	HBA_HANDLE handle;
+	SMHBA_ADAPTERATTRIBUTES *ad_attrs;
+	uint_t port;
+	topo_vertex_t *initiator;
+	topo_list_t *hba_list;
+} sas_hba_enum_t;
+
+static int
+sas_enum_hba_port(topo_mod_t *mod, sas_hba_enum_t *hbadata)
+{
+	SMHBA_PORTATTRIBUTES *attrs = NULL;
+	SMHBA_SAS_PORT *sas_port;
+	SMHBA_SAS_PHY phy_attrs;
+	HBA_UINT32 num_phys;
+	uint64_t hba_wwn;
+	struct sas_phy_info phyinfo;
+	sas_port_t *sas_hba_port = NULL;
+	tnode_t *tn;
+	int err, ret;
+	topo_vertex_t *hba_port = NULL, *dev_port = NULL;
+	topo_vertex_t *dev = NULL;
+
+
+	attrs = topo_mod_zalloc(mod, sizeof (SMHBA_PORTATTRIBUTES));
+	sas_port = topo_mod_zalloc(mod, sizeof (SMHBA_SAS_PORT));
+	attrs->PortSpecificAttribute.SASPort = sas_port;
+
+	if ((ret = SMHBA_GetAdapterPortAttributes(hbadata->handle,
+	    hbadata->port, attrs)) != HBA_STATUS_OK) {
+		goto err;
+	}
+	hba_wwn = wwn_to_uint64(sas_port->LocalSASAddress);
+	num_phys = sas_port->NumberofPhys;
+
+	/*
+	 * Only create one logical initiator vertex for all of the HBA ports.
+	 */
+	/*
+	 * XXX what to use for HBA phy info?
+	 * phyinfo.start_phy = 0;
+	 * phyinfo.end_phy = num_phys - 1;
+	 */
+	if (hbadata->initiator == NULL) {
+		if ((hbadata->initiator = sas_create_vertex(mod,
+		    TOPO_VTX_INITIATOR, hba_wwn, NULL)) == NULL) {
+			goto err;
+		}
+
+		/*
+		 * Set the devfs name for this initiator so we
+		 * can use it to correlate with hc topo nodes
+		 * later to retrieve info like dev manufacturer.
+		 *
+		 * The info we get from libsmhbaapi w.r.t.
+		 * manufacturer, serial number, model, etc.
+		 * appears to be inaccurate, so we'll defer to
+		 * consulting the hc module later.
+		 */
+		tn = topo_vertex_node(hbadata->initiator);
+		if (topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
+		    TOPO_PROP_INITIATOR_DEVFSNAME, TOPO_PROP_IMMUTABLE,
+		    hbadata->ad_attrs->HBASymbolicName, &err) != 0) {
+			goto err;
+		}
+	}
+
+	/* Calculate the beginning and end phys for this port */
+	for (uint_t phy = 0; phy < num_phys; phy++) {
+		if ((ret = SMHBA_GetSASPhyAttributes(hbadata->handle,
+		    hbadata->port, phy, &phy_attrs)) != HBA_STATUS_OK) {
+			topo_mod_free(mod, attrs,
+			    sizeof (SMHBA_PORTATTRIBUTES));
+			topo_mod_free(mod, sas_port,
+			    sizeof (SMHBA_SAS_PORT));
+			goto err;
+		}
+
+		if (phy == 0) {
+			phyinfo.start_phy =  phy_attrs.PhyIdentifier;
+		}
+		phyinfo.end_phy = phy_attrs.PhyIdentifier;
+	}
+
+	if ((hba_port = sas_create_vertex(mod, TOPO_VTX_PORT, hba_wwn,
+	    &phyinfo)) == NULL) {
+		goto err;
+	}
+
+	tn = topo_vertex_node(hba_port);
+
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    hba_wwn, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    wwn_to_uint64(sas_port->AttachedSASAddress), &err) != 0) {
+
+		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64
+		    " (%s)", topo_node_name(tn), topo_node_instance(tn),
+		    topo_strerror(err));
+		goto err;
+	}
+
+	/*
+	 * Record that we created a unique port for this HBA.
+	 * This will be referenced later if there are expanders in the
+	 * topology.
+	 */
+	sas_hba_port = topo_mod_zalloc(mod, sizeof (sas_port_t));
+	sas_hba_port->sp_att_wwn = wwn_to_uint64(
+	    sas_port->AttachedSASAddress);
+	sas_hba_port->sp_vtx = hba_port;
+
+	topo_list_append(hbadata->hba_list, sas_hba_port);
+	topo_node_setspecific(tn, sas_hba_port);
+
+	if (topo_edge_new(mod, hbadata->initiator, hba_port) != 0) {
+		goto err;
+	}
+
+	if (attrs->PortType == HBA_PORTTYPE_SASDEVICE) {
+		/*
+		 * Discovered a SAS or STP device connected directly to the
+		 * HBA. This can sometimes include expander devices.
+		 */
+		if (sas_port->NumberofDiscoveredPorts > 1) {
+			goto done;
+		}
+
+		/*
+		 * SMHBAAPI doesn't give us attached device phy information.
+		 * For HBA_PORTTYPE_SASDEVICE only phy 0 will be in use, unless
+		 * there are virtual phys.
+		 */
+		phyinfo.start_phy = 0;
+		phyinfo.end_phy = 0;
+		if ((dev_port = sas_create_vertex(mod, TOPO_VTX_PORT,
+		    wwn_to_uint64(sas_port->AttachedSASAddress),
+		    &phyinfo)) == NULL) {
+			goto err;
+		}
+
+		tn = topo_vertex_node(dev_port);
+		if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+		    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+		    wwn_to_uint64(sas_port->AttachedSASAddress), &err) != 0 ||
+		    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+		    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+		    hba_wwn, &err) != 0) {
+			topo_mod_dprintf(mod, "Failed to set "
+			    "props on %s=%" PRIx64 " (%s)",
+			    topo_node_name(tn),
+			    topo_node_instance(tn),
+			    topo_strerror(err));
+			goto err;
+		}
+
+		if ((dev = sas_create_vertex(mod, TOPO_VTX_TARGET,
+		    wwn_to_uint64(sas_port->AttachedSASAddress), &phyinfo))
+		    == NULL) {
+			goto err;
+		}
+
+		tn = topo_vertex_node(dev);
+		if (topo_edge_new(mod, hba_port, dev_port) != 0 ||
+		    topo_edge_new(mod, dev_port, dev) != 0) {
+			goto err;
+		}
+	} else { /* Expanders? */
+		goto done;
+	}
+done:
+	topo_mod_free(mod, attrs, sizeof (SMHBA_PORTATTRIBUTES));
+	topo_mod_free(mod, sas_port, sizeof (SMHBA_SAS_PORT));
+	return (0);
+
+err:
+	topo_mod_free(mod, attrs, sizeof (SMHBA_PORTATTRIBUTES));
+	topo_mod_free(mod, sas_port, sizeof (SMHBA_SAS_PORT));
+
+	if (hbadata->initiator != NULL)
+		topo_vertex_destroy(mod, hbadata->initiator);
+	if (hba_port != NULL)
+		topo_vertex_destroy(mod, hba_port);
+	if (dev_port != NULL)
+		topo_vertex_destroy(mod, dev_port);
+	if (dev != NULL)
+		topo_vertex_destroy(mod, dev);
+	return (-1);
+}
+
 static int
 sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
     topo_instance_t min, topo_instance_t max, void *notused1, void *notused2)
@@ -1526,16 +1376,11 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	if (getenv("TOPO_SASNOENUM"))
 		return (0);
 
-	if (getenv("SAS_FAKE_ENUM"))
-		return (fake_enum(mod, rnode, name, min, max, notused1,
-		    notused2));
+	int ret = -1;
 
-	int ret = 0;
-
-	di_node_t root;
-	di_node_t smp;
+	di_node_t root, smp;
 	const char *smp_path = NULL;
-	sas_port_t *sas_hba_port = NULL, *expd_port, *hba_port;
+	sas_port_t *expd_port, *hba_port;
 	topo_list_t *expd_list = topo_mod_zalloc(mod, sizeof (topo_list_t));
 	topo_list_t *hba_list = topo_mod_zalloc(mod, sizeof (topo_list_t));
 
@@ -1544,7 +1389,6 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	SMHBA_ADAPTERATTRIBUTES ad_attrs;
 	HBA_UINT32 num_ports, num_adapters;
 	char aname[256];
-	uint64_t hba_wwn;
 
 	if ((ret = HBA_LoadLibrary()) != HBA_STATUS_OK) {
 		goto done;
@@ -1552,12 +1396,13 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 	num_adapters = HBA_GetNumberOfAdapters();
 	if (num_adapters == 0) {
-		ret = -1;
+		ret = 0;
 		goto done;
 	}
 
-	for (int i = 0; i < num_adapters; i++) {
-		topo_vertex_t *initiator = NULL;
+	for (uint_t i = 0; i < num_adapters; i++) {
+		sas_hba_enum_t hbadata = { 0 };
+
 		if ((ret = HBA_GetAdapterName(i, aname)) != 0) {
 			topo_mod_dprintf(mod, "failed to get adapter name\n");
 			goto done;
@@ -1579,238 +1424,14 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 			topo_mod_dprintf(mod, "failed to get num ports\n");
 			goto done;
 		}
-		for (int j = 0; j < num_ports; j++) {
-			SMHBA_PORTATTRIBUTES *attrs = NULL;
-			SMHBA_SAS_PORT *sas_port;
-			SMHBA_SAS_PHY phy_attrs;
-			HBA_UINT32 num_phys;
-			struct sas_phy_info phyinfo;
-			tnode_t *tn;
-			int err;
 
-			topo_vertex_t *hba_port = NULL;
-
-			attrs = topo_mod_zalloc(mod,
-			    sizeof (SMHBA_PORTATTRIBUTES));
-			sas_port = topo_mod_zalloc(mod,
-			    sizeof (SMHBA_SAS_PORT));
-			attrs->PortSpecificAttribute.SASPort = sas_port;
-
-			if ((ret = SMHBA_GetAdapterPortAttributes(
-			    handle, j, attrs)) != HBA_STATUS_OK) {
-				topo_mod_free(mod, attrs,
-				    sizeof (SMHBA_PORTATTRIBUTES));
-				topo_mod_free(mod, sas_port,
-				    sizeof (SMHBA_SAS_PORT));
+		hbadata.handle = handle;
+		hbadata.ad_attrs = &ad_attrs;
+		hbadata.hba_list = hba_list;
+		for (uint_t port = 0; port < num_ports; port++) {
+			hbadata.port = port;
+			if (sas_enum_hba_port(mod, &hbadata) != 0) {
 				goto done;
-			}
-			hba_wwn = wwn_to_uint64(sas_port->LocalSASAddress);
-			num_phys = sas_port->NumberofPhys;
-
-			/*
-			 * Only create one logical initiator vertex for all
-			 * of the HBA ports.
-			 */
-			/*
-			 * XXX what to use for HBA phy info?
-			 * phyinfo.start_phy = 0;
-			 * phyinfo.end_phy = num_phys - 1;
-			 */
-			if (initiator == NULL) {
-				if ((initiator = sas_create_vertex(mod,
-				    TOPO_VTX_INITIATOR, hba_wwn, NULL))
-				    == NULL) {
-					topo_mod_free(mod, attrs,
-					    sizeof (SMHBA_PORTATTRIBUTES));
-					topo_mod_free(mod, sas_port,
-					    sizeof (SMHBA_SAS_PORT));
-					ret = -1;
-					goto done;
-				}
-
-				/*
-				 * Set the devfs name for this initiator so we
-				 * can use it to correlate with hc topo nodes
-				 * later to retrieve info like dev manufacturer.
-				 *
-				 * The info we get from libsmhbaapi w.r.t.
-				 * manufacturer, serial number, model, etc.
-				 * appears to be inaccurate, so we'll defer to
-				 * consulting the hc module later.
-				 */
-				tn = topo_vertex_node(initiator);
-				if (topo_prop_set_string(tn,
-				    TOPO_PGROUP_INITIATOR,
-				    TOPO_PROP_INITIATOR_DEVFSNAME,
-				    TOPO_PROP_IMMUTABLE,
-				    ad_attrs.HBASymbolicName, &err) != 0) {
-					topo_mod_free(mod, attrs,
-					    sizeof (SMHBA_PORTATTRIBUTES));
-					topo_mod_free(mod, sas_port,
-					    sizeof (SMHBA_SAS_PORT));
-					ret = -1;
-					goto done;
-				}
-			}
-
-
-			/* Calculate the beginning and end phys for this port */
-			for (int k = 0; k < num_phys; k++) {
-				if ((ret = SMHBA_GetSASPhyAttributes(handle,
-				    j, k, &phy_attrs)) != HBA_STATUS_OK) {
-					topo_mod_free(mod, attrs,
-					    sizeof (SMHBA_PORTATTRIBUTES));
-					topo_mod_free(mod, sas_port,
-					    sizeof (SMHBA_SAS_PORT));
-					goto done;
-				}
-
-				if (k == 0) {
-					phyinfo.start_phy =
-					    phy_attrs.PhyIdentifier;
-				}
-				phyinfo.end_phy = phy_attrs.PhyIdentifier;
-			}
-
-			if ((hba_port = sas_create_vertex(mod, TOPO_VTX_PORT,
-			    hba_wwn, &phyinfo)) == NULL) {
-				topo_mod_free(mod, attrs,
-				    sizeof (SMHBA_PORTATTRIBUTES));
-				topo_mod_free(mod, sas_port,
-				    sizeof (SMHBA_SAS_PORT));
-				ret = -1;
-				goto done;
-			}
-
-			tn = topo_vertex_node(hba_port);
-			if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-			    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
-			    hba_wwn, &err) != 0 ||
-			    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
-			    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-			    wwn_to_uint64(sas_port->AttachedSASAddress),
-			    &err) != 0) {
-				topo_mod_dprintf(mod, "Failed to set "
-				    "props on %s=%" PRIx64 " (%s)",
-				    topo_node_name(tn),
-				    topo_node_instance(tn),
-				    topo_strerror(err));
-				ret = -1;
-				goto done;
-			}
-
-			/*
-			 * Record that we created a unique port for this HBA.
-			 * This will be referenced later if there are expanders
-			 * in the topology.
-			 */
-			sas_hba_port = topo_mod_zalloc(mod,
-			    sizeof (sas_port_t));
-			sas_hba_port->sp_att_wwn = wwn_to_uint64(
-			    sas_port->AttachedSASAddress);
-			sas_hba_port->sp_vtx = hba_port;
-
-			topo_list_append(hba_list, sas_hba_port);
-			topo_node_setspecific(tn, sas_hba_port);
-
-			if (topo_edge_new(mod, initiator, hba_port) != 0) {
-				topo_mod_free(mod, attrs,
-				    sizeof (SMHBA_PORTATTRIBUTES));
-				topo_mod_free(mod, sas_port,
-				    sizeof (SMHBA_SAS_PORT));
-				topo_vertex_destroy(mod, initiator);
-				topo_vertex_destroy(mod, hba_port);
-				ret = -1;
-				goto done;
-			}
-
-			if (attrs->PortType == HBA_PORTTYPE_SASDEVICE) {
-				/*
-				 * Discovered a SAS or STP device connected
-				 * directly to the HBA. This can sometimes
-				 * include expander devices.
-				 */
-				topo_vertex_t *dev_port = NULL;
-				topo_vertex_t *dev = NULL;
-
-				if (sas_port->NumberofDiscoveredPorts > 1) {
-					continue;
-				}
-
-				/*
-				 * SMHBAAPI doesn't give us attached device phy
-				 * information. For HBA_PORTTYPE_SASDEVICE only
-				 * phy 0 will be in use, unless there are
-				 * virtual phys.
-				 */
-				phyinfo.start_phy = 0;
-				phyinfo.end_phy = 0;
-				if ((dev_port = sas_create_vertex(mod,
-				    TOPO_VTX_PORT,
-				    wwn_to_uint64(sas_port->AttachedSASAddress),
-				    &phyinfo))
-				    == NULL) {
-					topo_vertex_destroy(mod, initiator);
-					topo_vertex_destroy(mod, hba_port);
-					ret = -1;
-					goto done;
-				}
-
-				tn = topo_vertex_node(dev_port);
-				if (topo_prop_set_uint64(tn,
-				    TOPO_PGROUP_SASPORT,
-				    TOPO_PROP_SASPORT_LOCAL_ADDR,
-				    TOPO_PROP_IMMUTABLE,
-				    wwn_to_uint64(sas_port->AttachedSASAddress),
-				    &err) != 0 ||
-				    topo_prop_set_uint64(tn,
-				    TOPO_PGROUP_SASPORT,
-				    TOPO_PROP_SASPORT_ATTACH_ADDR,
-				    TOPO_PROP_IMMUTABLE,
-				    hba_wwn,
-				    &err) != 0) {
-					topo_mod_dprintf(mod, "Failed to set "
-					    "props on %s=%" PRIx64 " (%s)",
-					    topo_node_name(tn),
-					    topo_node_instance(tn),
-					    topo_strerror(err));
-					ret = -1;
-					goto done;
-				}
-
-				if ((dev = sas_create_vertex(mod,
-				    TOPO_VTX_TARGET,
-				    wwn_to_uint64(sas_port->AttachedSASAddress),
-				    &phyinfo))
-				    == NULL) {
-					topo_vertex_destroy(mod, initiator);
-					topo_vertex_destroy(mod, hba_port);
-					topo_vertex_destroy(mod, dev_port);
-					ret = -1;
-					goto done;
-				}
-
-				tn = topo_vertex_node(dev);
-				if (topo_edge_new(mod, hba_port, dev_port)
-				    != 0) {
-					topo_vertex_destroy(mod, initiator);
-					topo_vertex_destroy(mod, hba_port);
-					topo_vertex_destroy(mod, dev_port);
-					topo_vertex_destroy(mod, dev);
-					ret = -1;
-					goto done;
-				}
-				if (topo_edge_new(mod, dev_port, dev)
-				    != 0) {
-					topo_vertex_destroy(mod, initiator);
-					topo_vertex_destroy(mod, hba_port);
-					topo_vertex_destroy(mod, dev_port);
-					topo_vertex_destroy(mod, dev);
-					ret = -1;
-					goto done;
-				}
-			} else { /* Expanders? */
-				continue;
 			}
 		}
 	}
@@ -1819,7 +1440,8 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	/* XXX why does topo_mod_devinfo() return ENOENT? */
 	root = di_init("/", DINFOCPYALL);
 	if (root == DI_NODE_NIL) {
-		topo_mod_dprintf(mod, "nil dev hdl %s\n", strerror(errno));
+		topo_mod_dprintf(mod, "di_init failed %s\n", strerror(errno));
+		goto done;
 	}
 
 	for (smp = di_drv_first_node("smp", root);
@@ -1832,10 +1454,10 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		    mod, strlen(smp_path) + strlen("/devices"));
 		(void) sprintf(full_smp_path, "/devices%s:smp", smp_path);
 
-		if ((ret = sas_expander_discover(mod, full_smp_path,
-		    expd_list)) != 0) {
+		if (sas_expander_discover(mod, full_smp_path,
+		    expd_list) != 0) {
 			topo_mod_dprintf(mod, "expander discovery failed\n");
-			return (ret);
+			goto done;
 		}
 	}
 
@@ -1849,6 +1471,8 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	(void) topo_vertex_iter(mod->tm_hdl,
 	    topo_digraph_get(mod->tm_hdl, FM_FMRI_SCHEME_SAS),
 	    sas_vtx_final_pass, &iter);
+
+	ret = 0;
 done:
 	expd_port = topo_list_next(expd_list);
 	while (expd_port != NULL) {
