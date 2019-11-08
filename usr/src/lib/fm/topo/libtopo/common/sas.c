@@ -253,12 +253,20 @@ static const topo_modinfo_t sas_info =
 int
 sas_init(topo_mod_t *mod, topo_version_t version)
 {
+	HBA_STATUS ret;
+
 	if (getenv("TOPOSASDEBUG"))
 		topo_mod_setdebug(mod);
 	topo_mod_dprintf(mod, "initializing sas builtin\n");
 
 	if (version != SAS_VERSION)
 		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
+
+	if ((ret = HBA_LoadLibrary()) != HBA_STATUS_OK) {
+		topo_mod_dprintf(mod, "failed to load HBA library (ret=%u)",
+		    ret);
+		return (-1);
+	}
 
 	if (topo_mod_register(mod, &sas_info, TOPO_VERSION) != 0) {
 		topo_mod_dprintf(mod, "failed to register sas_info: "
@@ -273,6 +281,7 @@ void
 sas_fini(topo_mod_t *mod)
 {
 	topo_mod_unregister(mod);
+	(void) HBA_FreeLibrary();
 }
 
 static topo_pgroup_info_t protocol_pgroup = {
@@ -300,7 +309,7 @@ int
 sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 {
 	const topo_method_t *propmethods;
-	int ret = 0;
+	int ret = -1;
 
 	if (strcmp(topo_node_name(tn), TOPO_VTX_INITIATOR) == 0)
 		propmethods = sas_initiator_methods;
@@ -315,7 +324,7 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 		topo_mod_dprintf(mod, "failed to register fmri"
 		    "methods for %s=%" PRIx64, topo_node_name(tn),
 		    topo_node_instance(tn));
-		goto done;
+		goto err;
 	}
 
 	int err;
@@ -332,8 +341,7 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 			    topo_node_name(tn),
 			    topo_node_instance(tn),
 			    topo_strerror(err));
-			ret = -1;
-			goto done;
+			goto err;
 		}
 
 		const char *props[] = {
@@ -343,7 +351,8 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 		    TOPO_PROP_TARGET_LABEL
 		};
 
-		for (int i = 0; i < sizeof (props) / sizeof (props[0]); i++) {
+		for (uint_t i = 0; i < sizeof (props) / sizeof (props[0]);
+		    i++) {
 			fnvlist_remove(nvl, "pname");
 			fnvlist_add_string(nvl, "pname", props[i]);
 
@@ -355,8 +364,7 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 				    topo_node_name(tn),
 				    topo_node_instance(tn),
 				    topo_strerror(err));
-				ret = -1;
-				goto done;
+				goto err;
 			}
 		}
 
@@ -371,8 +379,7 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 			    topo_node_name(tn),
 			    topo_node_instance(tn),
 			    topo_strerror(err));
-			ret = -1;
-			goto done;
+			goto err;
 		}
 
 		const char *props[] = {
@@ -384,8 +391,8 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 			 */
 		};
 
-		for (int i = 0; i < sizeof (props) / sizeof (props[0]); i++) {
-			fnvlist_remove(nvl, "pname");
+		for (uint_t i = 0; i < sizeof (props) / sizeof (props[0]);
+		    i++) {
 			fnvlist_add_string(nvl, "pname", props[i]);
 
 			if (topo_prop_method_register(tn, pgname, props[i],
@@ -396,15 +403,36 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 				    topo_node_name(tn),
 				    topo_node_instance(tn),
 				    topo_strerror(err));
-				ret = -1;
-				goto done;
+				goto err;
+			}
+		}
+	} else if (strcmp(pgname, TOPO_PGROUP_SASPORT) == 0) {
+		const char *props[] = {
+		    TOPO_PROP_SASPORT_INV_DWORD,
+		    TOPO_PROP_SASPORT_RUN_DISP,
+		    TOPO_PROP_SASPORT_LOSS_SYNC,
+		    TOPO_PROP_SASPORT_RESET_PROB
+		};
+
+		for (uint_t i = 0; i < sizeof (props) / sizeof (props[0]);
+		    i++) {
+			fnvlist_add_string(nvl, "pname", props[i]);
+
+			if (topo_prop_method_register(tn, pgname, props[i],
+			    TOPO_TYPE_UINT64_ARRAY, TOPO_METH_SAS_PHY_ERR, nvl,
+			    &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to set "
+				    "up prop cb on %s=%" PRIx64 " (%s)",
+				    topo_node_name(tn),
+				    topo_node_instance(tn),
+				    topo_strerror(err));
+				goto err;
 			}
 		}
 	}
 	nvlist_free(nvl);
-
-	goto done;
-done:
+	ret = 0;
+err:
 	return (ret);
 }
 
@@ -1210,6 +1238,7 @@ typedef struct sas_hba_enum {
 	uint_t port;
 	topo_vertex_t *initiator;
 	topo_list_t *hba_list;
+	char aname[256];
 } sas_hba_enum_t;
 
 static int
@@ -1226,7 +1255,6 @@ sas_enum_hba_port(topo_mod_t *mod, sas_hba_enum_t *hbadata)
 	int err, ret;
 	topo_vertex_t *hba_port = NULL, *dev_port = NULL;
 	topo_vertex_t *dev = NULL;
-
 
 	attrs = topo_mod_zalloc(mod, sizeof (SMHBA_PORTATTRIBUTES));
 	sas_port = topo_mod_zalloc(mod, sizeof (SMHBA_SAS_PORT));
@@ -1300,7 +1328,13 @@ sas_enum_hba_port(topo_mod_t *mod, sas_hba_enum_t *hbadata)
 	    hba_wwn, &err) != 0 ||
 	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
 	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-	    wwn_to_uint64(sas_port->AttachedSASAddress), &err) != 0) {
+	    wwn_to_uint64(sas_port->AttachedSASAddress), &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ANAME, TOPO_PROP_IMMUTABLE, hbadata->aname,
+	    &err) != 0 ||
+	    topo_prop_set_uint32(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_APORT, TOPO_PROP_IMMUTABLE, hbadata->port,
+	    &err) != 0) {
 
 		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64
 		    " (%s)", topo_node_name(tn), topo_node_instance(tn),
@@ -1354,11 +1388,10 @@ sas_enum_hba_port(topo_mod_t *mod, sas_hba_enum_t *hbadata)
 		    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
 		    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
 		    hba_wwn, &err) != 0) {
-			topo_mod_dprintf(mod, "Failed to set "
-			    "props on %s=%" PRIx64 " (%s)",
-			    topo_node_name(tn),
-			    topo_node_instance(tn),
-			    topo_strerror(err));
+
+			topo_mod_dprintf(mod, "Failed to set props on %s=%"
+			    PRIx64 " (%s)", topo_node_name(tn),
+			    topo_node_instance(tn), topo_strerror(err));
 			goto err;
 		}
 
@@ -1421,11 +1454,6 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	HBA_HANDLE handle;
 	SMHBA_ADAPTERATTRIBUTES ad_attrs;
 	HBA_UINT32 num_ports, num_adapters;
-	char aname[256];
-
-	if ((ret = HBA_LoadLibrary()) != HBA_STATUS_OK) {
-		goto done;
-	}
 
 	num_adapters = HBA_GetNumberOfAdapters();
 	if (num_adapters == 0) {
@@ -1436,12 +1464,12 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 	for (uint_t i = 0; i < num_adapters; i++) {
 		sas_hba_enum_t hbadata = { 0 };
 
-		if ((ret = HBA_GetAdapterName(i, aname)) != 0) {
+		if ((ret = HBA_GetAdapterName(i, hbadata.aname)) != 0) {
 			topo_mod_dprintf(mod, "failed to get adapter name\n");
 			goto done;
 		}
 
-		if ((handle = HBA_OpenAdapter(aname)) == 0) {
+		if ((handle = HBA_OpenAdapter(hbadata.aname)) == 0) {
 			topo_mod_dprintf(mod, "failed to open adapter\n");
 			goto done;
 		}
@@ -1449,12 +1477,14 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		if ((ret = SMHBA_GetAdapterAttributes(handle, &ad_attrs)) !=
 		    HBA_STATUS_OK) {
 			topo_mod_dprintf(mod, "failed to get adapter attrs\n");
+			HBA_CloseAdapter(handle);
 			goto done;
 		}
 
 		if ((ret = SMHBA_GetNumberOfPorts(handle, &num_ports)) !=
 		    HBA_STATUS_OK) {
 			topo_mod_dprintf(mod, "failed to get num ports\n");
+			HBA_CloseAdapter(handle);
 			goto done;
 		}
 
@@ -1464,9 +1494,11 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 		for (uint_t port = 0; port < num_ports; port++) {
 			hbadata.port = port;
 			if (sas_enum_hba_port(mod, &hbadata) != 0) {
+				HBA_CloseAdapter(handle);
 				goto done;
 			}
 		}
+		HBA_CloseAdapter(handle);
 	}
 
 	/* Iterate through the expanders in /dev/smp. */
@@ -1525,7 +1557,6 @@ done:
 	}
 	topo_mod_free(mod, hba_list, sizeof (topo_list_t));
 
-	(void) HBA_FreeLibrary();
 	return (ret);
 }
 
@@ -2213,9 +2244,149 @@ err:
 	return (-1);
 }
 
+/*
+ * XXX - This will need to be refactored to support getting PHY counters out of
+ * expander ports
+ */
 static int
 sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
-	return (0);
+	nvlist_t *args, *pargs, *nvl, *fmri = NULL, *auth = NULL;
+	char *pname, *hba_name = NULL;
+	uint32_t hba_port, start_phy, end_phy;
+	uint_t nphys;
+	uint64_t *pvals = NULL;
+	HBA_HANDLE handle = -1;
+	SMHBA_PHYSTATISTICS phystats;
+	SMHBA_SASPHYSTATISTICS sasphystats;
+	int err, ret = -1;
+
+	if (version > TOPO_METH_SAS_PHY_ERR_VERSION)
+		return (topo_mod_seterrno(mod, ETOPO_METHOD_VERNEW));
+
+	/*
+	 * Now look for a private argument list to determine if the invoker is
+	 * trying to do a set operation and if so, return an error as this
+	 * method only supports get operations.
+	 */
+	if ((nvlist_lookup_nvlist(in, TOPO_PROP_PARGS, &pargs) == 0) &&
+	    nvlist_exists(pargs, TOPO_PROP_VAL_VAL)) {
+		topo_mod_dprintf(mod, "%s: set operation not suppported",
+		    __func__);
+		return (topo_mod_seterrno(mod, EMOD_NVL_INVAL));
+	}
+
+	if (nvlist_lookup_nvlist(in, TOPO_PROP_ARGS, &args) != 0 ||
+	    nvlist_lookup_string(args, "pname", &pname) != 0) {
+		topo_mod_dprintf(mod, "%s: missing pname arg", __func__);
+		return (topo_mod_seterrno(mod, EMOD_NVL_INVAL));
+	}
+
+	/*
+	 * Get the HBA adapter name and port number off of the node, as we need
+	 * these to lookup the PHY stats.
+	 */
+	if (topo_prop_get_string(node, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ANAME, &hba_name, &err) != 0) {
+		topo_mod_dprintf(mod, "%s: node missing %s prop", __func__,
+		    TOPO_PROP_SASPORT_ANAME);
+		return (topo_mod_seterrno(mod, err));
+	}
+	if (topo_prop_get_uint32(node, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_APORT, &hba_port, &err) != 0) {
+		topo_mod_dprintf(mod, "%s: node missing %s prop", __func__,
+		    TOPO_PROP_SASPORT_APORT);
+		(void) topo_mod_seterrno(mod, err);
+		goto err;
+	}
+
+	/*
+	 * Get the SAS FMRI and then lookup the authority portion in order to
+	 * get the start and end PHY numbers.
+	 */
+	if (topo_node_resource(node, &fmri, &err) != 0) {
+		(void) topo_mod_seterrno(mod, err);
+		topo_mod_dprintf(mod, "%s: failed to get SAS FMRI", __func__);
+		goto err;
+	}
+	if (nvlist_lookup_nvlist(fmri, FM_FMRI_AUTHORITY, &auth) != 0 ||
+	    nvlist_lookup_uint32(auth, FM_FMRI_SAS_START_PHY, &start_phy) !=
+	    0 ||
+	    nvlist_lookup_uint32(auth, FM_FMRI_SAS_END_PHY, &end_phy) != 0) {
+		topo_mod_dprintf(mod, "%s: malformed FMRI authority",
+		    __func__);
+		(void) topo_mod_seterrno(mod, EMOD_NVL_INVAL);
+		goto err;
+	}
+	nphys = (end_phy - start_phy) + 1;
+
+	/*
+	 * Now that we know how many PHYs are on this port, allocate an array
+	 * to hold the error counter value for each PHY.
+	 */
+	if ((pvals = topo_mod_zalloc(mod, sizeof (uint64_t) * nphys)) ==
+	    NULL) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+
+	/*
+	 * Iterate through the PHYs on this port and retrieve the
+	 * appropriate error counter value based on the property name.
+	 */
+	if ((handle = HBA_OpenAdapter(hba_name)) == 0) {
+		topo_mod_dprintf(mod, "%s: failed to open adapter: %s",
+		__func__, hba_name);
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		goto err;
+	}
+	for (uint_t phy = 0; phy < nphys; phy++) {
+
+		(void) memset(&phystats, 0, sizeof (SMHBA_PHYSTATISTICS));
+		(void) memset(&sasphystats, 0, sizeof (SMHBA_SASPHYSTATISTICS));
+		phystats.SASPhyStatistics = &sasphystats;
+
+		ret = SMHBA_GetPhyStatistics(handle, hba_port, phy, &phystats);
+		if (ret != HBA_STATUS_OK) {
+			topo_mod_dprintf(mod, "%s: failed to get HBA PHY stats "
+			    "for PORT %u PHY %u (ret=%u)", __func__, hba_port,
+			    phy, ret);
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+		if (strcmp(pname, TOPO_PROP_SASPORT_INV_DWORD) == 0)
+			pvals[phy] = phystats.
+			    SASPhyStatistics->InvalidDwordCount;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_RUN_DISP) == 0)
+			pvals[phy] = phystats.
+			    SASPhyStatistics->RunningDisparityErrorCount;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_LOSS_SYNC) == 0)
+			pvals[phy] = phystats.
+			    SASPhyStatistics->LossofDwordSyncCount;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_RESET_PROB) == 0)
+			pvals[phy] = phystats.
+			    SASPhyStatistics->PhyResetProblemCount;
+	}
+
+	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0 ||
+	    nvlist_add_string(nvl, TOPO_PROP_VAL_NAME, pname) != 0 ||
+	    nvlist_add_uint32(nvl, TOPO_PROP_VAL_TYPE, TOPO_TYPE_UINT64_ARRAY)
+	    != 0 ||
+	    nvlist_add_uint64_array(nvl, TOPO_PROP_VAL_VAL, pvals, nphys)
+	    != 0) {
+		topo_mod_dprintf(mod, "Failed to allocate 'out' nvlist");
+		nvlist_free(nvl);
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+	*out = nvl;
+	ret = 0;
+err:
+	if (handle != -1)
+		HBA_CloseAdapter(handle);
+	nvlist_free(fmri);
+	topo_mod_free(mod, pvals, sizeof (uint64_t) * nphys);
+	topo_mod_strfree(mod, hba_name);
+	return (ret);
 }

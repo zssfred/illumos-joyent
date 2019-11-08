@@ -39,6 +39,8 @@ extern "C" {
 #define	TOPO_PGROUP_SASPORT		"port-properties"
 #define	TOPO_PROP_SASPORT_LOCAL_ADDR	"local-sas-address"
 #define	TOPO_PROP_SASPORT_ATTACH_ADDR	"attached-sas-address"
+#define	TOPO_PROP_SASPORT_ANAME		"adapter-name"
+#define	TOPO_PROP_SASPORT_APORT		"adapter-port"
 
 /*
  * PHY link state error counters

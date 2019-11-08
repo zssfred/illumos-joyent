@@ -161,7 +161,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 			(void) printf(" [ ");
 			for (uint_t i = 0; i < nelem; i++)
 				(void) printf("%" PRIi64 " ", val[i]);
-			(void) printf("]");
+			(void) printf("]\n");
 
 			break;
 		}
@@ -176,7 +176,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 			(void) printf(" [ ");
 			for (uint_t i = 0; i < nelem; i++)
 				(void) printf("0x%" PRIx64 " ", val[i]);
-			(void) printf("]");
+			(void) printf("]\n");
 
 			break;
 		}
@@ -191,7 +191,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 			(void) printf(" [ ");
 			for (uint_t i = 0; i < nelem; i++)
 				(void) printf("\"%s\" ", val[i]);
-			(void) printf("]");
+			(void) printf("]\n");
 
 			break;
 		}
@@ -244,7 +244,6 @@ print_node_props(topo_hdl_t *thp, tnode_t *tn)
 			if (print_prop_val(thp, tn, pv, pg->tpg_info->tpi_name)
 			    != 0) {
 				(void) printf("failed to get prop val!\n");
-				return;
 			}
 		}
 	}
