@@ -2971,7 +2971,7 @@ mptsas_get_manufacture_page7(mptsas_t *mpt)
 	boolean_t		free_recv = B_FALSE, free_page = B_FALSE;
 	nvlist_t			**conn_info_nv = NULL;
 
-	uint32_t m7flags;
+	/* uint32_t m7flags; */
 	uint8_t nphys;
 	
 	MPTSAS_DISABLE_INTR(mpt);
@@ -3102,14 +3102,14 @@ mptsas_get_manufacture_page7(mptsas_t *mpt)
 	nphys = ddi_get8(page_accessp, (uint8_t *)(void *)&m7->NumPhys);
 	ASSERT(nphys == mpt->m_num_phys);
 
-	m7flags = ddi_get32(page_accessp, (uint32_t *)(void *)&m7->Flags);
+	/* m7flags = ddi_get32(page_accessp, (uint32_t *)(void *)&m7->Flags); */
 
 	mpt->m_connector_info = fnvlist_alloc();
 	conn_info_nv = kmem_zalloc(nphys * sizeof (nvlist_t *), KM_SLEEP);
 
 	for (uint_t phy = 0; phy < nphys; phy++) {
 		uint32_t pinout;
-		uint16_t slot;
+		/* uint16_t slot; */
 		uint8_t conn_loc, recep_id, conn_type;
 		char conn_name[16];
 
@@ -3122,8 +3122,8 @@ mptsas_get_manufacture_page7(mptsas_t *mpt)
 		    (uint8_t *)(void *)&m7->ConnectorInfo[phy].Location);
 		recep_id = ddi_get8(page_accessp,
 		    (uint8_t *)(void *)&m7->ConnectorInfo[phy].ReceptacleID);
-		slot = ddi_get16(page_accessp,
-		    (uint16_t *)(void *)&m7->ConnectorInfo[phy].Slot);
+		/* slot = ddi_get16(page_accessp,
+		    (uint16_t *)(void *)&m7->ConnectorInfo[phy].Slot); */
 
 		for (uint_t i = 0; i < 16; i++) {
 			conn_name[i] = ddi_get8(page_accessp,

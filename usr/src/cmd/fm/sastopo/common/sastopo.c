@@ -23,13 +23,24 @@
 #define	EXIT_USAGE	2
 
 static const char *pname;
-static const char optstr[] = "Cdf:R:Vx";
+static const char optstr[] = "Cdf:hpR:Vx";
 
 static void
 usage()
 {
-	(void) fprintf(stderr, "usage:\n %s [-d][-x][-V][-R root]\n"
-	    "or\n %s [-d][-R root] -f <xml>\n\n", pname, pname);
+	(void) fprintf(stderr,
+	    "Usage:\n\n"
+	    "Print all nodes on the SAS fabric:\n"
+	    "  %s [-d][-V][-R root]\n\n"
+	    "Print all the paths between SAS initiators and targets:\n"
+	    "  %s -p [-d][-R root]\n\n"
+	    "Dump SAS topology to XML\n"
+	    "  %s -x -f <xml_file> [-d][-R root]\n\n"
+	    "-C\t\tdump core at exit\n"
+	    "-d\t\tenable debug messages\n"
+	    "-h\t\tprint this usage message\n"
+	    "-R\t\toperate against alternate root directory\n"
+	    "-V\t\tverbose mode\n\n", pname, pname, pname);
 }
 
 struct sastopo_vertex {
@@ -41,6 +52,7 @@ struct cb_arg {
 	topo_list_t ini_list;
 	topo_list_t tgt_list;
 	boolean_t verbose;
+	boolean_t do_paths;
 };
 
 static int
@@ -289,7 +301,8 @@ vertex_cb(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last_vtx,
 	tnode_t *tn = topo_vertex_node(vtx);
 	struct sastopo_vertex *sasvtx;
 
-	print_vertex(thp, vtx, cbarg);
+	if (!cbarg->do_paths)
+		print_vertex(thp, vtx, cbarg);
 
 	if (strcmp(topo_node_name(tn), TOPO_VTX_INITIATOR) != 0 &&
 	    strcmp(topo_node_name(tn), TOPO_VTX_TARGET) != 0) {
@@ -335,6 +348,12 @@ main(int argc, char *argv[])
 			case 'f':
 				xml_in = optarg;
 				break;
+			case 'h':
+				usage();
+				return (EXIT_USAGE);
+			case 'p':
+				cbarg.do_paths = B_TRUE;
+				break;
 			case 'R':
 				root = optarg;
 				break;
@@ -349,6 +368,12 @@ main(int argc, char *argv[])
 				return (EXIT_USAGE);
 			}
 		}
+	}
+
+	if (xml_out && cbarg.do_paths) {
+		(void) fprintf(stderr, "-x and -p are mutually exclusive\n");
+		usage();
+		return (EXIT_USAGE);
 	}
 
 	if (debug) {
@@ -449,7 +474,11 @@ main(int argc, char *argv[])
 		(void) fprintf(stderr, "failed to iterate vertices\n");
 		goto out;
 	}
-	(void) printf("\n");
+
+	if (!cbarg.do_paths) {
+		status = EXIT_SUCCESS;
+		goto out;
+	}
 
 	/*
 	 * Find and print all unique paths between the initiators and
