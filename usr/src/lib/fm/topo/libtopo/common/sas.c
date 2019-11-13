@@ -582,6 +582,20 @@ sas_vtx_match(topo_hdl_t *thp, topo_vertex_t *vtx, boolean_t last,
 	return (TOPO_WALK_NEXT);
 }
 
+/*
+ * Search through this mod's digraph for either a connection between two nodes
+ * or a specific node. This is an abstraction over the sas_vtx_match routine.
+ *
+ * The search_wwn argument is required.
+ *
+ * If the caller passes in an expander vtx_type then this function returns the
+ * expander vertex that matches the search_wwn.
+ *
+ * If the caller passes in a port vtx_type and an att_wwn value then this
+ * searches for a linkage between search_wwn and att_wwn. Any ports in the
+ * digraph that have a local WWN value of search_wwn and are connected to
+ * an att_wwn port are added to a list and returned.
+ */
 static uint_t
 sas_find_connected_vtx(topo_mod_t *mod, uint64_t att_wwn, uint64_t search_wwn,
     const char *vtx_type, topo_list_t *res_list)
@@ -642,9 +656,67 @@ sas_find_connected_vtx(topo_mod_t *mod, uint64_t att_wwn, uint64_t search_wwn,
 	return (nfound);
 }
 
+/*
+ * Common routine to create wide ports for expander phys.
+ *
+ * This assumes that the att_wwn and local_wwn have the correct byte order
+ * already.
+ */
+int
+sas_wide_port_create(topo_mod_t *mod, const char *smp_path,
+    struct sas_phy_info *wide_port_phys, uint64_t att_wwn, uint64_t local_wwn)
+{
+	tnode_t *tn;
+	int ret = 0, err;
+	sas_port_t *expd_port = NULL;
+
+	if ((expd_port =
+	    topo_mod_zalloc(mod, sizeof (sas_port_t))) == NULL) {
+		ret = -1;
+		goto done;
+	}
+
+	expd_port->sp_att_wwn = att_wwn;
+	expd_port->sp_is_expander = B_TRUE;
+	if ((expd_port->sp_vtx = sas_create_vertex(mod, TOPO_VTX_PORT,
+	    local_wwn, wide_port_phys)) == NULL) {
+		topo_mod_dprintf(mod,
+		    "Failed to create vtx %s=%" PRIx64, TOPO_VTX_PORT,
+		    local_wwn);
+		topo_mod_free(mod, expd_port, sizeof (sas_port_t));
+		ret = -1;
+		goto done;
+	}
+
+	tn = topo_vertex_node(expd_port->sp_vtx);
+
+	if (topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOCAL_ADDR, TOPO_PROP_IMMUTABLE,
+	    local_wwn, &err) != 0 ||
+	    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
+	    att_wwn, &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ANAME, TOPO_PROP_IMMUTABLE,
+	    smp_path, &err) != 0) {
+		topo_mod_dprintf(mod,
+		    "Failed to set props on %s=%" PRIx64 " (%s)",
+		    topo_node_name(tn), topo_node_instance(tn),
+		    topo_strerror(err));
+		ret = -1;
+		goto done;
+	}
+	topo_node_setspecific(tn, expd_port);
+
+done:
+	if (ret != 0 && expd_port != NULL) {
+		topo_mod_free(mod, expd_port, sizeof (sas_port_t));
+	}
+	return (ret);
+}
+
 static int
-sas_expander_discover(topo_mod_t *mod, const char *smp_path,
-    topo_list_t *expd_list)
+sas_expander_discover(topo_mod_t *mod, const char *smp_path)
 {
 	int ret = 0;
 	int i;
@@ -677,6 +749,7 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 		goto done;
 	}
 
+	func = SMP_FUNC_REPORT_GENERAL;
 	axn = smp_action_alloc(func, tgt, 0);
 
 	if (smp_exec(axn, tgt) != 0) {
@@ -712,7 +785,6 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 	tn = topo_vertex_node(expd_vtx);
 	topo_node_setspecific(tn, port_info);
 
-	/* XXX get the /dev/smp/XYZ path instead of the /devices path? */
 	if (topo_prop_set_string(tn, TOPO_PGROUP_EXPANDER,
 	    TOPO_PROP_EXPANDER_DEVFSNAME, TOPO_PROP_IMMUTABLE,
 	    smp_path, &err) != 0) {
@@ -748,10 +820,12 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 		disc_resp = (smp_discover_resp_t *)smp_resp;
 		if (result != SMP_RES_FUNCTION_ACCEPTED &&
 		    result != SMP_RES_PHY_VACANT) {
-			topo_mod_dprintf(mod, "function not accepted\n");
+			topo_mod_dprintf(mod, "%s: error in SMP response (%d)",
+			    __func__, result);
 			goto done;
 		}
 
+		/* There's nothing at this phy, so ignore it and move on. */
 		if (result == SMP_RES_PHY_VACANT) {
 			continue;
 		}
@@ -780,40 +854,10 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 			 */
 			if (wide_port_discovery) {
 				wide_port_discovery = B_FALSE;
-				sas_port_t *expd_port = topo_mod_zalloc(
-				    mod, sizeof (sas_port_t));
-
-				expd_port->sp_att_wwn =
-				    htonll(wide_port_att_wwn);
-				expd_port->sp_is_expander = B_TRUE;
-				if ((expd_port->sp_vtx =
-				    sas_create_vertex(mod, TOPO_VTX_PORT,
-				    expd_addr, &wide_port_phys)) == NULL) {
-					topo_mod_free(mod, expd_port,
-					    sizeof (sas_port_t));
-					ret = -1;
-					goto done;
-				}
-				topo_list_append(expd_list, expd_port);
-				tn = topo_vertex_node(expd_port->sp_vtx);
-				topo_node_setspecific(tn, expd_port);
-				if (topo_prop_set_uint64(tn,
-				    TOPO_PGROUP_SASPORT,
-				    TOPO_PROP_SASPORT_LOCAL_ADDR,
-				    TOPO_PROP_IMMUTABLE,
-				    expd_addr, &err) != 0 ||
-				    topo_prop_set_uint64(tn,
-				    TOPO_PGROUP_SASPORT,
-				    TOPO_PROP_SASPORT_ATTACH_ADDR,
-				    TOPO_PROP_IMMUTABLE,
-				    expd_port->sp_att_wwn, &err) != 0) {
-					topo_mod_dprintf(mod,
-					    "Failed to set props on "
-					    "%s=%" PRIx64 " (%s)",
-					    topo_node_name(tn),
-					    topo_node_instance(tn),
-					    topo_strerror(err));
-					ret = -1;
+				if (sas_wide_port_create(mod, smp_path,
+				    &wide_port_phys,
+				    htonll(wide_port_att_wwn),
+				    expd_addr) != 0) {
 					goto done;
 				}
 			}
@@ -836,7 +880,10 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 			    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
 			    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
 			    ntohll(disc_resp->sdr_attached_sas_addr),
-			    &err) != 0) {
+			    &err) != 0 ||
+			    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_ANAME, TOPO_PROP_IMMUTABLE,
+			    smp_path, &err) != 0) {
 				topo_mod_dprintf(mod, "Failed to set props on "
 				    "%s=%" PRIx64,
 				    topo_node_name(tn), topo_node_instance(tn));
@@ -942,40 +989,10 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path,
 			if (disc_resp->sdr_attached_sas_addr
 			    != wide_port_att_wwn && wide_port_discovery) {
 				wide_port_discovery = B_FALSE;
-				sas_port_t *expd_port = topo_mod_zalloc(
-				    mod, sizeof (sas_port_t));
-
-				expd_port->sp_att_wwn =
-				    htonll(wide_port_att_wwn);
-				expd_port->sp_is_expander = B_TRUE;
-				if ((expd_port->sp_vtx =
-				    sas_create_vertex(mod, TOPO_VTX_PORT,
-				    expd_addr, &wide_port_phys)) == NULL) {
-					topo_mod_free(mod, expd_port,
-					    sizeof (sas_port_t));
-					ret = -1;
-					goto done;
-				}
-				topo_list_append(expd_list, expd_port);
-				tn = topo_vertex_node(expd_port->sp_vtx);
-				topo_node_setspecific(tn, expd_port);
-				if (topo_prop_set_uint64(tn,
-				    TOPO_PGROUP_SASPORT,
-				    TOPO_PROP_SASPORT_LOCAL_ADDR,
-				    TOPO_PROP_IMMUTABLE,
-				    expd_addr, &err) != 0 ||
-				    topo_prop_set_uint64(tn,
-				    TOPO_PGROUP_SASPORT,
-				    TOPO_PROP_SASPORT_ATTACH_ADDR,
-				    TOPO_PROP_IMMUTABLE,
-				    expd_port->sp_att_wwn, &err) != 0) {
-					topo_mod_dprintf(mod,
-					    "Failed to set props on "
-					    "%s=%" PRIx64 " (%s)",
-					    topo_node_name(tn),
-					    topo_node_instance(tn),
-					    topo_strerror(err));
-					ret = -1;
+				if (sas_wide_port_create(mod, smp_path,
+				    &wide_port_phys,
+				    htonll(wide_port_att_wwn),
+				    expd_addr) != 0) {
 					goto done;
 				}
 			}
@@ -1003,7 +1020,6 @@ done:
 typedef struct sas_topo_iter {
 	topo_mod_t	*sas_mod;
 	uint64_t	sas_search_wwn;
-	topo_list_t	*sas_expd_list;
 } sas_topo_iter_t;
 
 /* Responsible for creating links from HBA -> fanout expanders. */
@@ -1011,15 +1027,17 @@ static int
 sas_connect_hba(topo_hdl_t *hdl, topo_edge_t *edge, boolean_t last, void* arg)
 {
 	sas_topo_iter_t *iter = arg;
+	topo_mod_t *mod = iter->sas_mod;
 	tnode_t *node = topo_vertex_node(edge->tve_vertex);
 	sas_port_t *hba_port = topo_node_getspecific(node);
 	topo_vertex_t *expd_port_vtx = NULL;
 	topo_vertex_t *expd_vtx = NULL;
 	sas_port_t *expd_port = NULL;
 	sas_vtx_t *vtx;
+	int ret = TOPO_WALK_NEXT;
 
 	topo_list_t *vtx_list = topo_mod_zalloc(
-	    iter->sas_mod, sizeof (topo_list_t));
+	    mod, sizeof (topo_list_t));
 
 	if (strcmp(node->tn_name, TOPO_VTX_PORT) == 0 &&
 	    edge->tve_vertex->tvt_noutgoing == 0) {
@@ -1030,39 +1048,55 @@ sas_connect_hba(topo_hdl_t *hdl, topo_edge_t *edge, boolean_t last, void* arg)
 		 * - if not already connected, connect the expander port to the
 		 *   expander itself.
 		 */
-		uint_t nfound = sas_find_connected_vtx(iter->sas_mod,
-		    node->tn_instance, hba_port->sp_att_wwn, TOPO_VTX_PORT,
-		    vtx_list);
+		uint_t nfound = sas_find_connected_vtx(mod,
+		    topo_node_instance(node), hba_port->sp_att_wwn,
+		    TOPO_VTX_PORT, vtx_list);
 
 		/*
 		 * XXX need to match up the phys in case this expd is
 		 * connected to more than one hba. In that case nfound should be
 		 * > 1.
 		 */
-		if (nfound > 1)
+		if (nfound != 1) {
+			topo_mod_dprintf(mod, "found incorrect number of "
+			    "vertex connections from HBA %" PRIx64 " to "
+			    "%" PRIx64 " (%d)", topo_node_instance(node),
+			    hba_port->sp_att_wwn,
+			    nfound);
+
+			ret = TOPO_WALK_ERR;
 			goto out;
+		}
 		sas_vtx_t *vtx = topo_list_next(vtx_list);
 		expd_port_vtx = vtx->tds_vtx;
 		if (expd_port_vtx == NULL ||
-		    topo_edge_new(iter->sas_mod, edge->tve_vertex,
+		    topo_edge_new(mod, edge->tve_vertex,
 		    expd_port_vtx) != 0) {
 			goto out;
 		}
 		topo_list_delete(vtx_list, vtx);
-		topo_mod_free(iter->sas_mod, vtx, sizeof (sas_vtx_t));
+		topo_mod_free(mod, vtx, sizeof (sas_vtx_t));
 
-		nfound = sas_find_connected_vtx(iter->sas_mod,
+		nfound = sas_find_connected_vtx(mod,
 		    0, /* expd vtx doesn't have an attached SAS addr */
-		    topo_vertex_node(expd_port_vtx)->tn_instance,
+		    topo_node_instance(topo_vertex_node(expd_port_vtx)),
 		    TOPO_VTX_EXPANDER, vtx_list);
 
 		/* There should only be one expander vtx with this SAS addr. */
-		if (nfound > 1)
+		if (nfound != 1) {
+			topo_mod_dprintf(mod, "could not find vertex %" PRIx64
+			    " (%d)",
+			    topo_node_instance(topo_vertex_node(expd_port_vtx)),
+			    nfound);
+
+			ret = TOPO_WALK_ERR;
 			goto out;
+		}
+
 		expd_vtx =
 		    ((sas_vtx_t *)topo_list_next(vtx_list))->tds_vtx;
 		if (expd_vtx == NULL ||
-		    topo_edge_new(iter->sas_mod, expd_port_vtx,
+		    topo_edge_new(mod, expd_port_vtx,
 		    expd_vtx) != 0) {
 			goto out;
 		}
@@ -1076,11 +1110,11 @@ out:
 		sas_vtx_t *tmp = vtx;
 
 		vtx = topo_list_next(vtx);
-		topo_mod_free(iter->sas_mod, tmp, sizeof (sas_vtx_t));
+		topo_mod_free(mod, tmp, sizeof (sas_vtx_t));
 	}
-	topo_mod_free(iter->sas_mod, vtx_list, sizeof (topo_list_t));
+	topo_mod_free(mod, vtx_list, sizeof (topo_list_t));
 
-	return (TOPO_WALK_NEXT);
+	return (ret);
 }
 
 static int
@@ -1089,13 +1123,14 @@ sas_expd_interconnect(topo_hdl_t *hdl, topo_vertex_t *vtx,
 {
 	int ret = 0;
 	tnode_t *node = topo_vertex_node(vtx);
+	topo_mod_t *mod = iter->sas_mod;
 	topo_list_t *list = topo_mod_zalloc(
-	    iter->sas_mod, sizeof (topo_list_t));
+	    mod, sizeof (topo_list_t));
 	sas_port_t *port = topo_node_getspecific(node);
 	topo_vertex_t *port_vtx = NULL;
 	sas_vtx_t *disc_vtx;
 
-	uint_t nfound = sas_find_connected_vtx(iter->sas_mod, node->tn_instance,
+	uint_t nfound = sas_find_connected_vtx(mod, node->tn_instance,
 	    port->sp_att_wwn, TOPO_VTX_PORT, list);
 
 	if (nfound == 0) {
@@ -1112,7 +1147,7 @@ sas_expd_interconnect(topo_hdl_t *hdl, topo_vertex_t *vtx,
 		goto out;
 	}
 
-	if (topo_edge_new(iter->sas_mod, vtx, port_vtx) != 0) {
+	if (topo_edge_new(mod, vtx, port_vtx) != 0) {
 		goto out;
 	}
 
@@ -1122,9 +1157,9 @@ out:
 		sas_vtx_t *tmp = disc_vtx;
 
 		disc_vtx = topo_list_next(disc_vtx);
-		topo_mod_free(iter->sas_mod, tmp, sizeof (sas_vtx_t));
+		topo_mod_free(mod, tmp, sizeof (sas_vtx_t));
 	}
-	topo_mod_free(iter->sas_mod, list, sizeof (topo_list_t));
+	topo_mod_free(mod, list, sizeof (topo_list_t));
 
 	return (ret);
 }
@@ -1137,25 +1172,26 @@ out:
 static int
 sas_connect_expd(topo_hdl_t *hdl, topo_vertex_t *vtx, sas_topo_iter_t *iter)
 {
-	int ret = 0;
+	int ret = TOPO_WALK_NEXT;
 	tnode_t *node = topo_vertex_node(vtx);
+	topo_mod_t *mod = iter->sas_mod;
 	topo_vertex_t *expd_vtx = NULL;
 	sas_port_t *disc_expd = NULL;
 	sas_vtx_t *disc_vtx;
 
 	topo_list_t *list = topo_mod_zalloc(
-	    iter->sas_mod, sizeof (topo_list_t));
+	    mod, sizeof (topo_list_t));
 
 	/* Find the port's corresponding expander vertex. */
-	uint_t nfound = sas_find_connected_vtx(iter->sas_mod, 0,
+	uint_t nfound = sas_find_connected_vtx(mod, 0,
 	    node->tn_instance, TOPO_VTX_EXPANDER, list);
 	if (nfound == 0) {
-		ret = -1;
+		ret = TOPO_WALK_ERR;
 		goto out;
 	}
 
 	if ((expd_vtx = ((sas_vtx_t *)topo_list_next(list))->tds_vtx) == NULL) {
-		ret = -1;
+		ret = TOPO_WALK_ERR;
 		goto out;
 	}
 
@@ -1168,11 +1204,13 @@ sas_connect_expd(topo_hdl_t *hdl, topo_vertex_t *vtx, sas_topo_iter_t *iter)
 	 * to find targets.
 	 */
 	if (!disc_expd->sp_has_hba_connection) {
-		if (topo_edge_new(iter->sas_mod, vtx, expd_vtx) != 0) {
+		if (topo_edge_new(mod, vtx, expd_vtx) != 0) {
+			ret = TOPO_WALK_ERR;
 			goto out;
 		}
 	} else {
-		if (topo_edge_new(iter->sas_mod, expd_vtx, vtx) != 0) {
+		if (topo_edge_new(mod, expd_vtx, vtx) != 0) {
+			ret = TOPO_WALK_ERR;
 			goto out;
 		}
 	}
@@ -1183,9 +1221,9 @@ out:
 		sas_vtx_t *tmp = disc_vtx;
 
 		disc_vtx = topo_list_next(disc_vtx);
-		topo_mod_free(iter->sas_mod, tmp, sizeof (sas_vtx_t));
+		topo_mod_free(mod, tmp, sizeof (sas_vtx_t));
 	}
-	topo_mod_free(iter->sas_mod, list, sizeof (topo_list_t));
+	topo_mod_free(mod, list, sizeof (topo_list_t));
 
 	return (ret);
 }
@@ -1198,7 +1236,7 @@ sas_vtx_final_pass(topo_hdl_t *hdl, topo_vertex_t *vtx, boolean_t last,
 	tnode_t *node = topo_vertex_node(vtx);
 	sas_port_t *port = topo_node_getspecific(node);
 
-	if (node != NULL && strcmp(node->tn_name, TOPO_VTX_PORT) == 0) {
+	if (node != NULL && strcmp(topo_node_name(node), TOPO_VTX_PORT) == 0) {
 		/*
 		 * Connect this outbound port to another expander's inbound
 		 * port.
@@ -1219,14 +1257,15 @@ sas_vtx_iter(topo_hdl_t *hdl, topo_vertex_t *vtx, boolean_t last, void *arg)
 	tnode_t *node = topo_vertex_node(vtx);
 	sas_port_t *port = topo_node_getspecific(node);
 
-	if (strcmp(node->tn_name, TOPO_VTX_INITIATOR) == 0) {
-		(void) topo_edge_iter(hdl, vtx, sas_connect_hba, iter);
-	} else if (strcmp(node->tn_name, TOPO_VTX_PORT) == 0) {
+	if (strcmp(topo_node_name(node), TOPO_VTX_INITIATOR) == 0) {
+		return (topo_edge_iter(hdl, vtx, sas_connect_hba, iter));
+	}
 
+	if (strcmp(topo_node_name(node), TOPO_VTX_PORT) == 0) {
 		/* Connect the port to its expander vtx. */
 		if (port != NULL && port->sp_is_expander &&
 		    port->sp_vtx->tvt_nincoming == 0)
-			(void) sas_connect_expd(hdl, vtx, iter);
+			return (sas_connect_expd(hdl, vtx, iter));
 
 	}
 	return (TOPO_WALK_NEXT);
@@ -1446,9 +1485,12 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 	di_node_t root, smp;
 	const char *smp_path = NULL;
-	sas_port_t *expd_port, *hba_port;
-	topo_list_t *expd_list = topo_mod_zalloc(mod, sizeof (topo_list_t));
+	sas_port_t *hba_port;
 	topo_list_t *hba_list = topo_mod_zalloc(mod, sizeof (topo_list_t));
+
+	if (hba_list == NULL) {
+		goto done;
+	}
 
 	/* Begin by discovering all HBAs and their immediate ports. */
 	HBA_HANDLE handle;
@@ -1516,11 +1558,10 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 		smp_path = di_devfs_path(smp);
 		full_smp_path = topo_mod_zalloc(
-		    mod, strlen(smp_path) + strlen("/devices"));
+		    mod, strlen(smp_path) + strlen("/devices:smp"));
 		(void) sprintf(full_smp_path, "/devices%s:smp", smp_path);
 
-		if (sas_expander_discover(mod, full_smp_path,
-		    expd_list) != 0) {
+		if (sas_expander_discover(mod, full_smp_path) != 0) {
 			topo_mod_dprintf(mod, "expander discovery failed\n");
 			goto done;
 		}
@@ -1528,26 +1569,26 @@ sas_enum(topo_mod_t *mod, tnode_t *rnode, const char *name,
 
 	sas_topo_iter_t iter;
 	iter.sas_mod = mod;
-	iter.sas_expd_list = expd_list;
-	(void) topo_vertex_iter(mod->tm_hdl,
+	if (topo_vertex_iter(mod->tm_hdl,
 	    topo_digraph_get(mod->tm_hdl, FM_FMRI_SCHEME_SAS),
-	    sas_vtx_iter, &iter);
+	    sas_vtx_iter, &iter) != 0) {
+		topo_mod_dprintf(mod, "failed to create links between HBAs and"
+		    " expanders");
+		ret = -1;
+		goto done;
+	}
 
-	(void) topo_vertex_iter(mod->tm_hdl,
+	if (topo_vertex_iter(mod->tm_hdl,
 	    topo_digraph_get(mod->tm_hdl, FM_FMRI_SCHEME_SAS),
-	    sas_vtx_final_pass, &iter);
+	    sas_vtx_final_pass, &iter) != 0) {
+		topo_mod_dprintf(mod, "failed to create links between"
+		    " expanders");
+		ret = -1;
+		goto done;
+	}
 
 	ret = 0;
 done:
-	expd_port = topo_list_next(expd_list);
-	while (expd_port != NULL) {
-		sas_port_t *tmp = expd_port;
-
-		expd_port = topo_list_next(expd_port);
-		topo_mod_free(mod, tmp, sizeof (sas_port_t));
-	}
-	topo_mod_free(mod, expd_list, sizeof (topo_list_t));
-
 	hba_port = topo_list_next(hba_list);
 	while (hba_port != NULL) {
 		sas_port_t *tmp = hba_port;
@@ -2246,21 +2287,163 @@ err:
 }
 
 /*
- * XXX - This will need to be refactored to support getting PHY counters out of
- * expander ports
+ * Returns an array of phy error counter data for the given expander phys.
+ *
+ * This uses libsmp to gather phy link error counter data from the provided
+ * expander at smp_path.
+ */
+int
+sas_get_expander_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
+    char *smp_path, uint32_t start_phy, uint32_t end_phy, uint32_t nphys,
+    uint64_t *out)
+{
+	int ret = -1;
+
+	uint8_t *smp_resp;
+	size_t smp_resp_len;
+	smp_target_def_t *tdef = NULL;
+	smp_target_t *tgt = NULL;
+	smp_action_t *axn = NULL;
+	smp_result_t result;
+	smp_function_t func = SMP_FUNC_REPORT_PHY_ERROR_LOG;
+
+	smp_report_phy_error_log_req_t *el_req;
+	smp_report_phy_error_log_resp_t *el_resp;
+
+	tdef = topo_mod_zalloc(mod, sizeof (smp_target_def_t));
+	tdef->std_def = smp_path;
+
+	if ((tgt = smp_open(tdef)) == NULL) {
+		ret = -1;
+		topo_mod_dprintf(mod, "%s: failed to open SMP target",
+		    __func__);
+		goto err;
+	}
+
+	for (uint_t phy = 0; phy < nphys; phy++) {
+		axn = smp_action_alloc(func, tgt, 0);
+		smp_action_get_request(axn, (void **) &el_req, NULL);
+		el_req->srpelr_phy_identifier = start_phy + phy;
+
+		if ((ret = smp_exec(axn, tgt)) != 0) {
+			topo_mod_dprintf(mod, "%s: smp_exec failed", __func__);
+			smp_action_free(axn);
+			goto err;
+		}
+
+		smp_action_get_response(axn, &result, (void **) &smp_resp,
+		    &smp_resp_len);
+		smp_action_free(axn);
+
+		el_resp = (smp_report_phy_error_log_resp_t *)smp_resp;
+
+		/*
+		 * When we first do phy discovery we allow an
+		 * SMP_RES_PHY_VACANT response. At this point we should be sure
+		 * that this phy exists (it's already in the SAS topo digraph),
+		 * so any non-ACCEPTED response is an error.
+		 */
+		if (result != SMP_RES_FUNCTION_ACCEPTED) {
+			topo_mod_dprintf(mod, "%s: error in SMP response (%d)",
+			    __func__, result);
+			goto err;
+		}
+
+		/*
+		 * Copy out the requested error counter. The values provided
+		 * to us by libsmp also need to have their byte order swapped.
+		 */
+		if (strcmp(pname, TOPO_PROP_SASPORT_INV_DWORD) == 0)
+			out[phy] = ntohl(el_resp->srpelr_invalid_dword_count);
+		else if (strcmp(pname, TOPO_PROP_SASPORT_RUN_DISP) == 0)
+			out[phy] = ntohl(
+			    el_resp->srpelr_running_disparity_error_count);
+		else if (strcmp(pname, TOPO_PROP_SASPORT_LOSS_SYNC) == 0)
+			out[phy] = ntohl(el_resp->srpelr_loss_dword_sync_count);
+		else if (strcmp(pname, TOPO_PROP_SASPORT_RESET_PROB) == 0)
+			out[phy] = ntohl(
+			    el_resp->srpelr_phy_reset_problem_count);
+	}
+	ret = 0;
+
+err:
+	return (ret);
+}
+
+
+/*
+ * Returns an array of phy error counter data for the given adapter and phys.
+ *
+ * This uses libsmhbaapi to gather phy link error counter data.
+ */
+int
+sas_get_adapter_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
+    char *hba_name, uint32_t hba_port, uint32_t start_phy, uint32_t end_phy,
+    uint32_t nphys, uint64_t *out)
+{
+	HBA_HANDLE handle = -1;
+	SMHBA_PHYSTATISTICS phystats;
+	SMHBA_SASPHYSTATISTICS sasphystats;
+	int ret = -1;
+
+	/*
+	 * Iterate through the PHYs on this port and retrieve the
+	 * appropriate error counter value based on the property name.
+	 */
+	if ((handle = HBA_OpenAdapter(hba_name)) == 0) {
+		topo_mod_dprintf(mod, "%s: failed to open adapter: %s",
+		    __func__, hba_name);
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		goto err;
+	}
+	for (uint_t phy = 0; phy < nphys; phy++) {
+
+		(void) memset(&phystats, 0, sizeof (SMHBA_PHYSTATISTICS));
+		(void) memset(&sasphystats, 0, sizeof (SMHBA_SASPHYSTATISTICS));
+		phystats.SASPhyStatistics = &sasphystats;
+
+		ret = SMHBA_GetPhyStatistics(handle, hba_port, phy, &phystats);
+		if (ret != HBA_STATUS_OK) {
+			topo_mod_dprintf(mod, "%s: failed to get HBA PHY stats "
+			    "for PORT %u PHY %u (ret=%u)", __func__, hba_port,
+			    phy, ret);
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+		if (strcmp(pname, TOPO_PROP_SASPORT_INV_DWORD) == 0)
+			out[phy] = phystats.
+			    SASPhyStatistics->InvalidDwordCount;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_RUN_DISP) == 0)
+			out[phy] = phystats.
+			    SASPhyStatistics->RunningDisparityErrorCount;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_LOSS_SYNC) == 0)
+			out[phy] = phystats.
+			    SASPhyStatistics->LossofDwordSyncCount;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_RESET_PROB) == 0)
+			out[phy] = phystats.
+			    SASPhyStatistics->PhyResetProblemCount;
+	}
+	ret = 0;
+err:
+	if (handle != -1)
+		HBA_CloseAdapter(handle);
+	return (ret);
+
+}
+
+/*
+ * Populates PHY link state error counter properties for the given node.
+ *
+ * This is a common entrypoint for both HBA and expander phys.
  */
 static int
 sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
-	nvlist_t *args, *pargs, *nvl, *fmri = NULL, *auth = NULL;
-	char *pname, *hba_name = NULL;
-	uint32_t hba_port, start_phy, end_phy;
-	uint_t nphys;
 	uint64_t *pvals = NULL;
-	HBA_HANDLE handle = -1;
-	SMHBA_PHYSTATISTICS phystats;
-	SMHBA_SASPHYSTATISTICS sasphystats;
+	nvlist_t *args, *pargs, *nvl, *fmri = NULL, *auth = NULL;
+	char *pname, *aname = NULL;
+	uint32_t hba_port, start_phy, end_phy, nphys;
 	int err, ret = -1;
 
 	if (version > TOPO_METH_SAS_PHY_ERR_VERSION)
@@ -2289,17 +2472,10 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	 * these to lookup the PHY stats.
 	 */
 	if (topo_prop_get_string(node, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_ANAME, &hba_name, &err) != 0) {
+	    TOPO_PROP_SASPORT_ANAME, &aname, &err) != 0) {
 		topo_mod_dprintf(mod, "%s: node missing %s prop", __func__,
 		    TOPO_PROP_SASPORT_ANAME);
 		return (topo_mod_seterrno(mod, err));
-	}
-	if (topo_prop_get_uint32(node, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_APORT, &hba_port, &err) != 0) {
-		topo_mod_dprintf(mod, "%s: node missing %s prop", __func__,
-		    TOPO_PROP_SASPORT_APORT);
-		(void) topo_mod_seterrno(mod, err);
-		goto err;
 	}
 
 	/*
@@ -2333,41 +2509,25 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	}
 
 	/*
-	 * Iterate through the PHYs on this port and retrieve the
-	 * appropriate error counter value based on the property name.
+	 * Adapter port
+	 *
+	 * At this point only HBAs have an APORT property.
 	 */
-	if ((handle = HBA_OpenAdapter(hba_name)) == 0) {
-		topo_mod_dprintf(mod, "%s: failed to open adapter: %s",
-		__func__, hba_name);
-		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
-		goto err;
-	}
-	for (uint_t phy = 0; phy < nphys; phy++) {
-
-		(void) memset(&phystats, 0, sizeof (SMHBA_PHYSTATISTICS));
-		(void) memset(&sasphystats, 0, sizeof (SMHBA_SASPHYSTATISTICS));
-		phystats.SASPhyStatistics = &sasphystats;
-
-		ret = SMHBA_GetPhyStatistics(handle, hba_port, phy, &phystats);
-		if (ret != HBA_STATUS_OK) {
-			topo_mod_dprintf(mod, "%s: failed to get HBA PHY stats "
-			    "for PORT %u PHY %u (ret=%u)", __func__, hba_port,
-			    phy, ret);
-			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+	if (topo_prop_get_uint32(node, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_APORT, &hba_port, &err) == 0) {
+		if ((ret = sas_get_adapter_phy_err_counter(mod, node, pname,
+		    aname, hba_port, start_phy, end_phy, nphys,
+		    pvals)) != 0) {
+			topo_mod_dprintf(mod, "%s: failed to retrieve adapter "
+			    "port error counters", __func__);
 			goto err;
 		}
-		if (strcmp(pname, TOPO_PROP_SASPORT_INV_DWORD) == 0)
-			pvals[phy] = phystats.
-			    SASPhyStatistics->InvalidDwordCount;
-		else if (strcmp(pname, TOPO_PROP_SASPORT_RUN_DISP) == 0)
-			pvals[phy] = phystats.
-			    SASPhyStatistics->RunningDisparityErrorCount;
-		else if (strcmp(pname, TOPO_PROP_SASPORT_LOSS_SYNC) == 0)
-			pvals[phy] = phystats.
-			    SASPhyStatistics->LossofDwordSyncCount;
-		else if (strcmp(pname, TOPO_PROP_SASPORT_RESET_PROB) == 0)
-			pvals[phy] = phystats.
-			    SASPhyStatistics->PhyResetProblemCount;
+	} else if ((ret = sas_get_expander_phy_err_counter(mod, node, pname,
+	    aname, start_phy, end_phy, nphys, pvals)) != 0) {
+		/* Expander port */
+		topo_mod_dprintf(mod, "%s: failed to retrieve expander "
+		    "port error counters", __func__);
+		goto err;
 	}
 
 	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0 ||
@@ -2382,12 +2542,13 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		goto err;
 	}
 	*out = nvl;
+
 	ret = 0;
 err:
-	if (handle != -1)
-		HBA_CloseAdapter(handle);
 	nvlist_free(fmri);
-	topo_mod_free(mod, pvals, sizeof (uint64_t) * nphys);
-	topo_mod_strfree(mod, hba_name);
+	if (pvals != NULL) {
+		topo_mod_free(mod, pvals, sizeof (uint64_t) * nphys);
+	}
+	topo_mod_strfree(mod, aname);
 	return (ret);
 }
