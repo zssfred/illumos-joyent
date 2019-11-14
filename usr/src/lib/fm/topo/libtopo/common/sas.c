@@ -1730,7 +1730,7 @@ sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		.st_mod = mod,
 		.st_node = node
 	};
-	int err;
+	int err, ret = -1;
 	nvlist_t *result = NULL;
 	const char *pname = NULL;
 
@@ -1748,7 +1748,6 @@ sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	topo_walk_fini(twp);
 
 	if (cbarg.st_ret == NULL) {
-		err = -1;
 		goto out;
 	}
 
@@ -1763,9 +1762,10 @@ sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	fnvlist_add_uint32(result, TOPO_PROP_VAL_TYPE, TOPO_TYPE_STRING);
 	fnvlist_add_string(result, TOPO_PROP_VAL_VAL, strdup(cbarg.st_ret));
 	*out = result;
+	ret = 0;
 
 out:
-	return (err);
+	return (ret);
 }
 
 /*
@@ -1790,7 +1790,7 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	nvlist_t *pnvl = NULL;
 	const char *targ_group = NULL;
 	const char *targ_prop = NULL;
-	int err;
+	int err, ret = -1;
 
 	nvl = fnvlist_lookup_nvlist(in, TOPO_PROP_ARGS);
 	pname = fnvlist_lookup_string(nvl, "pname");
@@ -1862,8 +1862,9 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	fnvlist_add_string(pnvl, TOPO_PROP_VAL_NAME, pname);
 	*out = pnvl;
 
+	ret = 0;
 done:
-	return (err);
+	return (ret);
 }
 
 static ssize_t
