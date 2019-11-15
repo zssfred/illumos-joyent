@@ -257,6 +257,12 @@ topo_node_parent(tnode_t *node)
 	return (node->tn_parent);
 }
 
+topo_vertex_t *
+topo_node_vertex(tnode_t *node)
+{
+	return (node->tn_vtx);
+}
+
 int
 topo_node_flags(tnode_t *node)
 {

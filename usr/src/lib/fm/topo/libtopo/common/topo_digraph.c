@@ -125,6 +125,7 @@ topo_vertex_new(topo_mod_t *mod, const char *name, topo_instance_t inst)
 	}
 	tn->tn_enum = mod;
 	tn->tn_hdl = mod->tm_hdl;
+	tn->tn_vtx = vtx;
 	tn->tn_instance = inst;
 	/*
 	 * Adding the TOPO_NODE_ROOT state to the node has the effect of

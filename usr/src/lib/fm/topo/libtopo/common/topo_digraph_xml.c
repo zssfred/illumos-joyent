@@ -280,7 +280,8 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 				    (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
 			}
-			(void) fprintf(fp, "%s  </%s>\n", pad, TDG_XML_NVPAIR);
+			(void) fprintf(fp, "%*s </%s>\n", pad, "",
+			    TDG_XML_NVPAIR);
 			break;
 		}
 		case DATA_TYPE_INT64_ARRAY: {
@@ -316,7 +317,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
 			}
-			(void) fprintf(fp, "%*s</%s>\n", (pad + 2),
+			(void) fprintf(fp, "%*s</%s>\n", (pad + 2), "",
 			    TDG_XML_NVPAIR);
 
 			break;
@@ -515,7 +516,7 @@ serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
 				    (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
 			}
-			(void) fprintf(fp, "%*s</%s>\n", (pad + 2), "",
+			(void) fprintf(fp, "%*s</%s>\n", pad, "",
 			    TDG_XML_NVPAIR);
 
 			break;
@@ -553,7 +554,7 @@ serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
 			}
-			(void) fprintf(fp, "%*s</%s>\n", (pad + 2), "",
+			(void) fprintf(fp, "%*s</%s>\n", pad, "",
 			    TDG_XML_NVPAIR);
 
 			break;
@@ -573,7 +574,7 @@ serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
 			}
-			(void) fprintf(fp, "%*s</%s>\n", (pad + 2),
+			(void) fprintf(fp, "%*s</%s>\n", pad, "",
 			    TDG_XML_NVPAIR);
 
 			break;

@@ -73,6 +73,7 @@ struct topo_node {
 	topo_list_t tn_methods;		/* Registered method list */
 	void *tn_priv;			/* Private enumerator data */
 	int tn_refs;			/* node reference count */
+	topo_vertex_t *tn_vtx;		/* NULL for tree topologies */
 };
 
 #define	TOPO_NODE_INIT		0x0001

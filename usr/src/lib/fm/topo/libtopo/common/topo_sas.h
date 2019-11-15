@@ -39,8 +39,13 @@ extern "C" {
 #define	TOPO_PGROUP_SASPORT		"port-properties"
 #define	TOPO_PROP_SASPORT_LOCAL_ADDR	"local-sas-address"
 #define	TOPO_PROP_SASPORT_ATTACH_ADDR	"attached-sas-address"
-#define	TOPO_PROP_SASPORT_ANAME		"adapter-name"
+#define	TOPO_PROP_SASPORT_ANAME		"phy-error-source"
 #define	TOPO_PROP_SASPORT_APORT		"adapter-port"
+
+#define	TOPO_PROP_SASPORT_TYPE		"sas-port-type"
+#define	TOPO_SASPORT_TYPE_INITIATOR	"initiator-port"
+#define	TOPO_SASPORT_TYPE_EXPANDER	"expander-port"
+#define	TOPO_SASPORT_TYPE_TARGET	"target-port"
 
 /*
  * PHY link state error counters
@@ -51,11 +56,12 @@ extern "C" {
 #define	TOPO_PROP_SASPORT_RESET_PROB	"reset-problem-count"
 
 #define	TOPO_PGROUP_TARGET		"target-properties"
-#define	TOPO_PROP_TARGET_MANUF		"manufacturer"
-#define	TOPO_PROP_TARGET_MODEL		"model"
-#define	TOPO_PROP_TARGET_SERIAL		"serial"
 #define	TOPO_PROP_TARGET_FMRI		"hc-fmri"
 #define	TOPO_PROP_TARGET_LABEL		"label"
+#define	TOPO_PROP_TARGET_LOGICAL_DISK	"logical-disk"
+#define	TOPO_PROP_TARGET_MANUF		"manufacturer"
+#define	TOPO_PROP_TARGET_MODEL		"model"
+#define	TOPO_PROP_TARGET_SERIAL		"serial-number"
 
 #ifdef	__cplusplus
 }

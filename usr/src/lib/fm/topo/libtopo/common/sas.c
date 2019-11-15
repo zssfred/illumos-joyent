@@ -165,6 +165,8 @@
 #include <sys/fm/protocol.h>
 #include <sys/types.h>
 
+#include <fcntl.h>
+#include <unistd.h>
 #include <topo_digraph.h>
 #include <topo_sas.h>
 #include <topo_method.h>
@@ -175,7 +177,10 @@
 #include <scsi/libsmp.h>
 #include <sys/libdevid.h> /* for scsi_wwnstr_to_wwn */
 
+#include <sys/scsi/scsi.h>
+#include <sys/scsi/generic/sas.h>
 #include <libdevinfo.h>
+
 
 /* Methods for the root sas topo node. */
 static int sas_fmri_nvl2str(topo_mod_t *, tnode_t *, topo_version_t,
@@ -284,6 +289,41 @@ sas_fini(topo_mod_t *mod)
 	(void) HBA_FreeLibrary();
 }
 
+static int
+scsi_log_sense(topo_mod_t *mod, int fd, uint8_t pagecode, uchar_t *pagebuf,
+    uint16_t pagelen)
+{
+	struct uscsi_cmd ucmd_buf;
+	uchar_t	cdb_buf[CDB_GROUP1];
+	struct scsi_extended_sense sense_buf;
+
+	memset((void *)pagebuf, 0, pagelen);
+	memset((void *)&cdb_buf, 0, sizeof (cdb_buf));
+	memset((void *)&ucmd_buf, 0, sizeof (ucmd_buf));
+	memset((void *)&sense_buf, 0, sizeof (sense_buf));
+
+	cdb_buf[0] = SCMD_LOG_SENSE_G1;
+	cdb_buf[2] = (0x01 << 6) | pagecode;
+	cdb_buf[7] = (uchar_t)((pagelen & 0xFF00) >> 8);
+	cdb_buf[8] = (uchar_t)(pagelen  & 0x00FF);
+
+	ucmd_buf.uscsi_cdb = (char *)cdb_buf;
+	ucmd_buf.uscsi_cdblen = sizeof (cdb_buf);
+	ucmd_buf.uscsi_bufaddr = (caddr_t)pagebuf;
+	ucmd_buf.uscsi_buflen = pagelen;
+	ucmd_buf.uscsi_rqbuf = (caddr_t)&sense_buf;
+	ucmd_buf.uscsi_rqlen = sizeof (struct scsi_extended_sense);
+	ucmd_buf.uscsi_flags = USCSI_RQENABLE | USCSI_READ | USCSI_SILENT;
+	ucmd_buf.uscsi_timeout = 60;
+
+	if (ioctl(fd, USCSICMD, &ucmd_buf) < 0) {
+		topo_mod_dprintf(mod, "failed to read log page (%s)\n",
+		    strerror(errno));
+		return (topo_mod_seterrno(mod, EMOD_UNKNOWN));
+	}
+	return (0);
+}
+
 static topo_pgroup_info_t protocol_pgroup = {
 	TOPO_PGROUP_PROTOCOL,
 	TOPO_STABILITY_PRIVATE,
@@ -348,6 +388,7 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 		    TOPO_PROP_TARGET_MANUF,
 		    TOPO_PROP_TARGET_MODEL,
 		    TOPO_PROP_TARGET_SERIAL,
+		    TOPO_PROP_TARGET_LOGICAL_DISK,
 		    TOPO_PROP_TARGET_LABEL
 		};
 
@@ -698,7 +739,10 @@ sas_wide_port_create(topo_mod_t *mod, const char *smp_path,
 	    att_wwn, &err) != 0 ||
 	    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
 	    TOPO_PROP_SASPORT_ANAME, TOPO_PROP_IMMUTABLE,
-	    smp_path, &err) != 0) {
+	    smp_path, &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_TYPE, TOPO_PROP_IMMUTABLE,
+	    TOPO_SASPORT_TYPE_EXPANDER, &err) != 0) {
 		topo_mod_dprintf(mod,
 		    "Failed to set props on %s=%" PRIx64 " (%s)",
 		    topo_node_name(tn), topo_node_instance(tn),
@@ -883,7 +927,10 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path)
 			    &err) != 0 ||
 			    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
 			    TOPO_PROP_SASPORT_ANAME, TOPO_PROP_IMMUTABLE,
-			    smp_path, &err) != 0) {
+			    smp_path, &err) != 0 ||
+			    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_TYPE, TOPO_PROP_IMMUTABLE,
+			    TOPO_SASPORT_TYPE_EXPANDER, &err) != 0) {
 				topo_mod_dprintf(mod, "Failed to set props on "
 				    "%s=%" PRIx64,
 				    topo_node_name(tn), topo_node_instance(tn));
@@ -920,7 +967,13 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path)
 			    != 0 ||
 			    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
 			    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-			    ntohll(disc_resp->sdr_sas_addr), &err) != 0) {
+			    ntohll(disc_resp->sdr_sas_addr), &err) != 0 ||
+			    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_TYPE, TOPO_PROP_IMMUTABLE,
+			    TOPO_SASPORT_TYPE_TARGET, &err) != 0 ||
+			    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+			    TOPO_PROP_SASPORT_ANAME, TOPO_PROP_IMMUTABLE, "TBD",
+			    &err) != 0) {
 				topo_mod_dprintf(mod, "Failed to set props on "
 				    "%s=%" PRIx64 " (%s)",
 				    topo_node_name(tn), topo_node_instance(tn),
@@ -1373,7 +1426,10 @@ sas_enum_hba_port(topo_mod_t *mod, sas_hba_enum_t *hbadata)
 	    &err) != 0 ||
 	    topo_prop_set_uint32(tn, TOPO_PGROUP_SASPORT,
 	    TOPO_PROP_SASPORT_APORT, TOPO_PROP_IMMUTABLE, hbadata->port,
-	    &err) != 0) {
+	    &err) != 0 ||
+	    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_TYPE, TOPO_PROP_IMMUTABLE,
+	    TOPO_SASPORT_TYPE_INITIATOR, &err)) {
 
 		topo_mod_dprintf(mod, "Failed to set props on %s=%" PRIx64
 		    " (%s)", topo_node_name(tn), topo_node_instance(tn),
@@ -1426,7 +1482,13 @@ sas_enum_hba_port(topo_mod_t *mod, sas_hba_enum_t *hbadata)
 		    wwn_to_uint64(sas_port->AttachedSASAddress), &err) != 0 ||
 		    topo_prop_set_uint64(tn, TOPO_PGROUP_SASPORT,
 		    TOPO_PROP_SASPORT_ATTACH_ADDR, TOPO_PROP_IMMUTABLE,
-		    hba_wwn, &err) != 0) {
+		    hba_wwn, &err) != 0 ||
+		    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+		    TOPO_PROP_SASPORT_TYPE, TOPO_PROP_IMMUTABLE,
+		    TOPO_SASPORT_TYPE_TARGET, &err) != 0 ||
+		    topo_prop_set_string(tn, TOPO_PGROUP_SASPORT,
+		    TOPO_PROP_SASPORT_ANAME, TOPO_PROP_IMMUTABLE, "TBD",
+		    &err) != 0) {
 
 			topo_mod_dprintf(mod, "Failed to set props on %s=%"
 			    PRIx64 " (%s)", topo_node_name(tn),
@@ -1858,13 +1920,12 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		} else if (strcmp(pname, TOPO_PROP_TARGET_MODEL) == 0) {
 			targ_group = TOPO_PGROUP_STORAGE;
 			targ_prop = TOPO_STORAGE_MODEL;
+		} else if (strcmp(pname, TOPO_PROP_TARGET_LOGICAL_DISK) == 0) {
+			targ_group = TOPO_PGROUP_STORAGE;
+			targ_prop = TOPO_STORAGE_LOGICAL_DISK;
 		} else if (strcmp(pname, TOPO_PROP_TARGET_SERIAL) == 0) {
 			targ_group = TOPO_PGROUP_STORAGE;
-			targ_prop = "serial-number";
-			/*
-			 * XXX TOPO_STORAGE_SERIAL_NUM;
-			 * from ../modules/common/disk/disk.h
-			 */
+			targ_prop = TOPO_STORAGE_SERIAL_NUMBER;
 		} else if (strcmp(pname, TOPO_PROP_TARGET_LABEL) == 0) {
 			targ_group = TOPO_PGROUP_PROTOCOL;
 			targ_prop = TOPO_PROP_LABEL;
@@ -2432,6 +2493,92 @@ err:
 }
 
 /*
+ * A common pattern when reading SCSI mode/log pages is to first issue a
+ * command to do a partial read in order to determine the full page length and
+ * then do a second command to read the full page in.  For our narrow use case
+ * we use a static buffer that we know will be large enough to hold the page
+ * we're requesting to avoid hitting the disk twice.
+ *
+ * XXX This could be improved.  We're still reading the page four times (once
+ * for each error counter) which is obviously less than ideal.
+ */
+#define	PAGE_BUFSZ	4096
+
+int
+sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
+    uint32_t phy, uint64_t *out)
+{
+	topo_vertex_t *port_vtx, *tgt_vtx;
+	topo_edge_t *tgt_edge;
+	tnode_t *tgt_node;
+	char *ctdname = NULL, diskpath[PATH_MAX];
+	uchar_t logpagebuf[PAGE_BUFSZ];
+	sas_log_page_t *logpage;
+	sas_port_param_t *pparam;
+	sas_phy_log_descr_t *port_descr;
+	int fd, err, ret = -1;
+
+	/*
+	 * Get the logical-disk propval from the target node.  We use this to
+	 * build a device path to the disk, which we need to be able to send
+	 * SCSI commands to it.
+	 *
+	 * To get a pointer to the target node, we first get a pointer to our
+	 * associated vertex.  That vertex should have only have one outgoing
+	 * edge which should point to the target vertex.
+	 */
+	port_vtx = topo_node_vertex(node);
+	tgt_edge = (topo_edge_t *)topo_list_next(&port_vtx->tvt_outgoing);
+	tgt_vtx = tgt_edge->tve_vertex;
+	tgt_node = topo_vertex_node(tgt_vtx);
+
+	if (topo_prop_get_string(tgt_node, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_LOGICAL_DISK, &ctdname, &err) != 0) {
+		return (topo_mod_seterrno(mod, err));
+	}
+	(void) sprintf(diskpath, "/dev/rdsk/%s", ctdname);
+
+	if ((fd = open(diskpath, O_RDWR |O_NONBLOCK)) < 0) {
+		topo_mod_dprintf(mod, "failed to open %s (%s)", diskpath,
+		    strerror(errno));
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		goto err;
+	}
+	if (scsi_log_sense(mod, fd, PROTOCOL_SPECIFIC_PAGE, logpagebuf,
+	    PAGE_BUFSZ) != 0) {
+		/* errno set */
+		goto err;
+	}
+	logpage = (sas_log_page_t *)logpagebuf;
+
+	/*
+	 * Because we're only dealing with SAS targets, we make the assumption
+	 * that all ports are narrow ports, hence a 1-1 correllation between
+	 * target PHYs and target ports.
+	 */
+	pparam = (sas_port_param_t *)
+	    (logpage->slp_portparam + (sizeof (sas_port_param_t) * phy));
+
+	port_descr = (sas_phy_log_descr_t *) pparam->spp_descr;
+
+	if (strcmp(pname, TOPO_PROP_SASPORT_INV_DWORD) == 0)
+		out[0] = BE_32(port_descr->sld_inv_dword);
+	else if (strcmp(pname, TOPO_PROP_SASPORT_RUN_DISP) == 0)
+		out[0] = BE_32(port_descr->sld_running_disp);
+	else if (strcmp(pname, TOPO_PROP_SASPORT_LOSS_SYNC) == 0)
+		out[0] = BE_32(port_descr->sld_loss_sync);
+	else if (strcmp(pname, TOPO_PROP_SASPORT_RESET_PROB) == 0)
+		out[0] = BE_32(port_descr->sld_reset_prob);
+
+	ret = 0;
+err:
+	(void) close(fd);
+	topo_mod_strfree(mod, ctdname);
+	return (ret);
+
+}
+
+/*
  * Populates PHY link state error counter properties for the given node.
  *
  * This is a common entrypoint for both HBA and expander phys.
@@ -2442,7 +2589,7 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 {
 	uint64_t *pvals = NULL;
 	nvlist_t *args, *pargs, *nvl, *fmri = NULL, *auth = NULL;
-	char *pname, *aname = NULL;
+	char *pname, *aname = NULL, *port_type = NULL;
 	uint32_t hba_port, start_phy, end_phy, nphys;
 	int err, ret = -1;
 
@@ -2509,25 +2656,45 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	}
 
 	/*
-	 * Adapter port
-	 *
-	 * At this point only HBAs have an APORT property.
+	 * Vector off into the appropriate routine to fetch the PHY error
+	 * counters, based on whether we're an initiator, expander or target
+	 * port.
 	 */
-	if (topo_prop_get_uint32(node, TOPO_PGROUP_SASPORT,
-	    TOPO_PROP_SASPORT_APORT, &hba_port, &err) == 0) {
-		if ((ret = sas_get_adapter_phy_err_counter(mod, node, pname,
-		    aname, hba_port, start_phy, end_phy, nphys,
-		    pvals)) != 0) {
+	if (topo_prop_get_string(node, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_TYPE, &port_type, &err) != 0) {
+		topo_mod_dprintf(mod, "port node missing %s property",
+		    TOPO_PROP_SASPORT_TYPE);
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		goto err;
+	}
+	if (strcmp(port_type, TOPO_SASPORT_TYPE_INITIATOR) == 0) {
+		if (topo_prop_get_uint32(node, TOPO_PGROUP_SASPORT,
+		    TOPO_PROP_SASPORT_APORT, &hba_port, &err) != 0) {
+			topo_mod_dprintf(mod, "initiator port node missing "
+			    "%s property",  TOPO_PROP_SASPORT_APORT);
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+		if (sas_get_adapter_phy_err_counter(mod, node, pname, aname,
+		    hba_port, start_phy, end_phy, nphys, pvals) != 0) {
 			topo_mod_dprintf(mod, "%s: failed to retrieve adapter "
 			    "port error counters", __func__);
 			goto err;
 		}
-	} else if ((ret = sas_get_expander_phy_err_counter(mod, node, pname,
-	    aname, start_phy, end_phy, nphys, pvals)) != 0) {
-		/* Expander port */
-		topo_mod_dprintf(mod, "%s: failed to retrieve expander "
-		    "port error counters", __func__);
-		goto err;
+	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_EXPANDER) == 0) {
+		if (sas_get_expander_phy_err_counter(mod, node, pname, aname,
+		    start_phy, end_phy, nphys, pvals) != 0) {
+			topo_mod_dprintf(mod, "%s: failed to retrieve expander "
+			    "port error counters", __func__);
+			goto err;
+		}
+	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_TARGET) == 0) {
+		if (sas_get_target_phy_err_counter(mod, node, pname, start_phy,
+		    pvals) != 0) {
+			topo_mod_dprintf(mod, "%s: failed to retrieve target "
+			    "port error counters", __func__);
+			goto err;
+		}
 	}
 
 	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0 ||
@@ -2550,5 +2717,6 @@ err:
 		topo_mod_free(mod, pvals, sizeof (uint64_t) * nphys);
 	}
 	topo_mod_strfree(mod, aname);
+	topo_mod_strfree(mod, port_type);
 	return (ret);
 }

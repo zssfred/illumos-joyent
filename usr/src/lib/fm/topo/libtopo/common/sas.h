@@ -13,8 +13,8 @@
  * Copyright 2019 Joyent, Inc.
  */
 
-#ifndef	_SAS_H
-#define	_SAS_H
+#ifndef	_FM_SAS_H
+#define	_FM_SAS_H
 
 #ifdef	__cplusplus
 extern "C" {
@@ -45,4 +45,4 @@ extern void sas_fini(topo_mod_t *);
 }
 #endif
 
-#endif	/* _SAS_H */
+#endif	/* _FM_SAS_H */

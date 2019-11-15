@@ -430,6 +430,7 @@ extern void topo_path_destroy(topo_hdl_t *, topo_path_t *);
 extern int topo_digraph_serialize(topo_hdl_t *, topo_digraph_t *, FILE *);
 extern topo_digraph_t *topo_digraph_deserialize(topo_hdl_t *, const char *,
     size_t);
+extern topo_vertex_t *topo_node_vertex(tnode_t *);
 
 /*
  * Interfaces for converting sensor/indicator types, units, states, etc to

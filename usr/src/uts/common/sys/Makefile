@@ -913,6 +913,7 @@ SCSIGENHDRS=		\
 	message.h	\
 	mode.h		\
 	persist.h	\
+	sas.h		\
 	sense.h		\
 	sff_frames.h	\
 	smp_frames.h	\
