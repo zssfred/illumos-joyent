@@ -100,6 +100,7 @@ topo_digraph_destroy(topo_digraph_t *tdg)
 	mod = tdg->tdg_mod;
 	(void) pthread_mutex_destroy(&tdg->tdg_lock);
 	topo_mod_strfree(mod, (char *)tdg->tdg_scheme);
+	topo_mod_free(mod, tdg->tdg_rootnode, sizeof (tnode_t));
 	topo_mod_free(mod, tdg, sizeof (topo_digraph_t));
 }
 

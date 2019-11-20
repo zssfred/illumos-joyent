@@ -118,6 +118,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 				return (-1);
 
 			(void) printf("%-10s\n", val);
+			topo_hdl_strfree(thp, val);
 			break;
 		}
 		case TOPO_TYPE_FMRI: {
@@ -134,6 +135,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 			}
 			(void) printf("%10s\n", fmri);
 			topo_hdl_strfree(thp, fmri);
+			nvlist_free(nvl);
 			break;
 		}
 		case TOPO_TYPE_INT32_ARRAY: {
@@ -150,6 +152,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 
 			(void) printf("]\n");
 
+			topo_hdl_free(thp, val, nelem * sizeof (int32_t));
 			break;
 		}
 		case TOPO_TYPE_UINT32_ARRAY: {
@@ -164,6 +167,8 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 			for (uint_t i = 0; i < nelem; i++)
 				(void) printf("%u ", val[i]);
 			(void) printf("]\n");
+
+			topo_hdl_free(thp, val, nelem * sizeof (uint32_t));
 			break;
 		}
 		case TOPO_TYPE_INT64_ARRAY: {
@@ -179,6 +184,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 				(void) printf("%" PRIi64 " ", val[i]);
 			(void) printf("]\n");
 
+			topo_hdl_free(thp, val, nelem * sizeof (int64_t));
 			break;
 		}
 		case TOPO_TYPE_UINT64_ARRAY: {
@@ -194,6 +200,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 				(void) printf("0x%" PRIx64 " ", val[i]);
 			(void) printf("]\n");
 
+			topo_hdl_free(thp, val, nelem * sizeof (uint64_t));
 			break;
 		}
 		case TOPO_TYPE_STRING_ARRAY: {
@@ -209,6 +216,7 @@ print_prop_val(topo_hdl_t *thp, tnode_t *tn, topo_propval_t *pv,
 				(void) printf("\"%s\" ", val[i]);
 			(void) printf("]\n");
 
+			topo_hdl_strfreev(thp, val, nelem);
 			break;
 		}
 		default:

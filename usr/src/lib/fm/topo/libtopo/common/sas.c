@@ -566,6 +566,7 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst,
 		    topo_strerror(err));
 		goto err;
 	}
+	nvlist_free(fmri);
 
 	/*
 	 * Make sure the appropriate methods to retrieve FMRIs and dynamic
@@ -581,6 +582,7 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst,
 	return (vtx);
 err:
 	nvlist_free(auth);
+	nvlist_free(fmri);
 	topo_vertex_destroy(mod, vtx);
 	return (NULL);
 }
@@ -1724,6 +1726,7 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 	    strcmp(topo_node_name(sas_node), TOPO_VTX_INITIATOR) == 0) {
 		char *sas_devfsn = NULL;
 		char *hc_devfsn = NULL;
+		char *sas_devfsn_short;
 
 		if (topo_prop_get_string(sas_node, TOPO_PGROUP_INITIATOR,
 		    TOPO_PROP_INITIATOR_DEVFSNAME, &sas_devfsn, &err) != 0) {
@@ -1738,6 +1741,7 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 		    TOPO_IO_DEV, &hc_devfsn, &err) != 0) {
 			topo_mod_dprintf(mod, "failed to get IO props"
 			    " (%s)", topo_strerror(err));
+			topo_hdl_strfree(thp, sas_devfsn);
 			goto done;
 		}
 
@@ -1749,10 +1753,14 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 		 * '/devices' string. The hc device name doesn't include this,
 		 * so we advance the pointer a bit to make the comparison.
 		 */
-		sas_devfsn += strlen("/devices");
-		if (strcmp(sas_devfsn, hc_devfsn) != 0) {
+		sas_devfsn_short = sas_devfsn + strlen("/devices");
+		if (strcmp(sas_devfsn_short, hc_devfsn) != 0) {
+			topo_hdl_strfree(thp, sas_devfsn);
+			topo_hdl_strfree(thp, hc_devfsn);
 			goto done;
 		}
+		topo_hdl_strfree(thp, sas_devfsn);
+		topo_hdl_strfree(thp, hc_devfsn);
 
 		/*
 		 * We expect initiators to be using the mpt_sas driver.
@@ -1771,7 +1779,8 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 	} else if (strcmp(topo_node_name(node), DISK) == 0 &&
 	    strcmp(topo_node_name(sas_node), TOPO_VTX_TARGET) == 0) {
 
-		char *ldisk;
+		char *ldisk = NULL, *orig_ldisk;
+		uint_t ldisksz;
 		uint64_t wwn;
 		if (topo_prop_get_string(node, TOPO_PGROUP_STORAGE,
 		    "logical-disk", &ldisk, &err) != 0) { /* XXX fix string */
@@ -1786,6 +1795,9 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 		 * Once we pull the middle bit out we convert it to a uint64 so
 		 * comparison is easier.
 		 */
+		ldisksz = strlen(ldisk) + 1;
+		orig_ldisk = ldisk;
+
 		ldisk = strchr(ldisk, 't');
 		ldisk++;
 		ldisk = strtok(ldisk, "d");
@@ -1800,6 +1812,7 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 			 */
 			targ_node = node;
 		}
+		topo_hdl_free(thp, orig_ldisk, ldisksz);
 	}
 
 	if (targ_node == NULL) {
@@ -1813,9 +1826,11 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 		goto done;
 	}
 	cbarg->st_ret = fmristr;
+	nvlist_free(fmri);
 	return (TOPO_WALK_TERMINATE);
 
 done:
+	nvlist_free(fmri);
 	return (TOPO_WALK_NEXT);
 }
 
@@ -1975,6 +1990,8 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 
 	ret = 0;
 done:
+	topo_mod_strfree(mod, val);
+	nvlist_free(nvl);
 	return (ret);
 }
 
