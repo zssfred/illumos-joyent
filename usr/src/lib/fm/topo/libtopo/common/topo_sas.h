@@ -32,7 +32,6 @@ extern "C" {
 #define	TOPO_PROP_INITIATOR_DEVFSNAME	"devfs-name"
 #define	TOPO_PROP_INITIATOR_MANUF	"manufacturer"
 #define	TOPO_PROP_INITIATOR_MODEL	"model"
-#define	TOPO_PROP_INITIATOR_SERIAL	"serial"
 #define	TOPO_PROP_INITIATOR_FMRI	"hc-fmri"
 #define	TOPO_PROP_INITIATOR_LABEL	"label"
 

@@ -27,12 +27,12 @@
  *
  *   initiator properties
  *   --------------------
- *   Initiator nodes are populated with the following public properties.
+ *   Initiator nodes are populated with the following public properties:
  *   - manufacturer
  *   - model name
  *   - devfs name
+ *   - location label
  *   - hc fmri
- *   - XXX TODO: serial number
  *
  * port
  * ----
@@ -407,6 +407,12 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 				    topo_strerror(err));
 				goto err;
 			}
+			if (topo_prop_setnonvolatile(tn, pgname, props[i],
+			    &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to nonvolatile"
+				    "flag for prop %s/%s", pgname, props[i]);
+				goto err;
+			}
 		}
 
 	} else if (strcmp(pgname, TOPO_PGROUP_INITIATOR) == 0) {
@@ -427,9 +433,6 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 		    TOPO_PROP_INITIATOR_MANUF,
 		    TOPO_PROP_INITIATOR_MODEL,
 		    TOPO_PROP_INITIATOR_LABEL
-			/*
-			 * XXX: TOPO_PROP_INITIATOR_SERIAL
-			 */
 		};
 
 		for (uint_t i = 0; i < sizeof (props) / sizeof (props[0]);
@@ -444,6 +447,12 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 				    topo_node_name(tn),
 				    topo_node_instance(tn),
 				    topo_strerror(err));
+				goto err;
+			}
+			if (topo_prop_setnonvolatile(tn, pgname, props[i],
+			    &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to nonvolatile"
+				    "flag for prop %s/%s", pgname, props[i]);
 				goto err;
 			}
 		}
@@ -1374,14 +1383,14 @@ sas_enum_hba_port(topo_mod_t *mod, sas_hba_enum_t *hbadata)
 		}
 
 		/*
-		 * Set the devfs name for this initiator so we
-		 * can use it to correlate with hc topo nodes
-		 * later to retrieve info like dev manufacturer.
+		 * Set the devfs name for this initiator so we can use it to
+		 * correlate with corresponding hc topo node later.
 		 *
-		 * The info we get from libsmhbaapi w.r.t.
-		 * manufacturer, serial number, model, etc.
-		 * appears to be inaccurate, so we'll defer to
-		 * consulting the hc module later.
+		 * The info we get from libsmhbaapi w.r.t. manufacturer and
+		 * model are specific to the board manufacturing info, but
+		 * what we want is the product-specific info as derived from
+		 * the PCI VID/PID.  So we will grab those from the
+		 * corresponding node from the hc-scheme tree.
 		 */
 		tn = topo_vertex_node(hbadata->initiator);
 		if (topo_prop_set_string(tn, TOPO_PGROUP_INITIATOR,
@@ -2559,7 +2568,7 @@ sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 	pparam = (sas_port_param_t *)
 	    (logpage->slp_portparam + (sizeof (sas_port_param_t) * phy));
 
-	port_descr = (sas_phy_log_descr_t *) pparam->spp_descr;
+	port_descr = (sas_phy_log_descr_t *)pparam->spp_descr;
 
 	if (strcmp(pname, TOPO_PROP_SASPORT_INV_DWORD) == 0)
 		out[0] = BE_32(port_descr->sld_inv_dword);
