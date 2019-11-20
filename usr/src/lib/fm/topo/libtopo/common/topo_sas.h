@@ -33,7 +33,7 @@ extern "C" {
 #define	TOPO_PROP_INITIATOR_MANUF	"manufacturer"
 #define	TOPO_PROP_INITIATOR_MODEL	"model"
 #define	TOPO_PROP_INITIATOR_FMRI	"hc-fmri"
-#define	TOPO_PROP_INITIATOR_LABEL	"label"
+#define	TOPO_PROP_INITIATOR_LABEL	"location"
 
 #define	TOPO_PGROUP_SASPORT		"port-properties"
 #define	TOPO_PROP_SASPORT_LOCAL_ADDR	"local-sas-address"
@@ -56,7 +56,7 @@ extern "C" {
 
 #define	TOPO_PGROUP_TARGET		"target-properties"
 #define	TOPO_PROP_TARGET_FMRI		"hc-fmri"
-#define	TOPO_PROP_TARGET_LABEL		"label"
+#define	TOPO_PROP_TARGET_LABEL		"location"
 #define	TOPO_PROP_TARGET_LOGICAL_DISK	"logical-disk"
 #define	TOPO_PROP_TARGET_MANUF		"manufacturer"
 #define	TOPO_PROP_TARGET_MODEL		"model"
