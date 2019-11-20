@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fnmatch.h>
 #include <libnvpair.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -31,16 +32,18 @@ usage()
 	(void) fprintf(stderr,
 	    "Usage:\n\n"
 	    "Print all nodes on the SAS fabric:\n"
-	    "  %s [-d][-V][-R root]\n\n"
+	    "  %s [-d][-V][-R root][FMRI pattern]\n\n"
 	    "Print all the paths between SAS initiators and targets:\n"
 	    "  %s -p [-d][-R root]\n\n"
 	    "Dump SAS topology to XML\n"
-	    "  %s -x -f <xml_file> [-d][-R root]\n\n"
+	    "  %s -x [-d][-R root]\n\n"
+	    "Read in SAS topology from XML\n"
+	    "  %s -f <XML file> [-d][-R root]\n\n"
 	    "-C\t\tdump core at exit\n"
 	    "-d\t\tenable debug messages\n"
 	    "-h\t\tprint this usage message\n"
 	    "-R\t\toperate against alternate root directory\n"
-	    "-V\t\tverbose mode\n\n", pname, pname, pname);
+	    "-V\t\tverbose mode\n\n", pname, pname, pname, pname);
 }
 
 struct sastopo_vertex {
@@ -53,6 +56,7 @@ struct cb_arg {
 	topo_list_t tgt_list;
 	boolean_t verbose;
 	boolean_t do_paths;
+	const char *fmri_pattern;
 };
 
 static int
@@ -270,6 +274,9 @@ print_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, struct cb_arg *cbarg)
 	char *fmristr = NULL;
 	int err;
 
+	/*
+	 * Generate a string representation of the FMRI.
+	 */
 	tn = topo_vertex_node(vtx);
 	if (topo_node_resource(tn, &fmri, &err) != 0 ||
 	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
@@ -279,6 +286,16 @@ print_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, struct cb_arg *cbarg)
 		nvlist_print(stderr, fmri);
 		goto out;
 	}
+
+	/*
+	 * If an FMRI pattern was specified on the command line, then check if
+	 * this node matches that pattern.  If not, skip printing it.
+	 */
+	if (cbarg->fmri_pattern != NULL &&
+	    fnmatch(cbarg->fmri_pattern, fmristr, 0) != 0) {
+		goto out;
+	}
+
 	(void) printf("%s\n", fmristr);
 	if (cbarg->verbose)
 		print_node_props(thp, tn);
@@ -366,6 +383,14 @@ main(int argc, char *argv[])
 			default:
 				usage();
 				return (EXIT_USAGE);
+			}
+		}
+		if (optind < argc) {
+			if (cbarg.fmri_pattern != NULL) {
+				usage();
+				return (EXIT_USAGE);
+			} else {
+				cbarg.fmri_pattern = argv[optind++];
 			}
 		}
 	}
