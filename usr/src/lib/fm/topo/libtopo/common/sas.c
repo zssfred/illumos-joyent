@@ -176,6 +176,7 @@
 #include <smhbaapi.h>
 #include <scsi/libsmp.h>
 #include <sys/libdevid.h> /* for scsi_wwnstr_to_wwn */
+#include <sys/time.h>
 
 #include <sys/scsi/scsi.h>
 #include <sys/scsi/generic/sas.h>
@@ -255,14 +256,36 @@ static const topo_modops_t sas_ops =
 static const topo_modinfo_t sas_info =
 	{ "sas", FM_FMRI_SCHEME_SAS, SAS_VERSION, &sas_ops };
 
+/*
+ * A common pattern when reading SCSI mode/log pages is to first issue a
+ * command to do a partial read in order to determine the full page length and
+ * then do a second command to read the full page in.  For our narrow use case
+ * we use a static buffer that we know will be large enough to hold the page
+ * we're requesting to avoid hitting the disk twice.
+ *
+ * Furthermore, to avoid re-reading the same log sense page when sequentually
+ * executing various prop methods for the same device, we briefly cache the
+ * contents of the most recently read log page.
+ */
+#define	PAGE_BUFSZ	4096
+#define	PAGE_CACHE_TTL	SEC2NSEC(5)
+
+typedef struct sas_scsi_cache {
+	hrtime_t	ssc_ts;
+	char		ssc_devpath[PATH_MAX + 1];
+	uchar_t		ssc_logpagebuf[PAGE_BUFSZ];
+} sas_scsi_cache_t;
+
 int
 sas_init(topo_mod_t *mod, topo_version_t version)
 {
+	sas_scsi_cache_t *scsi_cache;
 	HBA_STATUS ret;
 
 	if (getenv("TOPOSASDEBUG"))
 		topo_mod_setdebug(mod);
-	topo_mod_dprintf(mod, "initializing sas builtin\n");
+
+	topo_mod_dprintf(mod, "initializing sas builtin");
 
 	if (version != SAS_VERSION)
 		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
@@ -273,9 +296,15 @@ sas_init(topo_mod_t *mod, topo_version_t version)
 		return (-1);
 	}
 
+	if ((scsi_cache = topo_mod_zalloc(mod, sizeof (sas_scsi_cache_t))) ==
+	    NULL) {
+		    return (topo_mod_seterrno(mod, EMOD_NOMEM));
+	}
+	topo_mod_setspecific(mod, scsi_cache);
+
 	if (topo_mod_register(mod, &sas_info, TOPO_VERSION) != 0) {
-		topo_mod_dprintf(mod, "failed to register sas_info: "
-		    "%s\n", topo_mod_errmsg(mod));
+		topo_mod_dprintf(mod, "failed to register sas_info: %s",
+		    topo_mod_errmsg(mod));
 		return (-1);
 	}
 
@@ -285,6 +314,11 @@ sas_init(topo_mod_t *mod, topo_version_t version)
 void
 sas_fini(topo_mod_t *mod)
 {
+	sas_scsi_cache_t *scsi_cache;
+
+	if ((scsi_cache = topo_mod_getspecific(mod)) != NULL) {
+		topo_mod_free(mod, scsi_cache, sizeof (sas_scsi_cache_t));
+	}
 	topo_mod_unregister(mod);
 	(void) HBA_FreeLibrary();
 }
@@ -2518,18 +2552,6 @@ err:
 
 }
 
-/*
- * A common pattern when reading SCSI mode/log pages is to first issue a
- * command to do a partial read in order to determine the full page length and
- * then do a second command to read the full page in.  For our narrow use case
- * we use a static buffer that we know will be large enough to hold the page
- * we're requesting to avoid hitting the disk twice.
- *
- * XXX This could be improved.  We're still reading the page four times (once
- * for each error counter) which is obviously less than ideal.
- */
-#define	PAGE_BUFSZ	4096
-
 int
 sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
     uint32_t phy, uint64_t *out)
@@ -2537,12 +2559,13 @@ sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 	topo_vertex_t *port_vtx, *tgt_vtx;
 	topo_edge_t *tgt_edge;
 	tnode_t *tgt_node;
-	char *ctdname = NULL, diskpath[PATH_MAX];
-	uchar_t logpagebuf[PAGE_BUFSZ];
+	char *ctdname = NULL, diskpath[PATH_MAX + 1];
+	sas_scsi_cache_t *scsi_cache;
 	sas_log_page_t *logpage;
 	sas_port_param_t *pparam;
 	sas_phy_log_descr_t *port_descr;
-	int fd, err, ret = -1;
+	hrtime_t curr_ts;
+	int err, ret = -1;
 
 	/*
 	 * Get the logical-disk propval from the target node.  We use this to
@@ -2562,20 +2585,38 @@ sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 	    TOPO_PROP_TARGET_LOGICAL_DISK, &ctdname, &err) != 0) {
 		return (topo_mod_seterrno(mod, err));
 	}
-	(void) sprintf(diskpath, "/dev/rdsk/%s", ctdname);
+	(void) snprintf(diskpath, PATH_MAX + 1, "/dev/rdsk/%s", ctdname);
 
-	if ((fd = open(diskpath, O_RDWR |O_NONBLOCK)) < 0) {
-		topo_mod_dprintf(mod, "failed to open %s (%s)", diskpath,
-		    strerror(errno));
-		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
-		goto err;
+	if ((scsi_cache = topo_mod_getspecific(mod)) == NULL) {
+		return (topo_mod_seterrno(mod, EMOD_UNKNOWN));
 	}
-	if (scsi_log_sense(mod, fd, PROTOCOL_SPECIFIC_PAGE, logpagebuf,
-	    PAGE_BUFSZ) != 0) {
-		/* errno set */
-		goto err;
+	curr_ts = gethrtime();
+
+	if (strcmp(diskpath, scsi_cache->ssc_devpath) != 0 ||
+	    curr_ts - scsi_cache->ssc_ts > PAGE_CACHE_TTL) {
+
+		int fd;
+
+		if ((fd = open(diskpath, O_RDWR |O_NONBLOCK)) < 0) {
+			topo_mod_dprintf(mod, "failed to open %s (%s)",
+			    diskpath, strerror(errno));
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+
+		if (scsi_log_sense(mod, fd, PROTOCOL_SPECIFIC_PAGE,
+		    scsi_cache->ssc_logpagebuf, PAGE_BUFSZ) != 0) {
+			/* errno set */
+			(void) close(fd);
+			goto err;
+		}
+		(void) close(fd);
+		(void) strlcpy(scsi_cache->ssc_devpath, diskpath, PATH_MAX);
+		scsi_cache->ssc_ts = gethrtime();
+	} else {
+		topo_mod_dprintf(mod, "using cache page for %s", diskpath);
 	}
-	logpage = (sas_log_page_t *)logpagebuf;
+	logpage = (sas_log_page_t *)scsi_cache->ssc_logpagebuf;
 
 	/*
 	 * Because we're only dealing with SAS targets, we make the assumption
@@ -2598,7 +2639,6 @@ sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 
 	ret = 0;
 err:
-	(void) close(fd);
 	topo_mod_strfree(mod, ctdname);
 	return (ret);
 
