@@ -41,6 +41,28 @@ extern void sas_fini(topo_mod_t *);
 #define	TOPO_METH_SAS_PHY_ERR_DESC	"get PHY link state error counters"
 #define	TOPO_METH_SAS_PHY_ERR_VERSION	0
 
+/*
+ * A common pattern when reading SCSI mode/log pages is to first issue a
+ * command to do a partial read in order to determine the full page length and
+ * then do a second command to read the full page in.  For our narrow use case
+ * we use a statically-sized buffer that we know will be large enough to hold
+ * the pages we're requesting to avoid hitting the disk twice.
+ */
+#define	PAGE_BUFSZ		4096
+
+/*
+ * Tto avoid re-reading the same log sense page when sequentually
+ * executing various prop methods for the same device, we briefly cache the
+ * contents of the most recently read log page.
+ */
+#define	PAGE_CACHE_TTL	SEC2NSEC(5)
+
+typedef struct sas_scsi_cache {
+	hrtime_t	ssc_ts;
+	char		ssc_devpath[PATH_MAX + 1];
+	uchar_t		ssc_logpagebuf[PAGE_BUFSZ];
+} sas_scsi_cache_t;
+
 #ifdef	__cplusplus
 }
 #endif

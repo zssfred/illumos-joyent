@@ -36,6 +36,7 @@ BUILTINSRCS = \
 	mod.c \
 	pkg.c \
 	sas.c \
+	sas-method.c \
 	svc.c \
 	sw.c \
 	zfs.c
