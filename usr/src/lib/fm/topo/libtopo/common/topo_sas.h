@@ -54,6 +54,13 @@ extern "C" {
 #define	TOPO_PROP_SASPORT_LOSS_SYNC	"loss-dword-sync"
 #define	TOPO_PROP_SASPORT_RESET_PROB	"reset-problem-count"
 
+/*
+ * PHY link trasmission rate states
+ */
+#define	TOPO_PROP_SASPORT_MAX_RATE	"max-link-rate"
+#define	TOPO_PROP_SASPORT_PROG_RATE	"programmed-link-rate"
+#define	TOPO_PROP_SASPORT_NEG_RATE	"negotiated-link-rate"
+
 #define	TOPO_PGROUP_TARGET		"target-properties"
 #define	TOPO_PROP_TARGET_FMRI		"hc-fmri"
 #define	TOPO_PROP_TARGET_LABEL		"location"

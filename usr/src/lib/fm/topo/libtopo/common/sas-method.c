@@ -36,6 +36,79 @@
 #include <sys/scsi/generic/sas.h>
 #include <libdevinfo.h>
 
+#pragma pack(1)
+
+/*
+ * Mode Parameter Header
+ *
+ * See SPC 4, sectin 7.5.5
+ */
+typedef struct scsi_mode10_hdr {
+	uint16_t smh10_len;
+	uint8_t smh10_medtype;
+	uint8_t smh10_devparm;
+	uint16_t _reserved;
+	uint16_t smh10_bdlen;
+} scsi_mode10_hdr_t;
+
+/*
+ * SCSI MODE SENSE (10) command
+ *
+ * See SPC 4, section 6.14
+ */
+typedef struct scsi_modesense_10_cmd {
+	uint8_t scm10_opcode;
+	DECL_BITFIELD4(
+		_reserved1	:3,
+		scm10_dbd	:1,
+		scm10_llbaa	:1,
+		_reserved2	:3);
+	DECL_BITFIELD2(
+		scm10_pagecode	:6,
+		scm10_pc	:2);
+	uint8_t scm10_subpagecode;
+	uint8_t _reserved3[3];
+	uint16_t scm10_buflen;
+	uint8_t scm10_control;
+} scsi_modesense_10_cmd_t;
+
+#pragma pack()
+
+static int
+scsi_mode_sense(topo_mod_t *mod, int fd, uint8_t pagecode, uint8_t subpagecode,
+    uchar_t *pagebuf, uint16_t buflen)
+{
+	struct uscsi_cmd ucmd_buf;
+	scsi_modesense_10_cmd_t cdb;
+	struct scsi_extended_sense sense_buf;
+
+	memset((void *)pagebuf, 0, buflen);
+	memset((void *)&cdb, 0, sizeof (scsi_modesense_10_cmd_t));
+	memset((void *)&ucmd_buf, 0, sizeof (ucmd_buf));
+	memset((void *)&sense_buf, 0, sizeof (sense_buf));
+
+	cdb.scm10_opcode = SCMD_MODE_SENSE_G1;
+	cdb.scm10_pagecode = pagecode;
+	cdb.scm10_subpagecode = subpagecode;
+	cdb.scm10_buflen = BE_16(buflen);
+
+	ucmd_buf.uscsi_cdb = (char *)&cdb;
+	ucmd_buf.uscsi_cdblen = sizeof (scsi_modesense_10_cmd_t);
+	ucmd_buf.uscsi_bufaddr = (caddr_t)pagebuf;
+	ucmd_buf.uscsi_buflen = buflen;
+	ucmd_buf.uscsi_rqbuf = (caddr_t)&sense_buf;
+	ucmd_buf.uscsi_rqlen = sizeof (struct scsi_extended_sense);
+	ucmd_buf.uscsi_flags = USCSI_RQENABLE | USCSI_READ | USCSI_SILENT;
+	ucmd_buf.uscsi_timeout = 60;
+
+	if (ioctl(fd, USCSICMD, &ucmd_buf) < 0) {
+		topo_mod_dprintf(mod, "failed to read mode page (%s)\n",
+		    strerror(errno));
+		return (topo_mod_seterrno(mod, EMOD_UNKNOWN));
+	}
+	return (0);
+}
+
 static int
 scsi_log_sense(topo_mod_t *mod, int fd, uint8_t pagecode, uchar_t *pagebuf,
     uint16_t pagelen)
@@ -921,6 +994,7 @@ sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 	tnode_t *tgt_node;
 	char *ctdname = NULL, diskpath[PATH_MAX + 1];
 	sas_scsi_cache_t *scsi_cache;
+	sas_scsi_cache_ent_t *logcache;
 	sas_log_page_t *logpage;
 	sas_port_param_t *pparam;
 	sas_phy_log_descr_t *port_descr;
@@ -950,10 +1024,11 @@ sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 	if ((scsi_cache = topo_mod_getspecific(mod)) == NULL) {
 		return (topo_mod_seterrno(mod, EMOD_UNKNOWN));
 	}
+	logcache = &scsi_cache->ssc_logpage_cache;
 	curr_ts = gethrtime();
 
-	if (strcmp(diskpath, scsi_cache->ssc_devpath) != 0 ||
-	    curr_ts - scsi_cache->ssc_ts > PAGE_CACHE_TTL) {
+	if (strcmp(diskpath, logcache->ssce_devpath) != 0 ||
+	    curr_ts - logcache->ssce_ts > PAGE_CACHE_TTL) {
 
 		int fd;
 
@@ -965,18 +1040,16 @@ sas_get_target_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 		}
 
 		if (scsi_log_sense(mod, fd, PROTOCOL_SPECIFIC_PAGE,
-		    scsi_cache->ssc_logpagebuf, PAGE_BUFSZ) != 0) {
+		    logcache->ssce_pagebuf, PAGE_BUFSZ) != 0) {
 			/* errno set */
 			(void) close(fd);
 			goto err;
 		}
 		(void) close(fd);
-		(void) strlcpy(scsi_cache->ssc_devpath, diskpath, PATH_MAX);
-		scsi_cache->ssc_ts = gethrtime();
-	} else {
-		topo_mod_dprintf(mod, "using cache page for %s", diskpath);
+		(void) strlcpy(logcache->ssce_devpath, diskpath, PATH_MAX);
+		logcache->ssce_ts = gethrtime();
 	}
-	logpage = (sas_log_page_t *)scsi_cache->ssc_logpagebuf;
+	logpage = (sas_log_page_t *)logcache->ssce_pagebuf;
 
 	/*
 	 * Because we're only dealing with SAS targets, we make the assumption
@@ -1103,22 +1176,16 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		}
 		if (sas_get_adapter_phy_err_counter(mod, node, pname, aname,
 		    hba_port, start_phy, end_phy, nphys, pvals) != 0) {
-			topo_mod_dprintf(mod, "%s: failed to retrieve adapter "
-			    "port error counters", __func__);
 			goto err;
 		}
 	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_EXPANDER) == 0) {
 		if (sas_get_expander_phy_err_counter(mod, node, pname, aname,
 		    start_phy, end_phy, nphys, pvals) != 0) {
-			topo_mod_dprintf(mod, "%s: failed to retrieve expander "
-			    "port error counters", __func__);
 			goto err;
 		}
 	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_TARGET) == 0) {
 		if (sas_get_target_phy_err_counter(mod, node, pname, start_phy,
 		    pvals) != 0) {
-			topo_mod_dprintf(mod, "%s: failed to retrieve target "
-			    "port error counters", __func__);
 			goto err;
 		}
 	}
@@ -1138,9 +1205,276 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 
 	ret = 0;
 err:
+	if (ret != 0)
+		topo_mod_dprintf(mod, "%s: failed to get PHY error counters "
+		    "for %s=%", PRIx64, __func__, topo_node_name(node),
+		    topo_node_instance(node));
+
 	nvlist_free(fmri);
 	if (pvals != NULL) {
 		topo_mod_free(mod, pvals, sizeof (uint64_t) * nphys);
+	}
+	topo_mod_strfree(mod, aname);
+	topo_mod_strfree(mod, port_type);
+	return (ret);
+}
+
+/*
+ * Helper function to retrieve PHY negotiated transmission rate from the
+ * specified adapter port PHYs.
+ *
+ * XXX - just a stub, need to implement
+ */
+static int
+sas_get_adapter_phy_neg_rate(topo_mod_t *mod, tnode_t *node,
+    char *hba_name, uint32_t hba_port, uint32_t start_phy, uint32_t end_phy,
+    uint32_t nphys, uint32_t *out)
+{
+	int ret;
+
+	ret = 0;
+
+	return (ret);
+
+}
+/*
+ * Helper function to retrieve PHY negotiated transmission rate from the
+ * specified expander port PHYs.
+ *
+ * XXX - just a stub, need to implement
+ */
+static int
+sas_get_expander_phy_neg_rate(topo_mod_t *mod, tnode_t *node, char *smp_path,
+    uint32_t start_phy, uint32_t end_phy, uint32_t nphys, uint32_t *out)
+{
+	int ret;
+
+
+	ret = 0;
+	return (ret);
+
+}
+
+/*
+ * Helper function to retrieve PHY negotiated transmission rate from the
+ * specified target port PHY.
+ *
+ * XXX - just a stub, need to implement
+ */
+static int
+sas_get_target_phy_neg_rate(topo_mod_t *mod, tnode_t *node, uint32_t phy,
+    uint32_t *out)
+{
+	topo_vertex_t *port_vtx, *tgt_vtx;
+	topo_edge_t *tgt_edge;
+	tnode_t *tgt_node;
+	char *ctdname = NULL, diskpath[PATH_MAX + 1];
+	uint16_t bdlen;
+	sas_scsi_cache_t *scsi_cache;
+	sas_scsi_cache_ent_t *modecache;
+	scsi_mode10_hdr_t *modehdr;
+	sas_phys_disc_mode_page_t *modepage;
+	sas_phy_descriptor_t *phy_descr;
+	hrtime_t curr_ts;
+	int err, ret = -1;
+
+	/*
+	 * Get the logical-disk propval from the target node.  We use this to
+	 * build a device path to the disk, which we need to be able to send
+	 * SCSI commands to it.
+	 *
+	 * To get a pointer to the target node, we first get a pointer to our
+	 * associated vertex.  That vertex should have only have one outgoing
+	 * edge which should point to the target vertex.
+	 */
+	port_vtx = topo_node_vertex(node);
+	tgt_edge = (topo_edge_t *)topo_list_next(&port_vtx->tvt_outgoing);
+	tgt_vtx = tgt_edge->tve_vertex;
+	tgt_node = topo_vertex_node(tgt_vtx);
+
+	if (topo_prop_get_string(tgt_node, TOPO_PGROUP_TARGET,
+	    TOPO_PROP_TARGET_LOGICAL_DISK, &ctdname, &err) != 0) {
+		return (topo_mod_seterrno(mod, err));
+	}
+	(void) snprintf(diskpath, PATH_MAX + 1, "/dev/rdsk/%s", ctdname);
+
+	if ((scsi_cache = topo_mod_getspecific(mod)) == NULL) {
+		return (topo_mod_seterrno(mod, EMOD_UNKNOWN));
+	}
+	modecache = &scsi_cache->ssc_modepage_cache;
+	curr_ts = gethrtime();
+
+	if (strcmp(diskpath, modecache->ssce_devpath) != 0 ||
+	    curr_ts - modecache->ssce_ts > PAGE_CACHE_TTL) {
+
+		int fd;
+
+		if ((fd = open(diskpath, O_RDWR |O_NONBLOCK)) < 0) {
+			topo_mod_dprintf(mod, "failed to open %s (%s)",
+			    diskpath, strerror(errno));
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+
+		if (scsi_mode_sense(mod, fd, ENHANCED_PHY_CONTROL_PAGE,
+		    0x1, modecache->ssce_pagebuf, PAGE_BUFSZ) != 0) {
+			/* errno set */
+			(void) close(fd);
+			goto err;
+		}
+		(void) close(fd);
+		(void) strlcpy(modecache->ssce_devpath, diskpath, PATH_MAX);
+		modecache->ssce_ts = gethrtime();
+	}
+	modehdr = (scsi_mode10_hdr_t *)modecache->ssce_pagebuf;
+	bdlen = BE_16(modehdr->smh10_bdlen);
+
+	modepage = (sas_phys_disc_mode_page_t *)
+	    (modecache->ssce_pagebuf + sizeof (scsi_mode10_hdr_t) + bdlen);
+
+	/*
+	 * XXX maybe add an assert that phy <= (spdm_nphys -1) ?
+	 */
+	phy_descr = (sas_phy_descriptor_t *)
+	    (modepage->spdm_descr + (sizeof (sas_phy_descriptor_t) * phy));
+
+	out[0] = phy_descr->spde_neg_rate;
+
+	ret = 0;
+err:
+	topo_mod_strfree(mod, ctdname);
+	return (ret);
+
+}
+
+/*
+ * Property method for TOPO_PROP_SASPORT_NEG_RATE
+ */
+int
+sas_get_phy_neg_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+    nvlist_t *in, nvlist_t **out)
+{
+	uint32_t *pvals = NULL;
+	nvlist_t *pargs, *nvl, *fmri = NULL, *auth = NULL;
+	char *aname = NULL, *port_type = NULL;
+	uint32_t hba_port, start_phy, end_phy, nphys;
+	int err, ret = -1;
+
+	if (version > TOPO_METH_SAS_PHY_ERR_VERSION)
+		return (topo_mod_seterrno(mod, ETOPO_METHOD_VERNEW));
+
+	/*
+	 * Now look for a private argument list to determine if the invoker is
+	 * trying to do a set operation and if so, return an error as this
+	 * method only supports get operations.
+	 */
+	if ((nvlist_lookup_nvlist(in, TOPO_PROP_PARGS, &pargs) == 0) &&
+	    nvlist_exists(pargs, TOPO_PROP_VAL_VAL)) {
+		topo_mod_dprintf(mod, "%s: set operation not suppported",
+		    __func__);
+		return (topo_mod_seterrno(mod, EMOD_NVL_INVAL));
+	}
+
+	/*
+	 * Get the HBA adapter name and port number off of the node, as we need
+	 * these to lookup the PHY stats.
+	 */
+	if (topo_prop_get_string(node, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_ANAME, &aname, &err) != 0) {
+		topo_mod_dprintf(mod, "%s: node missing %s prop", __func__,
+		    TOPO_PROP_SASPORT_ANAME);
+		return (topo_mod_seterrno(mod, err));
+	}
+
+	/*
+	 * Get the SAS FMRI and then lookup the authority portion in order to
+	 * get the start and end PHY numbers.
+	 */
+	if (topo_node_resource(node, &fmri, &err) != 0) {
+		(void) topo_mod_seterrno(mod, err);
+		topo_mod_dprintf(mod, "%s: failed to get SAS FMRI", __func__);
+		goto err;
+	}
+	if (nvlist_lookup_nvlist(fmri, FM_FMRI_AUTHORITY, &auth) != 0 ||
+	    nvlist_lookup_uint32(auth, FM_FMRI_SAS_START_PHY, &start_phy) !=
+	    0 ||
+	    nvlist_lookup_uint32(auth, FM_FMRI_SAS_END_PHY, &end_phy) != 0) {
+		topo_mod_dprintf(mod, "%s: malformed FMRI authority",
+		    __func__);
+		(void) topo_mod_seterrno(mod, EMOD_NVL_INVAL);
+		goto err;
+	}
+	nphys = (end_phy - start_phy) + 1;
+
+	/*
+	 * Now that we know how many PHYs are on this port, allocate an array
+	 * to hold the link rate state value for each PHY.
+	 */
+	if ((pvals = topo_mod_zalloc(mod, sizeof (uint32_t) * nphys)) ==
+	    NULL) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+
+	/*
+	 * Vector off into the appropriate routine based on whether we're an
+	 * initiator, expander or target port.
+	 */
+	if (topo_prop_get_string(node, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_TYPE, &port_type, &err) != 0) {
+		topo_mod_dprintf(mod, "port node missing %s property",
+		    TOPO_PROP_SASPORT_TYPE);
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		goto err;
+	}
+	if (strcmp(port_type, TOPO_SASPORT_TYPE_INITIATOR) == 0) {
+		if (topo_prop_get_uint32(node, TOPO_PGROUP_SASPORT,
+		    TOPO_PROP_SASPORT_APORT, &hba_port, &err) != 0) {
+			topo_mod_dprintf(mod, "initiator port node missing "
+			    "%s property",  TOPO_PROP_SASPORT_APORT);
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+		if (sas_get_adapter_phy_neg_rate(mod, node, aname, hba_port,
+		    start_phy, end_phy, nphys, pvals) != 0) {
+			goto err;
+		}
+	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_EXPANDER) == 0) {
+		if (sas_get_expander_phy_neg_rate(mod, node, aname,
+		    start_phy, end_phy, nphys, pvals) != 0) {
+			goto err;
+		}
+	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_TARGET) == 0) {
+		if (sas_get_target_phy_neg_rate(mod, node, start_phy, pvals) !=
+		    0) {
+			goto err;
+		}
+	}
+
+	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0 ||
+	    nvlist_add_string(nvl, TOPO_PROP_VAL_NAME,
+	    TOPO_PROP_SASPORT_NEG_RATE) != 0 ||
+	    nvlist_add_uint32(nvl, TOPO_PROP_VAL_TYPE, TOPO_TYPE_UINT32_ARRAY)
+	    != 0 ||
+	    nvlist_add_uint32_array(nvl, TOPO_PROP_VAL_VAL, pvals, nphys)
+	    != 0) {
+		topo_mod_dprintf(mod, "Failed to allocate 'out' nvlist");
+		nvlist_free(nvl);
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+	*out = nvl;
+
+	ret = 0;
+err:
+	if (ret != 0)
+		topo_mod_dprintf(mod, "%s: failed to get PHY error counters "
+		    "for %s=%", PRIx64, __func__, topo_node_name(node),
+		    topo_node_instance(node));
+
+	nvlist_free(fmri);
+	if (pvals != NULL) {
+		topo_mod_free(mod, pvals, sizeof (uint32_t) * nphys);
 	}
 	topo_mod_strfree(mod, aname);
 	topo_mod_strfree(mod, port_type);

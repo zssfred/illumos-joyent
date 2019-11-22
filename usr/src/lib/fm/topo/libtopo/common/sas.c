@@ -192,6 +192,8 @@ extern int sas_device_props_set(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 extern int sas_get_phy_err_counter(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
+extern int sas_get_phy_neg_rate(topo_mod_t *, tnode_t *, topo_version_t,
+    nvlist_t *, nvlist_t **);
 
 static const topo_method_t sas_root_methods[] = {
 	{ TOPO_METH_NVL2STR, TOPO_METH_NVL2STR_DESC, TOPO_METH_NVL2STR_VERSION,
@@ -235,6 +237,9 @@ static const topo_method_t sas_port_methods[] = {
 	{ TOPO_METH_SAS_PHY_ERR, TOPO_METH_SAS_PHY_ERR_DESC,
 	    TOPO_METH_SAS_PHY_ERR_VERSION, TOPO_STABILITY_INTERNAL,
 	    sas_get_phy_err_counter },
+	{ TOPO_METH_SAS_NEG_RATE, TOPO_METH_SAS_NEG_RATE_DESC,
+	    TOPO_METH_SAS_NEG_RATE_VERSION, TOPO_STABILITY_INTERNAL,
+	    sas_get_phy_neg_rate },
 	{ NULL }
 };
 
@@ -270,7 +275,7 @@ sas_init(topo_mod_t *mod, topo_version_t version)
 
 	if ((scsi_cache = topo_mod_zalloc(mod, sizeof (sas_scsi_cache_t))) ==
 	    NULL) {
-		    return (topo_mod_seterrno(mod, EMOD_NOMEM));
+		return (topo_mod_seterrno(mod, EMOD_NOMEM));
 	}
 	topo_mod_setspecific(mod, scsi_cache);
 
@@ -316,11 +321,12 @@ struct sas_phy_info {
  * The callbacks will look up the device specific properties in the HC tree
  * and copy them alongside the sas topo node.
  */
-int
+static int
 sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 {
 	const topo_method_t *propmethods;
-	int ret = -1;
+	nvlist_t *nvl = NULL;
+	int err, ret = -1;
 
 	if (strcmp(topo_node_name(tn), TOPO_VTX_INITIATOR) == 0)
 		propmethods = sas_initiator_methods;
@@ -335,12 +341,13 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 		topo_mod_dprintf(mod, "failed to register fmri"
 		    "methods for %s=%" PRIx64, topo_node_name(tn),
 		    topo_node_instance(tn));
+		/* errno set */
 		goto err;
 	}
 
-	int err;
-	nvlist_t *nvl = NULL;
-	(void) topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME);
+	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0) {
+		return (topo_mod_seterrno(mod, EMOD_NOMEM));
+	}
 
 	if (strcmp(pgname, TOPO_PGROUP_TARGET) == 0) {
 		fnvlist_add_string(nvl, "pname", TOPO_PROP_TARGET_FMRI);
@@ -434,6 +441,7 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 		    TOPO_PROP_SASPORT_LOSS_SYNC,
 		    TOPO_PROP_SASPORT_RESET_PROB
 		};
+		nvlist_t *arg_nvl = NULL;
 
 		for (uint_t i = 0; i < sizeof (props) / sizeof (props[0]);
 		    i++) {
@@ -450,10 +458,23 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 				goto err;
 			}
 		}
+		if (topo_mod_nvalloc(mod, &arg_nvl,  NV_UNIQUE_NAME) != 0) {
+			(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+			goto err;
+		}
+		if (topo_prop_method_register(tn, pgname,
+		    TOPO_PROP_SASPORT_NEG_RATE, TOPO_TYPE_UINT32_ARRAY,
+		    TOPO_METH_SAS_NEG_RATE, arg_nvl, &err) != 0) {
+			topo_mod_dprintf(mod, "Failed to set up prop cb on "
+			    "%s=%" PRIx64 " (%s)", topo_node_name(tn),
+			    topo_node_instance(tn), topo_strerror(err));
+			goto err;
+		}
+
 	}
-	nvlist_free(nvl);
 	ret = 0;
 err:
+	nvlist_free(nvl);
 	return (ret);
 }
 

@@ -256,7 +256,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 
 			tdg_xml_nvarray(fp, pad, pname, TDG_XML_INT32_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='%d' />\n",
 				    (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -275,7 +275,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 
 			tdg_xml_nvarray(fp, pad, pname, TDG_XML_UINT32_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='%u' />\n",
 				    (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -293,7 +293,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 
 			tdg_xml_nvarray(fp, pad, pname, TDG_XML_INT64_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='%" PRIi64
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -312,7 +312,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 
 			tdg_xml_nvarray(fp, pad, pname, TDG_XML_UINT64_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='0x%" PRIx64
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -331,7 +331,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 
 			tdg_xml_nvarray(fp, pad, pname, TDG_XML_STRING_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='%s' />\n",
 				    (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -350,7 +350,7 @@ serialize_nvpair(FILE *fp, uint_t pad, const char *pname, nvpair_t *nvp)
 
 			tdg_xml_nvarray(fp, pad, pname, TDG_XML_NVLIST_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				nvpair_t *elem = NULL;
 
 				(void) fprintf(fp, "%*s<%s>\n", (pad + 2), "",
@@ -511,7 +511,7 @@ serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
 
 			tdg_xml_nvarray(fp, pad, name, TDG_XML_INT32_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='%d' />\n",
 				    (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -531,12 +531,13 @@ serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
 
 			tdg_xml_nvarray(fp, pad, name, TDG_XML_UINT32_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='%u' />\n",
 				    (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
 			}
-			(void) fprintf(fp, "%s  </%s>\n", pad, TDG_XML_NVPAIR);
+			(void) fprintf(fp, "%*s</%s>\n", pad, "",
+			    TDG_XML_NVPAIR);
 			break;
 		}
 		case TOPO_TYPE_INT64_ARRAY: {
@@ -549,7 +550,7 @@ serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
 
 			tdg_xml_nvarray(fp, pad, name, TDG_XML_INT64_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='%" PRIi64
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -569,7 +570,7 @@ serialize_property(FILE *fp, uint_t pad, tnode_t *tn, topo_propval_t *pv,
 
 			tdg_xml_nvarray(fp, pad, name, TDG_XML_UINT64_ARR,
 			    nelems);
-			for (uint_t i; i < nelems; i++) {
+			for (uint_t i = 0; i < nelems; i++) {
 				(void) fprintf(fp, "%*s<%s %s='0x%" PRIx64
 				    "' />\n", (pad + 2), "", TDG_XML_NVPAIR,
 				    TDG_XML_VALUE, val[i]);
@@ -731,8 +732,8 @@ topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
 	(void) fprintf(fp, "<!DOCTYPE topology SYSTEM \"%s\">\n", TDG_DTD);
 	(void) fprintf(fp, "<%s %s='%s' %s='%s' %s='%s' %s='%s'>\n",
 	    TDG_XML_TOPO_DIGRAPH, TDG_XML_SCHEME, tdg->tdg_scheme,
-		TDG_XML_NODENAME, uts.nodename, TDG_XML_OSVERSION, uts.version,
-		TDG_XML_TSTAMP, tstamp);
+	    TDG_XML_NODENAME, uts.nodename, TDG_XML_OSVERSION, uts.version,
+	    TDG_XML_TSTAMP, tstamp);
 	(void) fprintf(fp, "<%s %s='%u'>\n", TDG_XML_VERTICES,
 	    TDG_XML_NELEM, tdg->tdg_nvertices);
 
