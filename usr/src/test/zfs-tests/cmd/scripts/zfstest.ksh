@@ -135,6 +135,9 @@ function constrain_path
 	pkgsrc_bin=/opt/local/bin
 	pkgsrc_packages="sudo truncate python base64 shuf sha256sum"
 	for pkg in $pkgsrc_packages; do
+		if [[ ! -x $pkgsrc_bin/$pkg ]]; then
+			fail "$pkg not found in $pkgsrc_bin"
+		fi
 		if [[ ! -x $PATHDIR/$pkg ]]; then
 			rm $PATHDIR/$pkg &&
 			    ln -s $pkgsrc_bin/$pkg $PATHDIR/$pkg ||
