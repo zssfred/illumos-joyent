@@ -192,7 +192,7 @@ extern int sas_device_props_set(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 extern int sas_get_phy_err_counter(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
-extern int sas_get_phy_neg_rate(topo_mod_t *, tnode_t *, topo_version_t,
+extern int sas_get_phy_link_rate(topo_mod_t *, tnode_t *, topo_version_t,
     nvlist_t *, nvlist_t **);
 
 static const topo_method_t sas_root_methods[] = {
@@ -237,9 +237,9 @@ static const topo_method_t sas_port_methods[] = {
 	{ TOPO_METH_SAS_PHY_ERR, TOPO_METH_SAS_PHY_ERR_DESC,
 	    TOPO_METH_SAS_PHY_ERR_VERSION, TOPO_STABILITY_INTERNAL,
 	    sas_get_phy_err_counter },
-	{ TOPO_METH_SAS_NEG_RATE, TOPO_METH_SAS_NEG_RATE_DESC,
-	    TOPO_METH_SAS_NEG_RATE_VERSION, TOPO_STABILITY_INTERNAL,
-	    sas_get_phy_neg_rate },
+	{ TOPO_METH_SAS_LINK_RATE, TOPO_METH_SAS_LINK_RATE_DESC,
+	    TOPO_METH_SAS_LINK_RATE_VERSION, TOPO_STABILITY_INTERNAL,
+	    sas_get_phy_link_rate },
 	{ NULL }
 };
 
@@ -435,19 +435,25 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 			}
 		}
 	} else if (strcmp(pgname, TOPO_PGROUP_SASPORT) == 0) {
-		const char *props[] = {
+		const char *errprops[] = {
 		    TOPO_PROP_SASPORT_INV_DWORD,
 		    TOPO_PROP_SASPORT_RUN_DISP,
 		    TOPO_PROP_SASPORT_LOSS_SYNC,
 		    TOPO_PROP_SASPORT_RESET_PROB
 		};
+		const char *rateprops[] = {
+		    TOPO_PROP_SASPORT_MAX_RATE,
+		    TOPO_PROP_SASPORT_PROG_RATE,
+		    TOPO_PROP_SASPORT_NEG_RATE
+		};
 		nvlist_t *arg_nvl = NULL;
 
-		for (uint_t i = 0; i < sizeof (props) / sizeof (props[0]);
+		for (uint_t i = 0;
+		    i < sizeof (errprops) / sizeof (errprops[0]);
 		    i++) {
-			fnvlist_add_string(nvl, "pname", props[i]);
+			fnvlist_add_string(nvl, "pname", errprops[i]);
 
-			if (topo_prop_method_register(tn, pgname, props[i],
+			if (topo_prop_method_register(tn, pgname, errprops[i],
 			    TOPO_TYPE_UINT64_ARRAY, TOPO_METH_SAS_PHY_ERR, nvl,
 			    &err) != 0) {
 				topo_mod_dprintf(mod, "Failed to set "
@@ -462,14 +468,24 @@ sas_prop_method_register(topo_mod_t *mod, tnode_t *tn, const char *pgname)
 			(void) topo_mod_seterrno(mod, EMOD_NOMEM);
 			goto err;
 		}
-		if (topo_prop_method_register(tn, pgname,
-		    TOPO_PROP_SASPORT_NEG_RATE, TOPO_TYPE_UINT32_ARRAY,
-		    TOPO_METH_SAS_NEG_RATE, arg_nvl, &err) != 0) {
-			topo_mod_dprintf(mod, "Failed to set up prop cb on "
-			    "%s=%" PRIx64 " (%s)", topo_node_name(tn),
-			    topo_node_instance(tn), topo_strerror(err));
-			goto err;
+		for (uint_t i = 0;
+		    i < sizeof (rateprops) / sizeof (rateprops[0]);
+		    i++) {
+			fnvlist_add_string(arg_nvl, "pname", rateprops[i]);
+
+			if (topo_prop_method_register(tn, pgname, rateprops[i],
+			    TOPO_TYPE_UINT32_ARRAY, TOPO_METH_SAS_LINK_RATE,
+			    arg_nvl, &err) != 0) {
+				topo_mod_dprintf(mod, "Failed to set "
+				    "up prop cb on %s=%" PRIx64 " (%s)",
+				    topo_node_name(tn),
+				    topo_node_instance(tn),
+				    topo_strerror(err));
+				nvlist_free(arg_nvl);
+				goto err;
+			}
 		}
+		nvlist_free(arg_nvl);
 
 	}
 	ret = 0;

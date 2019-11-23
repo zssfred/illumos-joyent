@@ -1220,13 +1220,13 @@ err:
 }
 
 /*
- * Helper function to retrieve PHY negotiated transmission rate from the
- * specified adapter port PHYs.
+ * Helper function called by sas_get_phy_link_rate() to retrieve PHY link
+ * transmission rates from the specified adapter port PHY(s).
  *
  * XXX - just a stub, need to implement
  */
 static int
-sas_get_adapter_phy_neg_rate(topo_mod_t *mod, tnode_t *node,
+sas_get_adapter_phy_link_rate(topo_mod_t *mod, tnode_t *node, char *pname,
     char *hba_name, uint32_t hba_port, uint32_t start_phy, uint32_t end_phy,
     uint32_t nphys, uint32_t *out)
 {
@@ -1238,14 +1238,15 @@ sas_get_adapter_phy_neg_rate(topo_mod_t *mod, tnode_t *node,
 
 }
 /*
- * Helper function to retrieve PHY negotiated transmission rate from the
- * specified expander port PHYs.
+ * Helper function called by sas_get_phy_link_rate() to retrieve PHY link
+ * transmission rates from the specified expander port PHY(s).
  *
  * XXX - just a stub, need to implement
  */
 static int
-sas_get_expander_phy_neg_rate(topo_mod_t *mod, tnode_t *node, char *smp_path,
-    uint32_t start_phy, uint32_t end_phy, uint32_t nphys, uint32_t *out)
+sas_get_expander_phy_link_rate(topo_mod_t *mod, tnode_t *node, char *pname,
+    char *smp_path, uint32_t start_phy, uint32_t end_phy, uint32_t nphys,
+    uint32_t *out)
 {
 	int ret;
 
@@ -1256,14 +1257,14 @@ sas_get_expander_phy_neg_rate(topo_mod_t *mod, tnode_t *node, char *smp_path,
 }
 
 /*
- * Helper function to retrieve PHY negotiated transmission rate from the
- * specified target port PHY.
+ * Helper function called by sas_get_phy_link_rate() to retrieve PHY link
+ * transmission rates from the specified target port PHY.
  *
- * XXX - just a stub, need to implement
+ * Returns 0 on success.  Returns -1 and sets topo errno on failure.
  */
 static int
-sas_get_target_phy_neg_rate(topo_mod_t *mod, tnode_t *node, uint32_t phy,
-    uint32_t *out)
+sas_get_target_phy_link_rate(topo_mod_t *mod, tnode_t *node, char *pname,
+    uint32_t phy, uint32_t *out)
 {
 	topo_vertex_t *port_vtx, *tgt_vtx;
 	topo_edge_t *tgt_edge;
@@ -1338,7 +1339,12 @@ sas_get_target_phy_neg_rate(topo_mod_t *mod, tnode_t *node, uint32_t phy,
 	phy_descr = (sas_phy_descriptor_t *)
 	    (modepage->spdm_descr + (sizeof (sas_phy_descriptor_t) * phy));
 
-	out[0] = phy_descr->spde_neg_rate;
+	if (strcmp(pname, TOPO_PROP_SASPORT_MAX_RATE) == 0)
+		out[0] = phy_descr->spde_hw_max_rate;
+	else if (strcmp(pname, TOPO_PROP_SASPORT_PROG_RATE) == 0)
+		out[0] = phy_descr->spde_prog_max_rate;
+	else if (strcmp(pname, TOPO_PROP_SASPORT_NEG_RATE) == 0)
+		out[0] = phy_descr->spde_neg_rate;
 
 	ret = 0;
 err:
@@ -1351,12 +1357,12 @@ err:
  * Property method for TOPO_PROP_SASPORT_NEG_RATE
  */
 int
-sas_get_phy_neg_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+sas_get_phy_link_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
 	uint32_t *pvals = NULL;
-	nvlist_t *pargs, *nvl, *fmri = NULL, *auth = NULL;
-	char *aname = NULL, *port_type = NULL;
+	nvlist_t *args, *pargs, *nvl, *fmri = NULL, *auth = NULL;
+	char *pname, *aname = NULL, *port_type = NULL;
 	uint32_t hba_port, start_phy, end_phy, nphys;
 	int err, ret = -1;
 
@@ -1372,6 +1378,12 @@ sas_get_phy_neg_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	    nvlist_exists(pargs, TOPO_PROP_VAL_VAL)) {
 		topo_mod_dprintf(mod, "%s: set operation not suppported",
 		    __func__);
+		return (topo_mod_seterrno(mod, EMOD_NVL_INVAL));
+	}
+
+	if (nvlist_lookup_nvlist(in, TOPO_PROP_ARGS, &args) != 0 ||
+	    nvlist_lookup_string(args, "pname", &pname) != 0) {
+		topo_mod_dprintf(mod, "%s: missing pname arg", __func__);
 		return (topo_mod_seterrno(mod, EMOD_NVL_INVAL));
 	}
 
@@ -1435,25 +1447,24 @@ sas_get_phy_neg_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
 			goto err;
 		}
-		if (sas_get_adapter_phy_neg_rate(mod, node, aname, hba_port,
-		    start_phy, end_phy, nphys, pvals) != 0) {
+		if (sas_get_adapter_phy_link_rate(mod, node, pname, aname,
+		    hba_port, start_phy, end_phy, nphys, pvals) != 0) {
 			goto err;
 		}
 	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_EXPANDER) == 0) {
-		if (sas_get_expander_phy_neg_rate(mod, node, aname,
+		if (sas_get_expander_phy_link_rate(mod, node, pname, aname,
 		    start_phy, end_phy, nphys, pvals) != 0) {
 			goto err;
 		}
 	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_TARGET) == 0) {
-		if (sas_get_target_phy_neg_rate(mod, node, start_phy, pvals) !=
-		    0) {
+		if (sas_get_target_phy_link_rate(mod, node, pname, start_phy,
+		    pvals) != 0) {
 			goto err;
 		}
 	}
 
 	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0 ||
-	    nvlist_add_string(nvl, TOPO_PROP_VAL_NAME,
-	    TOPO_PROP_SASPORT_NEG_RATE) != 0 ||
+	    nvlist_add_string(nvl, TOPO_PROP_VAL_NAME, pname) != 0 ||
 	    nvlist_add_uint32(nvl, TOPO_PROP_VAL_TYPE, TOPO_TYPE_UINT32_ARRAY)
 	    != 0 ||
 	    nvlist_add_uint32_array(nvl, TOPO_PROP_VAL_VAL, pvals, nphys)
@@ -1468,7 +1479,7 @@ sas_get_phy_neg_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	ret = 0;
 err:
 	if (ret != 0)
-		topo_mod_dprintf(mod, "%s: failed to get PHY error counters "
+		topo_mod_dprintf(mod, "%s: failed to get PHY link rate(s) "
 		    "for %s=%", PRIx64, __func__, topo_node_name(node),
 		    topo_node_instance(node));
 

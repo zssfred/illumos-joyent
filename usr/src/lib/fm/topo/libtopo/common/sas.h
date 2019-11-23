@@ -41,9 +41,9 @@ extern void sas_fini(topo_mod_t *);
 #define	TOPO_METH_SAS_PHY_ERR_DESC	"get PHY link state error counters"
 #define	TOPO_METH_SAS_PHY_ERR_VERSION	0
 
-#define	TOPO_METH_SAS_NEG_RATE		"sas_get_phy_get_neg_rate"
-#define	TOPO_METH_SAS_NEG_RATE_DESC	"get PHY link negotiate rate"
-#define	TOPO_METH_SAS_NEG_RATE_VERSION	0
+#define	TOPO_METH_SAS_LINK_RATE		"sas_get_phy_get_link_rate"
+#define	TOPO_METH_SAS_LINK_RATE_DESC	"get PHY link transmission rate"
+#define	TOPO_METH_SAS_LINK_RATE_VERSION	0
 
 /*
  * A common pattern when reading SCSI mode/log pages is to first issue a

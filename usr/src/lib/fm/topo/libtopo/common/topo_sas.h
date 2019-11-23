@@ -55,7 +55,7 @@ extern "C" {
 #define	TOPO_PROP_SASPORT_RESET_PROB	"reset-problem-count"
 
 /*
- * PHY link trasmission rate states
+ * PHY link transmission rate states
  */
 #define	TOPO_PROP_SASPORT_MAX_RATE	"max-link-rate"
 #define	TOPO_PROP_SASPORT_PROG_RATE	"programmed-link-rate"
