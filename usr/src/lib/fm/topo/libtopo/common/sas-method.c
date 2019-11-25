@@ -1223,7 +1223,10 @@ err:
  * Helper function called by sas_get_phy_link_rate() to retrieve PHY link
  * transmission rates from the specified adapter port PHY(s).
  *
- * This uses libsmhbaapi to gather phy link attributes.
+ * This uses libsmhbaapi to gather phy link attributes.  Libsmhbaapi
+ * sources its data from the "phy-info" devinfo property that's created
+ * by the HBA driver for each PHY.
+ *
  * Returns 0 on success.  Returns -1 and sets topo errno on failure.
  */
 static int
@@ -1277,19 +1280,81 @@ err:
  * Helper function called by sas_get_phy_link_rate() to retrieve PHY link
  * transmission rates from the specified expander port PHY(s).
  *
- * XXX - just a stub, need to implement
+ * Returns 0 on success.  Returns -1 and sets topo errno on failure.
  */
 static int
 sas_get_expander_phy_link_rate(topo_mod_t *mod, tnode_t *node, char *pname,
     char *smp_path, uint32_t start_phy, uint32_t end_phy, uint32_t nphys,
     uint32_t *out)
 {
-	int ret;
+	smp_target_t *tgt = NULL;
+	smp_target_def_t *tdef = NULL;
+	int ret = -1;
 
+	if ((tdef = topo_mod_zalloc(mod, sizeof (smp_target_def_t))) == NULL) {
+		return (topo_mod_seterrno(mod, EMOD_NOMEM));
+	}
+	tdef->std_def = smp_path;
 
+	if ((tgt = smp_open(tdef)) == NULL) {
+		topo_mod_dprintf(mod, "%s: failed to open SMP target",
+		    __func__);
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		goto err;
+	}
+
+	for (uint_t phy = 0; phy < nphys; phy++) {
+		smp_function_t func;
+		smp_result_t result;
+		smp_action_t *axn = NULL;
+		smp_discover_req_t *disc_req = NULL;
+		smp_discover_resp_t *disc_resp = NULL;
+		size_t smp_resp_len;
+		uint8_t *smp_resp;
+
+		func = SMP_FUNC_DISCOVER;
+		axn = smp_action_alloc(func, tgt, 0);
+		smp_action_get_request(axn, (void **) &disc_req, NULL);
+		disc_req->sdr_phy_identifier = start_phy + phy;
+
+		if (smp_exec(axn, tgt) != 0) {
+			topo_mod_dprintf(mod, "%s: smp_exec failed", __func__);
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			smp_action_free(axn);
+			goto err;
+		}
+
+		smp_action_get_response(axn, &result, (void **)&smp_resp,
+		    &smp_resp_len);
+		smp_action_free(axn);
+
+		disc_resp = (smp_discover_resp_t *)smp_resp;
+
+		/*
+		 * When we first do PHY discovery we allow an
+		 * SMP_RES_PHY_VACANT response. At this point we should be sure
+		 * that this phy exists (it's already in the SAS topo digraph),
+		 * so any non-ACCEPTED response is an error.
+		 */
+		if (result != SMP_RES_FUNCTION_ACCEPTED) {
+			topo_mod_dprintf(mod, "%s: error in SMP response (%d)",
+			    __func__, result);
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+		if (strcmp(pname, TOPO_PROP_SASPORT_MAX_RATE) == 0)
+			out[phy] = disc_resp->sdr_prog_max_phys_link_rate;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_PROG_RATE) == 0)
+			out[phy] = disc_resp->sdr_prog_max_phys_link_rate;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_NEG_RATE) == 0)
+			out[phy] = disc_resp->sdr_negotiated_logical_link_rate;
+	}
 	ret = 0;
-	return (ret);
 
+err:
+	topo_mod_free(mod, tdef, sizeof (smp_target_def_t));
+	smp_close(tgt);
+	return (ret);
 }
 
 /*
@@ -1390,7 +1455,7 @@ err:
 }
 
 /*
- * Property method for TOPO_PROP_SASPORT_NEG_RATE
+ * Property method for TOPO_PROP_SASPORT_{MAX,PROG,NEG}_RATE
  */
 int
 sas_get_phy_link_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
@@ -1485,16 +1550,19 @@ sas_get_phy_link_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		}
 		if (sas_get_adapter_phy_link_rate(mod, node, pname, aname,
 		    hba_port, start_phy, end_phy, nphys, pvals) != 0) {
+			/* errno set */
 			goto err;
 		}
 	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_EXPANDER) == 0) {
 		if (sas_get_expander_phy_link_rate(mod, node, pname, aname,
 		    start_phy, end_phy, nphys, pvals) != 0) {
+			/* errno set */
 			goto err;
 		}
 	} else if (strcmp(port_type, TOPO_SASPORT_TYPE_TARGET) == 0) {
 		if (sas_get_target_phy_link_rate(mod, node, pname, start_phy,
 		    pvals) != 0) {
+			/* errno set */
 			goto err;
 		}
 	}

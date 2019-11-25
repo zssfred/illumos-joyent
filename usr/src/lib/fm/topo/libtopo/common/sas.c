@@ -801,8 +801,9 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path)
 	tnode_t *tn = NULL;
 	int err;
 
-	tdef = (smp_target_def_t *)topo_mod_zalloc(mod,
-	    sizeof (smp_target_def_t));
+	if ((tdef = topo_mod_zalloc(mod, sizeof (smp_target_def_t))) == NULL) {
+		return (topo_mod_seterrno(mod, EMOD_NOMEM));
+	}
 
 	tdef->std_def = smp_path;
 
