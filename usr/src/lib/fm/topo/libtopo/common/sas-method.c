@@ -1223,20 +1223,56 @@ err:
  * Helper function called by sas_get_phy_link_rate() to retrieve PHY link
  * transmission rates from the specified adapter port PHY(s).
  *
- * XXX - just a stub, need to implement
+ * This uses libsmhbaapi to gather phy link attributes.
+ * Returns 0 on success.  Returns -1 and sets topo errno on failure.
  */
 static int
 sas_get_adapter_phy_link_rate(topo_mod_t *mod, tnode_t *node, char *pname,
     char *hba_name, uint32_t hba_port, uint32_t start_phy, uint32_t end_phy,
     uint32_t nphys, uint32_t *out)
 {
-	int ret;
+	HBA_HANDLE handle = -1;
+	SMHBA_SAS_PHY phyattrs;
+	int ret = -1;
 
+	/*
+	 * Iterate through the PHYs on this port and retrieve the
+	 * appropriate PHY link rate status based on the property name.
+	 */
+	if ((handle = HBA_OpenAdapter(hba_name)) == 0) {
+		topo_mod_dprintf(mod, "%s: failed to open adapter: %s",
+		    __func__, hba_name);
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		goto err;
+	}
+	for (uint_t phy = 0; phy < nphys; phy++) {
+
+		(void) memset(&phyattrs, 0, sizeof (SMHBA_SAS_PHY));
+
+		ret = SMHBA_GetSASPhyAttributes(handle, hba_port, phy,
+		    &phyattrs);
+		if (ret != HBA_STATUS_OK) {
+			topo_mod_dprintf(mod, "%s: failed to get HBA PHY attrs "
+			    "for PORT %u PHY %u (ret=%u)", __func__, hba_port,
+			    phy, ret);
+			(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+			goto err;
+		}
+		if (strcmp(pname, TOPO_PROP_SASPORT_MAX_RATE) == 0)
+			out[phy] = phyattrs.HardwareMaxLinkRate;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_PROG_RATE) == 0)
+			out[phy] = phyattrs.ProgrammedMaxLinkRate;
+		else if (strcmp(pname, TOPO_PROP_SASPORT_NEG_RATE) == 0)
+			out[phy] = phyattrs.NegotiatedLinkRate;
+	}
 	ret = 0;
-
+err:
+	if (handle != -1)
+		HBA_CloseAdapter(handle);
 	return (ret);
 
 }
+
 /*
  * Helper function called by sas_get_phy_link_rate() to retrieve PHY link
  * transmission rates from the specified expander port PHY(s).
