@@ -61,6 +61,7 @@ extern "C" {
 #define	TDG_XML_NODENAME	"nodename"
 #define	TDG_XML_PGROUPS		"property-groups"
 #define	TDG_XML_PGROUP_NAME	"property-group-name"
+#define	TDG_XML_PRODUCT		"product"
 #define	TDG_XML_PROP_NAME	TOPO_PROP_VAL_NAME
 #define	TDG_XML_PROP_TYPE	TOPO_PROP_VAL_TYPE
 #define	TDG_XML_PROP_VALUE	TOPO_PROP_VAL_VAL

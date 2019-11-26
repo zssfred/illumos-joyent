@@ -730,10 +730,10 @@ topo_digraph_serialize(topo_hdl_t *thp, topo_digraph_t *tdg, FILE *fp)
 
 	(void) fprintf(fp, "<?xml version=\"1.0\"?>\n");
 	(void) fprintf(fp, "<!DOCTYPE topology SYSTEM \"%s\">\n", TDG_DTD);
-	(void) fprintf(fp, "<%s %s='%s' %s='%s' %s='%s' %s='%s'>\n",
+	(void) fprintf(fp, "<%s %s='%s' %s='%s' %s='%s' %s='%s' %s='%s'>\n",
 	    TDG_XML_TOPO_DIGRAPH, TDG_XML_SCHEME, tdg->tdg_scheme,
 	    TDG_XML_NODENAME, uts.nodename, TDG_XML_OSVERSION, uts.version,
-	    TDG_XML_TSTAMP, tstamp);
+	    TDG_XML_PRODUCT, thp->th_product, TDG_XML_TSTAMP, tstamp);
 	(void) fprintf(fp, "<%s %s='%u'>\n", TDG_XML_VERTICES,
 	    TDG_XML_NELEM, tdg->tdg_nvertices);
 
