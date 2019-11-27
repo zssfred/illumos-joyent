@@ -34,7 +34,6 @@
 
 #include <sys/scsi/scsi.h>
 #include <sys/scsi/generic/sas.h>
-#include <libdevinfo.h>
 
 #pragma pack(1)
 
@@ -163,6 +162,84 @@ sas_dev_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	return (-1);
 }
 
+/*
+ * When SES is not available we determine if the given SAS node and HC nodes
+ * match.
+ */
+static boolean_t
+sas_node_matches_logical_disk(topo_mod_t *mod, tnode_t *sas_node,
+    tnode_t *hc_node)
+{
+	char *ldisk = NULL, *orig_ldisk;
+	uint_t ldisksz;
+	uint64_t wwn;
+	int err = 0;
+
+	if (topo_prop_get_string(hc_node, TOPO_PGROUP_STORAGE,
+	    TOPO_STORAGE_LOGICAL_DISK, &ldisk, &err) != 0) {
+		topo_mod_dprintf(mod,
+		    "failed to get logical disk name (%s)", topo_strerror(err));
+		goto done;
+	}
+
+	topo_mod_dprintf(mod, "target port ID not available, "
+	    "attempting logical-disk name match on %" PRIx64 "=%s",
+	    topo_node_instance(sas_node), ldisk);
+
+	/*
+	 * We get a logical-disk name that looks like this:
+	 *   c0tWWNd0
+	 *
+	 * We want to compare the middle WWN part to the sas
+	 * node's WWN. Once we pull the middle bit out we
+	 * convert it to a uint64 so comparison is easier.
+	 */
+	ldisksz = strlen(ldisk) + 1;
+	orig_ldisk = ldisk;
+
+	ldisk = strchr(ldisk, 't');
+	ldisk++;
+	ldisk = strtok(ldisk, "d");
+
+	/*
+	 * This call fails for non-SAS devices that make it
+	 * through our previous checks.
+	 */
+	if (scsi_wwnstr_to_wwn(ldisk, &wwn) != 0) {
+		topo_mod_dprintf(mod,
+		    "scsi_wwnstr_to_wwn failed for %s", ldisk);
+		goto done;
+	}
+
+	topo_mod_free(mod, orig_ldisk, ldisksz);
+	return (wwn == topo_node_instance(sas_node));
+done:
+	return (B_FALSE);
+}
+
+/*
+ * Find all ports attached to the given sas_node and see if their WWN matches
+ * the given wwn.
+ *
+ * We do this because SAS targets and SAS target ports can have different WWNs.
+ * The target port's WWN is stored in the HC tree.
+ */
+static boolean_t
+sas_node_matches_l0id(topo_mod_t *mod, tnode_t *sas_node, uint64_t wwn)
+{
+	topo_edge_t *edge = NULL;
+	for (edge = topo_list_next(&sas_node->tn_vtx->tvt_incoming);
+	    edge != NULL; edge = topo_list_next(edge)) {
+		topo_vertex_t *vtx = edge->tve_vertex;
+
+		if (wwn == topo_node_instance(topo_vertex_node(vtx))) {
+			return (B_TRUE);
+		}
+	}
+
+	return (B_FALSE);
+}
+
 typedef struct sas_topo_cbarg {
 	topo_mod_t *st_mod;
 	tnode_t *st_node;
@@ -245,41 +322,54 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 
 	} else if (strcmp(topo_node_name(node), DISK) == 0 &&
 	    strcmp(topo_node_name(sas_node), TOPO_VTX_TARGET) == 0) {
-
-		char *ldisk = NULL, *orig_ldisk;
-		uint_t ldisksz;
+		uint_t nelem;
 		uint64_t wwn;
-		if (topo_prop_get_string(node, TOPO_PGROUP_STORAGE,
-		    "logical-disk", &ldisk, &err) != 0) { /* XXX fix string */
-			topo_mod_dprintf(mod, "failed to get devid (%s)",
-			    topo_strerror(err));
-			goto done;
-		}
+		char **ids;
+
 		/*
-		 * We get a logical-disk name that looks like this: c0tWWNd0
+		 * Target port l0ids will be available when SES enumeration
+		 * works properly. During SAS device discovery using SMP we
+		 * retrieve a couple different WWNs for each device:
+		 * - the target port WWN (the 'port' node's WWN)
+		 * - the target device WWN (the 'target' node's WWN)
 		 *
-		 * We want to compare the middle WWN part to the sas node's WWN.
-		 * Once we pull the middle bit out we convert it to a uint64 so
-		 * comparison is easier.
+		 * SES will have the match for the target port WWN. If we cannot
+		 * find a target port WWN that means we don't have SES and we
+		 * should attempt to instead match against this node's WWN
+		 * against the 'logical-disk' name.
 		 */
-		ldisksz = strlen(ldisk) + 1;
-		orig_ldisk = ldisk;
-
-		ldisk = strchr(ldisk, 't');
-		ldisk++;
-		ldisk = strtok(ldisk, "d");
-
-		(void) scsi_wwnstr_to_wwn(ldisk, &wwn);
-		if (wwn == topo_node_instance(sas_node)) {
-			targ_node = node;
-		} else if ((wwn - 0x2) == topo_node_instance(sas_node)) {
+		if (topo_prop_get_string_array(node, TOPO_PGROUP_STORAGE,
+		    TOPO_STORAGE_TARGET_PORT_L0IDS, &ids, &nelem, &err) != 0) {
+			if (err != ETOPO_PROP_NOENT) {
+				/*
+				 * This prop will not be present in systems
+				 * without SES.
+				 */
+				goto done;
+			}
+			if (sas_node_matches_logical_disk(
+			    mod, sas_node, node)) {
+				targ_node = node;
+			}
+		} else {
 			/*
-			 * XXX magma machine reports WWNs that are off-by-2.
-			 * We should figure out why that is.
+			 * Go through all of the ports attached to this target
+			 * device. If any ports match any of the l0ids, then we
+			 * have found an HC scheme match for this SAS scheme
+			 * target.
 			 */
-			targ_node = node;
+			for (uint_t i = 0; i < nelem; i++) {
+				if (scsi_wwnstr_to_wwn(ids[i], &wwn) != 0) {
+					topo_mod_dprintf(mod,
+					    "scsi_wwnstr_to_wwn failed for %s",
+					    ids[i]);
+					goto done;
+				}
+				if (sas_node_matches_l0id(mod, sas_node, wwn)) {
+					targ_node = node;
+				}
+			}
 		}
-		topo_hdl_free(thp, orig_ldisk, ldisksz);
 	}
 
 	if (targ_node == NULL) {
@@ -1207,7 +1297,7 @@ sas_get_phy_err_counter(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 err:
 	if (ret != 0)
 		topo_mod_dprintf(mod, "%s: failed to get PHY error counters "
-		    "for %s=%", PRIx64, __func__, topo_node_name(node),
+		    "for %s=%" PRIx64, __func__, topo_node_name(node),
 		    topo_node_instance(node));
 
 	nvlist_free(fmri);
@@ -1584,7 +1674,7 @@ sas_get_phy_link_rate(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 err:
 	if (ret != 0)
 		topo_mod_dprintf(mod, "%s: failed to get PHY link rate(s) "
-		    "for %s=%", PRIx64, __func__, topo_node_name(node),
+		    "for %s=%" PRIx64, __func__, topo_node_name(node),
 		    topo_node_instance(node));
 
 	nvlist_free(fmri);

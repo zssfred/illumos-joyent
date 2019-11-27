@@ -1011,7 +1011,7 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path)
 
 			/* This is a target disk. */
 			if ((tgt_vtx = sas_create_vertex(mod, TOPO_VTX_TARGET,
-			    ntohll(disc_resp->sdr_attached_sas_addr),
+			    ntohll(disc_resp->sdr_attached_device_name),
 			    &phyinfo)) == NULL) {
 				topo_vertex_destroy(mod, ex_pt_vtx);
 				topo_vertex_destroy(mod, port_vtx);
