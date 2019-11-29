@@ -19,7 +19,7 @@
 jst_vrrp="yes"
 
 # Do we support unfiltered promiscuous mode
-# jst_ufpromisc="yes"
+jst_ufpromisc="yes"
 
 # Do we use vnd devices
 # jst_createvnd="yes"
