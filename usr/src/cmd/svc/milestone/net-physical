@@ -445,6 +445,80 @@ if smf_is_globalzone; then
         /usr/sbin/dladm create-etherstub -t $stub || echo "ERROR: could not create etherstub ${stub}."
     done
 
+      # Set up bridges
+    for bridge in $(echo "${CONFIG_bridge}" | sed -e "s/,/ /g"); do
+        # if the bridge exists and has links, we must delete them before recreating (there is no temporay bridge option)
+        no_links=1
+        links=$(/usr/sbin/dladm show-bridge -ls -p -o link ${bridge} 2>/dev/null) \
+                && no_links=$? &&  echo "INFO: bridge ${bridge} exists, we will rebuild."
+        if [ $no_links -eq 0 ] ; then
+         links=$(/usr/sbin/dladm show-bridge -ls -p -o link ${bridge} 2>/dev/null)
+          echo "links on bridge ${bridge}: ${links}"
+          for link in ${links} ; do
+            /usr/sbin/dladm remove-bridge -l $link $bridge || "WARN: could not remove port ${link} from bridge ${bridge}"
+          done
+      eval "brp=\${CONFIG_bridge_${bridge}_ports}"
+        [[ -z "$brp" ]] && continue
+                
+        for port in $(echo "$brp" | sed -e "s/,/ /g"); do
+          eval "nic=\${SYSINFO_NIC_${port}}"
+            echo NIC: $nic
+                
+            [[ -n $nic ]] && port=$nic
+
+          echo PORT: $port
+          /usr/sbin/dladm remove-bridge -l $port $bridge || echo "ERROR: could not remove ${port} from bridge ${bridge}."
+        done
+          /usr/sbin/dladm delete-bridge $bridge || "ERROR: could not delete bridge ${bridge}. Perhaps some ports still attached?"
+        fi
+    done
+
+    # remove any old simnets
+    for old_simnet in $(/usr/sbin/dladm show-simnet -p -o link) ; do
+        /usr/sbin/dladm modify-simnet -p none ${old_simnet} || "WARN: could not remove connection from simnet ${old_simnet}."
+    done
+    for old_simnet in $(/usr/sbin/dladm show-simnet -p -o link) ; do
+        /usr/sbin/dladm delete-simnet ${old_simnet} || echo "ERROR: could not delete old simnet ${old_simnet}."
+    done
+
+    # Set up simnets
+    for simnet in $(echo "${CONFIG_simnet}" | sed -e "s/,/ /g"); do
+        /usr/sbin/dladm create-simnet $simnet || echo "ERROR: could not create simnet ${simnet}."
+    done
+
+    for bridge in $(echo "${CONFIG_bridge}" | sed -e "s/,/ /g"); do
+        /usr/sbin/dladm create-bridge $bridge || echo "ERROR: could not create bridge ${bridge}."
+    done
+
+    # Connect simnets
+    for simnet in $(echo "${CONFIG_simnet}" | sed -e "s/,/ /g"); do
++      eval "snp=\${CONFIG_simnet_${simnet}_port}"
+      [[ -z "$snp" ]] && continue
+      /usr/sbin/dladm modify-simnet -p $snp $simnet || echo "ERROR: could not connect ${simnet} to port ${snp}."
+    done        
+        
+    # Add ports to bridges
+    for bridge in $(echo "${CONFIG_bridge}" | sed -e "s/,/ /g"); do
+        eval "brp=\${CONFIG_bridge_${bridge}_ports}"
+        [[ -z "$brp" ]] && continue
+                
+        for port in $(echo "$brp" | sed -e "s/,/ /g"); do
+          eval "nic=\${SYSINFO_NIC_${port}}"
+            echo NIC: $nic
+                
+            [[ -n $nic ]] && port=$nic
+
+          echo PORT: $port
+          /usr/sbin/dladm add-bridge -l $port $bridge || echo "ERROR: could not add ${port} to bridge ${bridge}."
+        done
+    done
+ 
+    # creating bridges and simnets may affect sysinfo, so refresh.
+    /usr/bin/sysinfo -u
+    load_sdc_sysinfo
+
+
+
     # Create aggregations
     create_aggrs
 
