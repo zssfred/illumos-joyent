@@ -6999,8 +6999,8 @@ unshare_unmount(int op, int argc, char **argv)
 		}
 
 		/*
-		 * Initilialize libshare SA_INIT_SHARE_API_SELECTIVE here
-		 * to avoid unneccesary load/unload of the libshare API
+		 * Initialize libshare SA_INIT_SHARE_API_SELECTIVE here
+		 * to avoid unnecessary load/unload of the libshare API
 		 * per shared dataset downstream.
 		 */
 		if (op == OP_SHARE) {
@@ -7013,11 +7013,11 @@ unshare_unmount(int op, int argc, char **argv)
 				sharearg.zhandle_len = dslist.cb_used;
 				if ((ret = zfs_init_libshare_arg(g_zfs,
 				    SA_INIT_SHARE_API_SELECTIVE, &sharearg)) !=
-				        SA_OK) {
+				    SA_OK) {
 					(void) fprintf(stderr, gettext(
 					    "Could not initialize libshare, "
 					    "%d"), ret);
-					return (ret);
+					return (1);
 				}
 			}
 		}
