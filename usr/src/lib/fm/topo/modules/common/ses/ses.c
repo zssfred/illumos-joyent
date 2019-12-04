@@ -264,12 +264,22 @@ static const topo_method_t ses_component_methods[] = {
 	{ NULL }
 };
 
+#define	TOPO_METH_JOYENT_S10G5_LABEL		"joyent_s10g5_bay_label"
+#define	TOPO_METH_JOYENT_S10G5_LABEL_DESC	\
+	"compute bay labels on Joyent-S10G5 platform"
+#define	TOPO_METH_JOYENT_S10G5_LABEL_VERSION	0
+static int joyent_s10g5_bay_label(topo_mod_t *, tnode_t *, topo_version_t,
+    nvlist_t *, nvlist_t **);
+
 static const topo_method_t ses_bay_methods[] = {
 	{ TOPO_METH_FAC_ENUM, TOPO_METH_FAC_ENUM_DESC, 0,
 	    TOPO_STABILITY_INTERNAL, ses_node_enum_facility },
 	{ TOPO_METH_OCCUPIED, TOPO_METH_OCCUPIED_DESC,
 	    TOPO_METH_OCCUPIED_VERSION, TOPO_STABILITY_INTERNAL,
 	    topo_mod_hc_occupied },
+	{ TOPO_METH_JOYENT_S10G5_LABEL, TOPO_METH_JOYENT_S10G5_LABEL_DESC,
+	    TOPO_METH_JOYENT_S10G5_LABEL_VERSION, TOPO_STABILITY_INTERNAL,
+	    joyent_s10g5_bay_label },
 	{ NULL }
 };
 
@@ -1520,10 +1530,10 @@ ses_create_generic(ses_enum_data_t *sdp, ses_enum_node_t *snp, tnode_t *pnode,
 		goto error;
 
 	if (strcmp(nodename, BAY) == 0) {
-		if (ses_add_bay_props(mod, tn, snp) != 0)
-			goto error;
+		char *product;
+		nvlist_t *args = NULL;
 
-		if (ses_create_disk(sdp, tn, props) != 0)
+		if (ses_add_bay_props(mod, tn, snp) != 0)
 			goto error;
 
 		if (topo_method_register(mod, tn, ses_bay_methods) != 0) {
@@ -1532,6 +1542,43 @@ ses_create_generic(ses_enum_data_t *sdp, ses_enum_node_t *snp, tnode_t *pnode,
 			    topo_mod_errmsg(mod));
 			goto error;
 		}
+
+		/*
+		 * This registers a custom property method for computing the
+		 * correct location labels for the bay and disk nodes on the
+		 * Joyent-S10G5 platform.
+		 *
+		 * Ideally we'd perform this sort of override with a platform
+		 * specific XML map file, and that would work here if we only
+		 * wanted to override the bay node label.  However, we'd also
+		 * like the disk node label (if the bay is occupied) to inherit
+		 * the overriden bay label.  So we need to ensure the
+		 * propmethod is registered before we create the child disk
+		 * node.
+		 */
+		if ((product = topo_mod_product(mod)) == NULL) {
+			(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+			goto error;
+		}
+		if (strcmp(product, "Joyent-S10G5") == 0) {
+			if (topo_mod_nvalloc(mod, &args, NV_UNIQUE_NAME) != 0 ||
+			    topo_prop_method_register(tn, TOPO_PGROUP_PROTOCOL,
+			    TOPO_PROP_LABEL, TOPO_TYPE_STRING,
+			    TOPO_METH_JOYENT_S10G5_LABEL, args, &err)) {
+				topo_mod_dprintf(mod,
+				    "Failed to register method: %s on %s=%"
+				    PRIu64, TOPO_METH_JOYENT_S10G5_LABEL,
+				    BAY, topo_node_instance(tn));
+				topo_mod_strfree(mod, product);
+				nvlist_free(args);
+				goto error;
+			}
+			nvlist_free(args);
+		}
+		topo_mod_strfree(mod, product);
+
+		if (ses_create_disk(sdp, tn, props) != 0)
+			goto error;
 	} else if ((strcmp(nodename, FAN) == 0) ||
 	    (strcmp(nodename, PSU) == 0) ||
 	    (strcmp(nodename, CONTROLLER) == 0)) {
@@ -3635,6 +3682,79 @@ ses_process_dir(const char *dirpath, ses_enum_data_t *sdp)
 error:
 	(void) closedir(dir);
 	return (err);
+}
+
+#define	JS10G5_FRONT_EXPANDER_PID	"SMC-SC846P"
+#define	JS10G5_REAR_EXPANDER_PID	"LSI-SAS3x28"
+
+static int
+joyent_s10g5_bay_label(topo_mod_t *mod, tnode_t *node, topo_version_t version,
+    nvlist_t *in, nvlist_t **out)
+{
+	int err, ret = -1;
+	nvlist_t *pargs, *auth, *nvl, *fmri = NULL;
+	char *label, *product_id;
+
+	/*
+	 * Now look for a private argument list to determine if the invoker is
+	 * trying to do a set operation and if so, return an error as this
+	 * method only supports get operations.
+	 */
+	if ((nvlist_lookup_nvlist(in, TOPO_PROP_PARGS, &pargs) == 0) &&
+	    nvlist_exists(pargs, TOPO_PROP_VAL_VAL)) {
+		topo_mod_dprintf(mod, "%s: set operation not suppported",
+		    __func__);
+		return (topo_mod_seterrno(mod, EMOD_NVL_INVAL));
+	}
+
+	if (topo_node_resource(node, &fmri, &err) != 0) {
+		(void) topo_mod_seterrno(mod, err);
+		goto err;
+	}
+
+	if (nvlist_lookup_nvlist(fmri, FM_FMRI_AUTHORITY, &auth) != 0 ||
+	    nvlist_lookup_string(auth, FM_FMRI_AUTH_PRODUCT, &product_id) !=
+	    0) {
+		topo_mod_dprintf(mod, "%s: malformed FMRI", __func__);
+		(void) topo_mod_seterrno(mod, EMOD_UNKNOWN);
+		nvlist_free(fmri);
+		goto err;
+	}
+	nvlist_free(fmri);
+
+	if (strcmp(product_id, JS10G5_FRONT_EXPANDER_PID) == 0) {
+		err = asprintf(&label, "Front Slot %" PRIu64,
+		    topo_node_instance(node));
+	} else if (strcmp(product_id, JS10G5_REAR_EXPANDER_PID) == 0) {
+		err = asprintf(&label, "Rear Slot %" PRIu64,
+		    topo_node_instance(node));
+	} else {
+		topo_mod_dprintf(mod, "%s: unexpected expander product id: %s",
+		    __func__, product_id);
+		goto err;
+	}
+
+	if (err < 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+
+	if (topo_mod_nvalloc(mod, &nvl, NV_UNIQUE_NAME) != 0 ||
+	    nvlist_add_string(nvl, TOPO_PROP_VAL_NAME, TOPO_PROP_LABEL) != 0 ||
+	    nvlist_add_uint32(nvl, TOPO_PROP_VAL_TYPE, TOPO_TYPE_STRING)
+	    != 0 ||
+	    nvlist_add_string(nvl, TOPO_PROP_VAL_VAL, label)
+	    != 0) {
+		topo_mod_dprintf(mod, "Failed to allocate 'out' nvlist");
+		nvlist_free(nvl);
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+		goto err;
+	}
+	*out = nvl;
+	ret = 0;
+err:
+	return (ret);
+
 }
 
 static void
