@@ -311,7 +311,7 @@ topo_path_destroy(topo_hdl_t *thp, topo_path_t *path)
 
 /*
  * This just wraps topo_path_t so that visit_vertex() can build a linked list
- * path paths.
+ * of paths.
  */
 struct digraph_path
 {
@@ -321,7 +321,8 @@ struct digraph_path
 
 static int
 visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
-    topo_list_t *all_paths, char *curr_path, uint_t *npaths)
+    topo_list_t *all_paths, char *curr_path, topo_list_t *curr_path_comps,
+    uint_t *npaths)
 {
 	struct digraph_path *pathnode = NULL;
 	topo_path_t *path = NULL;
@@ -335,6 +336,14 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 	    topo_node_name(vtx->tvt_node),
 	    topo_node_instance(vtx->tvt_node));
 
+	if ((pathcomp = topo_hdl_zalloc(thp, sizeof (topo_path_component_t)))
+	    == NULL) {
+		(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+		goto err;
+	}
+	pathcomp->tspc_vertex = vtx;
+	topo_list_append(curr_path_comps, pathcomp);
+
 	if (vtx == to) {
 		(*npaths)++;
 		pathnode = topo_hdl_zalloc(thp, sizeof (struct digraph_path));
@@ -342,15 +351,15 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 		if ((path = topo_hdl_zalloc(thp, sizeof (topo_path_t))) ==
 		    NULL ||
 		    (path->tsp_fmristr = topo_hdl_strdup(thp, pathstr)) ==
-		    NULL ||
-		    (pathcomp = topo_hdl_zalloc(thp,
-		    sizeof (topo_path_component_t))) == NULL) {
+		    NULL) {
 			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
 			goto err;
 		}
 
-		pathcomp->tspc_vertex = vtx;
-		topo_list_append(&path->tsp_components, pathcomp);
+		if (topo_list_deepcopy(thp, &path->tsp_components,
+		    curr_path_comps, sizeof (topo_path_component_t)) != 0) {
+			(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+		}
 		if (topo_fmri_str2nvl(thp, pathstr, &fmri, &err) != 0) {
 			/* errno set */
 			goto err;
@@ -367,10 +376,12 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 	    edge != NULL; edge = topo_list_next(edge)) {
 
 		if (visit_vertex(thp, edge->tve_vertex, to, all_paths, pathstr,
-		    npaths) != 0)
+		    curr_path_comps, npaths) != 0)
 			goto err;
 	}
 	free(pathstr);
+	topo_list_delete(curr_path_comps, pathcomp);
+	topo_hdl_free(thp, pathcomp, sizeof (topo_path_component_t));
 
 	return (0);
 err:
@@ -394,6 +405,8 @@ topo_digraph_paths(topo_hdl_t *thp, topo_digraph_t *tdg, topo_vertex_t *from,
 {
 	topo_list_t all_paths = { 0 };
 	char *curr_path;
+	topo_path_component_t *pathcomp = NULL;
+	topo_list_t curr_path_comps = { 0 };
 	struct digraph_path *path;
 	uint_t i, npaths = 0;
 	int ret;
@@ -403,6 +416,14 @@ topo_digraph_paths(topo_hdl_t *thp, topo_digraph_t *tdg, topo_vertex_t *from,
 	    topo_node_name(from->tvt_node),
 	    topo_node_instance(from->tvt_node));
 
+	if ((pathcomp = topo_hdl_zalloc(thp, sizeof (topo_path_component_t)))
+	    == NULL) {
+		(void) topo_hdl_seterrno(thp, ETOPO_NOMEM);
+		goto err;
+	}
+	pathcomp->tspc_vertex = from;
+	topo_list_append(&curr_path_comps, pathcomp);
+
 	if (ret == -1)
 		return (topo_hdl_seterrno(thp, ETOPO_NOMEM));
 
@@ -410,15 +431,15 @@ topo_digraph_paths(topo_hdl_t *thp, topo_digraph_t *tdg, topo_vertex_t *from,
 	    edge != NULL; edge = topo_list_next(edge)) {
 
 		ret = visit_vertex(thp, edge->tve_vertex, to, &all_paths,
-		    curr_path, &npaths);
+		    curr_path, &curr_path_comps, &npaths);
 		if (ret != 0) {
 			/* errno set */
 			free(curr_path);
 			goto err;
 		}
-
 	}
 	free(curr_path);
+	topo_hdl_free(thp, pathcomp, sizeof (topo_path_component_t));
 
 	/*
 	 * No paths were found between the "from" and "to" vertices, so
