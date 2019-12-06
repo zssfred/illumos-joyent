@@ -23,6 +23,16 @@
 
 #define	EXIT_USAGE	2
 
+#define	SAS_INITIATOR_PORT	"SAS Initiator Port"
+#define	SAS_EXPANDER_PORT	"SAS Expander Port"
+#define	SAS_TARGET_PORT		"SAS Target Port"
+
+#define	SASPORT_INV_DWORD	"invalid-dword"
+#define	SASPORT_RUN_DISP	"running-disp-errs"
+#define	SASPORT_LOSS_SYNC	"loss-dword-sync"
+#define	SASPORT_RESET_PROB	"reset-problems"
+
+
 static const char *pname;
 static const char optstr[] = "Cdf:hpR:Vx";
 
@@ -313,9 +323,175 @@ out:
 }
 
 static void
-print_path(topo_path_t *path)
+print_path_port(topo_hdl_t *thp, tnode_t *tn)
 {
+	uint64_t *invdword = NULL, *rundisp = NULL, *losssync = NULL;
+	uint64_t *resetprob = NULL;
+	nvlist_t *fmri = NULL, *auth;
+	uint32_t start_phy, end_phy;
+	uint_t nphys, phy, idx;
+	int err;
+
+	if (topo_prop_get_uint64_array(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_INV_DWORD, &invdword, &nphys, &err) != 0 ||
+	    topo_prop_get_uint64_array(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_RUN_DISP, &rundisp, &nphys, &err) != 0 ||
+	    topo_prop_get_uint64_array(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_LOSS_SYNC, &losssync, &nphys, &err) != 0 ||
+	    topo_prop_get_uint64_array(tn, TOPO_PGROUP_SASPORT,
+	    TOPO_PROP_SASPORT_RESET_PROB, &resetprob, &nphys, &err) != 0) {
+		(void) printf("prop lookup failed\n");
+		goto err;
+	}
+
+	/*
+	 * Get the SAS FMRI and then lookup the authority portion in order to
+	 * get the start and end PHY numbers.
+	 */
+	if (topo_node_resource(tn, &fmri, &err) != 0) {
+		(void) printf("failed to get SAS FMRI\n");
+		goto err;
+	}
+	if (nvlist_lookup_nvlist(fmri, FM_FMRI_AUTHORITY, &auth) != 0 ||
+	    nvlist_lookup_uint32(auth, FM_FMRI_SAS_START_PHY, &start_phy) !=
+	    0 ||
+	    nvlist_lookup_uint32(auth, FM_FMRI_SAS_END_PHY, &end_phy) != 0) {
+		(void) printf("malformed FMRI authority\n");
+		goto err;
+	}
+	(void) printf("  PHY Error Counters:\n");
+	(void) printf("  %-5s %-20s %-20s %-20s %-20s\n", "PHY#",
+	    SASPORT_INV_DWORD, SASPORT_RUN_DISP, SASPORT_LOSS_SYNC,
+	    SASPORT_RESET_PROB);
+	for (phy = start_phy, idx = 0; phy <= end_phy; phy++, idx++) {
+		(void) printf("  %-5u %-20" PRIu64 " %-20" PRIu64 " %-20"
+		    PRIu64 " %-20" PRIu64 "\n", phy, invdword[idx],
+		    rundisp[idx], losssync[idx], resetprob[idx]);
+	}
+	(void) printf("\n");
+
+err:
+	nvlist_free(fmri);
+	if (invdword != NULL) {
+		topo_hdl_free(thp, invdword, sizeof (uint64_t) * nphys);
+	}
+	if (rundisp != NULL) {
+		topo_hdl_free(thp, rundisp, sizeof (uint64_t) * nphys);
+	}
+	if (losssync != NULL) {
+		topo_hdl_free(thp, losssync, sizeof (uint64_t) * nphys);
+	}
+	if (resetprob != NULL) {
+		topo_hdl_free(thp, resetprob, sizeof (uint64_t) * nphys);
+	}
+}
+
+static void
+print_path(topo_hdl_t *thp, topo_path_t *path, boolean_t do_verbose)
+{
+	topo_path_component_t *comp, *prev_comp = NULL;
+
 	(void) printf("%s\n", path->tsp_fmristr);
+
+	if (! do_verbose)
+		return;
+
+	for (comp = topo_list_next(&path->tsp_components); comp != NULL;
+	    prev_comp = comp, comp = topo_list_next(comp)) {
+
+		topo_path_component_t *next_comp;
+		topo_vertex_t *vtx = comp->tspc_vertex;
+		tnode_t *tn = topo_vertex_node(vtx);
+		char *name = topo_node_name(tn);
+		int err;
+
+		(void) printf("\n");
+		next_comp = topo_list_next(comp);
+
+		if (strcmp(name, TOPO_VTX_INITIATOR) == 0) {
+			char *location = NULL, *manuf = NULL, *model = NULL;
+
+			(void) topo_prop_get_string(tn, TOPO_PGROUP_INITIATOR,
+			    TOPO_PROP_INITIATOR_LABEL, &location, &err);
+			(void) topo_prop_get_string(tn, TOPO_PGROUP_INITIATOR,
+			    TOPO_PROP_INITIATOR_MANUF, &manuf, &err);
+			(void) topo_prop_get_string(tn, TOPO_PGROUP_INITIATOR,
+			    TOPO_PROP_INITIATOR_MODEL, &model, &err);
+
+			(void) printf("  %-20s %s\n", "Node Type:",
+			    "SAS Initiator");
+			(void) printf("  %-20s %s\n", "Location:",
+			    location ? location : "Unknown");
+			(void) printf("  %-20s %s\n", "Manufacturer:",
+			    manuf ? manuf : "Unknown");
+			(void) printf("  %-20s %s\n", "Model:",
+			    model ? model : "Unknown");
+			(void) printf("\n");
+
+			topo_hdl_strfree(thp, location);
+			topo_hdl_strfree(thp, manuf);
+			topo_hdl_strfree(thp, model);
+
+		} else if (strcmp(name, TOPO_VTX_PORT) == 0) {
+			tnode_t *prev_node =
+			    topo_vertex_node(prev_comp->tspc_vertex);
+			char *prev_name = topo_node_name(prev_node);
+			tnode_t *next_node =
+			    topo_vertex_node(next_comp->tspc_vertex);
+			char *next_name = topo_node_name(next_node);
+
+			/*
+			 * We look at the previous and next components in the
+			 * path to determine the type of SAS port.
+			 */
+			if (strcmp(prev_name, TOPO_VTX_INITIATOR) == 0) {
+				(void) printf("  %-20s %s\n", "Node Type:",
+				    SAS_INITIATOR_PORT);
+			} else if (strcmp(prev_name, TOPO_VTX_EXPANDER) == 0) {
+				(void) printf("  %-20s %s\n", "Node Type:",
+				    SAS_EXPANDER_PORT);
+			} else if (strcmp(prev_name, TOPO_VTX_PORT) == 0) {
+				if (strcmp(next_name, TOPO_VTX_EXPANDER) == 0) {
+					(void) printf("  %-20s %s\n",
+					    "Node Type:", SAS_EXPANDER_PORT);
+				} else if (strcmp(next_name, TOPO_VTX_TARGET)
+				    == 0) {
+					(void) printf("  %-20s %s\n",
+					    "Node Type:", SAS_TARGET_PORT);
+				}
+			}
+
+			print_path_port(thp, tn);
+		} else if (strcmp(name, TOPO_VTX_EXPANDER) == 0) {
+			(void) printf("  %-20s %s\n", "Node Type:",
+			    "SAS Expander");
+			(void) printf("\n");
+		} else if (strcmp(name, TOPO_VTX_TARGET) == 0) {
+			char *location = NULL, *manuf = NULL, *model = NULL;
+
+			(void) topo_prop_get_string(tn, TOPO_PGROUP_TARGET,
+			    TOPO_PROP_TARGET_LABEL, &location, &err);
+			(void) topo_prop_get_string(tn, TOPO_PGROUP_TARGET,
+			    TOPO_PROP_TARGET_MANUF, &manuf, &err);
+			(void) topo_prop_get_string(tn, TOPO_PGROUP_TARGET,
+			    TOPO_PROP_TARGET_MODEL, &model, &err);
+
+			(void) printf("  %-20s %s\n", "Node Type:",
+			    "SAS Target");
+			(void) printf("  %-20s %s\n", "Location:",
+			    location ? location : "Unknown");
+			(void) printf("  %-20s %s\n", "Manufacturer:",
+			    manuf ? manuf : "Unknown");
+			(void) printf("  %-20s %s\n", "Model:",
+			    model ? model : "Unknown");
+			(void) printf("\n");
+
+			topo_hdl_strfree(thp, location);
+			topo_hdl_strfree(thp, manuf);
+			topo_hdl_strfree(thp, model);
+		}
+	}
+	(void) printf("\n");
 }
 
 static int
@@ -545,7 +721,7 @@ main(int argc, char *argv[])
 				continue;
 			}
 			for (uint_t i = 0; i < np; i++)
-				print_path(paths[i]);
+				print_path(thp, paths[i], cbarg.verbose);
 
 			topo_hdl_free(thp, paths, np * sizeof (topo_path_t *));
 		}
