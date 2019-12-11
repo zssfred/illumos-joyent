@@ -126,6 +126,7 @@ vdev_disk_off_notify(ldi_handle_t lh, ldi_ev_cookie_t ecookie, void *arg,
     void *ev_data)
 {
 	vdev_t *vd = (vdev_t *)arg;
+	spa_t *spa = vd->vdev_spa;
 	vdev_disk_t *dvd = vd->vdev_tsd;
 
 	/*
@@ -133,6 +134,8 @@ vdev_disk_off_notify(ldi_handle_t lh, ldi_ev_cookie_t ecookie, void *arg,
 	 */
 	if (strcmp(ldi_ev_get_type(ecookie), LDI_EV_OFFLINE) != 0)
 		return (LDI_EV_SUCCESS);
+
+	spa_config_enter(spa, SCL_ALL, FTAG, RW_WRITER);
 
 	/*
 	 * All LDI handles must be closed for the state change to succeed, so
@@ -144,6 +147,8 @@ vdev_disk_off_notify(ldi_handle_t lh, ldi_ev_cookie_t ecookie, void *arg,
 	 */
 	dvd->vd_ldi_offline = B_TRUE;
 	vdev_disk_close(vd);
+
+	spa_config_exit(spa, SCL_ALL, FTAG);
 
 	/*
 	 * Now that the device is closed, request that the spa_async_thread
@@ -162,7 +167,7 @@ vdev_disk_off_finalize(ldi_handle_t lh, ldi_ev_cookie_t ecookie,
     int ldi_result, void *arg, void *ev_data)
 {
 	vdev_t *vd = (vdev_t *)arg;
-	vdev_disk_t *dvd = vd->vdev_tsd;
+	spa_t *spa = vd->vdev_spa;
 	vdev_disk_ldi_cb_t *lcb;
 
 	/*
@@ -171,11 +176,15 @@ vdev_disk_off_finalize(ldi_handle_t lh, ldi_ev_cookie_t ecookie,
 	if (strcmp(ldi_ev_get_type(ecookie), LDI_EV_OFFLINE) != 0)
 		return;
 
+	spa_config_enter(spa, SCL_ALL, FTAG, RW_WRITER);
+
 	/*
 	 * We have already closed the LDI handle in notify.
 	 * Clean up the LDI event callbacks and free vd->vdev_tsd.
 	 */
 	vdev_disk_free(vd);
+
+	spa_config_exit(spa, SCL_ALL, FTAG);
 
 	/*
 	 * Request that the vdev be reopened if the offline state change was
@@ -742,8 +751,11 @@ skip_open:
 static void
 vdev_disk_close(vdev_t *vd)
 {
+	spa_t *spa = vd->vdev_spa;
 	vdev_disk_t *dvd = vd->vdev_tsd;
 	vdev_disk_ldi_cb_t *lcb;
+
+	ASSERT(spa_config_held(spa, SCL_STATE_ALL, RW_WRITER) == SCL_STATE_ALL);
 
 	if (vd->vdev_reopening || dvd == NULL)
 		return;
