@@ -363,12 +363,14 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 					topo_mod_dprintf(mod,
 					    "scsi_wwnstr_to_wwn failed for %s",
 					    ids[i]);
+					topo_hdl_strfreev(thp, ids, nelem);
 					goto done;
 				}
 				if (sas_node_matches_l0id(mod, sas_node, wwn)) {
 					targ_node = node;
 				}
 			}
+			topo_hdl_strfreev(thp, ids, nelem);
 		}
 	}
 
@@ -462,12 +464,9 @@ int
 sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
     nvlist_t *in, nvlist_t **out)
 {
-	if (version > TOPO_METH_FMRI_VERSION)
-		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
-
 	topo_hdl_t *thp = mod->tm_hdl;
 	const char *pgroup = NULL;
-	const char *pname = NULL;
+	char *pname = NULL;
 	const char *fmri_pname = NULL;
 	char *val = NULL;
 	nvlist_t *nvl = NULL;
@@ -476,8 +475,14 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	const char *targ_prop = NULL;
 	int err, ret = -1;
 
-	nvl = fnvlist_lookup_nvlist(in, TOPO_PROP_ARGS);
-	pname = fnvlist_lookup_string(nvl, "pname");
+	if (version > TOPO_METH_FMRI_VERSION)
+		return (topo_mod_seterrno(mod, EMOD_VER_NEW));
+
+	if (nvlist_lookup_nvlist(in, TOPO_PROP_ARGS, &nvl) != 0 ||
+	    nvlist_lookup_string(nvl, "pname", &pname) != 0) {
+		topo_mod_dprintf(mod, "%s: missing pname arg", __func__);
+		return (topo_mod_seterrno(mod, EMOD_NVL_INVAL));
+	}
 
 	if (strcmp(topo_node_name(node), TOPO_VTX_INITIATOR) == 0) {
 		pgroup = TOPO_PGROUP_INITIATOR;
@@ -527,13 +532,17 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		goto done;
 	}
 
-	(void) topo_mod_nvalloc(mod, &pnvl, NV_UNIQUE_NAME);
+	if (topo_mod_nvalloc(mod, &pnvl, NV_UNIQUE_NAME) != 0) {
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+	}
 	if (topo_fmri_getprop(thp, nvl, targ_group, targ_prop, NULL,
 	    &pnvl, &err) != 0) {
 		topo_mod_dprintf(mod, "getprop failed for %s=%" PRIx64
 		    " (%s)",
 		    topo_node_name(node), topo_node_instance(node),
 		    topo_strerror(err));
+		nvlist_free(pnvl);
+		(void) topo_mod_seterrno(mod, err);
 		goto done;
 	}
 
@@ -541,8 +550,10 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	 * We re-use the nvlist that we got back from topo_fmri_getprop since
 	 * it already has the value and type information we're looking for.
 	 */
-	fnvlist_remove(pnvl, TOPO_PROP_VAL_NAME);
-	fnvlist_add_string(pnvl, TOPO_PROP_VAL_NAME, pname);
+	if (nvlist_add_string(pnvl, TOPO_PROP_VAL_NAME, pname) != 0) {
+		nvlist_free(pnvl);
+		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
+	}
 	*out = pnvl;
 
 	ret = 0;
@@ -849,8 +860,16 @@ sas_fmri_str2nvl(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	}
 	*out = fmri;
 
+	if (sas_path != NULL) {
+		for (i = 0; i < npairs; i++)
+			nvlist_free(sas_path[i]);
+
+		topo_mod_free(mod, sas_path, npairs * sizeof (nvlist_t *));
+	}
+	nvlist_free(auth);
 	topo_mod_free(mod, tmp, fmrilen + 1);
 	return (0);
+
 err:
 	topo_mod_dprintf(mod, "%s failed: %s", __func__,
 	    topo_strerror(topo_mod_errno(mod)));
@@ -860,6 +879,7 @@ err:
 
 		topo_mod_free(mod, sas_path, npairs * sizeof (nvlist_t *));
 	}
+	nvlist_free(auth);
 	nvlist_free(fmri);
 	topo_mod_free(mod, tmp, fmrilen + 1);
 	return (-1);
@@ -1011,6 +1031,9 @@ sas_get_expander_phy_err_counter(topo_mod_t *mod, tnode_t *node, char *pname,
 	ret = 0;
 
 err:
+	topo_mod_free(mod, tdef, sizeof (smp_target_def_t));
+	if (tgt != NULL)
+		smp_close(tgt);
 	return (ret);
 }
 
