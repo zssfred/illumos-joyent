@@ -751,11 +751,8 @@ skip_open:
 static void
 vdev_disk_close(vdev_t *vd)
 {
-	spa_t *spa = vd->vdev_spa;
 	vdev_disk_t *dvd = vd->vdev_tsd;
 	vdev_disk_ldi_cb_t *lcb;
-
-	ASSERT(spa_config_held(spa, SCL_STATE_ALL, RW_WRITER) == SCL_STATE_ALL);
 
 	if (vd->vdev_reopening || dvd == NULL)
 		return;
