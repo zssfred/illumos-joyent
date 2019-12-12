@@ -528,7 +528,7 @@ main(int argc, char *argv[])
 {
 	topo_hdl_t *thp = NULL;
 	topo_digraph_t *tdg;
-	char c, *root = "/", *xml_in = NULL, *buf;
+	char c, *root = "/", *xml_in = NULL, *buf, *snapuuid = NULL;
 	boolean_t debug = B_FALSE, xml_out = B_FALSE;
 	int err, fd, status = EXIT_FAILURE;
 	struct stat statbuf = { 0 };
@@ -536,6 +536,11 @@ main(int argc, char *argv[])
 	struct sastopo_vertex *ini, *tgt;
 
 	pname = argv[0];
+
+	if (getuid() != 0) {
+		(void) fprintf(stderr, "This program must be run as root.\n");
+		return (EXIT_FAILURE);
+	}
 
 	while (optind < argc) {
 		while ((c = getopt(argc, argv, optstr)) != -1) {
@@ -613,7 +618,7 @@ main(int argc, char *argv[])
 	if (debug)
 		topo_debug_set(thp, "module", "stderr");
 
-	if (topo_snap_hold(thp, NULL, &err) == NULL) {
+	if ((snapuuid = topo_snap_hold(thp, NULL, &err)) == NULL) {
 		(void) fprintf(stderr, "failed to take topo snapshot: %s\n",
 		    topo_strerror(err));
 		goto out;
@@ -729,6 +734,7 @@ main(int argc, char *argv[])
 	status = EXIT_SUCCESS;
 out:
 	if (thp != NULL)  {
+		topo_hdl_strfree(thp, snapuuid);
 		topo_snap_release(thp);
 		topo_close(thp);
 	}

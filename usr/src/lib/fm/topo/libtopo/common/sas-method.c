@@ -941,6 +941,7 @@ sas_fmri_create(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	}
 	*out = fmri;
 
+	nvlist_free(pathcomp);
 	return (0);
 err:
 	topo_mod_dprintf(mod, "%s failed: %s", __func__,

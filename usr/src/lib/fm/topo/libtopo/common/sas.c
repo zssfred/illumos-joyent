@@ -1085,7 +1085,8 @@ sas_expander_discover(topo_mod_t *mod, const char *smp_path)
 	}
 
 done:
-	smp_close(tgt);
+	if (tgt != NULL)
+		smp_close(tgt);
 	topo_mod_free(mod, tdef, sizeof (smp_target_def_t));
 	return (ret);
 }
