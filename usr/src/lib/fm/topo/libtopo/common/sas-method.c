@@ -163,8 +163,8 @@ sas_dev_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 }
 
 /*
- * When SES is not available we determine if the given SAS node and HC nodes
- * match.
+ * This routine is used to determine if the specified SAS topo node and HC
+ * topo node represent the same physical disk.
  */
 static boolean_t
 sas_node_matches_logical_disk(topo_mod_t *mod, tnode_t *sas_node,
@@ -214,6 +214,7 @@ sas_node_matches_logical_disk(topo_mod_t *mod, tnode_t *sas_node,
 	topo_mod_free(mod, orig_ldisk, ldisksz);
 	return (wwn == topo_node_instance(sas_node));
 done:
+	topo_mod_free(mod, orig_ldisk, ldisksz);
 	return (B_FALSE);
 }
 
@@ -261,7 +262,7 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 	sas_topo_cbarg_t *cbarg = (sas_topo_cbarg_t *)arg;
 	tnode_t *sas_node = cbarg->st_node;
 	int err = 0;
-	nvlist_t *fmri = NULL;
+	nvlist_t *fmri = NULL, *rsrc = NULL;
 	char *fmristr = NULL;
 	tnode_t *targ_node = NULL;
 	topo_mod_t *mod = cbarg->st_mod;
@@ -378,14 +379,15 @@ hc_iter_cb(topo_hdl_t *thp, tnode_t *node, void *arg)
 		goto done;
 	}
 
-	if (topo_node_resource(targ_node, &fmri, &err) != 0 ||
-	    topo_fmri_nvl2str(thp, fmri, &fmristr, &err) != 0) {
+	if (topo_node_resource(targ_node, &rsrc, &err) != 0 ||
+	    topo_fmri_nvl2str(thp, rsrc, &fmristr, &err) != 0) {
 		topo_mod_dprintf(mod, "failed to get"
 		    "resource string (%s)", topo_strerror(err));
 		goto done;
 	}
 	cbarg->st_ret = fmristr;
 	nvlist_free(fmri);
+	nvlist_free(rsrc);
 	return (TOPO_WALK_TERMINATE);
 
 done:
@@ -414,7 +416,8 @@ sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	topo_walk_t *twp = NULL;
 	sas_topo_cbarg_t cbarg = {
 		.st_mod = mod,
-		.st_node = node
+		.st_node = node,
+		.st_ret = NULL
 	};
 	int err, ret = -1;
 	nvlist_t *result = NULL;
@@ -451,6 +454,7 @@ sas_hc_fmri(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 	ret = 0;
 
 out:
+	topo_mod_strfree(mod, cbarg.st_ret);
 	return (ret);
 }
 
@@ -532,9 +536,6 @@ sas_device_props_set(topo_mod_t *mod, tnode_t *node, topo_version_t version,
 		goto done;
 	}
 
-	if (topo_mod_nvalloc(mod, &pnvl, NV_UNIQUE_NAME) != 0) {
-		(void) topo_mod_seterrno(mod, EMOD_NOMEM);
-	}
 	if (topo_fmri_getprop(thp, nvl, targ_group, targ_prop, NULL,
 	    &pnvl, &err) != 0) {
 		topo_mod_dprintf(mod, "getprop failed for %s=%" PRIx64
