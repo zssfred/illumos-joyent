@@ -379,11 +379,12 @@ visit_vertex(topo_hdl_t *thp, topo_vertex_t *vtx, topo_vertex_t *to,
 		    curr_path_comps, npaths) != 0)
 			goto err;
 	}
+
 	free(pathstr);
 	topo_list_delete(curr_path_comps, pathcomp);
 	topo_hdl_free(thp, pathcomp, sizeof (topo_path_component_t));
-
 	return (0);
+
 err:
 	topo_hdl_free(thp, pathnode, sizeof (struct digraph_path));
 	topo_path_destroy(thp, path);
@@ -459,8 +460,25 @@ topo_digraph_paths(topo_hdl_t *thp, topo_digraph_t *tdg, topo_vertex_t *from,
 
 		*((*paths) + i) = path->dgp_path;
 	}
+
+	path = topo_list_next(&all_paths);
+	while (path != NULL) {
+		struct digraph_path *tmp = path;
+
+		path = topo_list_next(path);
+		topo_hdl_free(thp, tmp, sizeof (struct digraph_path));
+	}
 	return (npaths);
+
 err:
+	path = topo_list_next(&all_paths);
+	while (path != NULL) {
+		struct digraph_path *tmp = path;
+
+		path = topo_list_next(path);
+		topo_hdl_free(thp, tmp, sizeof (struct digraph_path));
+	}
+
 	topo_dprintf(thp, TOPO_DBG_ERR, "%s: failed (%s)", __func__,
 	    topo_hdl_errmsg(thp));
 	return (-1);

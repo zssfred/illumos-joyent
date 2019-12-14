@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <assert.h>
 
+#include <topo_error.h>
 #include <topo_list.h>
 #include <topo_tree.h>
 
@@ -192,6 +193,10 @@ topo_list_deepcopy(topo_hdl_t *thp, topo_list_t *dest, topo_list_t *src,
 {
 	void *elem;
 
+	/* if the destination list is not empty - bail out */
+	if (topo_list_next(dest) != NULL)
+		return (topo_hdl_seterrno(thp, ETOPO_UNKNOWN));
+
 	for (elem = topo_list_next(src); elem != NULL;
 	    elem = topo_list_next(elem)) {
 		void *elem_copy;
@@ -214,6 +219,7 @@ err:
 		void *tmp = elem;
 
 		elem = topo_list_next(elem);
+		topo_list_delete(dest, tmp);
 		topo_hdl_free(thp, tmp, elem_sz);
 	}
 	return (-1);

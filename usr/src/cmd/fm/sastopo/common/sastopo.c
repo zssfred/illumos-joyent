@@ -725,12 +725,28 @@ main(int argc, char *argv[])
 				}
 				continue;
 			}
-			for (uint_t i = 0; i < np; i++)
+			for (uint_t i = 0; i < np; i++) {
 				print_path(thp, paths[i], cbarg.verbose);
-
+				topo_path_destroy(thp, paths[i]);
+			}
 			topo_hdl_free(thp, paths, np * sizeof (topo_path_t *));
 		}
 	}
+	ini = topo_list_next(&cbarg.ini_list);
+	while (ini != NULL) {
+		struct sastopo_vertex *tmp = ini;
+
+		ini = topo_list_next(ini);
+		topo_hdl_free(thp, tmp, sizeof (struct sastopo_vertex));
+	}
+	tgt = topo_list_next(&cbarg.tgt_list);
+	while (tgt != NULL) {
+		struct sastopo_vertex *tmp = tgt;
+
+		tgt = topo_list_next(tgt);
+		topo_hdl_free(thp, tmp, sizeof (struct sastopo_vertex));
+	}
+
 	status = EXIT_SUCCESS;
 out:
 	if (thp != NULL)  {

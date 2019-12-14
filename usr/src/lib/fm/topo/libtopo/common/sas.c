@@ -558,6 +558,8 @@ sas_create_vertex(topo_mod_t *mod, const char *name, topo_instance_t inst,
 		    "%s=%" PRIx64 ": %s", name, inst, topo_strerror(err));
 		goto err;
 	}
+	nvlist_free(auth);
+
 	if (topo_pgroup_create(tn, &pgi, &err) != 0) {
 		(void) topo_mod_seterrno(mod, err);
 		topo_mod_dprintf(mod, "failed to create %s propgroup on "
