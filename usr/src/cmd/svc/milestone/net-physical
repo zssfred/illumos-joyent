@@ -492,7 +492,7 @@ if smf_is_globalzone; then
 
     # Connect simnets
     for simnet in $(echo "${CONFIG_simnet}" | sed -e "s/,/ /g"); do
-+      eval "snp=\${CONFIG_simnet_${simnet}_port}"
+      eval "snp=\${CONFIG_simnet_${simnet}_port}"
       [[ -z "$snp" ]] && continue
       /usr/sbin/dladm modify-simnet -p $snp $simnet || echo "ERROR: could not connect ${simnet} to port ${snp}."
     done        
